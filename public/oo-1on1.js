@@ -172,6 +172,45 @@
   var TL = function (lang, k, vars) { var d = DICT[lang] || DICT.en; var s = d[k] || DICT.en[k] || k; Object.keys(vars || {}).forEach(function (v) { s = s.split('{' + v + '}').join(vars[v]); }); return s; };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var sb = function () { return window.SupabaseDB && window.SupabaseDB.client; };
+
+  /* ---------- DIRECTORY GUARD (v1101) — Pete: partners are "not part of the public directory ... keep them separate".
+     A 1on1 partner is a user_profiles row with role 'oo_partner'. Rather than patching ~20 name searches, bulk loads,
+     leaderboards and broadcasts one by one, every multi-row GET/HEAD of user_profiles issued through supabase-js gets
+     `role=neq.oo_partner` appended at the PostgREST layer. Left alone: exact identity lookups (line_user_id / *_id =
+     eq., line_user_id = in.(...) hydration — the login lookup, avatars, chat headers), queries that already filter
+     role, the partner's own client, and 1on1 admins. Server-side search RPCs are filtered in SQL
+     (sql/oo_standalone_partners_20260904.sql). ---------- */
+  var GUARD_IDENT = { line_user_id: 1, id: 1, user_id: 1, email: 1, username: 1, kakao_id: 1, google_id: 1, apple_id: 1, line_id: 1, golfer_id: 1 };
+  function guardExempt(params) {
+    var ex = false;
+    try { params.forEach(function (v, k) { if (k === 'role') ex = true; else if ((GUARD_IDENT[k] || /_id$/.test(k)) && /^(eq|in)\./.test(String(v))) ex = true; }); } catch (e) { ex = true; }
+    return ex;
+  }
+  function guardViewerExempt() {
+    try { var r = (window.AppState && AppState.currentUser && AppState.currentUser.role) || ''; if (r === 'oo_partner' || r === 'admin') return true; } catch (e) {}
+    try { if (window.OneOnOne && OneOnOne.me && OneOnOne.me.admin === true) return true; } catch (e) {}
+    return false;
+  }
+  var _guardOn = false;
+  function installDirectoryGuard() {
+    if (_guardOn) return true;
+    var c = sb(); if (!c || typeof c.from !== 'function') return false;
+    try {
+      var probe = c.from('user_profiles').select('line_user_id').limit(0);
+      var proto = probe; while (proto && !Object.prototype.hasOwnProperty.call(proto, 'then')) proto = Object.getPrototypeOf(proto);
+      if (!proto || typeof proto.then !== 'function') return false;
+      var orig = proto.then;
+      proto.then = function (onOk, onErr) {
+        try {
+          var u = this.url; var m = String(this.method || 'GET').toUpperCase();
+          if (u && u.searchParams && (m === 'GET' || m === 'HEAD') && /\/user_profiles$/.test(u.pathname) && !guardExempt(u.searchParams) && !guardViewerExempt()) u.searchParams.append('role', 'neq.oo_partner');
+        } catch (e) {}
+        return orig.call(this, onOk, onErr);
+      };
+      _guardOn = true; return true;
+    } catch (e) { console.warn('[1on1] directory guard', e); return false; }
+  }
+  (function () { if (installDirectoryGuard()) return; var n = 0; var t = setInterval(function () { if (installDirectoryGuard() || ++n > 240) clearInterval(t); }, 500); })();
   var uid = function () { try { return (window.AppState && AppState.currentUser && (AppState.currentUser.lineUserId || AppState.currentUser.userId)) || localStorage.getItem('line_user_id'); } catch (e) { return null; } };
   var pad = function (n) { return String(n).padStart(2, '0'); };
   var ymd = function (d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
@@ -291,7 +330,8 @@
       'oo.photo.suspended': 'Your 1on1 access is suspended: no facial profile photo. Add one to restore access.', 'oo.photo.add': 'Add photo', 'oo.photo.use': 'Use current photo', 'oo.photo.checking': 'Checking photo…', 'oo.photo.ok': 'Photo accepted', 'oo.photo.restored': 'Photo accepted — access restored',
       'oo.photo.rejected': 'Not accepted: {reason} Upload a clear photo of your face.', 'oo.photo.failed': 'Photo check failed. Please try again.', 'oo.cube.photo': 'Add a facial photo',
       'oo.adm.nophoto': 'No photo', 'oo.adm.photo.unverified': 'Photo not verified', 'oo.adm.photo.ok': 'Photo OK', 'oo.adm.photo.accept': 'Accept photo', 'oo.adm.photo.reject': 'Reject photo', 'oo.adm.nophoton': '{n} without photo', 'oo.adm.suspended.nophoto': 'Suspended · no photo',
-      'oo.push.member_ok2': 'Your 1on1 access is approved. Add a clear photo of your face within 24 hours or your access will be suspended. Open MyCaddiPro to find a partner.' },
+      'oo.push.member_ok2': 'Your 1on1 access is approved. Add a clear photo of your face within 24 hours or your access will be suspended. Open MyCaddiPro to find a partner.',
+      'oo.logout': 'Log out', 'oo.logout.q': 'Log out of 1on1?', 'oo.msgs.none': 'Chats open once a booking is accepted.' },
     th: { 'oo.adm.overview': 'ภาพรวม', 'oo.adm.asmember': 'ดูแบบสมาชิก', 'oo.adm.needs': 'รอดำเนินการ', 'oo.adm.allclear': 'ไม่มีค้าง', 'oo.adm.active': 'ใช้งาน', 'oo.adm.pending': 'รออนุมัติ',
       'oo.adm.approved': 'อนุมัติแล้ว', 'oo.adm.suspended': 'ถูกระงับ', 'oo.adm.expired': 'หมดอายุ', 'oo.adm.all': 'ทั้งหมด', 'oo.adm.open': 'เปิด', 'oo.adm.reviewed': 'ตรวจแล้ว', 'oo.adm.actioned': 'ดำเนินการแล้ว', 'oo.adm.dismissed': 'ยกคำร้อง', 'oo.adm.closed': 'ปิดแล้ว',
       'oo.adm.search': 'ค้นหาชื่อหรือไอดี', 'oo.adm.new': 'ใหม่', 'oo.adm.share': 'แชร์', 'oo.adm.since': 'ตั้งแต่', 'oo.adm.view': 'ดู', 'oo.adm.suspendmember': 'ระงับสมาชิก', 'oo.adm.suspendpartner': 'ระงับคู่เล่น',
@@ -302,7 +342,8 @@
       'oo.photo.suspended': 'สิทธิ์ 1on1 ของคุณถูกระงับ: ไม่มีรูปโปรไฟล์ที่เห็นใบหน้า เพิ่มรูปเพื่อคืนสิทธิ์', 'oo.photo.add': 'เพิ่มรูป', 'oo.photo.use': 'ใช้รูปปัจจุบัน', 'oo.photo.checking': 'กำลังตรวจรูป…', 'oo.photo.ok': 'รูปผ่านแล้ว', 'oo.photo.restored': 'รูปผ่านแล้ว — คืนสิทธิ์แล้ว',
       'oo.photo.rejected': 'ไม่ผ่าน: {reason} กรุณาอัปโหลดรูปใบหน้าที่ชัดเจน', 'oo.photo.failed': 'ตรวจรูปไม่สำเร็จ กรุณาลองใหม่', 'oo.cube.photo': 'เพิ่มรูปใบหน้า',
       'oo.adm.nophoto': 'ไม่มีรูป', 'oo.adm.photo.unverified': 'รูปยังไม่ยืนยัน', 'oo.adm.photo.ok': 'รูปผ่าน', 'oo.adm.photo.accept': 'ยอมรับรูป', 'oo.adm.photo.reject': 'ปฏิเสธรูป', 'oo.adm.nophoton': 'ไม่มีรูป {n}', 'oo.adm.suspended.nophoto': 'ระงับ · ไม่มีรูป',
-      'oo.push.member_ok2': 'สิทธิ์ 1on1 ของคุณได้รับอนุมัติแล้ว เพิ่มรูปใบหน้าที่ชัดเจนภายใน 24 ชั่วโมง มิฉะนั้นสิทธิ์จะถูกระงับ เปิด MyCaddiPro เพื่อหาคู่เล่น' },
+      'oo.push.member_ok2': 'สิทธิ์ 1on1 ของคุณได้รับอนุมัติแล้ว เพิ่มรูปใบหน้าที่ชัดเจนภายใน 24 ชั่วโมง มิฉะนั้นสิทธิ์จะถูกระงับ เปิด MyCaddiPro เพื่อหาคู่เล่น',
+      'oo.logout': 'ออกจากระบบ', 'oo.logout.q': 'ออกจากระบบ 1on1?', 'oo.msgs.none': 'แชทจะเปิดเมื่อการจองได้รับการยอมรับ' },
     ko: { 'oo.adm.overview': '개요', 'oo.adm.asmember': '회원으로 보기', 'oo.adm.needs': '처리 필요', 'oo.adm.allclear': '모두 처리됨', 'oo.adm.active': '활성', 'oo.adm.pending': '대기',
       'oo.adm.approved': '승인됨', 'oo.adm.suspended': '정지됨', 'oo.adm.expired': '만료', 'oo.adm.all': '전체', 'oo.adm.open': '미처리', 'oo.adm.reviewed': '검토됨', 'oo.adm.actioned': '조치됨', 'oo.adm.dismissed': '기각', 'oo.adm.closed': '종료',
       'oo.adm.search': '이름 또는 ID 검색', 'oo.adm.new': '신규', 'oo.adm.share': '공유', 'oo.adm.since': '가입', 'oo.adm.view': '보기', 'oo.adm.suspendmember': '회원 정지', 'oo.adm.suspendpartner': '파트너 정지',
@@ -313,7 +354,8 @@
       'oo.photo.suspended': '얼굴 프로필 사진이 없어 1on1 이용이 정지되었습니다. 사진을 등록하면 다시 이용할 수 있습니다.', 'oo.photo.add': '사진 등록', 'oo.photo.use': '현재 사진 사용', 'oo.photo.checking': '사진 확인 중…', 'oo.photo.ok': '사진이 승인되었습니다', 'oo.photo.restored': '사진이 승인되어 이용이 복구되었습니다',
       'oo.photo.rejected': '승인되지 않음: {reason} 얼굴이 선명한 사진을 올려 주세요.', 'oo.photo.failed': '사진 확인에 실패했습니다. 다시 시도해 주세요.', 'oo.cube.photo': '얼굴 사진 등록',
       'oo.adm.nophoto': '사진 없음', 'oo.adm.photo.unverified': '사진 미확인', 'oo.adm.photo.ok': '사진 확인됨', 'oo.adm.photo.accept': '사진 승인', 'oo.adm.photo.reject': '사진 거절', 'oo.adm.nophoton': '사진 없음 {n}명', 'oo.adm.suspended.nophoto': '정지 · 사진 없음',
-      'oo.push.member_ok2': '1on1 이용이 승인되었습니다. 24시간 이내에 얼굴이 선명한 사진을 등록하지 않으면 이용이 정지됩니다. MyCaddiPro를 열어 파트너를 찾아보세요.' },
+      'oo.push.member_ok2': '1on1 이용이 승인되었습니다. 24시간 이내에 얼굴이 선명한 사진을 등록하지 않으면 이용이 정지됩니다. MyCaddiPro를 열어 파트너를 찾아보세요.',
+      'oo.logout': '로그아웃', 'oo.logout.q': '1on1에서 로그아웃할까요?', 'oo.msgs.none': '예약이 수락되면 채팅이 열립니다.' },
     ja: { 'oo.adm.overview': '概要', 'oo.adm.asmember': '会員として見る', 'oo.adm.needs': '対応が必要', 'oo.adm.allclear': '対応待ちなし', 'oo.adm.active': '有効', 'oo.adm.pending': '保留',
       'oo.adm.approved': '承認済', 'oo.adm.suspended': '停止中', 'oo.adm.expired': '期限切れ', 'oo.adm.all': 'すべて', 'oo.adm.open': '未処理', 'oo.adm.reviewed': '確認済', 'oo.adm.actioned': '対応済', 'oo.adm.dismissed': '却下', 'oo.adm.closed': '終了',
       'oo.adm.search': '名前またはIDで検索', 'oo.adm.new': '新規', 'oo.adm.share': '共有', 'oo.adm.since': '登録', 'oo.adm.view': '表示', 'oo.adm.suspendmember': '会員を停止', 'oo.adm.suspendpartner': '同伴者を停止',
@@ -324,7 +366,8 @@
       'oo.photo.suspended': '顔写真が未登録のため1on1の利用が停止されています。写真を登録すると再開できます。', 'oo.photo.add': '写真を追加', 'oo.photo.use': '現在の写真を使う', 'oo.photo.checking': '写真を確認中…', 'oo.photo.ok': '写真が承認されました', 'oo.photo.restored': '写真が承認され、利用が再開されました',
       'oo.photo.rejected': '不承認: {reason} 顔がはっきり写った写真をアップロードしてください。', 'oo.photo.failed': '写真の確認に失敗しました。もう一度お試しください。', 'oo.cube.photo': '顔写真を追加',
       'oo.adm.nophoto': '写真なし', 'oo.adm.photo.unverified': '写真未確認', 'oo.adm.photo.ok': '写真OK', 'oo.adm.photo.accept': '写真を承認', 'oo.adm.photo.reject': '写真を却下', 'oo.adm.nophoton': '写真なし{n}名', 'oo.adm.suspended.nophoto': '停止 · 写真なし',
-      'oo.push.member_ok2': '1on1の利用が承認されました。24時間以内に顔がはっきり写った写真を登録しないと利用が停止されます。MyCaddiProを開いて同伴者を探しましょう。' }
+      'oo.push.member_ok2': '1on1の利用が承認されました。24時間以内に顔がはっきり写った写真を登録しないと利用が停止されます。MyCaddiProを開いて同伴者を探しましょう。',
+      'oo.logout': 'ログアウト', 'oo.logout.q': '1on1からログアウトしますか？', 'oo.msgs.none': '予約が承認されるとチャットが開きます。' }
   };
   Object.keys(DICT3).forEach(function (l) { Object.assign(DICT[l], DICT3[l]); });
   try { if (typeof translations !== 'undefined') Object.keys(DICT3).forEach(function (l) { if (translations[l]) Object.assign(translations[l], DICT3[l]); }); } catch (e) {}
@@ -411,7 +454,8 @@
     '.oo-pfbar{display:flex;gap:8px;margin-top:12px}.oo-pfbar .oo-btn.on{border-color:#dc2626;color:#dc2626;background:#fef2f2}' +
     '.oo-kpi{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}@media(min-width:768px){.oo-kpi{grid-template-columns:repeat(4,minmax(0,1fr))}}' +
     '.oo-two{display:grid;grid-template-columns:1fr;gap:10px}@media(min-width:1024px){.oo-two{grid-template-columns:minmax(0,3fr) minmax(0,2fr);align-items:start}}' +
-    '#golferDashboard:not(.oo-on) #ooCube,#golferDashboard:not(.oo-on) .ooCube{display:none !important}';  /* the grids set display:flex with id+class specificity — hide must out-rank it; the on-state simply lets the grid CSS apply */
+    '#golferDashboard:not(.oo-on) #ooCube,#golferDashboard:not(.oo-on) .ooCube{display:none !important}' +
+    'body:not(.oo-partner-caddie) [onclick*="OneOnOne.enter(\'partner\')"]{display:none !important}';   /* v1101: caddie-dashboard 1on1 entries only for caddies who ARE partners (invite-only onboarding) */  /* the grids set display:flex with id+class specificity — hide must out-rank it; the on-state simply lets the grid CSS apply */
   try { var st = document.createElement('style'); st.id = 'oo1on1CSS'; st.textContent = CSS; document.head.appendChild(st); } catch (e) {}
 
   /* =====================================================================================
@@ -441,13 +485,48 @@
         var row = await rpc('oo_redeem_invite', { p_code: code });
         try { localStorage.removeItem('oo_invite'); } catch (e) {}
         toast(row && row.caddy_profile_id !== undefined ? T('oo.invite.partner.ok', DICT.en['oo.invite.partner.ok']) : T('oo.invite.ok', DICT.en['oo.invite.ok']), 'success');
-        this.me = null; return true;
+        this.me = null;
+        if (row && row.caddy_profile_id !== undefined && !this.standalone) {   /* v1101: partner invite → role is now oo_partner → land on the partner screen */
+          try { if (window.AppState && AppState.currentUser) AppState.currentUser.role = 'oo_partner'; } catch (e) {}
+          setTimeout(function () { try { location.replace(location.pathname); } catch (e) { location.reload(); } }, 1200);
+        }
+        return true;
       } catch (e) {
         var m = String(e && e.message || '');
         if (/not_signed_in|JWT|jwt|permission/i.test(m)) { toast(T('oo.signin.msg', DICT.en['oo.signin.msg']), 'warning'); return false; } // keep the code for the next login
         try { localStorage.removeItem('oo_invite'); } catch (_) {}
         toast(errMsg(e), 'error'); return false;
       }
+    },
+
+    /* ---------- STANDALONE PARTNER (v1101): role 'oo_partner' — invite-only, hidden from every directory, no dashboard
+       behind her. Login routes straight here (index.html dashboardMap + ScreenManager initMap 'ooDashboard'). ---------- */
+    standalone: false, _standaloneReady: false, _landing: false,
+    async pendingInviteRole() {   /* registration asks: is the stashed ?oo=CODE a PARTNER invite? → create the profile as oo_partner */
+      var code = null; try { code = localStorage.getItem('oo_invite'); } catch (e) {}
+      if (!code) return null;
+      try { var r = await rpc('oo_invite_kind', { p_code: code }); return (r && r.valid && r.kind === 'partner') ? 'oo_partner' : null; } catch (e) { return null; }
+    },
+    async landStandalone() {
+      if (this._standaloneReady || this._landing) return; this._landing = true;
+      try {
+        this.standalone = true;
+        try { document.body.classList.add('oo-standalone'); } catch (e) {}
+        try { if (window.MessagesSystem && MessagesSystem.init) Promise.resolve(MessagesSystem.init()).catch(function () {}); } catch (e) {}   /* body-mounted chat view for DMs */
+        this.captureInvite();
+        var session = null;
+        for (var i = 0; i < 6; i++) { try { var r = await sb().auth.getSession(); session = r && r.data && r.data.session; } catch (e) {} if (session) break; await new Promise(function (res) { setTimeout(res, 700); }); }
+        await this.redeemPending();
+        await this.refreshMe(true);
+        this._standaloneReady = true;
+        await this.enter('partner');
+        this.subscribePartner();
+      } catch (e) { console.warn('[1on1] standalone landing', e); }
+      finally { this._landing = false; }
+    },
+    async logoutAsk() {
+      var ok = await confirmSheet(T('oo.logout.q', 'Log out of 1on1?'), T('oo.logout', 'Log out')); if (ok === null) return;
+      try { if (typeof logout === 'function') logout(); else LineAuthentication.logout(); } catch (e) { try { location.reload(); } catch (_) {} }
     },
 
     /* ---------- GOLFER dashboard hooks (entry cube + realtime); the 1on1 screen itself is further down ---------- */
@@ -523,6 +602,7 @@
       this.captureInvite();
       await this.redeemPending();
       await this.refreshMe(true);
+      try { document.body.classList.toggle('oo-partner-caddie', !!(this.me && this.me.partner)); } catch (e) {}   /* v1101: no caddie opt-in any more */
       await this.cadLoad();
       this.cadBadge();
       this.subscribePartner();
@@ -584,6 +664,7 @@
     /* leave to the dashboard that opened us; the screen's own NavHistory entries are dropped so the
        golfer/caddie back button behaves as if 1on1 was never visited */
     exit(tab) {
+      if (this.standalone) { if (tab === 'messages') this.nav('messages'); return; }   /* v1101: nothing behind a standalone partner */
       var target = this.side === 'partner' ? 'caddieDashboard' : 'golferDashboard';
       try { mhvCloseMore('oo'); } catch (e) {}
       try { while (NavHistory.stack.length > 1 && NavHistory.stack[NavHistory.stack.length - 1].screen === 'ooDashboard') NavHistory.stack.pop(); NavHistory._navigating = true; } catch (e) {}
@@ -600,7 +681,8 @@
     /* mhvGo('oo', view) (cubes/dock) and the desktop tab strip both land here */
     nav(view, keepStack) {
       if (view === 'default' || view === 'home' || view === 'overview') view = this.defaultView();
-      if (view === 'messages') { this.exit('messages'); return; }
+      if (view === 'messages' && !this.standalone) { this.exit('messages'); return; }   /* v1101: standalone partners get an in-screen chat list */
+      if (view === 'logout' || (view === 'exit' && this.standalone)) { this.logoutAsk(); return; }
       if (view === 'exit') { this.exit(); return; }
       if (view === 'asmember') { this.enter('member'); return; }
       if (view === 'admin' && this.side !== 'admin') { this.enter('admin'); return; }
@@ -624,6 +706,7 @@
       var sheet = document.getElementById('ooMoreSheet'); if (sheet && sheet.classList.contains('open')) { try { mhvCloseMore('oo'); } catch (e) {} return true; }
       if (this.stack.length) { this.back(); return true; }
       if (this.isPhone() && this.view !== 'home') { this.home(); return true; }
+      if (this.standalone) return true;   /* v1101: cube home IS home */
       this.exit(); return true;
     },
     syncNav() {
@@ -664,7 +747,7 @@
           cube('messages', '#dbe4f0', '#f2f6fb', T('oo.cube.msgs', 'Messages'), null, T('oo.cube.msgs.partner', 'Chat with members'), 'cuChat') + '</div>';
         tabs = [['requests', 'inbox', 'oo.seg.requests', 'Requests', 'ooTabReqBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar'], ['profile', 'person', 'oo.seg.profile', 'Profile'], ['photos', 'photo_library', 'oo.seg.photos', 'Photos & posts'], ['earnings', 'payments', 'oo.seg.earnings', 'Earnings']];
         dock = [['requests', 'inbox', 'oo.seg.requests', 'Requests', 'ooDockReqBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar'], ['profile', 'person', 'oo.seg.profile', 'Profile']];
-        more = [['photos', 'photo_library', 'oo.seg.photos', 'Photos & posts'], ['earnings', 'payments', 'oo.seg.earnings', 'Earnings'], ['messages', 'chat', 'oo.cube.msgs', 'Messages'], ['exit', 'logout', 'oo.exit', 'Back to my dashboard']];
+        more = [['photos', 'photo_library', 'oo.seg.photos', 'Photos & posts'], ['earnings', 'payments', 'oo.seg.earnings', 'Earnings'], ['messages', 'chat', 'oo.cube.msgs', 'Messages']].concat(this.standalone ? [['logout', 'logout', 'oo.logout', 'Log out']] : [['exit', 'logout', 'oo.exit', 'Back to my dashboard']]);
       } else {
         home = '<button type="button" class="mgc mgc-hero" onclick="mhvGo(\'oo\',\'browse\')"><div class="t">' + esc(T('oo.cube.open', 'Find a partner')) + '</div><div class="chip" id="ooHomeFindChip">' + esc(T('oo.cube.find.chip', 'Swipe to browse')) + '</div>' + art('cuPlayers') + '</button><div class="mgc-grid">' +
           cube('liked', '#fee2e2', '#fff1f2', T('oo.seg.liked', 'Saved'), 'ooHomeLikedChip', TT('oo.cube.liked.chip', { n: (this.liked || []).length }), 'cuTrophy') +
@@ -867,6 +950,7 @@
         if (v === 'profile') return this.cadRenderProfile(banner);
         if (v === 'photos') return this.cadRenderPhotos(banner);
         if (v === 'earnings') return this.cadRenderEarnings(banner);
+        if (v === 'messages') return this.cadRenderMessages(banner);
         return this.cadRenderRequests(banner);
       }
       if (v === 'admin') { this.enter('admin'); return; }
@@ -1246,7 +1330,7 @@
       if (otherId && b.status !== 'requested') h += '<button type="button" class="oo-btn" style="color:#64748b" onclick="OneOnOne.report(\'' + b.id + '\', \'' + esc(otherId) + '\')">' + esc(T('oo.report', 'Report')) + '</button>';
       return h + '</div></div></div>';
     },
-    dm(id) { return sendDm(id); },
+    dm(id) { if (this.standalone && window.MessagesSystem && MessagesSystem.openDirectConversation) { try { return MessagesSystem.openDirectConversation(id); } catch (e) { console.warn('[1on1] dm', e); } } return sendDm(id); },
     async cancel(id, side) {
       var reason = await confirmSheet(T('oo.cancelq', 'Cancel this booking?'), T('oo.cancel', 'Cancel')); if (reason === null) return;
       try {
@@ -1320,6 +1404,17 @@
       var btn = document.getElementById('ooOptinBtn'); if (btn) btn.disabled = true;
       try { await rpc('oo_partner_optin', { p: this.readProfileForm() }); toast(T('oo.saved', 'Saved'), 'success'); await this.refreshMe(true); await this.cadLoad(); this.subscribePartner(); this.buildShell(); this.paintShell(); this.nav('profile'); }
       catch (e) { toast(errMsg(e), 'error'); if (btn) btn.disabled = false; }
+    },
+    /* v1101: standalone partners have no dashboard inbox — list the members with an accepted booking and open the
+       body-mounted chat (MessagesSystem.openDirectConversation) directly */
+    cadRenderMessages(banner) {
+      var root = document.getElementById('ooRoot'); var self = this; var seen = {}; var rows = [];
+      (this.cad.bookings || []).forEach(function (b) { if ((b.status === 'accepted' || b.status === 'completed') && b.member_id && !seen[b.member_id]) { seen[b.member_id] = 1; rows.push(b); } });
+      root.innerHTML = (banner || '') + '<div class="oo-card" style="max-width:720px"><h4>' + esc(T('oo.cube.msgs', 'Messages')) + '</h4>' + (rows.length ? rows.map(function (b) {
+        var name = (b.oo_members && b.oo_members.display_name) || b.member_id; var pic = (self.cad.photos || {})[b.member_id] || '';
+        return '<div class="oo-row" style="align-items:center">' + self.admAvatar(pic, name) + '<div style="flex:1;min-width:0"><div style="font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(name) + '</div><div class="oo-kv">' + esc(fmtRange(b.date_from, b.date_to)) + (b.course_name ? ' · ' + esc(b.course_name) : '') + '</div></div>' +
+          '<button type="button" class="oo-btn pri" onclick="OneOnOne.dm(\'' + esc(b.member_id) + '\')">' + esc(T('oo.message', 'Message')) + '</button></div>';
+      }).join('') : '<div class="oo-kv" style="text-align:center;padding:14px">' + esc(T('oo.msgs.none', DICT.en['oo.msgs.none'])) + '</div>') + '</div>';
     },
     cadRenderProfile(banner) {
       var root = document.getElementById('ooRoot'); var p = this.cad.partner; var self = this;

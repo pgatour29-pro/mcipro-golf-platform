@@ -18975,7 +18975,7 @@
 
                     // Show dashboard
                     const role = userProfile.role || 'golfer';
-                    const dashMap = { golfer: 'golferDashboard', caddie: 'caddieDashboard', manager: 'managerDashboard', proshop: 'proshopDashboard', maintenance: 'maintenanceDashboard', society_organizer: 'societyOrganizerDashboard' };
+                    const dashMap = { golfer: 'golferDashboard', oo_partner: 'ooDashboard', caddie: 'caddieDashboard', manager: 'managerDashboard', proshop: 'proshopDashboard', maintenance: 'maintenanceDashboard', society_organizer: 'societyOrganizerDashboard' };
                     ScreenManager.showScreen(dashMap[role] || 'golferDashboard');
                     UserInterface.updateUserDisplays();
 
@@ -20468,7 +20468,7 @@
                 this.closeModal();
                 UserInterface.updateUserDisplays();
                 const role = AppState.currentUser?.role || 'golfer';
-                const dashMap = { golfer: 'golferDashboard', caddie: 'caddieDashboard', manager: 'managerDashboard' };
+                const dashMap = { golfer: 'golferDashboard', oo_partner: 'ooDashboard', caddie: 'caddieDashboard', manager: 'managerDashboard' };
                 ScreenManager.showScreen(dashMap[role] || 'golferDashboard');
                 NotificationManager.show('Welcome back, ' + (AppState.currentUser?.name || 'Golfer') + '! \ud83d\udc4b', 'success');
             }
@@ -22213,6 +22213,7 @@
                     'maintenanceDashboard': () => this.initMaintenanceDashboard(),
                     'societyOrganizerDashboard': () => this.initSocietyOrganizerDashboard(),
                     'caddyMasterDashboard': () => this.initCaddyMasterDashboard(),
+                    'ooDashboard': () => { try { if (window.OneOnOne && OneOnOne.landStandalone && (AppState.currentUser || {}).role === 'oo_partner') OneOnOne.landStandalone(); } catch (e) {} },   // 1on1 (v1101): standalone partner landing
                     'adminDashboard': () => this.initAdminDashboard()
                 };
 
@@ -23621,6 +23622,7 @@
 
                 const dashboardMap = {
                     'golfer': 'golferDashboard',
+                    'oo_partner': 'ooDashboard',   // 1on1 (v1101): standalone partner — her own screen, no dashboard behind it
                     'caddie': 'caddieDashboard',
                     'caddy': 'caddieDashboard',
                     'caddymaster': 'caddyMasterDashboard',
@@ -23655,9 +23657,9 @@
                     }
                 }
 
-                // Try to restore PWA state (resume where user left off)
+                // Try to restore PWA state (resume where user left off) — 1on1 (v1101): a standalone partner always lands on her own screen
                 let restored = false;
-                if (window.PWAStateManager) {
+                if (window.PWAStateManager && AppState.currentUser.role !== 'oo_partner') {
                     try {
                         restored = await PWAStateManager.restore();
                         if (restored) {
@@ -24492,10 +24494,12 @@
                         console.log('[LINE] 🎉 DEREK THOROGOOD DETECTED - Setting up as TRGG Super Admin!');
                     }
 
-                    // Create basic golfer profile (or society_organizer for Derek)
+                    // Create basic golfer profile (or society_organizer for Derek). 1on1 (v1101): a stashed PARTNER invite
+                    // (?oo=CODE) creates the hidden 'oo_partner' role from the start — she never passes through the golfer dashboard.
+                    let __ooRole = null; try { if (window.OneOnOne && OneOnOne.pendingInviteRole) __ooRole = await OneOnOne.pendingInviteRole(); } catch (e) {}
                     const newProfile = {
                         line_user_id: lineUserId,
-                        role: isDerekThorogood ? 'society_organizer' : 'golfer',
+                        role: __ooRole || (isDerekThorogood ? 'society_organizer' : 'golfer'),
                         name: profile.displayName || 'Golfer',
                         username: '',
                         profile_data: {
@@ -25820,11 +25824,12 @@
 
             // Build profile - only use columns that exist in the table
             const pictureUrl = profile.pictureUrl || profile.picture || null;
+            let __ooRole = null; try { if (window.OneOnOne && OneOnOne.pendingInviteRole) __ooRole = await OneOnOne.pendingInviteRole(); } catch (e) {}   // 1on1 (v1101): partner invite → hidden role
             const newProfile = {
                 line_user_id: uniqueUserId,
                 name: profile.displayName || profile.name || `${providerName} User`,
                 display_name: profile.displayName || profile.name,
-                role: 'golfer',
+                role: __ooRole || 'golfer',
                 profile_data: {
                     username: profile.displayName || profile.name,
                     linePictureUrl: pictureUrl,
@@ -25889,7 +25894,7 @@
                 console.log(`[OAuth] Created new user:`, data || newProfile);
 
                 AppState.currentUser = {
-                    role: 'golfer',
+                    role: newProfile.role || 'golfer',
                     name: newProfile.name,
                     username: newProfile.name,
                     displayName: newProfile.name,
@@ -26004,6 +26009,7 @@
                     // Navigate to dashboard IMMEDIATELY
                     const dashboardMap = {
                         'golfer': 'golferDashboard',
+                        'oo_partner': 'ooDashboard',   // 1on1 (v1101)
                         'caddie': 'caddieDashboard',
                         'caddymaster': 'caddyMasterDashboard',
                         'manager': 'managerDashboard',
@@ -159671,7 +159677,7 @@ showOrganizerTab = function(tabName) {
     <!-- <script defer src="ai-caddie.js?v=20260420a"></script> -->
                                     <!-- G3 (v1080): MyCaddiPro 3.0 DESKTOP shell for the golfer dashboard (>=1024px only; phones untouched) -->
     <!-- 1on1 (v1089→v1091): JOA private playing-partner booking — its own dashboard screen (#ooDashboard), entered from the golfer cube / desktop rail (member) and the caddie cube / tab / drawer (partner) -->
-    <script src="oo-1on1.js?v=1100"></script>
+    <script src="oo-1on1.js?v=1101"></script>
     <script src="g3-desk.js?v=1091"></script>
     <script src="g3-org.js?v=1087"></script>
 </body>

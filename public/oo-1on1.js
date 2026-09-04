@@ -169,6 +169,65 @@
   /* ---------- helpers ---------- */
   var T = function (k, fb) { try { if (typeof _lvT === 'function') return _lvT(k, fb); } catch (e) {} return fb; };
   var TT = function (k, vars) { var s = T(k, DICT.en[k] || k); Object.keys(vars || {}).forEach(function (v) { s = s.split('{' + v + '}').join(vars[v]); }); return s; };
+
+  /* =====================================================================================
+     TERMS & DISCLAIMERS (v1105) — Pete 2026-09-04: "This is not a dating site nor offering any other
+     services other having golf playing partners only. Also create other disclaimers making sure this is
+     a peer to peer consent and that the organizer nor the platform is providing any services."
+     Every member AND every partner accepts these once (per version) before they can use the section;
+     oo_accept_terms records version + timestamp, and the DB refuses bookings without it.
+     ===================================================================================== */
+  var TERMS = {
+    en: { title: 'Before you continue', intro: 'Please read and accept. These terms apply to everyone using 1on1.',
+      accept: 'I have read and agree', view: 'Terms & disclaimers', updated: 'These terms have been updated. Please read and accept them again.',
+      short: 'Golf playing partners only. Bookings are a direct arrangement between the two people involved.',
+      items: [
+        ['Golf playing partners only', 'This section arranges partners to play rounds of golf. It is not a dating service, not an escort or companionship service, and no service of any other kind is offered, requested, implied or permitted here.'],
+        ['A direct arrangement between the two of you', 'Every booking is a peer-to-peer arrangement between the member and the playing partner. You agree the round, the course, the date and any fee directly with each other.'],
+        ['Free, informed consent — and you may withdraw it', 'Both sides choose freely. A partner may decline or cancel any request, and a member may cancel, at any time and without giving a reason. Nobody is obliged to accept a booking, to continue one, or to meet outside the agreed round. If consent is withdrawn, the booking simply ends.'],
+        ['The organizer and the platform provide no services', 'The organizer and this platform only introduce golfers to each other and record the booking. Neither provides, supplies, supervises, employs or guarantees any person, service or outcome, and neither is a party to your arrangement or responsible for it.'],
+        ['Payments are settled between you', 'Any fee is agreed and paid directly between the two people involved. Rates shown are the partner’s own stated rate, recorded for reference only. The organizer and the platform take no payment and hold no funds.'],
+        ['Conduct', 'Treat each other with respect at all times. Anything unlawful, sexual, coercive, discriminatory or harassing is prohibited and ends access to this section immediately. Use the Report button on any booking to raise a problem with your admin.'],
+        ['Your own safety and responsibility', 'Meet at the golf course, arrange your own transport and insurance, and use your own judgement. You are responsible for your own decisions, safety and conduct. Members must be adults.']
+      ] },
+    th: { title: 'ก่อนดำเนินการต่อ', intro: 'กรุณาอ่านและยอมรับ เงื่อนไขนี้ใช้กับทุกคนที่ใช้ 1on1',
+      accept: 'ข้าพเจ้าได้อ่านและยอมรับ', view: 'เงื่อนไขและข้อจำกัดความรับผิด', updated: 'เงื่อนไขมีการปรับปรุง กรุณาอ่านและยอมรับอีกครั้ง',
+      short: 'สำหรับคู่เล่นกอล์ฟเท่านั้น การจองเป็นข้อตกลงโดยตรงระหว่างสองฝ่าย',
+      items: [
+        ['สำหรับคู่เล่นกอล์ฟเท่านั้น', 'ส่วนนี้จัดหาคู่เล่นสำหรับการออกรอบกอล์ฟเท่านั้น ไม่ใช่บริการหาคู่ ไม่ใช่บริการเพื่อนเที่ยวหรือบริการอื่นใด และไม่อนุญาตให้เสนอ ร้องขอ หรือสื่อถึงบริการประเภทอื่นในที่นี้'],
+        ['เป็นข้อตกลงโดยตรงระหว่างสองฝ่าย', 'ทุกการจองเป็นข้อตกลงระหว่างสมาชิกกับคู่เล่นโดยตรง ทั้งสองฝ่ายตกลงเรื่องรอบการเล่น สนาม วันที่ และค่าใช้จ่ายกันเอง'],
+        ['ความยินยอมโดยอิสระ และถอนได้ทุกเมื่อ', 'ทั้งสองฝ่ายตัดสินใจอย่างอิสระ คู่เล่นปฏิเสธหรือยกเลิกคำขอได้ และสมาชิกยกเลิกได้ทุกเมื่อโดยไม่ต้องให้เหตุผล ไม่มีผู้ใดถูกบังคับให้รับการจอง ให้ดำเนินต่อ หรือให้พบกันนอกเหนือจากรอบที่ตกลงไว้ หากถอนความยินยอม การจองจะสิ้นสุดลง'],
+        ['ผู้จัดและแพลตฟอร์มไม่ได้ให้บริการใด ๆ', 'ผู้จัดและแพลตฟอร์มนี้เพียงแนะนำนักกอล์ฟให้รู้จักกันและบันทึกการจองเท่านั้น ไม่ได้จัดหา ควบคุม ว่าจ้าง หรือรับประกันบุคคล บริการ หรือผลลัพธ์ใด ๆ และไม่ได้เป็นคู่สัญญาหรือรับผิดชอบต่อข้อตกลงของท่าน'],
+        ['การชำระเงินเป็นเรื่องระหว่างสองฝ่าย', 'ค่าใช้จ่ายใด ๆ ตกลงและชำระกันโดยตรงระหว่างสองฝ่าย อัตราที่แสดงเป็นอัตราที่คู่เล่นระบุเอง บันทึกไว้เพื่อการอ้างอิงเท่านั้น ผู้จัดและแพลตฟอร์มไม่รับเงินและไม่ถือครองเงินใด ๆ'],
+        ['การปฏิบัติต่อกัน', 'ปฏิบัติต่อกันด้วยความเคารพเสมอ การกระทำที่ผิดกฎหมาย มีลักษณะทางเพศ บังคับขู่เข็ญ เลือกปฏิบัติ หรือคุกคาม เป็นสิ่งต้องห้ามและจะถูกระงับสิทธิ์ทันที ใช้ปุ่มรายงานในการจองเพื่อแจ้งปัญหาต่อผู้ดูแลของท่าน'],
+        ['ความปลอดภัยและความรับผิดชอบของท่านเอง', 'พบกันที่สนามกอล์ฟ จัดการเรื่องการเดินทางและประกันของท่านเอง และใช้วิจารณญาณของท่าน ท่านรับผิดชอบต่อการตัดสินใจ ความปลอดภัย และการกระทำของตนเอง สมาชิกต้องบรรลุนิติภาวะ']
+      ] },
+    ko: { title: '계속하기 전에', intro: '읽고 동의해 주세요. 이 약관은 1on1을 이용하는 모든 분에게 적용됩니다.',
+      accept: '읽었으며 동의합니다', view: '약관 및 고지사항', updated: '약관이 변경되었습니다. 다시 읽고 동의해 주세요.',
+      short: '골프 라운딩 파트너 전용입니다. 예약은 두 사람 사이의 직접 약속입니다.',
+      items: [
+        ['골프 라운딩 파트너 전용', '이 섹션은 골프 라운드를 함께할 파트너를 연결합니다. 데이팅 서비스가 아니며, 에스코트나 동반 서비스도 아닙니다. 그 밖의 어떤 서비스도 제공·요청·암시되거나 허용되지 않습니다.'],
+        ['두 사람 사이의 직접 약속', '모든 예약은 회원과 파트너 간의 개인 대 개인 약속입니다. 라운드, 골프장, 날짜, 비용은 두 사람이 직접 정합니다.'],
+        ['자유로운 동의, 언제든 철회 가능', '양측 모두 자유롭게 결정합니다. 파트너는 요청을 거절하거나 취소할 수 있고, 회원도 이유 없이 언제든 취소할 수 있습니다. 예약을 수락하거나 유지하거나 합의된 라운드 외에 만날 의무는 누구에게도 없습니다. 동의를 철회하면 예약은 종료됩니다.'],
+        ['주최자와 플랫폼은 어떤 서비스도 제공하지 않습니다', '주최자와 이 플랫폼은 골퍼를 서로 소개하고 예약을 기록할 뿐입니다. 어떤 사람·서비스·결과도 제공, 공급, 감독, 고용, 보증하지 않으며, 두 사람의 약속의 당사자가 아니고 그에 대한 책임도 지지 않습니다.'],
+        ['비용은 당사자 간 정산', '비용은 두 사람이 직접 합의하고 지급합니다. 표시된 금액은 파트너가 스스로 밝힌 요율이며 참고용으로만 기록됩니다. 주최자와 플랫폼은 대금을 받지도, 보관하지도 않습니다.'],
+        ['행동 규범', '항상 서로를 존중해 주세요. 불법적, 성적, 강압적, 차별적, 괴롭힘에 해당하는 모든 행위는 금지되며 즉시 이용이 중단됩니다. 문제가 있으면 예약 화면의 신고 버튼으로 관리자에게 알려 주세요.'],
+        ['본인의 안전과 책임', '골프장에서 만나고, 교통과 보험은 각자 준비하며, 스스로 판단하세요. 본인의 결정과 안전, 행동에 대한 책임은 본인에게 있습니다. 회원은 성인이어야 합니다.']
+      ] },
+    ja: { title: '続ける前に', intro: 'お読みのうえ同意してください。本規約は1on1を利用するすべての方に適用されます。',
+      accept: '読みました。同意します', view: '規約と免責事項', updated: '規約が更新されました。もう一度お読みのうえ同意してください。',
+      short: 'ゴルフの同伴者のみです。予約は当事者二人の直接の取り決めです。',
+      items: [
+        ['ゴルフの同伴者のみ', 'このセクションはゴルフのラウンドに同伴する相手を紹介するものです。出会い系サービスではなく、エスコートや同伴サービスでもありません。それ以外のいかなるサービスの提供・依頼・示唆も認められません。'],
+        ['当事者二人の直接の取り決め', 'すべての予約は会員と同伴者の個人間の取り決めです。ラウンド、コース、日程、料金は二人が直接決めます。'],
+        ['自由な同意と、いつでも撤回できる権利', '双方が自由に判断します。同伴者はリクエストを断ることも取り消すこともでき、会員も理由を告げずにいつでもキャンセルできます。予約を受ける義務も、続ける義務も、合意したラウンド以外で会う義務もありません。同意が撤回された場合、予約は終了します。'],
+        ['主催者およびプラットフォームはいかなるサービスも提供しません', '主催者と本プラットフォームはゴルファー同士を引き合わせ、予約を記録するだけです。人・サービス・結果のいずれについても提供、供給、監督、雇用、保証は行わず、お二人の取り決めの当事者でもなく、その責任も負いません。'],
+        ['料金は当事者間で精算', '料金は二人が直接合意し支払います。表示額は同伴者自身が申告した料金で、参考として記録されているだけです。主催者とプラットフォームは代金を受け取らず、預かりもしません。'],
+        ['行動について', '常に敬意をもって接してください。違法、性的、強圧的、差別的、嫌がらせに当たる行為は禁止で、直ちに利用停止となります。問題があれば予約画面の通報ボタンから管理者にお知らせください。'],
+        ['ご自身の安全と責任', 'ゴルフ場で待ち合わせ、移動と保険はご自身で手配し、ご自身の判断でご利用ください。ご自身の判断・安全・行動については、ご本人が責任を負います。会員は成人に限ります。']
+      ] }
+  };
+  var TR = function () { return TERMS[loc2()] || TERMS.en; };
   var TL = function (lang, k, vars) { var d = DICT[lang] || DICT.en; var s = d[k] || DICT.en[k] || k; Object.keys(vars || {}).forEach(function (v) { s = s.split('{' + v + '}').join(vars[v]); }); return s; };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var sb = function () { return window.SupabaseDB && window.SupabaseDB.client; };
@@ -221,6 +280,7 @@
   var fmtD = function (s) { try { return new Date(s + 'T00:00:00').toLocaleDateString(loc(), { month: 'short', day: 'numeric' }); } catch (e) { return s; } };
   var fmtRange = function (a, b) { return a === b ? fmtD(a) : fmtD(a) + ' – ' + fmtD(b); };
   var money = function (n, cur) { if (n == null) return ''; return (cur || 'THB') === 'THB' ? '฿' + Number(n).toLocaleString() : Number(n).toLocaleString() + ' ' + cur; };
+  var loc2 = function () { try { var l = (window.currentLanguage || (window.LanguageManager && LanguageManager.current) || (localStorage.getItem('mcipro_language') || 'en')); return String(l).slice(0, 2).toLowerCase(); } catch (e) { return 'en'; } };
   var toast = function (msg, kind) { try { window.NotificationManager.show(msg, kind || 'info'); } catch (e) { try { alert(msg); } catch (_) {} } };
   var errMsg = function (e) { var m = String((e && (e.message || e.error_description || e.details)) || e || ''); var k = m.match(/[a-z_]+/); var key = k && DICT.en['oo.err.' + k[0]] ? 'oo.err.' + k[0] : 'oo.err.generic'; return T(key, DICT.en[key]); };
   var STATUS_CLS = { requested: 'bg-amber-50 text-amber-800', accepted: 'bg-green-50 text-green-700', declined: 'bg-red-50 text-red-700', cancelled: 'bg-gray-100 text-gray-700', completed: 'bg-sky-50 text-sky-700', expired: 'bg-gray-100 text-gray-700' };
@@ -333,7 +393,7 @@
       'oo.push.member_ok2': 'Your 1on1 access is approved. Add a clear photo of your face within 24 hours or your access will be suspended. Open MyCaddiPro to find a partner.',
       'oo.logout': 'Log out', 'oo.logout.q': 'Log out of 1on1?', 'oo.msgs.none': 'Chats open once a booking is accepted.',
       'oo.rl.roll': 'Roll', 'oo.rl.swipe': 'Swipe', 'oo.rl.available': 'Available', 'oo.rl.day': 'day', 'oo.rl.n': '{n} partners', 'oo.err.max_photos': 'Maximum 8 photos.',
-      'oo.adm.qr': 'QR code', 'oo.adm.qr.partner': 'Scan or open: this goes straight to the 1on1 partner sign-up, never the main app.', 'oo.adm.qr.member': 'Opens MyCaddiPro with the 1on1 invite attached.', 'oo.close': 'Close' },
+      'oo.terms': 'Terms & disclaimers', 'oo.err.terms_required': 'Please read and accept the 1on1 terms first.', 'oo.adm.qr': 'QR code', 'oo.adm.qr.partner': 'Scan or open: this goes straight to the 1on1 partner sign-up, never the main app.', 'oo.adm.qr.member': 'Opens MyCaddiPro with the 1on1 invite attached.', 'oo.close': 'Close' },
     th: { 'oo.adm.overview': 'ภาพรวม', 'oo.adm.asmember': 'ดูแบบสมาชิก', 'oo.adm.needs': 'รอดำเนินการ', 'oo.adm.allclear': 'ไม่มีค้าง', 'oo.adm.active': 'ใช้งาน', 'oo.adm.pending': 'รออนุมัติ',
       'oo.adm.approved': 'อนุมัติแล้ว', 'oo.adm.suspended': 'ถูกระงับ', 'oo.adm.expired': 'หมดอายุ', 'oo.adm.all': 'ทั้งหมด', 'oo.adm.open': 'เปิด', 'oo.adm.reviewed': 'ตรวจแล้ว', 'oo.adm.actioned': 'ดำเนินการแล้ว', 'oo.adm.dismissed': 'ยกคำร้อง', 'oo.adm.closed': 'ปิดแล้ว',
       'oo.adm.search': 'ค้นหาชื่อหรือไอดี', 'oo.adm.new': 'ใหม่', 'oo.adm.share': 'แชร์', 'oo.adm.since': 'ตั้งแต่', 'oo.adm.view': 'ดู', 'oo.adm.suspendmember': 'ระงับสมาชิก', 'oo.adm.suspendpartner': 'ระงับคู่เล่น',
@@ -347,7 +407,7 @@
       'oo.push.member_ok2': 'สิทธิ์ 1on1 ของคุณได้รับอนุมัติแล้ว เพิ่มรูปใบหน้าที่ชัดเจนภายใน 24 ชั่วโมง มิฉะนั้นสิทธิ์จะถูกระงับ เปิด MyCaddiPro เพื่อหาคู่เล่น',
       'oo.logout': 'ออกจากระบบ', 'oo.logout.q': 'ออกจากระบบ 1on1?', 'oo.msgs.none': 'แชทจะเปิดเมื่อการจองได้รับการยอมรับ',
       'oo.rl.roll': 'ตาราง', 'oo.rl.swipe': 'ปัด', 'oo.rl.available': 'ว่าง', 'oo.rl.day': 'วัน', 'oo.rl.n': 'คู่เล่น {n} คน', 'oo.err.max_photos': 'สูงสุด 8 รูป',
-      'oo.adm.qr': 'คิวอาร์โค้ด', 'oo.adm.qr.partner': 'สแกนหรือเปิด: ไปที่หน้าสมัครคู่เล่น 1on1 โดยตรง ไม่ผ่านแอปหลัก', 'oo.adm.qr.member': 'เปิด MyCaddiPro พร้อมคำเชิญ 1on1', 'oo.close': 'ปิด' },
+      'oo.terms': 'เงื่อนไขและข้อจำกัดความรับผิด', 'oo.err.terms_required': 'กรุณาอ่านและยอมรับเงื่อนไข 1on1 ก่อน', 'oo.adm.qr': 'คิวอาร์โค้ด', 'oo.adm.qr.partner': 'สแกนหรือเปิด: ไปที่หน้าสมัครคู่เล่น 1on1 โดยตรง ไม่ผ่านแอปหลัก', 'oo.adm.qr.member': 'เปิด MyCaddiPro พร้อมคำเชิญ 1on1', 'oo.close': 'ปิด' },
     ko: { 'oo.adm.overview': '개요', 'oo.adm.asmember': '회원으로 보기', 'oo.adm.needs': '처리 필요', 'oo.adm.allclear': '모두 처리됨', 'oo.adm.active': '활성', 'oo.adm.pending': '대기',
       'oo.adm.approved': '승인됨', 'oo.adm.suspended': '정지됨', 'oo.adm.expired': '만료', 'oo.adm.all': '전체', 'oo.adm.open': '미처리', 'oo.adm.reviewed': '검토됨', 'oo.adm.actioned': '조치됨', 'oo.adm.dismissed': '기각', 'oo.adm.closed': '종료',
       'oo.adm.search': '이름 또는 ID 검색', 'oo.adm.new': '신규', 'oo.adm.share': '공유', 'oo.adm.since': '가입', 'oo.adm.view': '보기', 'oo.adm.suspendmember': '회원 정지', 'oo.adm.suspendpartner': '파트너 정지',
@@ -361,7 +421,7 @@
       'oo.push.member_ok2': '1on1 이용이 승인되었습니다. 24시간 이내에 얼굴이 선명한 사진을 등록하지 않으면 이용이 정지됩니다. MyCaddiPro를 열어 파트너를 찾아보세요.',
       'oo.logout': '로그아웃', 'oo.logout.q': '1on1에서 로그아웃할까요?', 'oo.msgs.none': '예약이 수락되면 채팅이 열립니다.',
       'oo.rl.roll': '목록', 'oo.rl.swipe': '스와이프', 'oo.rl.available': '가능', 'oo.rl.day': '일', 'oo.rl.n': '파트너 {n}명', 'oo.err.max_photos': '사진은 최대 8장입니다.',
-      'oo.adm.qr': 'QR 코드', 'oo.adm.qr.partner': '스캔하거나 열면 메인 앱이 아닌 1on1 파트너 가입 페이지로 바로 이동합니다.', 'oo.adm.qr.member': '1on1 초대가 포함된 MyCaddiPro를 엽니다.', 'oo.close': '닫기' },
+      'oo.terms': '약관 및 고지사항', 'oo.err.terms_required': '먼저 1on1 약관을 읽고 동의해 주세요.', 'oo.adm.qr': 'QR 코드', 'oo.adm.qr.partner': '스캔하거나 열면 메인 앱이 아닌 1on1 파트너 가입 페이지로 바로 이동합니다.', 'oo.adm.qr.member': '1on1 초대가 포함된 MyCaddiPro를 엽니다.', 'oo.close': '닫기' },
     ja: { 'oo.adm.overview': '概要', 'oo.adm.asmember': '会員として見る', 'oo.adm.needs': '対応が必要', 'oo.adm.allclear': '対応待ちなし', 'oo.adm.active': '有効', 'oo.adm.pending': '保留',
       'oo.adm.approved': '承認済', 'oo.adm.suspended': '停止中', 'oo.adm.expired': '期限切れ', 'oo.adm.all': 'すべて', 'oo.adm.open': '未処理', 'oo.adm.reviewed': '確認済', 'oo.adm.actioned': '対応済', 'oo.adm.dismissed': '却下', 'oo.adm.closed': '終了',
       'oo.adm.search': '名前またはIDで検索', 'oo.adm.new': '新規', 'oo.adm.share': '共有', 'oo.adm.since': '登録', 'oo.adm.view': '表示', 'oo.adm.suspendmember': '会員を停止', 'oo.adm.suspendpartner': '同伴者を停止',
@@ -375,7 +435,7 @@
       'oo.push.member_ok2': '1on1の利用が承認されました。24時間以内に顔がはっきり写った写真を登録しないと利用が停止されます。MyCaddiProを開いて同伴者を探しましょう。',
       'oo.logout': 'ログアウト', 'oo.logout.q': '1on1からログアウトしますか？', 'oo.msgs.none': '予約が承認されるとチャットが開きます。',
       'oo.rl.roll': '一覧', 'oo.rl.swipe': 'スワイプ', 'oo.rl.available': '空き', 'oo.rl.day': '日', 'oo.rl.n': '同伴者{n}名', 'oo.err.max_photos': '写真は最大8枚です。',
-      'oo.adm.qr': 'QRコード', 'oo.adm.qr.partner': 'スキャンまたは開くと、本体アプリではなく1on1同伴者登録ページに直接移動します。', 'oo.adm.qr.member': '1on1招待付きでMyCaddiProを開きます。', 'oo.close': '閉じる' }
+      'oo.terms': '規約と免責事項', 'oo.err.terms_required': 'まず1on1の規約をお読みのうえ同意してください。', 'oo.adm.qr': 'QRコード', 'oo.adm.qr.partner': 'スキャンまたは開くと、本体アプリではなく1on1同伴者登録ページに直接移動します。', 'oo.adm.qr.member': '1on1招待付きでMyCaddiProを開きます。', 'oo.close': '閉じる' }
   };
   Object.keys(DICT3).forEach(function (l) { Object.assign(DICT[l], DICT3[l]); });
   try { if (typeof translations !== 'undefined') Object.keys(DICT3).forEach(function (l) { if (translations[l]) Object.assign(translations[l], DICT3[l]); }); } catch (e) {}
@@ -652,7 +712,7 @@
     isPhone() { try { return window.mgrIsPhone ? mgrIsPhone() : window.matchMedia('(max-width: 767px)').matches; } catch (e) { return false; } },
     isOpen() { var s = document.getElementById('ooDashboard'); return !!(s && s.classList.contains('active')); },
     defaultView() { return this.side === 'partner' ? 'requests' : (this.side === 'admin' ? 'overview' : 'browse'); },
-    group(v) { return (v === 'partner' || v === 'book') ? 'browse' : v; },
+    group(v) { return (v === 'partner' || v === 'book') ? 'browse' : v; },   /* 'terms' is its own view (More sheet only) */
 
     async enter(side) {
       this.side = side === 'partner' ? 'partner' : (side === 'admin' ? 'admin' : 'member');
@@ -758,7 +818,7 @@
           cube('messages', '#dbe4f0', '#f2f6fb', T('oo.cube.msgs', 'Messages'), null, T('oo.cube.msgs.partner', 'Chat with members'), 'cuChat') + '</div>';
         tabs = [['requests', 'inbox', 'oo.seg.requests', 'Requests', 'ooTabReqBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar'], ['profile', 'person', 'oo.seg.profile', 'Profile'], ['photos', 'photo_library', 'oo.seg.photos', 'Photos & posts'], ['earnings', 'payments', 'oo.seg.earnings', 'Earnings']];
         dock = [['requests', 'inbox', 'oo.seg.requests', 'Requests', 'ooDockReqBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar'], ['profile', 'person', 'oo.seg.profile', 'Profile']];
-        more = [['photos', 'photo_library', 'oo.seg.photos', 'Photos & posts'], ['earnings', 'payments', 'oo.seg.earnings', 'Earnings'], ['messages', 'chat', 'oo.cube.msgs', 'Messages']].concat(this.standalone ? [['logout', 'logout', 'oo.logout', 'Log out']] : [['exit', 'logout', 'oo.exit', 'Back to my dashboard']]);
+        more = [['photos', 'photo_library', 'oo.seg.photos', 'Photos & posts'], ['earnings', 'payments', 'oo.seg.earnings', 'Earnings'], ['messages', 'chat', 'oo.cube.msgs', 'Messages'], ['terms', 'gavel', 'oo.terms', 'Terms & disclaimers']].concat(this.standalone ? [['logout', 'logout', 'oo.logout', 'Log out']] : [['exit', 'logout', 'oo.exit', 'Back to my dashboard']]);
       } else {
         home = '<button type="button" class="mgc mgc-hero" onclick="mhvGo(\'oo\',\'browse\')"><div class="t">' + esc(T('oo.cube.open', 'Find a partner')) + '</div><div class="chip" id="ooHomeFindChip">' + esc(T('oo.cube.find.chip', 'Swipe to browse')) + '</div>' + art('cuPlayers') + '</button><div class="mgc-grid">' +
           cube('liked', '#fee2e2', '#fff1f2', T('oo.seg.liked', 'Saved'), 'ooHomeLikedChip', TT('oo.cube.liked.chip', { n: (this.liked || []).length }), 'cuTrophy') +
@@ -769,7 +829,7 @@
         tabs = [['browse', 'search', 'oo.seg.browse', 'Browse'], ['liked', 'favorite', 'oo.seg.liked', 'Saved'], ['mine', 'receipt_long', 'oo.seg.mine', 'My bookings', 'ooTabMineBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar']];
         if (admin) tabs.push(['admin', 'admin_panel_settings', 'oo.seg.admin', 'Admin', 'ooTabAdmBadge']);
         dock = [['browse', 'search', 'oo.seg.browse', 'Browse'], ['liked', 'favorite', 'oo.seg.liked', 'Saved'], ['mine', 'receipt_long', 'oo.dock.bookings', 'Bookings', 'ooDockMineBadge']];
-        more = [['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar'], ['messages', 'chat', 'oo.cube.msgs', 'Messages']].concat(admin ? [['admin', 'admin_panel_settings', 'oo.seg.admin', 'Admin']] : []).concat([['exit', 'logout', 'oo.exit', 'Back to my dashboard']]);
+        more = [['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar'], ['messages', 'chat', 'oo.cube.msgs', 'Messages'], ['terms', 'gavel', 'oo.terms', 'Terms & disclaimers']].concat(admin ? [['admin', 'admin_panel_settings', 'oo.seg.admin', 'Admin']] : []).concat([['exit', 'logout', 'oo.exit', 'Back to my dashboard']]);
       }
       el = document.getElementById('ooCubeHome'); if (el) el.innerHTML = home;
       el = document.getElementById('ooTabsRow'); if (el) el.innerHTML = tabs.map(function (t) {
@@ -833,6 +893,31 @@
       }
     },
 
+    /* v1105: consent gate — shown to members AND partners until they accept the current version */
+    termsNeeded(side) {
+      var me = this.me || {};
+      if (!me.signed_in) return false;
+      if (side === 'partner') return !!(me.partner && me.terms_ok_partner === false);
+      return !!(me.member && me.terms_ok_member === false);
+    },
+    termsHtml(gate) {
+      var t = TR();
+      var body = t.items.map(function (it) {
+        return '<div style="margin-top:12px"><div style="font-weight:800;color:#0f172a;font-size:14px">' + esc(it[0]) + '</div><div class="oo-kv" style="margin-top:3px;line-height:1.5">' + esc(it[1]) + '</div></div>';
+      }).join('');
+      var head = gate ? '<div style="font-weight:900;font-size:17px;color:#0f172a">' + esc(t.title) + '</div><div class="oo-kv" style="margin-top:4px">' + esc((this.me && this.me.terms_seen_before) ? t.updated : t.intro) + '</div>'
+                      : '<div style="font-weight:900;font-size:17px;color:#0f172a">' + esc(t.view) + '</div>';
+      return '<div class="oo-card" style="max-width:720px;' + (gate ? 'border-color:#fcd34d;background:#fffbeb' : '') + '">' + head + body +
+        (gate ? '<div style="display:flex;justify-content:flex-end;margin-top:16px"><button type="button" class="oo-btn pri" id="ooTermsOk" onclick="OneOnOne.acceptTerms()">' + esc(t.accept) + '</button></div>' : '') + '</div>';
+    },
+    async acceptTerms() {
+      var btn = document.getElementById('ooTermsOk'); if (btn) btn.disabled = true;
+      try {
+        await rpc('oo_accept_terms', { p_version: (this.me && this.me.terms_version) || null });
+        await this.refreshMe(true);
+        this.paintShell(); this.render();
+      } catch (e) { toast(errMsg(e), 'error'); if (btn) btn.disabled = false; }
+    },
     gateHtml() {
       var me = this.me || {};
       if (!me.signed_in) return '<div class="oo-card" style="border-color:#fcd34d;background:#fffbeb">' + esc(T('oo.signin.msg', DICT.en['oo.signin.msg'])) + '</div>';
@@ -953,6 +1038,8 @@
       if (this.side === 'partner') {
         if (!me.signed_in) { root.innerHTML = '<div class="oo-card" style="border-color:#fcd34d;background:#fffbeb">' + esc(T('oo.signin.msg', DICT.en['oo.signin.msg'])) + '</div>'; return; }
         if (!me.partner) return this.cadRenderOptin();
+        if (v === 'terms') { root.innerHTML = this.termsHtml(false); return; }
+        if (this.termsNeeded('partner')) { root.innerHTML = this.termsHtml(true); return; }   /* v1105 */
         var p = me.partner;
         var banner = p.status === 'approved' ? '<div class="oo-kv" style="margin-bottom:8px;color:#15803d;font-weight:700">' + esc(T('oo.approved', 'Approved — visible to members')) + '</div>'
           : p.status === 'suspended' ? '<div class="oo-card" style="border-color:#fca5a5;background:#fef2f2;margin-bottom:8px">' + esc(T('oo.suspended', 'Suspended')) + '</div>'
@@ -967,6 +1054,8 @@
       if (v === 'admin') { this.enter('admin'); return; }
       var gate = this.gateHtml();
       if (gate) { root.innerHTML = gate; return; }
+      if (v === 'terms') { root.innerHTML = this.termsHtml(false); return; }
+      if (this.termsNeeded('member')) { root.innerHTML = this.termsHtml(true); return; }   /* v1105 */
       if (v === 'mine') return this.renderMine();
       if (v === 'liked') return this.renderLiked();
       if (v === 'calendar') return this.renderMemberCalendar();
@@ -1293,6 +1382,7 @@
         '<label class="oo-kv">' + esc(T('oo.teetime', 'Tee time')) + '<input class="oo-in" type="time" id="ooBTee"></label>' +
         '<label class="oo-kv" style="grid-column:1/-1">' + esc(T('oo.notes', 'Notes')) + '<textarea class="oo-in" id="ooBNotes" rows="2"></textarea></label></div>' +
         '<div class="oo-kv" style="margin-top:10px;font-size:14px" id="ooBTotal"></div>' +
+        '<div class="oo-kv" style="margin-top:12px;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;line-height:1.45">' + esc(TR().short) + ' <button type="button" style="background:none;border:none;padding:0;color:#15803d;font-weight:800;text-decoration:underline" onclick="OneOnOne.nav(\'terms\')">' + esc(TR().view) + '</button></div>' +
         '<div style="display:flex;gap:8px;margin-top:10px"><button type="button" class="oo-btn" onclick="OneOnOne.back()">' + esc(T('oo.cancel', 'Cancel')) + '</button><button type="button" class="oo-btn pri" style="flex:1" id="ooBSend" onclick="OneOnOne.submitBook()">' + esc(T('oo.send', 'Send request')) + '</button></div></div>';
       root.innerHTML = h; this.fillCourses(); this.recalc();
     },

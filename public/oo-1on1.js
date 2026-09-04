@@ -58,7 +58,7 @@
       'oo.save': 'Save', 'oo.saved': 'Saved', 'oo.displayname': 'Display name', 'oo.availdays': 'Days I can play', 'oo.blackouts': 'Unavailable dates',
       'oo.addblackout': 'Add', 'oo.note': 'Note', 'oo.gallery': 'Photos', 'oo.addphoto': 'Add photo', 'oo.cover': 'Cover', 'oo.setcover': 'Set as cover',
       'oo.delete': 'Delete', 'oo.deleteq': 'Delete this photo?', 'oo.posts': 'Posts', 'oo.addpost': 'Add post', 'oo.caption': 'Caption', 'oo.body': 'Text',
-      'oo.earn.total': 'Accepted', 'oo.earn.paid': 'Paid', 'oo.earn.unpaid': 'Unpaid', 'oo.uploading': 'Uploading…', 'oo.maxphotos': 'Maximum 12 photos.',
+      'oo.earn.total': 'Accepted', 'oo.earn.paid': 'Paid', 'oo.earn.unpaid': 'Unpaid', 'oo.uploading': 'Uploading…', 'oo.maxphotos': 'Maximum 8 photos.',
       'oo.legend.booked': 'Booked', 'oo.legend.requested': 'Requested', 'oo.legend.off': 'Unavailable',
       'oo.adm.members': 'Members', 'oo.adm.partners': 'Partners', 'oo.adm.invites': 'Invites', 'oo.adm.bookings': 'Bookings', 'oo.adm.media': 'Photo review', 'oo.adm.reports': 'Reports',
       'oo.adm.approve': 'Approve', 'oo.adm.suspend': 'Suspend', 'oo.adm.reactivate': 'Reactivate', 'oo.adm.newinvite': 'New invite', 'oo.adm.kind': 'Type',
@@ -92,7 +92,7 @@
       'oo.optin.submit': 'ส่งเพื่อขออนุมัติ', 'oo.awaiting': 'รออนุมัติ', 'oo.approved': 'อนุมัติแล้ว — สมาชิกมองเห็น', 'oo.suspended': 'ถูกระงับ',
       'oo.save': 'บันทึก', 'oo.saved': 'บันทึกแล้ว', 'oo.displayname': 'ชื่อที่แสดง', 'oo.availdays': 'วันที่เล่นได้', 'oo.blackouts': 'วันที่ไม่ว่าง', 'oo.addblackout': 'เพิ่ม', 'oo.note': 'หมายเหตุ',
       'oo.gallery': 'รูปภาพ', 'oo.addphoto': 'เพิ่มรูป', 'oo.cover': 'ปก', 'oo.setcover': 'ตั้งเป็นรูปปก', 'oo.delete': 'ลบ', 'oo.deleteq': 'ลบรูปนี้?', 'oo.posts': 'โพสต์', 'oo.addpost': 'เพิ่มโพสต์',
-      'oo.caption': 'คำบรรยาย', 'oo.body': 'ข้อความ', 'oo.earn.total': 'ตอบรับแล้ว', 'oo.earn.paid': 'จ่ายแล้ว', 'oo.earn.unpaid': 'ยังไม่จ่าย', 'oo.uploading': 'กำลังอัปโหลด…', 'oo.maxphotos': 'สูงสุด 12 รูป',
+      'oo.caption': 'คำบรรยาย', 'oo.body': 'ข้อความ', 'oo.earn.total': 'ตอบรับแล้ว', 'oo.earn.paid': 'จ่ายแล้ว', 'oo.earn.unpaid': 'ยังไม่จ่าย', 'oo.uploading': 'กำลังอัปโหลด…', 'oo.maxphotos': 'สูงสุด 8 รูป',
       'oo.legend.booked': 'จองแล้ว', 'oo.legend.requested': 'รอตอบรับ', 'oo.legend.off': 'ไม่ว่าง',
       'oo.adm.members': 'สมาชิก', 'oo.adm.partners': 'คู่เล่น', 'oo.adm.invites': 'คำเชิญ', 'oo.adm.bookings': 'การจอง', 'oo.adm.media': 'ตรวจรูป', 'oo.adm.reports': 'รายงาน',
       'oo.adm.approve': 'อนุมัติ', 'oo.adm.suspend': 'ระงับ', 'oo.adm.reactivate': 'เปิดใช้อีกครั้ง', 'oo.adm.newinvite': 'สร้างคำเชิญ', 'oo.adm.kind': 'ประเภท', 'oo.adm.member': 'สมาชิก', 'oo.adm.partner': 'คู่เล่น',
@@ -121,7 +121,7 @@
       'oo.optin.submit': '승인 요청', 'oo.awaiting': '승인 대기 중', 'oo.approved': '승인됨 — 회원에게 공개', 'oo.suspended': '정지됨',
       'oo.save': '저장', 'oo.saved': '저장됨', 'oo.displayname': '표시 이름', 'oo.availdays': '라운딩 가능 요일', 'oo.blackouts': '불가능한 날짜', 'oo.addblackout': '추가', 'oo.note': '메모',
       'oo.gallery': '사진', 'oo.addphoto': '사진 추가', 'oo.cover': '대표', 'oo.setcover': '대표 사진으로', 'oo.delete': '삭제', 'oo.deleteq': '이 사진을 삭제할까요?', 'oo.posts': '게시글', 'oo.addpost': '게시글 추가',
-      'oo.caption': '제목', 'oo.body': '내용', 'oo.earn.total': '수락됨', 'oo.earn.paid': '결제 완료', 'oo.earn.unpaid': '미결제', 'oo.uploading': '업로드 중…', 'oo.maxphotos': '사진은 최대 12장입니다.',
+      'oo.caption': '제목', 'oo.body': '내용', 'oo.earn.total': '수락됨', 'oo.earn.paid': '결제 완료', 'oo.earn.unpaid': '미결제', 'oo.uploading': '업로드 중…', 'oo.maxphotos': '사진은 최대 8장입니다.',
       'oo.legend.booked': '예약됨', 'oo.legend.requested': '요청됨', 'oo.legend.off': '불가',
       'oo.adm.members': '회원', 'oo.adm.partners': '파트너', 'oo.adm.invites': '초대', 'oo.adm.bookings': '예약', 'oo.adm.media': '사진 검토', 'oo.adm.reports': '신고',
       'oo.adm.approve': '승인', 'oo.adm.suspend': '정지', 'oo.adm.reactivate': '재활성화', 'oo.adm.newinvite': '새 초대', 'oo.adm.kind': '유형', 'oo.adm.member': '회원', 'oo.adm.partner': '파트너',
@@ -150,7 +150,7 @@
       'oo.optin.submit': '承認を申請', 'oo.awaiting': '承認待ち', 'oo.approved': '承認済 — 会員に公開', 'oo.suspended': '停止中',
       'oo.save': '保存', 'oo.saved': '保存しました', 'oo.displayname': '表示名', 'oo.availdays': 'プレー可能な曜日', 'oo.blackouts': '不可日', 'oo.addblackout': '追加', 'oo.note': 'メモ',
       'oo.gallery': '写真', 'oo.addphoto': '写真を追加', 'oo.cover': 'カバー', 'oo.setcover': 'カバーにする', 'oo.delete': '削除', 'oo.deleteq': 'この写真を削除しますか？', 'oo.posts': '投稿', 'oo.addpost': '投稿を追加',
-      'oo.caption': 'タイトル', 'oo.body': '本文', 'oo.earn.total': '承諾', 'oo.earn.paid': '支払済', 'oo.earn.unpaid': '未払い', 'oo.uploading': 'アップロード中…', 'oo.maxphotos': '写真は最大12枚です。',
+      'oo.caption': 'タイトル', 'oo.body': '本文', 'oo.earn.total': '承諾', 'oo.earn.paid': '支払済', 'oo.earn.unpaid': '未払い', 'oo.uploading': 'アップロード中…', 'oo.maxphotos': '写真は最大8枚です。',
       'oo.legend.booked': '予約済', 'oo.legend.requested': 'リクエスト', 'oo.legend.off': '不可',
       'oo.adm.members': '会員', 'oo.adm.partners': '同伴者', 'oo.adm.invites': '招待', 'oo.adm.bookings': '予約', 'oo.adm.media': '写真確認', 'oo.adm.reports': '通報',
       'oo.adm.approve': '承認', 'oo.adm.suspend': '停止', 'oo.adm.reactivate': '再開', 'oo.adm.newinvite': '新規招待', 'oo.adm.kind': '種類', 'oo.adm.member': '会員', 'oo.adm.partner': '同伴者',
@@ -331,7 +331,8 @@
       'oo.photo.rejected': 'Not accepted: {reason} Upload a clear photo of your face.', 'oo.photo.failed': 'Photo check failed. Please try again.', 'oo.cube.photo': 'Add a facial photo',
       'oo.adm.nophoto': 'No photo', 'oo.adm.photo.unverified': 'Photo not verified', 'oo.adm.photo.ok': 'Photo OK', 'oo.adm.photo.accept': 'Accept photo', 'oo.adm.photo.reject': 'Reject photo', 'oo.adm.nophoton': '{n} without photo', 'oo.adm.suspended.nophoto': 'Suspended · no photo',
       'oo.push.member_ok2': 'Your 1on1 access is approved. Add a clear photo of your face within 24 hours or your access will be suspended. Open MyCaddiPro to find a partner.',
-      'oo.logout': 'Log out', 'oo.logout.q': 'Log out of 1on1?', 'oo.msgs.none': 'Chats open once a booking is accepted.' },
+      'oo.logout': 'Log out', 'oo.logout.q': 'Log out of 1on1?', 'oo.msgs.none': 'Chats open once a booking is accepted.',
+      'oo.rl.roll': 'Roll', 'oo.rl.swipe': 'Swipe', 'oo.rl.available': 'Available', 'oo.rl.day': 'day', 'oo.rl.n': '{n} partners', 'oo.err.max_photos': 'Maximum 8 photos.' },
     th: { 'oo.adm.overview': 'ภาพรวม', 'oo.adm.asmember': 'ดูแบบสมาชิก', 'oo.adm.needs': 'รอดำเนินการ', 'oo.adm.allclear': 'ไม่มีค้าง', 'oo.adm.active': 'ใช้งาน', 'oo.adm.pending': 'รออนุมัติ',
       'oo.adm.approved': 'อนุมัติแล้ว', 'oo.adm.suspended': 'ถูกระงับ', 'oo.adm.expired': 'หมดอายุ', 'oo.adm.all': 'ทั้งหมด', 'oo.adm.open': 'เปิด', 'oo.adm.reviewed': 'ตรวจแล้ว', 'oo.adm.actioned': 'ดำเนินการแล้ว', 'oo.adm.dismissed': 'ยกคำร้อง', 'oo.adm.closed': 'ปิดแล้ว',
       'oo.adm.search': 'ค้นหาชื่อหรือไอดี', 'oo.adm.new': 'ใหม่', 'oo.adm.share': 'แชร์', 'oo.adm.since': 'ตั้งแต่', 'oo.adm.view': 'ดู', 'oo.adm.suspendmember': 'ระงับสมาชิก', 'oo.adm.suspendpartner': 'ระงับคู่เล่น',
@@ -343,7 +344,8 @@
       'oo.photo.rejected': 'ไม่ผ่าน: {reason} กรุณาอัปโหลดรูปใบหน้าที่ชัดเจน', 'oo.photo.failed': 'ตรวจรูปไม่สำเร็จ กรุณาลองใหม่', 'oo.cube.photo': 'เพิ่มรูปใบหน้า',
       'oo.adm.nophoto': 'ไม่มีรูป', 'oo.adm.photo.unverified': 'รูปยังไม่ยืนยัน', 'oo.adm.photo.ok': 'รูปผ่าน', 'oo.adm.photo.accept': 'ยอมรับรูป', 'oo.adm.photo.reject': 'ปฏิเสธรูป', 'oo.adm.nophoton': 'ไม่มีรูป {n}', 'oo.adm.suspended.nophoto': 'ระงับ · ไม่มีรูป',
       'oo.push.member_ok2': 'สิทธิ์ 1on1 ของคุณได้รับอนุมัติแล้ว เพิ่มรูปใบหน้าที่ชัดเจนภายใน 24 ชั่วโมง มิฉะนั้นสิทธิ์จะถูกระงับ เปิด MyCaddiPro เพื่อหาคู่เล่น',
-      'oo.logout': 'ออกจากระบบ', 'oo.logout.q': 'ออกจากระบบ 1on1?', 'oo.msgs.none': 'แชทจะเปิดเมื่อการจองได้รับการยอมรับ' },
+      'oo.logout': 'ออกจากระบบ', 'oo.logout.q': 'ออกจากระบบ 1on1?', 'oo.msgs.none': 'แชทจะเปิดเมื่อการจองได้รับการยอมรับ',
+      'oo.rl.roll': 'ตาราง', 'oo.rl.swipe': 'ปัด', 'oo.rl.available': 'ว่าง', 'oo.rl.day': 'วัน', 'oo.rl.n': 'คู่เล่น {n} คน', 'oo.err.max_photos': 'สูงสุด 8 รูป' },
     ko: { 'oo.adm.overview': '개요', 'oo.adm.asmember': '회원으로 보기', 'oo.adm.needs': '처리 필요', 'oo.adm.allclear': '모두 처리됨', 'oo.adm.active': '활성', 'oo.adm.pending': '대기',
       'oo.adm.approved': '승인됨', 'oo.adm.suspended': '정지됨', 'oo.adm.expired': '만료', 'oo.adm.all': '전체', 'oo.adm.open': '미처리', 'oo.adm.reviewed': '검토됨', 'oo.adm.actioned': '조치됨', 'oo.adm.dismissed': '기각', 'oo.adm.closed': '종료',
       'oo.adm.search': '이름 또는 ID 검색', 'oo.adm.new': '신규', 'oo.adm.share': '공유', 'oo.adm.since': '가입', 'oo.adm.view': '보기', 'oo.adm.suspendmember': '회원 정지', 'oo.adm.suspendpartner': '파트너 정지',
@@ -355,7 +357,8 @@
       'oo.photo.rejected': '승인되지 않음: {reason} 얼굴이 선명한 사진을 올려 주세요.', 'oo.photo.failed': '사진 확인에 실패했습니다. 다시 시도해 주세요.', 'oo.cube.photo': '얼굴 사진 등록',
       'oo.adm.nophoto': '사진 없음', 'oo.adm.photo.unverified': '사진 미확인', 'oo.adm.photo.ok': '사진 확인됨', 'oo.adm.photo.accept': '사진 승인', 'oo.adm.photo.reject': '사진 거절', 'oo.adm.nophoton': '사진 없음 {n}명', 'oo.adm.suspended.nophoto': '정지 · 사진 없음',
       'oo.push.member_ok2': '1on1 이용이 승인되었습니다. 24시간 이내에 얼굴이 선명한 사진을 등록하지 않으면 이용이 정지됩니다. MyCaddiPro를 열어 파트너를 찾아보세요.',
-      'oo.logout': '로그아웃', 'oo.logout.q': '1on1에서 로그아웃할까요?', 'oo.msgs.none': '예약이 수락되면 채팅이 열립니다.' },
+      'oo.logout': '로그아웃', 'oo.logout.q': '1on1에서 로그아웃할까요?', 'oo.msgs.none': '예약이 수락되면 채팅이 열립니다.',
+      'oo.rl.roll': '목록', 'oo.rl.swipe': '스와이프', 'oo.rl.available': '가능', 'oo.rl.day': '일', 'oo.rl.n': '파트너 {n}명', 'oo.err.max_photos': '사진은 최대 8장입니다.' },
     ja: { 'oo.adm.overview': '概要', 'oo.adm.asmember': '会員として見る', 'oo.adm.needs': '対応が必要', 'oo.adm.allclear': '対応待ちなし', 'oo.adm.active': '有効', 'oo.adm.pending': '保留',
       'oo.adm.approved': '承認済', 'oo.adm.suspended': '停止中', 'oo.adm.expired': '期限切れ', 'oo.adm.all': 'すべて', 'oo.adm.open': '未処理', 'oo.adm.reviewed': '確認済', 'oo.adm.actioned': '対応済', 'oo.adm.dismissed': '却下', 'oo.adm.closed': '終了',
       'oo.adm.search': '名前またはIDで検索', 'oo.adm.new': '新規', 'oo.adm.share': '共有', 'oo.adm.since': '登録', 'oo.adm.view': '表示', 'oo.adm.suspendmember': '会員を停止', 'oo.adm.suspendpartner': '同伴者を停止',
@@ -367,7 +370,8 @@
       'oo.photo.rejected': '不承認: {reason} 顔がはっきり写った写真をアップロードしてください。', 'oo.photo.failed': '写真の確認に失敗しました。もう一度お試しください。', 'oo.cube.photo': '顔写真を追加',
       'oo.adm.nophoto': '写真なし', 'oo.adm.photo.unverified': '写真未確認', 'oo.adm.photo.ok': '写真OK', 'oo.adm.photo.accept': '写真を承認', 'oo.adm.photo.reject': '写真を却下', 'oo.adm.nophoton': '写真なし{n}名', 'oo.adm.suspended.nophoto': '停止 · 写真なし',
       'oo.push.member_ok2': '1on1の利用が承認されました。24時間以内に顔がはっきり写った写真を登録しないと利用が停止されます。MyCaddiProを開いて同伴者を探しましょう。',
-      'oo.logout': 'ログアウト', 'oo.logout.q': '1on1からログアウトしますか？', 'oo.msgs.none': '予約が承認されるとチャットが開きます。' }
+      'oo.logout': 'ログアウト', 'oo.logout.q': '1on1からログアウトしますか？', 'oo.msgs.none': '予約が承認されるとチャットが開きます。',
+      'oo.rl.roll': '一覧', 'oo.rl.swipe': 'スワイプ', 'oo.rl.available': '空き', 'oo.rl.day': '日', 'oo.rl.n': '同伴者{n}名', 'oo.err.max_photos': '写真は最大8枚です。' }
   };
   Object.keys(DICT3).forEach(function (l) { Object.assign(DICT[l], DICT3[l]); });
   try { if (typeof translations !== 'undefined') Object.keys(DICT3).forEach(function (l) { if (translations[l]) Object.assign(translations[l], DICT3[l]); }); } catch (e) {}
@@ -441,7 +445,7 @@
     '.oo-kv{font-size:12px;color:#475569}.oo-kv b{color:#0f172a}' +
     '.oo-pin{max-width:420px;margin:0 auto}.oo-pin input{font-size:24px;letter-spacing:.35em;text-align:center;font-weight:800}' +
 '.oo-fr{display:flex;gap:6px;overflow-x:auto;align-items:center;padding-bottom:2px}.oo-fc{flex:0 0 auto;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:999px;padding:6px 11px;font-size:12.5px;font-weight:700;white-space:nowrap}.oo-fc.on{background:#16a34a;border-color:#16a34a;color:#fff}.oo-fin{flex:1 1 120px;min-width:120px;min-height:34px;padding:6px 10px;border-radius:999px}' +
-    '.oo-dk{position:relative;height:min(50vh,520px);max-width:420px;margin:0 auto}@media(min-width:768px){.oo-dk{height:min(64vh,560px)}}.oo-cd{position:absolute;inset:0;border-radius:22px;overflow:hidden;background:#fff;box-shadow:0 8px 28px rgba(15,23,42,.18);touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab}' +
+    '.oo-dk{position:relative;height:min(50vh,520px);max-width:420px;margin:0 auto}.oo-roll{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-width:720px;margin:0 auto}.oo-rt{position:relative;background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;text-align:left;padding:0;color:#0f172a;display:block;width:100%;box-shadow:0 1px 2px rgba(0,0,0,.05)}.oo-rt .ph{position:relative;aspect-ratio:1/1;background:#e2e8f0;overflow:hidden}.oo-rt .ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.oo-rt .ini{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px;color:#fff;background:linear-gradient(135deg,#10b981,#15803d)}.oo-rt .ab{position:absolute;top:6px;left:6px;z-index:2;font-size:9px;font-weight:800;padding:2px 6px;border-radius:999px;color:#fff;background:#22c55e;box-shadow:0 1px 2px rgba(0,0,0,.25)}.oo-rt .rb{position:absolute;bottom:6px;left:6px;z-index:2;font-size:9px;font-weight:800;padding:2px 6px;border-radius:999px;color:#fff;background:rgba(15,23,42,.72)}.oo-rt .rb b{color:#fbbf24}.oo-rt .hv{position:absolute;top:4px;right:6px;z-index:2;color:#ef4444;font-size:14px;text-shadow:0 1px 2px rgba(0,0,0,.3)}.oo-rt .tx{padding:6px 8px}.oo-rt .nm{font-size:11px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.oo-rt .sub{font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}@media(min-width:768px){.oo-dk{height:min(64vh,560px)}}.oo-cd{position:absolute;inset:0;border-radius:22px;overflow:hidden;background:#fff;box-shadow:0 8px 28px rgba(15,23,42,.18);touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab}' +
     '.oo-cd[data-pos="1"]{transform:scale(.96) translateY(10px)}.oo-cd[data-pos="2"]{transform:scale(.92) translateY(20px)}.oo-cd .ph{position:absolute;inset:0;background:#e2e8f0}.oo-cd .ph img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}.oo-cd .ini{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:64px;font-weight:800;color:#64748b;background:linear-gradient(160deg,#dcfce7,#e2e8f0)}' +
     '.oo-cd .dots{position:absolute;top:8px;left:10px;right:10px;display:flex;gap:4px;z-index:3}.oo-cd .dots i{flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.45)}.oo-cd .dots i.on{background:#fff}' +
     '.oo-cd .zone{position:absolute;top:0;bottom:38%;width:50%;z-index:1}.oo-cd .zone.l{left:0}.oo-cd .zone.r{right:0}' +
@@ -972,7 +976,7 @@
        oo_likes; ratings after completed rounds in oo_reviews (oo_search returns both).
        ===================================================================================== */
     q: { from: null, to: null, course: '', lang: '', preset: 'tomorrow' },
-    deck: { i: 0, hist: [], media: {}, loading: false, drag: null },
+    deck: { i: 0, hist: [], media: {}, loading: false, drag: null, mode: (function () { try { return localStorage.getItem('oo_browse_mode') === 'swipe' ? 'swipe' : 'roll'; } catch (e) { return 'roll'; } })() },   /* v1102: roll of 3 (like Book-a-Caddy) is the default; swipe deck kept */
     liked: [],
     presetRange(k) {
       var t = today(); var d = new Date(t + 'T00:00:00'); var dow = (d.getDay() + 6) % 7; /* mon=0 */
@@ -1009,7 +1013,7 @@
     renderBrowse() {
       var root = document.getElementById('ooRoot'); var q = this.q;
       if (!q.from) { var r = this.presetRange(q.preset || 'tomorrow'); q.from = r[0]; q.to = r[1]; }
-      root.innerHTML = this.filtersHtml() + '<div id="ooDeck" style="margin-top:10px">' + (this.partners.length || this.deck.loading ? '' : '<div class="oo-kv" style="text-align:center;padding:16px">' + esc(T('oo.pickdates', DICT.en['oo.pickdates'])) + '</div>') + '</div>';
+      root.innerHTML = this.filtersHtml() + this.modeSegHtml() + '<div id="ooDeck" style="margin-top:10px">' + (this.partners.length || this.deck.loading ? '' : '<div class="oo-kv" style="text-align:center;padding:16px">' + esc(T('oo.pickdates', DICT.en['oo.pickdates'])) + '</div>') + '</div>';
       this.fillCourses();
       if (this.partners.length) this.paintDeck(); else if (!this._searched) this.search();
     },
@@ -1028,7 +1032,7 @@
         if (seq !== this._searchSeq) return;
         this.partners = rows; this.deck.loading = false;
         if (this.view === 'browse') this.paintDeck();
-        this.prefetchMedia(rows.slice(0, 3).map(function (p) { return p.id; }));
+        this.prefetchMedia(rows.slice(0, this.deck.mode === 'roll' ? 60 : 3).map(function (p) { return p.id; }));   /* v1102: the roll shows every cover */
       } catch (e) { this.deck.loading = false; var b2 = document.getElementById('ooDeck'); if (b2) b2.innerHTML = '<div class="oo-card" style="border-color:#fca5a5">' + esc(errMsg(e)) + '</div>'; }
     },
     /* photos for the next cards: cover first, then the rest — signed URLs cached by signedUrls() */
@@ -1063,8 +1067,36 @@
         '<div class="row">' + (p.languages || []).slice(0, 3).map(function (l) { return '<span class="lg">' + esc(l) + '</span>'; }).join('') + (p.day_rate != null ? '<span class="rt">' + esc(money(p.day_rate, p.currency)) + esc(T('oo.perday', '/day')) + '</span>' : '') + '</div>' +
         '</div></div></div>';
     },
+    /* v1102: ROLL OF 3 — Pete: "looking at the profiles of the female golfers we need to create a roll of 3 just like how we
+       have it in the Caddy modules" = the Book-a-Caddy phone picker (#caddieGridMobile, 3 across, square photo tiles). Tap a
+       tile → the partner profile (photo carousel, up to 8 photos). The swipe deck stays behind a toggle. */
+    modeSegHtml() {
+      var m = this.deck.mode;
+      return '<div class="oo-seg" style="margin-top:8px"><button type="button" class="' + (m === 'roll' ? 'on' : '') + '" onclick="OneOnOne.setMode(\'roll\')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-2px">grid_view</span> ' + esc(T('oo.rl.roll', 'Roll')) + '</button>' +
+        '<button type="button" class="' + (m === 'swipe' ? 'on' : '') + '" onclick="OneOnOne.setMode(\'swipe\')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-2px">swipe</span> ' + esc(T('oo.rl.swipe', 'Swipe')) + '</button></div>';
+    },
+    setMode(m) {
+      this.deck.mode = m === 'swipe' ? 'swipe' : 'roll'; try { localStorage.setItem('oo_browse_mode', this.deck.mode); } catch (e) {}
+      if (this.view === 'browse') { this.renderBrowse(); if (this.deck.mode === 'roll') this.prefetchMedia(this.partners.slice(0, 60).map(function (p) { return p.id; })); }
+    },
+    rollTileHtml(p) {
+      var urls = this.deck.media[p.id]; var img = urls && urls[0];
+      var rb = p.rating_n ? '<span class="rb"><b>★</b> ' + esc(p.rating_avg) + '</span>' : '<span class="rb">' + esc(T('oo.pf.new', 'New')) + '</span>';
+      var sub = p.day_rate != null ? money(p.day_rate, p.currency) + ' / ' + T('oo.rl.day', 'day') : (p.home_course_name || (p.languages || []).join(', '));
+      return '<button type="button" class="oo-rt" onclick="OneOnOne.openPartner(\'' + p.id + '\')">' +
+        '<div class="ph">' + (img ? '<img src="' + esc(img) + '" alt="" loading="lazy" draggable="false">' : '<div class="ini">' + esc(initials(p.display_name)) + '</div>') +
+        '<span class="ab">' + esc(T('oo.rl.available', 'Available')) + '</span>' + rb + (p.liked ? '<span class="hv">♥</span>' : '') + '</div>' +
+        '<div class="tx"><div class="nm">' + esc(p.display_name) + '</div><div class="sub">' + esc(sub) + '</div></div></button>';
+    },
+    paintRoll() {
+      var box = document.getElementById('ooDeck'); if (!box) return; var list = this.partners; var self = this;
+      if (!list.length) { box.innerHTML = '<div class="oo-card" style="text-align:center;padding:24px"><div style="font-size:15px;font-weight:800">' + esc(T('oo.noresults', DICT.en['oo.noresults'])) + '</div></div>'; return; }
+      box.innerHTML = '<div class="oo-kv" style="display:flex;justify-content:space-between;margin-bottom:6px;max-width:720px;margin-left:auto;margin-right:auto"><span>' + esc(TT('oo.rl.n', { n: list.length })) + '</span><b>' + esc(fmtRange(this.q.from, this.q.to)) + '</b></div>' +
+        '<div class="oo-roll">' + list.map(function (p) { return self.rollTileHtml(p); }).join('') + '</div>';
+    },
     paintDeck() {
       var box = document.getElementById('ooDeck'); if (!box) return;
+      if (this.deck.mode === 'roll') return this.paintRoll();
       var d = this.deck; var list = this.partners; var i = d.i;
       if (!list.length) { box.innerHTML = '<div class="oo-card" style="text-align:center;padding:24px"><div style="font-size:15px;font-weight:800">' + esc(T('oo.noresults', DICT.en['oo.noresults'])) + '</div><div class="oo-kv" style="margin-top:6px">' + esc(fmtRange(this.q.from, this.q.to)) + '</div></div>'; return; }
       if (i >= list.length) {
@@ -1083,6 +1115,7 @@
       this.prefetchMedia(list.slice(i, i + 3).map(function (p) { return p.id; }));
     },
     paintDeckPhotos() {
+      if (this.deck.mode === 'roll') { if (this.view === 'browse') this.paintRoll(); return; }
       var self = this;
       document.querySelectorAll('#ooDeck .oo-cd').forEach(function (el) {
         var p = self.partners[parseInt(el.getAttribute('data-idx'), 10)]; if (!p) return;
@@ -1450,7 +1483,7 @@
     async upload(input) {
       var file = input.files && input.files[0]; if (!file) return; input.value = '';
       var p = this.cad.partner; if (!p) return;
-      var photos = this.cad.media.filter(function (m) { return m.kind === 'photo'; }); if (photos.length >= 12) { toast(T('oo.maxphotos', 'Maximum 12 photos.'), 'warning'); return; }
+      var photos = this.cad.media.filter(function (m) { return m.kind === 'photo'; }); if (photos.length >= 8) { toast(T('oo.maxphotos', 'Maximum 8 photos.'), 'warning'); return; }   /* v1102: Pete — up to 8 photos per profile (DB trigger oo_media_cap is the authority) */
       var msg = document.getElementById('ooUpMsg'); if (msg) msg.textContent = T('oo.uploading', 'Uploading…');
       try {
         var blob = file;

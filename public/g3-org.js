@@ -7,6 +7,7 @@
    one-screen home: today's-event status band, the organizer's own poster cubes (MOVED, never cloned),
    a this-week table (reg · paid · groups · vans · status per event) and a "needs you" + latest
    registrations column. Read-only: every write still goes through the existing cockpits.
+   v1108 (Pete, 2026-09-04): rail brand = the REAL MyCaddiPro logo image, matching the golfer shell.
    v1087 (Pete, 2026-09-03: 'do the same with the organizers dashboard'): band 88->74px; the home flows instead of
    locking to the viewport; This week / Needs you / Latest registrations are EXPANDABLE (header chevron, .xp,
    persisted in localStorage g3oxp) - mirrors v1086 on the golfer shell. Cube rows were fixed in v1086.
@@ -44,8 +45,8 @@
   D + "{padding-left:232px;background:#F3F6F3;transform:none !important}\n" + /* v1086: .screen.active transform traps the fixed rail */
   "#g3oRail{display:none}\n" +
   D + " > #g3oRail{display:flex;position:fixed;left:0;top:0;bottom:0;width:232px;z-index:40;flex-direction:column;padding:18px 14px 16px;background:#0B3B2A;color:#fff;border-right:2px solid #22c55e;font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden}\n" +
-  "#g3oRail .g3-brand{font-family:'Fraunces',Georgia,serif;font-size:22px;font-weight:600;letter-spacing:-.01em;padding:4px 10px 16px;display:flex;align-items:center;gap:10px;line-height:1}\n" +
-  "#g3oRail .g3-mark{width:30px;height:30px;border-radius:9px;background:#fff;border:2px solid #22c55e;display:flex;align-items:center;justify-content:center;flex:none}#g3oRail .g3-mark svg{width:16px;height:16px;margin-left:2px}\n" +
+  "#g3oRail .g3-brand{padding:4px 10px 16px;display:block;line-height:1}\n" +
+  "#g3oRail .g3-logo{display:block;width:100%;max-width:168px;height:auto}\n" +
   "#g3oRail .g3-brand small{display:block;font-family:'Instrument Sans',sans-serif;font-size:10.5px;font-weight:600;color:rgba(255,255,255,.55);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}\n" +
   "#g3oRail .g3-grp{font-size:10.5px;font-weight:700;color:rgba(255,255,255,.45);padding:12px 10px 4px}\n" +
   "#g3oRail .g3-nav{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none}#g3oRail .g3-nav::-webkit-scrollbar{display:none}\n" +
@@ -124,7 +125,6 @@
     { tab: 'profile', icon: 'account_circle', k: 'g3o.profile', fb: 'Profile' },
     { tab: 'admin', icon: 'settings', k: 'g3o.settings', fb: 'Society settings' }
   ];
-  var TRI = '<svg viewBox="0 0 96 96" aria-hidden="true"><path d="M24.7 12.9 L79.3 43.2 Q88 48 79.3 52.9 L24.7 83.2 Q16 88 16 78 L16 18 Q16 8 24.7 12.9 Z" fill="#22c55e"/></svg>';
 
   var G = {
     _built: false, _tab: 'home', _mq: null, _timer: null, _seq: 0,
@@ -160,7 +160,7 @@
       var dash = document.getElementById('societyOrganizerDashboard'); if (!dash || this._built) return;
       this._built = true;
       var rail = document.createElement('aside'); rail.id = 'g3oRail'; rail.setAttribute('aria-label', 'Navigation');
-      var h = '<div class="g3-brand"><span class="g3-mark">' + TRI + '</span><span>MyCaddiPro<small id="g3oBrandSub"></small></span></div><nav class="g3-nav">';
+      var h = '<div class="g3-brand"><img class="g3-logo" src="/mcipro-wordmark-white.png" alt="MyCaddiPro"><small id="g3oBrandSub"></small></div><nav class="g3-nav">';
       RAIL.forEach(function (it) {
         if (it.grp) { h += '<div class="g3-grp">' + esc(T(it.grp, it.fb)) + '</div>'; return; }
         var label = T(it.k, it.fb);

@@ -8,6 +8,8 @@
    live/handicap/messages column. It MOVES the existing #liteCubesGrid (never clones — every
    cube id/pill writer keeps working) and reads the same data sources the cubes use.
    Zero new write paths. Everything degrades: any panel that cannot load hides itself.
+   v1108 (Pete, 2026-09-04): the rail brand is the REAL MyCaddiPro logo (mcipro-wordmark-white.png),
+   not the wordmark typed out next to a green triangle. Same image the login screen uses.
    v1086 (Pete, 2026-09-03 desktop review): rail HCP chip sits inside its line for any value; status
    band 88->72px; cubes are exactly their row (1.0's min-height:150px spilled into row 2 on 768px-tall
    screens); the home no longer locks to the viewport - it flows and the page scrolls; every card
@@ -48,9 +50,8 @@
   "#golferDashboard.g3:not(.round-active){padding-left:232px;background:#F3F6F3;transform:none !important}\n" +
   "#g3Rail{display:none}\n" +
   "#golferDashboard.g3:not(.round-active) > #g3Rail{display:flex;position:fixed;left:0;top:0;bottom:0;width:232px;z-index:40;flex-direction:column;padding:18px 14px 16px;background:#0B3B2A;color:#fff;border-right:2px solid #22c55e;font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden}\n" +
-  "#g3Rail .g3-brand{font-family:'Fraunces',Georgia,serif;font-size:22px;font-weight:600;letter-spacing:-.01em;padding:4px 10px 16px;display:flex;align-items:center;gap:10px;line-height:1}\n" +
-  "#g3Rail .g3-mark{width:30px;height:30px;border-radius:9px;background:#fff;border:2px solid #22c55e;display:flex;align-items:center;justify-content:center;flex:none}\n" +
-  "#g3Rail .g3-mark svg{width:16px;height:16px;margin-left:2px}\n" +
+  "#g3Rail .g3-brand{padding:4px 10px 16px;display:block;line-height:1}\n" +
+  "#g3Rail .g3-logo{display:block;width:100%;max-width:168px;height:auto}\n" +
   "#g3Rail .g3-brand small{display:block;font-family:inherit;font-family:'Instrument Sans',sans-serif;font-size:10.5px;font-weight:600;color:rgba(255,255,255,.55);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}\n" +
   "#g3Rail .g3-grp{font-size:10.5px;font-weight:700;color:rgba(255,255,255,.45);padding:12px 10px 4px}\n" +
   "#g3Rail .g3-nav{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none}\n#g3Rail .g3-nav::-webkit-scrollbar{display:none}\n" +
@@ -211,7 +212,6 @@
   ];
   var TITLES = { overview: ['g3.today', 'Today'], societyevents: ['g3.societyevents', 'Society events'], scorecard: ['g3.playgolf', 'Play golf'], rounds: ['g3.roundhistory', 'Round history'], golfanalytics: ['g3.analytics', 'Analytics'], schedule: ['g3.schedule', 'Schedule'], caddies: ['g3.caddies', 'Caddies'], messages: ['g3.messages', 'Messages'], marketplace: [null, '19th Hole'], food: ['g3.food', 'Food'], status: ['g3.orders', 'Orders'], booking: ['g3.teetime', 'Tee time'], conditions: ['g3.conditions', 'Conditions'] };
   TITLES.oo = ['oo.title', '1on1'];
-  var TRI = '<svg viewBox="0 0 96 96" aria-hidden="true"><path d="M24.7 12.9 L79.3 43.2 Q88 48 79.3 52.9 L24.7 83.2 Q16 88 16 78 L16 18 Q16 8 24.7 12.9 Z" fill="#22c55e"/></svg>';
 
   var G3 = {
     _built: false, _tab: 'overview', _mq: null, _timer: null, _seq: 0, _ev: null,
@@ -241,7 +241,7 @@
       this._built = true;
       /* rail */
       var rail = document.createElement('aside'); rail.id = 'g3Rail'; rail.setAttribute('aria-label', 'Navigation');
-      var h = '<div class="g3-brand"><span class="g3-mark">' + TRI + '</span><span>MyCaddiPro<small class="club-affiliation-mirror" id="g3BrandSub"></small></span></div><nav class="g3-nav">';
+      var h = '<div class="g3-brand"><img class="g3-logo" src="/mcipro-wordmark-white.png" alt="MyCaddiPro"><small class="club-affiliation-mirror" id="g3BrandSub"></small></div><nav class="g3-nav">';
       RAIL.forEach(function (it) {
         if (it.grp !== undefined) { if (it.grp) h += '<div class="g3-grp">' + esc(T(it.grp, it.fb)) + '</div>'; return; }
         var label = it.k ? T(it.k, it.fb) : it.fb;

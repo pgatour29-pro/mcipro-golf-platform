@@ -534,7 +534,9 @@
     },
     async logoutAsk() {
       var ok = await confirmSheet(T('oo.logout.q', 'Log out of 1on1?'), T('oo.logout', 'Log out')); if (ok === null) return;
-      try { if (typeof logout === 'function') logout(); else LineAuthentication.logout(); } catch (e) { try { location.reload(); } catch (_) {} }
+      try { localStorage.setItem('oo_partner_home', '1'); } catch (e) {}   /* v1104: her own login page, not the main one */
+      try { if (typeof logout === 'function') logout(); else LineAuthentication.logout(); } catch (e) {}
+      setTimeout(function () { try { location.replace('/1on1.html'); } catch (e) { try { location.reload(); } catch (_) {} } }, 300);
     },
 
     /* ---------- GOLFER dashboard hooks (entry cube + realtime); the 1on1 screen itself is further down ---------- */

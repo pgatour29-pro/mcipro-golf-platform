@@ -60,6 +60,10 @@
         try { var __ooM = location.search.match(/[?&]oo=([A-Za-z0-9]{4,16})(?:&|$)/); if (__ooM) localStorage.setItem('oo_invite', __ooM[1].toUpperCase()); } catch (_) {}
         // 1on1 (v1103): the special partner entry (/1on1/CODE) adds &oo_login=<provider>; the app strips the query during startup, so keep it here
         try { var __ooL = location.search.match(/[?&]oo_login=(line|kakao|google)\b/); if (__ooL) sessionStorage.setItem('oo_login', __ooL[1]); } catch (_) {}
+        // 1on1 (v1104): partners get their OWN login page (/1on1.html). A device whose last login was a partner is flagged
+        // (oo_partner_home, set/cleared by role in redirectToDashboard); logged out + not returning from OAuth + no hand-off → bounce now.
+        try { window.__ooAuthReturn = /[?&#](code|state|access_token|liff\.state|error)=/.test(location.search + location.hash); } catch (_) { window.__ooAuthReturn = false; }
+        try { if (localStorage.getItem('oo_partner_home') === '1' && !localStorage.getItem('line_user_id') && !window.__ooAuthReturn && !sessionStorage.getItem('oo_login') && !/[?&]oo_login=/.test(location.search)) location.replace('/1on1.html'); } catch (_) {}
         window.addEventListener('beforeinstallprompt', function (e) {
             e.preventDefault();
             window.__deferredInstallPrompt = e;
@@ -22260,7 +22264,8 @@
                 LineAuthentication.showLineLogin();
                 // 1on1 (v1103): the partner entry page (/1on1/CODE) hands over with ?oo_login=<provider> — start that provider
                 // at once so the invited golfer never sees the main login (the ?oo= code was stashed at page load).
-                try { if (window.__ooHandoff) window.__ooHandoff(); } catch (e) {}
+                try { if (window.__ooHandoff && window.__ooHandoff()) return; } catch (e) {}
+                try { if (window.__ooPartnerBounce) window.__ooPartnerBounce(); } catch (e) {}   // 1on1 (v1104): partner device → /1on1.html
             }
 
             static initGolferDashboard() {
@@ -23639,6 +23644,7 @@
 
                 const targetDashboard = dashboardMap[AppState.currentUser.role] || 'golferDashboard';
                 console.log('[redirectToDashboard] Redirecting to:', targetDashboard, 'for role:', AppState.currentUser.role);
+                try { if (AppState.currentUser.role === 'oo_partner') localStorage.setItem('oo_partner_home', '1'); else localStorage.removeItem('oo_partner_home'); } catch (e) {}   // 1on1 (v1104): partner device flag
 
                 // PIN PROTECTION: Check if society_organizer needs PIN verification
                 if (AppState.currentUser.role === 'society_organizer') {
@@ -159687,14 +159693,21 @@ showOrganizerTab = function(tabName) {
     // initLoginScreen OR this watcher (whichever sees the login screen first), never when a session is already live.
     (function () {
         try {
-            var provider = null;
+            var provider = null; var partnerDevice = false;
             try { provider = sessionStorage.getItem('oo_login'); } catch (e) {}
             if (!provider) { var m = location.search.match(/[?&]oo_login=(line|kakao|google)\b/); provider = m && m[1]; }
-            if (!provider) return;
+            try { partnerDevice = localStorage.getItem('oo_partner_home') === '1'; } catch (e) {}
             var done = false;
+            window.__ooPartnerBounce = function () {   /* the app is about to show the MAIN login to a partner device → her own page instead */
+                try {
+                    if (localStorage.getItem('oo_partner_home') !== '1' || window.__ooAuthReturn || sessionStorage.getItem('oo_login')) return false;
+                    if (window.AppState && AppState.session && AppState.session.isAuthenticated) return false;
+                    location.replace('/1on1.html'); return true;
+                } catch (e) { return false; }
+            };
+            if (!provider && !partnerDevice) return;
             window.__ooHandoff = function () {
                 if (done) return false;
-                try { if (!localStorage.getItem('oo_invite')) return false; } catch (e) { return false; }
                 if (window.AppState && AppState.session && AppState.session.isAuthenticated) return false;
                 var fn = provider === 'kakao' ? window.loginWithKakao : (provider === 'google' ? window.loginWithGoogle : window.loginWithLINE);
                 if (typeof fn !== 'function') return false;
@@ -159704,17 +159717,19 @@ showOrganizerTab = function(tabName) {
                 setTimeout(function () { try { fn(); } catch (e) { console.warn('[1on1] hand-off', e); } }, 250);
                 return true;
             };
-            var tries = 0;
+            var tries = 0; var idle = 0;
             var t = setInterval(function () {
                 tries++;
-                var ls = document.getElementById('loginScreen');
+                var ls = document.getElementById('loginScreen'); var onLogin = !!(ls && ls.classList.contains('active'));
                 if (done || tries > 60 || (window.AppState && AppState.session && AppState.session.isAuthenticated)) { clearInterval(t); return; }
-                if (ls && ls.classList.contains('active') && window.__ooHandoff()) clearInterval(t);
+                if (provider) { if (onLogin && window.__ooHandoff()) clearInterval(t); return; }
+                idle = onLogin ? idle + 1 : 0;   /* partner device, no hand-off: give session restore 2 s, then bounce */
+                if (idle >= 4 && window.__ooPartnerBounce()) clearInterval(t);
             }, 500);
         } catch (e) {}
     })();
     </script>
-    <script src="oo-1on1.js?v=1103"></script>
+    <script src="oo-1on1.js?v=1104"></script>
     <script src="g3-desk.js?v=1091"></script>
     <script src="g3-org.js?v=1087"></script>
 </body>

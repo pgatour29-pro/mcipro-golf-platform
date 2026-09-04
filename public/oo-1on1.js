@@ -332,7 +332,8 @@
       'oo.adm.nophoto': 'No photo', 'oo.adm.photo.unverified': 'Photo not verified', 'oo.adm.photo.ok': 'Photo OK', 'oo.adm.photo.accept': 'Accept photo', 'oo.adm.photo.reject': 'Reject photo', 'oo.adm.nophoton': '{n} without photo', 'oo.adm.suspended.nophoto': 'Suspended · no photo',
       'oo.push.member_ok2': 'Your 1on1 access is approved. Add a clear photo of your face within 24 hours or your access will be suspended. Open MyCaddiPro to find a partner.',
       'oo.logout': 'Log out', 'oo.logout.q': 'Log out of 1on1?', 'oo.msgs.none': 'Chats open once a booking is accepted.',
-      'oo.rl.roll': 'Roll', 'oo.rl.swipe': 'Swipe', 'oo.rl.available': 'Available', 'oo.rl.day': 'day', 'oo.rl.n': '{n} partners', 'oo.err.max_photos': 'Maximum 8 photos.' },
+      'oo.rl.roll': 'Roll', 'oo.rl.swipe': 'Swipe', 'oo.rl.available': 'Available', 'oo.rl.day': 'day', 'oo.rl.n': '{n} partners', 'oo.err.max_photos': 'Maximum 8 photos.',
+      'oo.adm.qr': 'QR code', 'oo.adm.qr.partner': 'Scan or open: this goes straight to the 1on1 partner sign-up, never the main app.', 'oo.adm.qr.member': 'Opens MyCaddiPro with the 1on1 invite attached.', 'oo.close': 'Close' },
     th: { 'oo.adm.overview': 'ภาพรวม', 'oo.adm.asmember': 'ดูแบบสมาชิก', 'oo.adm.needs': 'รอดำเนินการ', 'oo.adm.allclear': 'ไม่มีค้าง', 'oo.adm.active': 'ใช้งาน', 'oo.adm.pending': 'รออนุมัติ',
       'oo.adm.approved': 'อนุมัติแล้ว', 'oo.adm.suspended': 'ถูกระงับ', 'oo.adm.expired': 'หมดอายุ', 'oo.adm.all': 'ทั้งหมด', 'oo.adm.open': 'เปิด', 'oo.adm.reviewed': 'ตรวจแล้ว', 'oo.adm.actioned': 'ดำเนินการแล้ว', 'oo.adm.dismissed': 'ยกคำร้อง', 'oo.adm.closed': 'ปิดแล้ว',
       'oo.adm.search': 'ค้นหาชื่อหรือไอดี', 'oo.adm.new': 'ใหม่', 'oo.adm.share': 'แชร์', 'oo.adm.since': 'ตั้งแต่', 'oo.adm.view': 'ดู', 'oo.adm.suspendmember': 'ระงับสมาชิก', 'oo.adm.suspendpartner': 'ระงับคู่เล่น',
@@ -345,7 +346,8 @@
       'oo.adm.nophoto': 'ไม่มีรูป', 'oo.adm.photo.unverified': 'รูปยังไม่ยืนยัน', 'oo.adm.photo.ok': 'รูปผ่าน', 'oo.adm.photo.accept': 'ยอมรับรูป', 'oo.adm.photo.reject': 'ปฏิเสธรูป', 'oo.adm.nophoton': 'ไม่มีรูป {n}', 'oo.adm.suspended.nophoto': 'ระงับ · ไม่มีรูป',
       'oo.push.member_ok2': 'สิทธิ์ 1on1 ของคุณได้รับอนุมัติแล้ว เพิ่มรูปใบหน้าที่ชัดเจนภายใน 24 ชั่วโมง มิฉะนั้นสิทธิ์จะถูกระงับ เปิด MyCaddiPro เพื่อหาคู่เล่น',
       'oo.logout': 'ออกจากระบบ', 'oo.logout.q': 'ออกจากระบบ 1on1?', 'oo.msgs.none': 'แชทจะเปิดเมื่อการจองได้รับการยอมรับ',
-      'oo.rl.roll': 'ตาราง', 'oo.rl.swipe': 'ปัด', 'oo.rl.available': 'ว่าง', 'oo.rl.day': 'วัน', 'oo.rl.n': 'คู่เล่น {n} คน', 'oo.err.max_photos': 'สูงสุด 8 รูป' },
+      'oo.rl.roll': 'ตาราง', 'oo.rl.swipe': 'ปัด', 'oo.rl.available': 'ว่าง', 'oo.rl.day': 'วัน', 'oo.rl.n': 'คู่เล่น {n} คน', 'oo.err.max_photos': 'สูงสุด 8 รูป',
+      'oo.adm.qr': 'คิวอาร์โค้ด', 'oo.adm.qr.partner': 'สแกนหรือเปิด: ไปที่หน้าสมัครคู่เล่น 1on1 โดยตรง ไม่ผ่านแอปหลัก', 'oo.adm.qr.member': 'เปิด MyCaddiPro พร้อมคำเชิญ 1on1', 'oo.close': 'ปิด' },
     ko: { 'oo.adm.overview': '개요', 'oo.adm.asmember': '회원으로 보기', 'oo.adm.needs': '처리 필요', 'oo.adm.allclear': '모두 처리됨', 'oo.adm.active': '활성', 'oo.adm.pending': '대기',
       'oo.adm.approved': '승인됨', 'oo.adm.suspended': '정지됨', 'oo.adm.expired': '만료', 'oo.adm.all': '전체', 'oo.adm.open': '미처리', 'oo.adm.reviewed': '검토됨', 'oo.adm.actioned': '조치됨', 'oo.adm.dismissed': '기각', 'oo.adm.closed': '종료',
       'oo.adm.search': '이름 또는 ID 검색', 'oo.adm.new': '신규', 'oo.adm.share': '공유', 'oo.adm.since': '가입', 'oo.adm.view': '보기', 'oo.adm.suspendmember': '회원 정지', 'oo.adm.suspendpartner': '파트너 정지',
@@ -358,7 +360,8 @@
       'oo.adm.nophoto': '사진 없음', 'oo.adm.photo.unverified': '사진 미확인', 'oo.adm.photo.ok': '사진 확인됨', 'oo.adm.photo.accept': '사진 승인', 'oo.adm.photo.reject': '사진 거절', 'oo.adm.nophoton': '사진 없음 {n}명', 'oo.adm.suspended.nophoto': '정지 · 사진 없음',
       'oo.push.member_ok2': '1on1 이용이 승인되었습니다. 24시간 이내에 얼굴이 선명한 사진을 등록하지 않으면 이용이 정지됩니다. MyCaddiPro를 열어 파트너를 찾아보세요.',
       'oo.logout': '로그아웃', 'oo.logout.q': '1on1에서 로그아웃할까요?', 'oo.msgs.none': '예약이 수락되면 채팅이 열립니다.',
-      'oo.rl.roll': '목록', 'oo.rl.swipe': '스와이프', 'oo.rl.available': '가능', 'oo.rl.day': '일', 'oo.rl.n': '파트너 {n}명', 'oo.err.max_photos': '사진은 최대 8장입니다.' },
+      'oo.rl.roll': '목록', 'oo.rl.swipe': '스와이프', 'oo.rl.available': '가능', 'oo.rl.day': '일', 'oo.rl.n': '파트너 {n}명', 'oo.err.max_photos': '사진은 최대 8장입니다.',
+      'oo.adm.qr': 'QR 코드', 'oo.adm.qr.partner': '스캔하거나 열면 메인 앱이 아닌 1on1 파트너 가입 페이지로 바로 이동합니다.', 'oo.adm.qr.member': '1on1 초대가 포함된 MyCaddiPro를 엽니다.', 'oo.close': '닫기' },
     ja: { 'oo.adm.overview': '概要', 'oo.adm.asmember': '会員として見る', 'oo.adm.needs': '対応が必要', 'oo.adm.allclear': '対応待ちなし', 'oo.adm.active': '有効', 'oo.adm.pending': '保留',
       'oo.adm.approved': '承認済', 'oo.adm.suspended': '停止中', 'oo.adm.expired': '期限切れ', 'oo.adm.all': 'すべて', 'oo.adm.open': '未処理', 'oo.adm.reviewed': '確認済', 'oo.adm.actioned': '対応済', 'oo.adm.dismissed': '却下', 'oo.adm.closed': '終了',
       'oo.adm.search': '名前またはIDで検索', 'oo.adm.new': '新規', 'oo.adm.share': '共有', 'oo.adm.since': '登録', 'oo.adm.view': '表示', 'oo.adm.suspendmember': '会員を停止', 'oo.adm.suspendpartner': '同伴者を停止',
@@ -371,7 +374,8 @@
       'oo.adm.nophoto': '写真なし', 'oo.adm.photo.unverified': '写真未確認', 'oo.adm.photo.ok': '写真OK', 'oo.adm.photo.accept': '写真を承認', 'oo.adm.photo.reject': '写真を却下', 'oo.adm.nophoton': '写真なし{n}名', 'oo.adm.suspended.nophoto': '停止 · 写真なし',
       'oo.push.member_ok2': '1on1の利用が承認されました。24時間以内に顔がはっきり写った写真を登録しないと利用が停止されます。MyCaddiProを開いて同伴者を探しましょう。',
       'oo.logout': 'ログアウト', 'oo.logout.q': '1on1からログアウトしますか？', 'oo.msgs.none': '予約が承認されるとチャットが開きます。',
-      'oo.rl.roll': '一覧', 'oo.rl.swipe': 'スワイプ', 'oo.rl.available': '空き', 'oo.rl.day': '日', 'oo.rl.n': '同伴者{n}名', 'oo.err.max_photos': '写真は最大8枚です。' }
+      'oo.rl.roll': '一覧', 'oo.rl.swipe': 'スワイプ', 'oo.rl.available': '空き', 'oo.rl.day': '日', 'oo.rl.n': '同伴者{n}名', 'oo.err.max_photos': '写真は最大8枚です。',
+      'oo.adm.qr': 'QRコード', 'oo.adm.qr.partner': 'スキャンまたは開くと、本体アプリではなく1on1同伴者登録ページに直接移動します。', 'oo.adm.qr.member': '1on1招待付きでMyCaddiProを開きます。', 'oo.close': '閉じる' }
   };
   Object.keys(DICT3).forEach(function (l) { Object.assign(DICT[l], DICT3[l]); });
   try { if (typeof translations !== 'undefined') Object.keys(DICT3).forEach(function (l) { if (translations[l]) Object.assign(translations[l], DICT3[l]); }); } catch (e) {}
@@ -706,6 +710,7 @@
     back() { var v = this.stack.pop(); if (!v) return false; this.view = v; this.syncNav(); this.render(); return true; },
     /* the ONE back handler: FAB, hardware back (dashboardGoBack) and the header ◀ */
     handleBack() {
+      var qr = document.getElementById('ooQr'); if (qr) { try { qr.remove(); } catch (e) {} return true; }
       var ask = document.getElementById('ooAsk'); if (ask) { try { ask.remove(); } catch (e) {} return true; }
       var sheet = document.getElementById('ooMoreSheet'); if (sheet && sheet.classList.contains('open')) { try { mhvCloseMore('oo'); } catch (e) {} return true; }
       if (this.stack.length) { this.back(); return true; }
@@ -1753,7 +1758,7 @@
         var dead = i.used >= i.max_uses || (i.expires_at && i.expires_at < nowIso);
         return '<div class="oo-row" style="align-items:center' + (dead ? ';opacity:.55' : '') + '"><div style="flex:1;min-width:0"><div style="font-weight:800;font-family:monospace;font-size:16px">' + esc(i.code) + ' <span class="oo-chip">' + esc(T('oo.adm.' + i.kind, i.kind)) + '</span></div>' +
           '<div class="oo-kv">' + esc(i.used + '/' + i.max_uses) + (i.auto_approve ? ' · ' + esc(T('oo.adm.auto', 'Auto-approve')) : '') + (i.expires_at ? ' · ' + esc(T('oo.adm.expires', 'Expires')) + ' ' + esc(self.fmtDate(i.expires_at)) : '') + (i.note ? ' · ' + esc(i.note) : '') + '</div></div>' +
-          (dead ? '' : '<div style="display:flex;gap:4px"><button type="button" class="oo-btn" onclick="OneOnOne.copyInvite(\'' + esc(i.code) + '\')">' + esc(T('oo.adm.copy', 'Copy link')) + '</button>' + (canShare ? '<button type="button" class="oo-btn pri" onclick="OneOnOne.shareInvite(\'' + esc(i.code) + '\')">' + esc(T('oo.adm.share', 'Share')) + '</button>' : '') + '</div>') + '</div>';
+          (dead ? '' : '<div style="display:flex;gap:4px"><button type="button" class="oo-btn" onclick="OneOnOne.copyInvite(\'' + esc(i.code) + '\', \'' + esc(i.kind) + '\')">' + esc(T('oo.adm.copy', 'Copy link')) + '</button><button type="button" class="oo-btn" onclick="OneOnOne.qrInvite(\'' + esc(i.code) + '\', \'' + esc(i.kind) + '\')">' + esc(T('oo.adm.qr', 'QR code')) + '</button>' + (canShare ? '<button type="button" class="oo-btn pri" onclick="OneOnOne.shareInvite(\'' + esc(i.code) + '\', \'' + esc(i.kind) + '\')">' + esc(T('oo.adm.share', 'Share')) + '</button>' : '') + '</div>') + '</div>';
       }).join('') : this.admNone()) + '</div>';
       root.innerHTML = h;
     },
@@ -1761,11 +1766,42 @@
       try {
         var days = parseInt((document.getElementById('ooIDays') || {}).value, 10) || 30;
         var row = await rpc('oo_admin_create_invite', { p_kind: (document.getElementById('ooIKind') || {}).value || 'member', p_max_uses: parseInt((document.getElementById('ooIUses') || {}).value, 10) || 1, p_auto_approve: !!((document.getElementById('ooIAuto') || {}).checked), p_expires: new Date(Date.now() + days * 86400000).toISOString(), p_note: ((document.getElementById('ooINote') || {}).value || '').trim() || null });
-        this.copyInvite(row.code); await this.admRefresh();
+        this.copyInvite(row.code, row.kind); await this.admRefresh();
       } catch (e) { toast(errMsg(e), 'error'); }
     },
-    copyInvite(code) { var link = 'https://mycaddipro.com/?oo=' + code; try { navigator.clipboard.writeText(link).then(function () { toast(T('oo.adm.copied', 'Link copied') + ': ' + link, 'success'); }, function () { toast(link, 'info'); }); } catch (e) { toast(link, 'info'); } },
-    shareInvite(code) { var link = 'https://mycaddipro.com/?oo=' + code; try { navigator.share({ title: '1on1', text: link, url: link }).catch(function () {}); } catch (e) { this.copyInvite(code); } },
+    /* v1103: partner invites go through the SPECIAL entry (mycaddipro.com/1on1/CODE → 1on1.html) so the female golfers never see
+       the main app; member invites keep the in-app ?oo= link */
+    inviteLink(code, kind) { return kind === 'partner' ? 'https://mycaddipro.com/1on1/' + code : 'https://mycaddipro.com/?oo=' + code; },
+    _qrLib: null,
+    loadQrLib() {
+      if (window.QRCode) return Promise.resolve(true);
+      if (this._qrLib) return this._qrLib;
+      this._qrLib = new Promise(function (res) { var sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'; sc.integrity = 'sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU'; sc.crossOrigin = 'anonymous'; sc.onload = function () { res(!!window.QRCode); }; sc.onerror = function () { res(false); }; document.head.appendChild(sc); });
+      return this._qrLib;
+    },
+    qrInvite(code, kind) {
+      var link = this.inviteLink(code, kind); var self = this;
+      var old = document.getElementById('ooQr'); if (old) old.remove();
+      var w = document.createElement('div'); w.id = 'ooQr';
+      w.style.cssText = 'position:fixed;inset:0;z-index:99990;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;padding:16px';
+      w.innerHTML = '<div style="background:#fff;border-radius:18px;width:100%;max-width:360px;padding:18px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.3)">' +
+        '<div style="font-weight:900;font-size:18px;color:#0f172a;font-family:monospace;letter-spacing:.06em">' + esc(code) + ' <span class="oo-chip">' + esc(T('oo.adm.' + kind, kind)) + '</span></div>' +
+        '<div id="ooQrBox" style="width:232px;height:232px;margin:12px auto;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:6px"><span class="oo-kv">…</span></div>' +
+        '<div class="oo-kv" style="overflow-wrap:anywhere;font-weight:700;color:#15803d">' + esc(link) + '</div>' +
+        '<div class="oo-kv" style="margin-top:6px">' + esc(T(kind === 'partner' ? 'oo.adm.qr.partner' : 'oo.adm.qr.member', DICT.en[kind === 'partner' ? 'oo.adm.qr.partner' : 'oo.adm.qr.member'])) + '</div>' +
+        '<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:12px"><button type="button" class="oo-btn" onclick="OneOnOne.copyInvite(\'' + esc(code) + '\', \'' + esc(kind) + '\')">' + esc(T('oo.adm.copy', 'Copy link')) + '</button>' +
+        (navigator.share ? '<button type="button" class="oo-btn pri" onclick="OneOnOne.shareInvite(\'' + esc(code) + '\', \'' + esc(kind) + '\')">' + esc(T('oo.adm.share', 'Share')) + '</button>' : '') +
+        '<button type="button" class="oo-btn" onclick="document.getElementById(\'ooQr\').remove()">' + esc(T('oo.close', 'Close')) + '</button></div></div>';
+      w.addEventListener('click', function (e) { if (e.target === w) w.remove(); });
+      document.body.appendChild(w);
+      this.loadQrLib().then(function (ok) {
+        var box = document.getElementById('ooQrBox'); if (!box) return; box.innerHTML = '';
+        if (ok) { try { new QRCode(box, { text: link, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M }); return; } catch (e) { console.warn('[1on1] qr', e); } }
+        box.innerHTML = '<img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(link) + '" alt="QR" width="220" height="220">';
+      });
+    },
+    copyInvite(code, kind) { var link = this.inviteLink(code, kind); try { navigator.clipboard.writeText(link).then(function () { toast(T('oo.adm.copied', 'Link copied') + ': ' + link, 'success'); }, function () { toast(link, 'info'); }); } catch (e) { toast(link, 'info'); } },
+    shareInvite(code, kind) { var link = this.inviteLink(code, kind); try { navigator.share({ title: '1on1', text: link, url: link }).catch(function () {}); } catch (e) { this.copyInvite(code, kind); } },
 
     /* --- bookings --- */
     admBookingRow(b) {

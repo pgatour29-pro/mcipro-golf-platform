@@ -58,6 +58,8 @@
         try { if (/[?&]install=1(?:&|$)/.test(location.search)) window.__pwaInstallIntent = true; } catch (_) {}
         // 1on1 (v1089): invite link ?oo=CODE — stash it now, redeemed after login (nothing on the login page)
         try { var __ooM = location.search.match(/[?&]oo=([A-Za-z0-9]{4,16})(?:&|$)/); if (__ooM) localStorage.setItem('oo_invite', __ooM[1].toUpperCase()); } catch (_) {}
+        // 1on1 (v1103): the special partner entry (/1on1/CODE) adds &oo_login=<provider>; the app strips the query during startup, so keep it here
+        try { var __ooL = location.search.match(/[?&]oo_login=(line|kakao|google)\b/); if (__ooL) sessionStorage.setItem('oo_login', __ooL[1]); } catch (_) {}
         window.addEventListener('beforeinstallprompt', function (e) {
             e.preventDefault();
             window.__deferredInstallPrompt = e;
@@ -22256,6 +22258,9 @@
                 // LIFF is already initialized on page load (DOMContentLoaded)
                 // Calling liff.init() again after logout causes redirect to LINE OAuth
                 LineAuthentication.showLineLogin();
+                // 1on1 (v1103): the partner entry page (/1on1/CODE) hands over with ?oo_login=<provider> — start that provider
+                // at once so the invited golfer never sees the main login (the ?oo= code was stashed at page load).
+                try { if (window.__ooHandoff) window.__ooHandoff(); } catch (e) {}
             }
 
             static initGolferDashboard() {
@@ -159677,7 +159682,39 @@ showOrganizerTab = function(tabName) {
     <!-- <script defer src="ai-caddie.js?v=20260420a"></script> -->
                                     <!-- G3 (v1080): MyCaddiPro 3.0 DESKTOP shell for the golfer dashboard (>=1024px only; phones untouched) -->
     <!-- 1on1 (v1089→v1091): JOA private playing-partner booking — its own dashboard screen (#ooDashboard), entered from the golfer cube / desktop rail (member) and the caddie cube / tab / drawer (partner) -->
-    <script src="oo-1on1.js?v=1102"></script>
+    <script>
+    // 1on1 (v1103): hand-off from the special partner entry (/1on1/CODE → /?oo=CODE&oo_login=<provider>). Fires once, from
+    // initLoginScreen OR this watcher (whichever sees the login screen first), never when a session is already live.
+    (function () {
+        try {
+            var provider = null;
+            try { provider = sessionStorage.getItem('oo_login'); } catch (e) {}
+            if (!provider) { var m = location.search.match(/[?&]oo_login=(line|kakao|google)\b/); provider = m && m[1]; }
+            if (!provider) return;
+            var done = false;
+            window.__ooHandoff = function () {
+                if (done) return false;
+                try { if (!localStorage.getItem('oo_invite')) return false; } catch (e) { return false; }
+                if (window.AppState && AppState.session && AppState.session.isAuthenticated) return false;
+                var fn = provider === 'kakao' ? window.loginWithKakao : (provider === 'google' ? window.loginWithGoogle : window.loginWithLINE);
+                if (typeof fn !== 'function') return false;
+                done = true;
+                try { sessionStorage.removeItem('oo_login'); } catch (e) {}
+                try { history.replaceState(null, '', location.pathname); } catch (e) {}
+                setTimeout(function () { try { fn(); } catch (e) { console.warn('[1on1] hand-off', e); } }, 250);
+                return true;
+            };
+            var tries = 0;
+            var t = setInterval(function () {
+                tries++;
+                var ls = document.getElementById('loginScreen');
+                if (done || tries > 60 || (window.AppState && AppState.session && AppState.session.isAuthenticated)) { clearInterval(t); return; }
+                if (ls && ls.classList.contains('active') && window.__ooHandoff()) clearInterval(t);
+            }, 500);
+        } catch (e) {}
+    })();
+    </script>
+    <script src="oo-1on1.js?v=1103"></script>
     <script src="g3-desk.js?v=1091"></script>
     <script src="g3-org.js?v=1087"></script>
 </body>

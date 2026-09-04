@@ -92072,9 +92072,12 @@ class LiveScorecardSystem {
                 item.retries++;
                 if (item.retries >= 5) {
                     console.error(`[LiveScorecard] ❌ DB save failed after 5 retries: ${item.playerName} H${item.hole}`, error);
-                    console.warn(`[LiveScorecard] 💾 Score preserved in scoresCache for reconciliation at round completion`);
                     this.showSyncIndicator('error');
-                    this._scoreQueue.shift(); // Give up after 5 retries — reconciliation at round end will catch it
+                    // 2026-09-04 (TRGG Green Valley, Pete: leaderboard points didn't match the card): giving up here
+                    // used to drop the hole until the round was COMPLETED, so the live board was permanently short
+                    // that hole mid-round. Remember it and let the reconcile pass re-push it on the next save.
+                    this._failedScores.push({ hole: item.hole, playerName: item.playerName });
+                    this._scoreQueue.shift();
                 } else {
                     // Exponential backoff: 1s, 2s, 4s, 8s
                     const backoffMs = Math.min(1000 * Math.pow(2, item.retries - 1), 8000);
@@ -92085,6 +92088,46 @@ class LiveScorecardSystem {
         }
 
         this._queueProcessing = false;
+        // Drained: push anything the server is still missing (dropped saves, lost connections).
+        this._reconcileMissingScores().catch(e => console.warn('[LiveScorecard] reconcile', e));
+    }
+
+    // Re-upload holes that exist in scoresCache but NOT in the DB. Runs after the save queue drains
+    // (throttled), so the next hole a scorer enters also repairs any hole that failed earlier.
+    _failedScores = [];
+    _reconcileAt = 0;
+    async _reconcileMissingScores(force) {
+        if (!force && Date.now() - this._reconcileAt < 60000) return;
+        this._reconcileAt = Date.now();
+        const sb = window.SupabaseDB?.client;
+        if (!sb || !this.scorecards || !Array.isArray(this.players) || !this.players.length) return;
+        let repaired = 0;
+        for (const player of this.players) {
+            const scorecardId = this.scorecards[player.id];
+            if (!scorecardId || String(scorecardId).startsWith('local_')) continue;
+            const cache = this.scoresCache?.[player.id] || {};
+            const localHoles = Object.keys(cache).map(Number).filter(h => h >= 1 && h <= 18 && cache[h] != null);
+            if (!localHoles.length) continue;
+            const { data, error } = await sb.from('scores').select('hole_number').eq('scorecard_id', scorecardId);
+            if (error) continue;                                  // offline: try again next drain
+            const have = new Set((data || []).map(r => Number(r.hole_number)));
+            for (const hole of localHoles) {
+                if (have.has(hole)) continue;
+                const holeData = this.getHoleData(hole);
+                const par = holeData?.par || 4;
+                const strokeIndex = holeData?.stroke_index || holeData?.strokeIndex || hole;
+                const playerHandicap = this.getGameHandicap
+                    ? (this.getGameHandicap('stableford', player.id) ?? player.handicap)
+                    : player.handicap;
+                console.warn(`[LiveScorecard] ♻️ re-uploading missing hole: ${player.name} H${hole}=${cache[hole]}`);
+                this.queueScoreSave(scorecardId, hole, cache[hole], par, strokeIndex, playerHandicap, player.name);
+                repaired++;
+            }
+        }
+        if (repaired) {
+            this._failedScores = [];
+            try { NotificationManager.show(`Re-sent ${repaired} missing hole${repaired > 1 ? 's' : ''} to the leaderboard`, 'info'); } catch (e) {}
+        }
     }
 
     showSyncIndicator(status) {
@@ -102886,6 +102929,8 @@ window.GreatShotToast = {
 };
 
 window.LiveScorecardManager = new LiveScorecardSystem();
+// 2026-09-04: force a re-upload of any hole the server is missing ("scores entered but not on the board").
+window.resyncScores = () => window.LiveScorecardManager?._reconcileMissingScores(true);
 // Lower-case alias: the pool skins/match-play boards and the aggregate live board read
 // window.golfScoringEngine, which was never assigned anywhere (TypeError on first use).
 // NOTE: deliberately NOT window.GolfScoringEngine (capital G) — the organizer scorers gate a

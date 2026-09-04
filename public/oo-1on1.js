@@ -286,25 +286,45 @@
       'oo.adm.search': 'Search name or id', 'oo.adm.new': 'New', 'oo.adm.share': 'Share', 'oo.adm.since': 'Since', 'oo.adm.view': 'View', 'oo.adm.suspendmember': 'Suspend member', 'oo.adm.suspendpartner': 'Suspend partner',
       'oo.adm.codes': '{n} open codes', 'oo.adm.newphotos': '{n} new photos', 'oo.adm.approvedn': '{n} approved', 'oo.adm.activen': '{n} active', 'oo.adm.openn': '{n} open', 'oo.adm.upcomingn': '{n} upcoming', 'oo.back': 'Back',
       'oo.adm.removed': 'Removed', 'oo.adm.deactivate': 'Deactivate', 'oo.adm.restore': 'Restore', 'oo.adm.deactivated': 'Member deactivated',
-      'oo.adm.deactivate.q': 'Deactivate {name}? Their 1on1 cube disappears on their next reload or login. Open bookings are cancelled.' },
+      'oo.adm.deactivate.q': 'Deactivate {name}? Their 1on1 cube disappears on their next reload or login. Open bookings are cancelled.',
+      'oo.photo.title': 'Facial profile photo required', 'oo.photo.need': 'Add a clear photo of your face within 24 hours of activation or your 1on1 access is suspended. Avatars, emoji and cartoons are not accepted.', 'oo.photo.left': '{h}h left', 'oo.photo.overdue': 'Overdue',
+      'oo.photo.suspended': 'Your 1on1 access is suspended: no facial profile photo. Add one to restore access.', 'oo.photo.add': 'Add photo', 'oo.photo.use': 'Use current photo', 'oo.photo.checking': 'Checking photo…', 'oo.photo.ok': 'Photo accepted', 'oo.photo.restored': 'Photo accepted — access restored',
+      'oo.photo.rejected': 'Not accepted: {reason} Upload a clear photo of your face.', 'oo.photo.failed': 'Photo check failed. Please try again.', 'oo.cube.photo': 'Add a facial photo',
+      'oo.adm.nophoto': 'No photo', 'oo.adm.photo.unverified': 'Photo not verified', 'oo.adm.photo.ok': 'Photo OK', 'oo.adm.photo.accept': 'Accept photo', 'oo.adm.photo.reject': 'Reject photo', 'oo.adm.nophoton': '{n} without photo', 'oo.adm.suspended.nophoto': 'Suspended · no photo',
+      'oo.push.member_ok2': 'Your 1on1 access is approved. Add a clear photo of your face within 24 hours or your access will be suspended. Open MyCaddiPro to find a partner.' },
     th: { 'oo.adm.overview': 'ภาพรวม', 'oo.adm.asmember': 'ดูแบบสมาชิก', 'oo.adm.needs': 'รอดำเนินการ', 'oo.adm.allclear': 'ไม่มีค้าง', 'oo.adm.active': 'ใช้งาน', 'oo.adm.pending': 'รออนุมัติ',
       'oo.adm.approved': 'อนุมัติแล้ว', 'oo.adm.suspended': 'ถูกระงับ', 'oo.adm.expired': 'หมดอายุ', 'oo.adm.all': 'ทั้งหมด', 'oo.adm.open': 'เปิด', 'oo.adm.reviewed': 'ตรวจแล้ว', 'oo.adm.actioned': 'ดำเนินการแล้ว', 'oo.adm.dismissed': 'ยกคำร้อง', 'oo.adm.closed': 'ปิดแล้ว',
       'oo.adm.search': 'ค้นหาชื่อหรือไอดี', 'oo.adm.new': 'ใหม่', 'oo.adm.share': 'แชร์', 'oo.adm.since': 'ตั้งแต่', 'oo.adm.view': 'ดู', 'oo.adm.suspendmember': 'ระงับสมาชิก', 'oo.adm.suspendpartner': 'ระงับคู่เล่น',
       'oo.adm.codes': 'รหัสใช้ได้ {n}', 'oo.adm.newphotos': 'รูปใหม่ {n}', 'oo.adm.approvedn': 'อนุมัติแล้ว {n}', 'oo.adm.activen': 'ใช้งาน {n}', 'oo.adm.openn': 'เปิด {n}', 'oo.adm.upcomingn': 'กำลังมา {n}', 'oo.back': 'กลับ',
       'oo.adm.removed': 'ถูกลบ', 'oo.adm.deactivate': 'ยกเลิกสมาชิก', 'oo.adm.restore': 'คืนสิทธิ์', 'oo.adm.deactivated': 'ยกเลิกสมาชิกแล้ว',
-      'oo.adm.deactivate.q': 'ยกเลิกสมาชิก {name}? คิวบ์ 1on1 จะหายไปเมื่อเขาโหลดหน้าใหม่หรือเข้าสู่ระบบครั้งถัดไป การจองที่ค้างอยู่จะถูกยกเลิก' },
+      'oo.adm.deactivate.q': 'ยกเลิกสมาชิก {name}? คิวบ์ 1on1 จะหายไปเมื่อเขาโหลดหน้าใหม่หรือเข้าสู่ระบบครั้งถัดไป การจองที่ค้างอยู่จะถูกยกเลิก',
+      'oo.photo.title': 'ต้องมีรูปโปรไฟล์ที่เห็นใบหน้า', 'oo.photo.need': 'เพิ่มรูปใบหน้าที่ชัดเจนภายใน 24 ชั่วโมงหลังเปิดใช้งาน มิฉะนั้นสิทธิ์ 1on1 จะถูกระงับ ไม่รับอวาตาร์ อีโมจิ หรือการ์ตูน', 'oo.photo.left': 'เหลือ {h} ชม.', 'oo.photo.overdue': 'เลยกำหนด',
+      'oo.photo.suspended': 'สิทธิ์ 1on1 ของคุณถูกระงับ: ไม่มีรูปโปรไฟล์ที่เห็นใบหน้า เพิ่มรูปเพื่อคืนสิทธิ์', 'oo.photo.add': 'เพิ่มรูป', 'oo.photo.use': 'ใช้รูปปัจจุบัน', 'oo.photo.checking': 'กำลังตรวจรูป…', 'oo.photo.ok': 'รูปผ่านแล้ว', 'oo.photo.restored': 'รูปผ่านแล้ว — คืนสิทธิ์แล้ว',
+      'oo.photo.rejected': 'ไม่ผ่าน: {reason} กรุณาอัปโหลดรูปใบหน้าที่ชัดเจน', 'oo.photo.failed': 'ตรวจรูปไม่สำเร็จ กรุณาลองใหม่', 'oo.cube.photo': 'เพิ่มรูปใบหน้า',
+      'oo.adm.nophoto': 'ไม่มีรูป', 'oo.adm.photo.unverified': 'รูปยังไม่ยืนยัน', 'oo.adm.photo.ok': 'รูปผ่าน', 'oo.adm.photo.accept': 'ยอมรับรูป', 'oo.adm.photo.reject': 'ปฏิเสธรูป', 'oo.adm.nophoton': 'ไม่มีรูป {n}', 'oo.adm.suspended.nophoto': 'ระงับ · ไม่มีรูป',
+      'oo.push.member_ok2': 'สิทธิ์ 1on1 ของคุณได้รับอนุมัติแล้ว เพิ่มรูปใบหน้าที่ชัดเจนภายใน 24 ชั่วโมง มิฉะนั้นสิทธิ์จะถูกระงับ เปิด MyCaddiPro เพื่อหาคู่เล่น' },
     ko: { 'oo.adm.overview': '개요', 'oo.adm.asmember': '회원으로 보기', 'oo.adm.needs': '처리 필요', 'oo.adm.allclear': '모두 처리됨', 'oo.adm.active': '활성', 'oo.adm.pending': '대기',
       'oo.adm.approved': '승인됨', 'oo.adm.suspended': '정지됨', 'oo.adm.expired': '만료', 'oo.adm.all': '전체', 'oo.adm.open': '미처리', 'oo.adm.reviewed': '검토됨', 'oo.adm.actioned': '조치됨', 'oo.adm.dismissed': '기각', 'oo.adm.closed': '종료',
       'oo.adm.search': '이름 또는 ID 검색', 'oo.adm.new': '신규', 'oo.adm.share': '공유', 'oo.adm.since': '가입', 'oo.adm.view': '보기', 'oo.adm.suspendmember': '회원 정지', 'oo.adm.suspendpartner': '파트너 정지',
       'oo.adm.codes': '사용 가능 코드 {n}개', 'oo.adm.newphotos': '새 사진 {n}장', 'oo.adm.approvedn': '승인 {n}명', 'oo.adm.activen': '활성 {n}명', 'oo.adm.openn': '미처리 {n}건', 'oo.adm.upcomingn': '예정 {n}건', 'oo.back': '뒤로',
       'oo.adm.removed': '삭제됨', 'oo.adm.deactivate': '비활성화', 'oo.adm.restore': '복원', 'oo.adm.deactivated': '회원이 비활성화되었습니다',
-      'oo.adm.deactivate.q': '{name} 회원을 비활성화할까요? 다음 새로고침 또는 로그인 시 1on1 큐브가 사라집니다. 진행 중인 예약은 취소됩니다.' },
+      'oo.adm.deactivate.q': '{name} 회원을 비활성화할까요? 다음 새로고침 또는 로그인 시 1on1 큐브가 사라집니다. 진행 중인 예약은 취소됩니다.',
+      'oo.photo.title': '얼굴 프로필 사진 필수', 'oo.photo.need': '활성화 후 24시간 이내에 얼굴이 선명하게 보이는 사진을 등록하지 않으면 1on1 이용이 정지됩니다. 아바타, 이모지, 캐릭터 이미지는 인정되지 않습니다.', 'oo.photo.left': '{h}시간 남음', 'oo.photo.overdue': '기한 초과',
+      'oo.photo.suspended': '얼굴 프로필 사진이 없어 1on1 이용이 정지되었습니다. 사진을 등록하면 다시 이용할 수 있습니다.', 'oo.photo.add': '사진 등록', 'oo.photo.use': '현재 사진 사용', 'oo.photo.checking': '사진 확인 중…', 'oo.photo.ok': '사진이 승인되었습니다', 'oo.photo.restored': '사진이 승인되어 이용이 복구되었습니다',
+      'oo.photo.rejected': '승인되지 않음: {reason} 얼굴이 선명한 사진을 올려 주세요.', 'oo.photo.failed': '사진 확인에 실패했습니다. 다시 시도해 주세요.', 'oo.cube.photo': '얼굴 사진 등록',
+      'oo.adm.nophoto': '사진 없음', 'oo.adm.photo.unverified': '사진 미확인', 'oo.adm.photo.ok': '사진 확인됨', 'oo.adm.photo.accept': '사진 승인', 'oo.adm.photo.reject': '사진 거절', 'oo.adm.nophoton': '사진 없음 {n}명', 'oo.adm.suspended.nophoto': '정지 · 사진 없음',
+      'oo.push.member_ok2': '1on1 이용이 승인되었습니다. 24시간 이내에 얼굴이 선명한 사진을 등록하지 않으면 이용이 정지됩니다. MyCaddiPro를 열어 파트너를 찾아보세요.' },
     ja: { 'oo.adm.overview': '概要', 'oo.adm.asmember': '会員として見る', 'oo.adm.needs': '対応が必要', 'oo.adm.allclear': '対応待ちなし', 'oo.adm.active': '有効', 'oo.adm.pending': '保留',
       'oo.adm.approved': '承認済', 'oo.adm.suspended': '停止中', 'oo.adm.expired': '期限切れ', 'oo.adm.all': 'すべて', 'oo.adm.open': '未処理', 'oo.adm.reviewed': '確認済', 'oo.adm.actioned': '対応済', 'oo.adm.dismissed': '却下', 'oo.adm.closed': '終了',
       'oo.adm.search': '名前またはIDで検索', 'oo.adm.new': '新規', 'oo.adm.share': '共有', 'oo.adm.since': '登録', 'oo.adm.view': '表示', 'oo.adm.suspendmember': '会員を停止', 'oo.adm.suspendpartner': '同伴者を停止',
       'oo.adm.codes': '有効コード{n}件', 'oo.adm.newphotos': '新しい写真{n}枚', 'oo.adm.approvedn': '承認済{n}名', 'oo.adm.activen': '有効{n}名', 'oo.adm.openn': '未処理{n}件', 'oo.adm.upcomingn': '予定{n}件', 'oo.back': '戻る',
       'oo.adm.removed': '削除済', 'oo.adm.deactivate': '無効化', 'oo.adm.restore': '復元', 'oo.adm.deactivated': '会員を無効化しました',
-      'oo.adm.deactivate.q': '{name}を無効化しますか？次回の再読み込みまたはログイン時に1on1キューブが消えます。進行中の予約はキャンセルされます。' }
+      'oo.adm.deactivate.q': '{name}を無効化しますか？次回の再読み込みまたはログイン時に1on1キューブが消えます。進行中の予約はキャンセルされます。',
+      'oo.photo.title': '顔写真のプロフィール写真が必要です', 'oo.photo.need': '有効化から24時間以内に顔がはっきり写った写真を登録しないと、1on1の利用が停止されます。アバター・絵文字・イラストは不可です。', 'oo.photo.left': '残り{h}時間', 'oo.photo.overdue': '期限超過',
+      'oo.photo.suspended': '顔写真が未登録のため1on1の利用が停止されています。写真を登録すると再開できます。', 'oo.photo.add': '写真を追加', 'oo.photo.use': '現在の写真を使う', 'oo.photo.checking': '写真を確認中…', 'oo.photo.ok': '写真が承認されました', 'oo.photo.restored': '写真が承認され、利用が再開されました',
+      'oo.photo.rejected': '不承認: {reason} 顔がはっきり写った写真をアップロードしてください。', 'oo.photo.failed': '写真の確認に失敗しました。もう一度お試しください。', 'oo.cube.photo': '顔写真を追加',
+      'oo.adm.nophoto': '写真なし', 'oo.adm.photo.unverified': '写真未確認', 'oo.adm.photo.ok': '写真OK', 'oo.adm.photo.accept': '写真を承認', 'oo.adm.photo.reject': '写真を却下', 'oo.adm.nophoton': '写真なし{n}名', 'oo.adm.suspended.nophoto': '停止 · 写真なし',
+      'oo.push.member_ok2': '1on1の利用が承認されました。24時間以内に顔がはっきり写った写真を登録しないと利用が停止されます。MyCaddiProを開いて同伴者を探しましょう。' }
   };
   Object.keys(DICT3).forEach(function (l) { Object.assign(DICT[l], DICT3[l]); });
   try { if (typeof translations !== 'undefined') Object.keys(DICT3).forEach(function (l) { if (translations[l]) Object.assign(translations[l], DICT3[l]); }); } catch (e) {}
@@ -469,9 +489,10 @@
       var me = this.me || {}; var txt = T('oo.cube.open', 'Find a partner');
       if (this._needsRelogin) txt = T('oo.cube.relogin', 'Log in again to unlock');
       else if (me.member && me.member.status === 'pending') txt = T('oo.cube.pending', 'Pending approval');
-      else if (me.member && me.member.status === 'suspended') txt = T('oo.suspended', 'Suspended');
+      else if (me.member && me.member.status === 'suspended') txt = me.member.suspended_reason === 'no_photo' ? T('oo.cube.photo', 'Add a facial photo') : T('oo.suspended', 'Suspended');
       var up = (this.bookings || []).filter(function (b) { return b.status === 'accepted' && b.date_to >= today(); }).length;
       if (up) txt = TT('oo.cube.upcoming', { n: up });
+      if (!this._needsRelogin && me.member && me.member.status === 'active' && me.photo_ok === false) txt = T('oo.cube.photo', 'Add a facial photo');   /* v1100: the photo rule outranks the rest */
       try { GolferCubeInfo.setPill('cubeInfo1on1', txt); } catch (e) {}
       try { DashboardBadges.setBadge('ooCubeBadge', this.unseenResponses()); } catch (e) {}
     },
@@ -528,6 +549,7 @@
       if (!this.cad.partner) { this.cad.bookings = []; this.cad.media = []; this.cad.blackouts = []; return; }
       var pid = this.cad.partner.id; this.cad.loadedAt = Date.now();
       try { var b = await sb().from('oo_bookings').select('*, oo_members(display_name)').eq('partner_id', pid).order('date_from', { ascending: false }).limit(200); this.cad.bookings = b.data || []; } catch (e) { this.cad.bookings = []; }
+      try { var mids = (this.cad.bookings || []).map(function (b) { return b.member_id; }).filter(function (v, i, arr) { return v && arr.indexOf(v) === i; }); this.cad.photos = {}; if (mids.length) { var pr = await sb().from('user_profiles').select('line_user_id, photo:profile_data->media->>profilePhoto').in('line_user_id', mids.slice(0, 200)); var phm = this.cad.photos; (pr.data || []).forEach(function (u) { if (u.photo) phm[u.line_user_id] = u.photo; }); } } catch (e) { this.cad.photos = {}; }   /* v1100: the member's (verified) face */
       try { var m = await sb().from('oo_media').select('*').eq('partner_id', pid).neq('status', 'removed').order('sort_order').order('created_at'); this.cad.media = m.data || []; } catch (e) { this.cad.media = []; }
       try { var k = await sb().from('oo_blackouts').select('*').eq('partner_id', pid).order('date_from'); this.cad.blackouts = k.data || []; } catch (e) { this.cad.blackouts = []; }
       try { this.cad.savedBy = await rpc('oo_partner_saved_count'); } catch (e) { this.cad.savedBy = null; }
@@ -557,7 +579,7 @@
       /* data in the background; the shell is already on screen. Stale results (user left / re-entered) are dropped. */
       var load = this.side === 'member' ? Promise.all([this.loadMine(), this.loadLiked()]) : (this.side === 'partner' ? this.cadLoad() : this.admLoad());
       Promise.resolve(load).then(function () { if (seq !== self._seq || !self.isOpen()) return; self.paintShell(); if (self.view !== 'home') self.render(); }).catch(function () {});
-      if ((Date.now() - this._meAt) > 15000) this.refreshMe().then(function () { if (seq !== self._seq || !self.isOpen()) return; if (self.view !== 'home') self.render(); }).catch(function () {});
+      if ((Date.now() - this._meAt) > 15000) this.refreshMe().then(function () { if (seq !== self._seq || !self.isOpen()) return; self.paintPhotoBar(); if (self.view !== 'home') self.render(); }).catch(function () {});
     },
     /* leave to the dashboard that opened us; the screen's own NavHistory entries are dropped so the
        golfer/caddie back button behaves as if 1on1 was never visited */
@@ -668,6 +690,7 @@
     },
     /* chips + badges on the cubes / dock / tabs from the loaded data */
     async paintShell() {
+      this.paintPhotoBar();
       if (!document.getElementById('ooDashboard')) return;
       var me = this.me || {};
       var set = function (id, txt) { var el = document.getElementById(id); if (el && txt != null) el.textContent = txt; };
@@ -723,13 +746,84 @@
       var m = me.member; if (!m || m.status === 'removed') return '<div class="oo-card">' + esc(T('oo.err.not_a_member', DICT.en['oo.err.not_a_member'])) + '</div>';
       if (m.status === 'active' && this.needsPin()) return this.pinHtml();
       if (m.status === 'pending') return '<div class="oo-card" style="border-color:#fcd34d;background:#fffbeb">' + esc(T('oo.pending.msg', DICT.en['oo.pending.msg'])) + '</div>';
-      if (m.status === 'suspended') return '<div class="oo-card" style="border-color:#fca5a5;background:#fef2f2">' + esc(T('oo.suspended.msg', DICT.en['oo.suspended.msg'])) + '</div>';
+      if (m.status === 'suspended') return m.suspended_reason === 'no_photo' ? this.photoCardHtml(true) : '<div class="oo-card" style="border-color:#fca5a5;background:#fef2f2">' + esc(T('oo.suspended.msg', DICT.en['oo.suspended.msg'])) + '</div>';
       if (m.status === 'expired' || !me.member_active) return '<div class="oo-card" style="border-color:#fca5a5;background:#fef2f2">' + esc(T('oo.expired.msg', DICT.en['oo.expired.msg'])) + '</div>';
       return '';
     },
 
     /* ---------- access PIN (v1094): the DB refuses member reads/writes until oo_verify_pin passes ---------- */
     needsPin() { var me = this.me || {}; return !!(me.signed_in && !me.admin && me.member && me.pin_required && !me.pin_ok); },
+    /* ---------- facial profile photo (v1100): required within 24h of activation. Pete: "it can't be a avatar or emoji, it must be
+       a facial photo". Upload → edge fn oo-face-check (Gemini) → DB stamps oo_members.photo_* and sets the app profile photo.
+       The DB sweep suspends (suspended_reason = 'no_photo'); a verified photo restores. ---------- */
+    photoNeeded() { var me = this.me || {}; var m = me.member; return !!(me.signed_in && !me.admin && m && me.photo_ok === false && (m.status === 'active' || (m.status === 'suspended' && m.suspended_reason === 'no_photo'))); },
+    photoCardHtml(suspended) {
+      var me = this.me || {}; var cur = me.photo_url || ''; var left = '';
+      if (!suspended && me.photo_due) { var ms = new Date(me.photo_due).getTime() - Date.now(); left = ms > 0 ? TT('oo.photo.left', { h: Math.max(1, Math.ceil(ms / 3600000)) }) : T('oo.photo.overdue', 'Overdue'); }
+      return '<div class="oo-card" id="ooPhotoCard" style="border-color:' + (suspended ? '#fca5a5' : '#fcd34d') + ';background:' + (suspended ? '#fef2f2' : '#fffbeb') + '">' +
+        '<div style="display:flex;gap:10px;align-items:center">' +
+        (cur ? '<img src="' + esc(cur) + '" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex:0 0 56px;background:#e2e8f0">' : '<div style="width:56px;height:56px;border-radius:50%;background:#e2e8f0;flex:0 0 56px;display:flex;align-items:center;justify-content:center;font-weight:800;color:#475569">?</div>') +
+        '<div style="flex:1;min-width:0"><div style="font-weight:800;color:#0f172a">' + esc(T('oo.photo.title', DICT.en['oo.photo.title'])) + (left ? ' · ' + esc(left) : '') + '</div>' +
+        '<div class="oo-kv" style="margin-top:2px">' + esc(suspended ? T('oo.photo.suspended', DICT.en['oo.photo.suspended']) : T('oo.photo.need', DICT.en['oo.photo.need'])) + '</div></div></div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><button type="button" class="oo-btn pri" onclick="OneOnOne.photoPick()">' + esc(T('oo.photo.add', 'Add photo')) + '</button>' +
+        (cur && !this._photoTriedCur ? '<button type="button" class="oo-btn" onclick="OneOnOne.photoVerify(null)">' + esc(T('oo.photo.use', 'Use current photo')) + '</button>' : '') + '</div></div>';
+    },
+    paintPhotoBar() {
+      var main = document.querySelector('#ooDashboard main'); if (!main) return;
+      var bar = document.getElementById('ooPhotoBar');
+      if (!bar) { bar = document.createElement('div'); bar.id = 'ooPhotoBar'; bar.style.marginBottom = '10px'; main.insertBefore(bar, main.firstChild); }
+      var show = this.side === 'member' && this.photoNeeded() && this.me.member.status === 'active' && !this.needsPin();
+      bar.style.display = show ? '' : 'none'; bar.innerHTML = show ? this.photoCardHtml(false) : '';
+    },
+    photoPick() {
+      var inp = document.getElementById('ooPhotoInput');
+      if (!inp) {
+        inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.id = 'ooPhotoInput'; inp.style.display = 'none';   /* NO capture attr — dead tap in LINE WebView (v1029) */
+        inp.addEventListener('change', function () { var f = inp.files && inp.files[0]; inp.value = ''; if (f) OneOnOne.photoUpload(f); });
+        document.body.appendChild(inp);
+      }
+      inp.click();
+    },
+    async photoUpload(file) {
+      if (!file || !/^image\//.test(file.type || '')) return;
+      toast(T('oo.photo.checking', 'Checking photo…'), 'info');
+      try {
+        var blob = file;
+        if (window.ContentModeration && ContentModeration.processImage) {   /* EXIF strip + size cap + NSFW — same pipeline as the profile page */
+          var r = await ContentModeration.processImage(file);
+          if (!r || !r.valid) { toast((r && r.error) || T('oo.photo.failed', DICT.en['oo.photo.failed']), 'error'); return; }
+          blob = r.processedBlob || file;
+        }
+        var type = blob.type || 'image/jpeg'; var ext = type === 'image/png' ? 'png' : (type === 'image/webp' ? 'webp' : 'jpg');
+        var path = 'profile-photos/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+        var up = await sb().storage.from('profile-photos').upload(path, blob, { contentType: type, upsert: false });
+        if (up.error) throw up.error;
+        var pub = sb().storage.from('profile-photos').getPublicUrl(path); var url = pub && pub.data && pub.data.publicUrl;
+        if (!url) throw new Error('upload_failed');
+        await this.photoVerify(url);
+      } catch (e) { console.warn('[1on1] photo upload', e); toast(T('oo.photo.failed', DICT.en['oo.photo.failed']), 'error'); }
+    },
+    async photoVerify(url) {
+      toast(T('oo.photo.checking', 'Checking photo…'), 'info');
+      try {
+        var r = await sb().functions.invoke('oo-face-check', { body: url ? { url: url } : { use_current: true } });
+        if (r.error) { var code = ''; try { code = (await r.error.context.json()).error || ''; } catch (e) {} throw new Error(code || r.error.message || 'check_failed'); }
+        var d = r.data || {}; if (!url) this._photoTriedCur = true;
+        var wasSusp = !!(this.me && this.me.member && this.me.member.status === 'suspended');
+        if (d.ok) {
+          try { var p = window.ProfileSystem && ProfileSystem.getCurrentProfile && ProfileSystem.getCurrentProfile('golfer'); if (p) { p.media = p.media || {}; p.media.profilePhoto = d.url || url || p.media.profilePhoto; } } catch (e) {}
+          await this.refreshMe(true);
+          toast(wasSusp ? T('oo.photo.restored', DICT.en['oo.photo.restored']) : T('oo.photo.ok', 'Photo accepted'), 'success');
+        } else {
+          await this.refreshMe(true);
+          toast(TT('oo.photo.rejected', { reason: d.reason || d.kind || '' }), 'error');
+        }
+        this.paintCube(); if (this.isOpen()) { this.paintShell(); this.render(); }
+      } catch (e) {
+        console.warn('[1on1] photo verify', e);
+        toast(/not_signed_in|no_line_id/.test(String(e && e.message || '')) ? T('oo.signin.msg', DICT.en['oo.signin.msg']) : T('oo.photo.failed', DICT.en['oo.photo.failed']), 'error');
+      }
+    },
     pinHtml() {
       var me = this.me || {};
       if (me.pin_set === false) return '<div class="oo-card oo-pin" style="border-color:#fcd34d;background:#fffbeb">' + esc(T('oo.err.pin_not_set', DICT.en['oo.err.pin_not_set'])) + '</div>';
@@ -1135,7 +1229,8 @@
       var other = side === 'member' ? (b.oo_partners && b.oo_partners.display_name) : (b.oo_members && b.oo_members.display_name);
       var otherId = side === 'member' ? (b.oo_partners && b.oo_partners.user_id) : b.member_id;
       var open = (b.status === 'requested' || b.status === 'accepted') && b.date_to >= today();
-      var h = '<div class="oo-row"><div class="av">' + esc(initials(other || '?')) + '</div><div style="flex:1;min-width:0">' +
+      var pic = side === 'partner' ? ((this.cad.photos || {})[b.member_id] || '') : '';
+      var h = '<div class="oo-row">' + this.admAvatar(pic, other || '?') + '<div style="flex:1;min-width:0">' +
         '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div style="font-weight:800">' + esc(other || (side === 'member' ? 'Partner' : 'Member')) + '</div>' + stChip(b.status) + '</div>' +
         '<div class="oo-kv"><b>' + esc(fmtRange(b.date_from, b.date_to)) + '</b>' + (b.course_name ? ' · ' + esc(b.course_name) : '') + ' · ' + esc(b.holes) + ' ' + esc(T('oo.holes', 'holes')) + (b.tee_time ? ' · ' + esc(String(b.tee_time).slice(0, 5)) : '') + '</div>' +
         (b.notes ? '<div class="oo-kv" style="white-space:pre-wrap">' + esc(b.notes) + '</div>' : '') +
@@ -1335,6 +1430,14 @@
         q('oo_media', '*, oo_partners(display_name)'), q('oo_reports', '*, oo_bookings(date_from, date_to, course_name)')
       ]);
       a.members = res[0]; a.partners = res[1]; a.invites = res[2]; a.bookings = res[3]; a.media = res[4]; a.reports = res[5];
+      a.photos = {};   /* v1100: current profile photo per member (user_profiles is anon-readable) */
+      try {
+        var ids = a.members.map(function (m) { return m.user_id; }).filter(function (v, i, arr) { return v && arr.indexOf(v) === i; });
+        for (var i = 0; i < ids.length; i += 200) {
+          var pr = await c.from('user_profiles').select('line_user_id, photo:profile_data->media->>profilePhoto').in('line_user_id', ids.slice(i, i + 200));
+          (pr.data || []).forEach(function (u) { if (u.photo) a.photos[u.line_user_id] = u.photo; });
+        }
+      } catch (e) { console.warn('[1on1] admin photos', e); }
       a.stats = this.admStats(); a.loadedAt = Date.now();
       return a;
     },
@@ -1343,6 +1446,7 @@
       var n = function (arr, f) { return (arr || []).filter(f).length; };
       return {
         members_active: n(a.members, function (m) { return m.status === 'active'; }), members_pending: n(a.members, function (m) { return m.status === 'pending'; }),
+        members_nophoto: n(a.members, function (m) { return (m.status === 'active' || (m.status === 'suspended' && m.suspended_reason === 'no_photo')) && !(m.photo_verified_at && m.photo_url && m.photo_url === ((a.photos || {})[m.user_id] || '')); }),
         partners_approved: n(a.partners, function (p) { return p.status === 'approved'; }), partners_pending: n(a.partners, function (p) { return p.status === 'pending'; }),
         bookings_requested: n(a.bookings, function (b) { return b.status === 'requested' && b.date_to >= t; }), bookings_upcoming: n(a.bookings, function (b) { return b.status === 'accepted' && b.date_to >= t; }),
         invites_open: n(a.invites, function (i) { return i.used < i.max_uses && (!i.expires_at || i.expires_at >= new Date().toISOString()); }),
@@ -1352,7 +1456,7 @@
     },
     async admRefresh() { await this.admLoad(); this.paintShell(); this.render(); },
     admChip(status) {
-      var cls = { pending: 'bg-amber-50 text-amber-800', active: 'bg-green-50 text-green-700', approved: 'bg-green-50 text-green-700', suspended: 'bg-red-50 text-red-700', expired: 'bg-gray-100 text-gray-700', removed: 'bg-slate-700 text-white',
+      var cls = { pending: 'bg-amber-50 text-amber-800', active: 'bg-green-50 text-green-700', approved: 'bg-green-50 text-green-700', suspended: 'bg-red-50 text-red-700', 'suspended.nophoto': 'bg-red-50 text-red-700', expired: 'bg-gray-100 text-gray-700', removed: 'bg-slate-700 text-white',
         open: 'bg-amber-50 text-amber-800', reviewed: 'bg-sky-50 text-sky-700', actioned: 'bg-green-50 text-green-700', dismissed: 'bg-gray-100 text-gray-700' }[status] || 'bg-gray-100 text-gray-700';
       return '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full ' + cls + '">' + esc(T('oo.adm.' + status, status)) + '</span>';
     },
@@ -1394,7 +1498,7 @@
       var root = document.getElementById('ooRoot'); var a = this.adm; var s = a.stats || this.admStats(); var t = today();
       var tile = function (view, label, big, sub, col) { return '<button type="button" class="oo-card" style="text-align:left;cursor:pointer" onclick="OneOnOne.nav(\'' + view + '\')"><div class="oo-kv">' + esc(label) + '</div><div style="font-size:24px;font-weight:800;color:' + col + ';line-height:1.1">' + big + '</div><div class="oo-kv">' + sub + '</div></button>'; };
       var h = '<div class="oo-kpi">' +
-        tile('members', T('oo.adm.members', 'Members'), s.members_active, '<b style="color:#b45309">' + s.members_pending + '</b> ' + esc(T('oo.adm.pending', 'Pending')), '#0f172a') +
+        tile('members', T('oo.adm.members', 'Members'), s.members_active, '<b style="color:#b45309">' + s.members_pending + '</b> ' + esc(T('oo.adm.pending', 'Pending')) + (s.members_nophoto ? ' · <b style="color:#b91c1c">' + s.members_nophoto + '</b> ' + esc(T('oo.adm.nophoto', 'No photo')) : ''), '#0f172a') +
         tile('partners', T('oo.adm.partners', 'Partners'), s.partners_approved, '<b style="color:#b45309">' + s.partners_pending + '</b> ' + esc(T('oo.adm.pending', 'Pending')), '#15803d') +
         tile('bookings', T('oo.adm.bookings', 'Bookings'), s.bookings_upcoming, '<b style="color:#b45309">' + s.bookings_requested + '</b> ' + esc(T('oo.st.requested', 'Requested')), '#0f172a') +
         tile('reports', T('oo.adm.reports', 'Reports'), s.reports_open, esc(T('oo.adm.open', 'Open')) + ' · ' + esc(TT('oo.adm.newphotos', { n: s.media_new })), s.reports_open ? '#b91c1c' : '#0f172a') + '</div>';
@@ -1417,11 +1521,22 @@
           ? '<button type="button" class="oo-btn warn" onclick="OneOnOne.admMember(\'' + id + '\', \'suspended\')">' + esc(T('oo.adm.suspend', 'Suspend')) + '</button>'
           : '<button type="button" class="oo-btn pri" onclick="OneOnOne.admMember(\'' + id + '\', \'active\')">' + esc(T(m.status === 'pending' ? 'oo.adm.approve' : 'oo.adm.reactivate', 'Approve')) + '</button>') +
           '<button type="button" class="oo-btn" style="color:#b91c1c;border-color:#fca5a5" onclick="OneOnOne.admDeactivate(\'' + id + '\')">' + esc(T('oo.adm.deactivate', 'Deactivate')) + '</button>';
-      return '<div class="oo-row"><div class="av">' + esc(initials(m.display_name || m.user_id)) + '</div><div style="flex:1;min-width:0">' +
-        '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div style="font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(m.display_name || m.user_id) + '</div>' + this.admChip(m.status) + '</div>' +
+      /* v1100: facial photo rule — thumb from user_profiles (admLoad), chip + due, admin Accept/Reject override */
+      var ph = (this.adm.photos || {})[m.user_id] || '';
+      var pOk = !!(m.photo_verified_at && m.photo_url && m.photo_url === ph);
+      var pline = '';
+      if (m.status !== 'removed') {
+        var due = ''; if (!pOk && m.status === 'active' && m.approved_at) { var ms = new Date(m.approved_at).getTime() + 24 * 3600000 - Date.now(); due = ' · ' + (ms > 0 ? TT('oo.photo.left', { h: Math.max(1, Math.ceil(ms / 3600000)) }) : T('oo.photo.overdue', 'Overdue')); }
+        pline = '<div style="margin-top:4px"><span class="text-[11px] font-bold px-2 py-0.5 rounded-full ' + (pOk ? 'bg-green-50 text-green-700' : (ph ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700')) + '">' + esc(pOk ? T('oo.adm.photo.ok', 'Photo OK') : (ph ? T('oo.adm.photo.unverified', 'Photo not verified') : T('oo.adm.nophoto', 'No photo'))) + '</span><span class="oo-kv">' + esc(due) + '</span></div>';
+        if (pOk) act += '<button type="button" class="oo-btn" onclick="OneOnOne.admPhoto(\'' + id + '\', false)">' + esc(T('oo.adm.photo.reject', 'Reject photo')) + '</button>';
+        else if (ph) act += '<button type="button" class="oo-btn" style="color:#15803d;border-color:#86efac" onclick="OneOnOne.admPhoto(\'' + id + '\', true)">' + esc(T('oo.adm.photo.accept', 'Accept photo')) + '</button>';
+      }
+      return '<div class="oo-row">' + this.admAvatar(ph, m.display_name || m.user_id) + '<div style="flex:1;min-width:0">' +
+        '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div style="font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(m.display_name || m.user_id) + '</div>' + this.admChip(m.status === 'suspended' && m.suspended_reason === 'no_photo' ? 'suspended.nophoto' : m.status) + '</div>' + pline +
         '<div class="oo-kv" style="overflow-wrap:anywhere">' + esc(m.user_id) + ' · ' + esc(T('oo.adm.since', 'Since')) + ' ' + esc(this.fmtDate(m.created_at)) + (m.expires_at ? ' · ' + esc(T('oo.adm.expires', 'Expires')) + ' ' + esc(m.expires_at) : '') + (m.invite_code ? ' · ' + esc(m.invite_code) : '') + '</div>' +
         (m.notes ? '<div class="oo-kv">' + esc(m.notes) + '</div>' : '') + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' + act + '</div></div></div>';
     },
+    admAvatar(url, name) { return url ? '<img class="av" src="' + esc(url) + '" alt="" style="object-fit:cover">' : '<div class="av">' + esc(initials(name || '?')) + '</div>'; },
     admMembersListHtml() {
       var a = this.adm; var f = a.f.members; var q = a.f.q;
       var rows = a.members.filter(function (m) { return f === 'all' ? m.status !== 'removed' : m.status === f; }).filter(function (m) { return !q || String(m.display_name || '').toLowerCase().indexOf(q) >= 0 || String(m.user_id).toLowerCase().indexOf(q) >= 0; });
@@ -1470,7 +1585,7 @@
       } catch (e) { box.innerHTML = '<div class="oo-kv">' + esc(errMsg(e)) + '</div>'; }
     },
     async admGrant(userId) {
-      try { await rpc('oo_admin_set_member', { p_user: userId, p_status: 'active', p_expires: null, p_notes: null }); push(userId, 'oo.push.member_ok', {}); toast(T('oo.adm.grant.done', 'Access granted'), 'success'); var q = document.getElementById('ooGrantQ'); await this.admRefresh(); if (q) { var q2 = document.getElementById('ooGrantQ'); if (q2) { q2.value = q.value; this.admGrantSearch(q.value); } } } catch (e) { toast(errMsg(e), 'error'); }
+      try { await rpc('oo_admin_set_member', { p_user: userId, p_status: 'active', p_expires: null, p_notes: null }); push(userId, 'oo.push.member_ok2', {}); toast(T('oo.adm.grant.done', 'Access granted'), 'success'); var q = document.getElementById('ooGrantQ'); await this.admRefresh(); if (q) { var q2 = document.getElementById('ooGrantQ'); if (q2) { q2.value = q.value; this.admGrantSearch(q.value); } } } catch (e) { toast(errMsg(e), 'error'); }
     },
 
     /* --- partners --- */
@@ -1587,7 +1702,8 @@
       if (reason === null) return;
       try { await rpc('oo_admin_set_member', { p_user: user, p_status: 'removed', p_expires: null, p_notes: reason || null }); toast(T('oo.adm.deactivated', 'Member deactivated'), 'success'); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); }
     },
-    async admMember(user, status) { try { await rpc('oo_admin_set_member', { p_user: user, p_status: status, p_expires: null, p_notes: null }); if (status === 'active') push(user, 'oo.push.member_ok', {}); toast(T('oo.saved', 'Saved'), 'success'); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } },
+    async admPhoto(user, ok) { try { await rpc('oo_admin_set_photo', { p_user: user, p_ok: !!ok }); toast(T('oo.saved', 'Saved'), 'success'); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } },
+    async admMember(user, status) { try { await rpc('oo_admin_set_member', { p_user: user, p_status: status, p_expires: null, p_notes: null }); if (status === 'active') push(user, 'oo.push.member_ok2', {}); toast(T('oo.saved', 'Saved'), 'success'); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } },
     async admPartner(id, status, userId) { try { await rpc('oo_admin_set_partner', { p_partner: id, p_status: status, p_active: null }); if (status === 'approved' && userId) push(userId, 'oo.push.partner_ok', {}); toast(T('oo.saved', 'Saved'), 'success'); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } },
     async admMedia(id, status) { try { await rpc('oo_admin_set_media', { p_media: id, p_status: status }); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } },
     async admReport(id, status) { try { await rpc('oo_admin_set_report', { p_report: id, p_status: status }); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } }

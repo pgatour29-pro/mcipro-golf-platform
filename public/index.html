@@ -47830,7 +47830,7 @@ document.addEventListener('DOMContentLoaded', function() {
         #loginScreen .lgv2-stat{background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.14); border-radius:14px; padding:10px 12px; backdrop-filter:blur(6px); min-width:0;}
         #loginScreen .lgv2-stat .n{font:300 22px/1 'Outfit',sans-serif; color:#fff;}
         #loginScreen .lgv2-stat .k{font:600 7.5px/1.3 'JetBrains Mono',monospace; letter-spacing:.12em; color:rgba(255,255,255,.55); margin-top:5px;}
-        #loginScreen .lgv2-chips{position:absolute; right:16px; top:44%; display:flex; flex-direction:column; align-items:flex-end; gap:8px;}
+        #loginScreen .lgv2-chips{position:absolute; right:16px; top:auto; bottom:calc(var(--lgv2-dockh, 226px) + 14px); display:flex; flex-direction:column; align-items:flex-end; gap:8px;}
         #loginScreen .lgv2-demochip{display:flex; align-items:center; gap:8px; background:rgba(4,22,15,.55); border:1px solid rgba(255,255,255,.22); border-radius:999px; padding:8px 13px 8px 8px; backdrop-filter:blur(8px); cursor:pointer;}
         #loginScreen .lgv2-demochip.start{border-color:rgba(34,197,94,.55); background:rgba(9,38,25,.6);}
         #loginScreen .lgv2-demochip.start .p{background:#22c55e;}
@@ -47926,14 +47926,32 @@ document.addEventListener('DOMContentLoaded', function() {
           #loginScreen .lgv2-sheet{left:50%; right:auto; transform:translateX(-50%); width:480px; bottom:48px; border-radius:26px; max-height:calc(100dvh - 96px);}
         }
         @media (max-height:700px){
-          #loginScreen .lgv2-brand{margin-top:18px;}
-          #loginScreen .lgv2-stats{margin-top:12px;}
-          /* 5-chip stack must clear the dock on short screens — compact rows, start higher */
-          #loginScreen .lgv2-chips{top:42%; gap:6px;}
+          /* Brand block gives up ~30px so the 5-chip stack fits between it and the dock */
+          #loginScreen .lgv2-brand{margin-top:10px;}
+          #loginScreen .lgv2-wordmark{width:70%; max-width:252px;}
+          #loginScreen .lgv2-tag{font-size:12.5px; margin-top:8px;}
+          #loginScreen .lgv2-stats{margin-top:10px;}
+          #loginScreen .lgv2-stat{padding:8px 11px;}
+          #loginScreen .lgv2-stat .n{font-size:19px;}
+          /* 5-chip stack must clear the dock on short screens — compact rows (the stack is
+             bottom-anchored to the dock, so it no longer needs a hand-tuned top %) */
+          #loginScreen .lgv2-chips{gap:6px;}
           #loginScreen .lgv2-demochip{padding:5px 10px 5px 5px;}
           #loginScreen .lgv2-demochip .p{width:20px; height:20px;}
           #loginScreen .lgv2-demochip .p .material-symbols-outlined{font-size:12px;}
           #loginScreen .lgv2-demochip .lbl{font-size:8.5px;}
+        }
+        /* Very short phones (SE-class, or a phone with browser chrome open): there is no room
+           for wordmark + tagline + stats + the 5-chip stack + the dock. The live-stat tiles are
+           decorative, so they yield — the install chips must never be covered. */
+        @media (max-height:660px){
+          #loginScreen .lgv2-stats{display:none;}
+          #loginScreen .lgv2-tag{font-size:12px; max-width:250px;}
+        }
+        /* SE-class screens: the tagline yields too — wordmark, chips, dock and nothing else. */
+        @media (max-height:600px){
+          #loginScreen .lgv2-tag{display:none;}
+          #loginScreen .lgv2-wordmark{width:58%; max-width:205px;}
         }
         </style>
         <div class="lgv2-root">
@@ -48231,6 +48249,35 @@ document.addEventListener('DOMContentLoaded', function() {
 
             <script>
             (function(){
+                // ===== CHIP STACK CLEARANCE =====
+                // The install/demo chips float over the artwork; the dock is bottom-anchored and
+                // its height is NOT fixed — the dock links wrap to two rows on narrow phones and
+                // label lengths differ per language. Publish the measured dock height so the chip
+                // stack sits above it instead of disappearing behind it on short screens.
+                (function(){
+                    var raf = null;
+                    function measure(){
+                        raf = null;
+                        var dock = document.querySelector('#loginScreen .lgv2-dock');
+                        var root = document.querySelector('#loginScreen .lgv2-ui');
+                        if (!dock || !root) return;
+                        var ur = root.getBoundingClientRect(), dr = dock.getBoundingClientRect();
+                        var fromBottom = Math.round(ur.bottom - dr.top);
+                        if (fromBottom > 0) root.style.setProperty('--lgv2-dockh', fromBottom + 'px');
+                    }
+                    function schedule(){ if (raf === null) raf = requestAnimationFrame(measure); }
+                    window.lgv2FitChips = schedule;
+                    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', schedule);
+                    else schedule();
+                    window.addEventListener('resize', schedule);
+                    window.addEventListener('orientationchange', schedule);
+                    // Scoped to the dock only — never observe the body subtree here.
+                    try {
+                        var dock = document.querySelector('#loginScreen .lgv2-dock');
+                        if (dock && window.ResizeObserver) new ResizeObserver(schedule).observe(dock);
+                    } catch (e) {}
+                })();
+
                 // ===== REGISTRATION INTENT (golfer | caddie) =====
                 // The provider round-trip (LINE/Kakao/Google) leaves the page, so the role the
                 // user picked on the create sheet is parked in localStorage and read back by

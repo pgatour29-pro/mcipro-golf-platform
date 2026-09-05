@@ -891,6 +891,25 @@
             return maps;
         }
 
+        // ONE dedup rule, identical to the app's window.pickBestCard (v1115): a COMPLETED card
+        // beats a live one, then most holes played, then newest. Kept inline because this page
+        // is standalone. Previously most-holes-only, with no preference for a finished round.
+        function pickBestCard(a, b) {
+            if (!a) return b;
+            if (!b) return a;
+            const holes = c => (c.scores || []).filter(x => x && x.gross_score != null).length;
+            const ca = a.status === 'completed' ? 1 : 0, cb = b.status === 'completed' ? 1 : 0;
+            if (ca !== cb) return ca > cb ? a : b;
+            const ha = holes(a), hb = holes(b);
+            if (ha !== hb) return ha > hb ? a : b;
+            return Date.parse(a.created_at || 0) >= Date.parse(b.created_at || 0) ? a : b;
+        }
+        function bestCardsByPlayer(cards) {
+            const m = new Map();
+            for (const sc of (cards || [])) m.set(sc.player_id, pickBestCard(m.get(sc.player_id), sc));
+            return m;
+        }
+
         // Get event leaderboard
         async function getEventLeaderboard(eventId, format = 'stableford') {
             // Get scorecards linked to this event
@@ -969,19 +988,8 @@
             const nameMap = {};
             (profiles || []).forEach(p => nameMap[p.line_user_id] = p.name);
 
-            // DEDUPLICATE: Keep only the best scorecard per player (most holes played, or latest if tied)
-            const bestByPlayer = new Map();
-            for (const sc of scorecards) {
-                const existing = bestByPlayer.get(sc.player_id);
-                const scHoles = (sc.scores || []).length;
-                const existingHoles = existing ? (existing.scores || []).length : 0;
-
-                if (!existing || scHoles > existingHoles ||
-                    (scHoles === existingHoles && new Date(sc.created_at) > new Date(existing.created_at))) {
-                    bestByPlayer.set(sc.player_id, sc);
-                }
-            }
-            const uniqueScorecards = Array.from(bestByPlayer.values());
+            // DEDUPLICATE per player with the shared rule (see pickBestCard above).
+            const uniqueScorecards = Array.from(bestCardsByPlayer(scorecards).values());
             console.log(`[Live] Deduplicated ${scorecards.length} scorecards to ${uniqueScorecards.length} unique players`);
 
             const parMaps = await getParMapsFor(uniqueScorecards);

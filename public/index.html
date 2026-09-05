@@ -19660,6 +19660,30 @@
         // / live courseData, stamped "Course (F+B)". The organizer's event course label is
         // only the default: players pick and can CHANGE the nines on-course in real time,
         // so every score surface derives its label from the cards, never the event row.
+        // ONE dedup rule for every live board (v1115). A player can hold more than one card
+        // for a round — an accidental second Start Round, a resumed session, a rescued
+        // event_id-null card. "Newest wins" picked the empty second card and showed the player
+        // at 0 through while the organizer board showed their real 17 holes; that divergence is
+        // what "he's on one leaderboard but not the other" actually was. Rule: a COMPLETED card
+        // beats a live one, then most holes played, then newest. Used by the in-round board, the
+        // match board, the Waltz team board, the organizer board, live.html and results.html.
+        window.pickBestCard = function (a, b) {
+            if (!a) return b;
+            if (!b) return a;
+            const holes = c => (c.scores || []).filter(x => x && x.gross_score != null).length;
+            const ca = a.status === 'completed' ? 1 : 0, cb = b.status === 'completed' ? 1 : 0;
+            if (ca !== cb) return ca > cb ? a : b;
+            const ha = holes(a), hb = holes(b);
+            if (ha !== hb) return ha > hb ? a : b;
+            return Date.parse(a.created_at || 0) >= Date.parse(b.created_at || 0) ? a : b;
+        };
+        // Collapse a card list to one best card per player_id.
+        window.bestCardsByPlayer = function (cards) {
+            const m = new Map();
+            for (const sc of (cards || [])) m.set(sc.player_id, window.pickBestCard(m.get(sc.player_id), sc));
+            return m;
+        };
+
         window.CourseNines = {
             split(name) {
                 const m = /\(([^+()]+)\+([^+()]+)\)/.exec(name || '');
@@ -19852,17 +19876,7 @@
                 // an accidental second Start Round (newer, 0 holes) masked the player's real
                 // 17-hole card and showed them at 0 through — the same player reading
                 // differently here than on every other board.
-                const _holeCount = (c) => (c.scores || []).filter(x => x && x.gross_score != null).length;
-                const best = new Map();
-                for (const sc of scorecards) {
-                    const existing = best.get(sc.player_id);
-                    if (!existing) { best.set(sc.player_id, sc); continue; }
-                    const cc = sc.status === 'completed' ? 1 : 0, cx = existing.status === 'completed' ? 1 : 0;
-                    const hc = _holeCount(sc), hx = _holeCount(existing);
-                    const newer = Date.parse(sc.created_at || 0) > Date.parse(existing.created_at || 0);
-                    const better = (cc !== cx) ? (cc > cx) : (hc !== hx) ? (hc > hx) : newer;
-                    if (better) best.set(sc.player_id, sc);
-                }
+                const best = window.bestCardsByPlayer(scorecards);
 
                 // Every REGISTERED player belongs on this board too, with or without a card
                 // yet — the same rule live.html (v1106) and the organizer board already use.
@@ -79091,19 +79105,8 @@ class SocietyGolfSupabase {
             }
         }
 
-        // DEDUPLICATE: Keep only the best scorecard per player (most holes played, or latest if tied)
-        const bestByPlayer = new Map();
-        for (const card of scorecards) {
-            const existing = bestByPlayer.get(card.player_id);
-            const cardHoles = (card.scores || []).length;
-            const existingHoles = existing ? (existing.scores || []).length : 0;
-
-            if (!existing || cardHoles > existingHoles ||
-                (cardHoles === existingHoles && new Date(card.created_at) > new Date(existing.created_at))) {
-                bestByPlayer.set(card.player_id, card);
-            }
-        }
-        const uniqueScorecards = Array.from(bestByPlayer.values());
+        // DEDUPLICATE per player with the ONE shared rule (v1115): completed > most holes > newest.
+        const uniqueScorecards = Array.from(window.bestCardsByPlayer(scorecards).values());
 
         // Add player_name to each scorecard
         const scorecardsWithNames = uniqueScorecards.map(card => ({
@@ -79417,7 +79420,12 @@ class SocietyGolfSupabase {
 
         const {
             scoringFormat = 'stableford',
-            useCountback = true
+            useCountback = true,
+            // Platform rule (v1106/v1115): a board shows the whole registered FIELD, filling in
+            // as scores arrive — not just whoever has teed off. Not-started players are appended
+            // AFTER ranking with position null, so they can never take a position off a scorer.
+            // Pass false for a scorers-only ranking.
+            includeRegistered = true
         } = options;
 
         const scorecards = await this.getEventScorecards(eventId);
@@ -79521,7 +79529,60 @@ class SocietyGolfSupabase {
             leaderboard = this.assignPositions(leaderboard, 'total_gross', true);
         }
 
+        // Registered but no card yet — appended after positions are assigned, so ranking is
+        // untouched. They sort last by construction (concat) and carry position null.
+        if (includeRegistered) {
+            const notStarted = await this.getNotStartedRegistrations(
+                eventId, leaderboard.map(e => e.player_id));
+            if (notStarted.length) leaderboard = leaderboard.concat(notStarted);
+        }
+
         return leaderboard;
+    }
+
+    /**
+     * Registered players for an event who have no scorecard on the board yet, shaped as
+     * leaderboard entries. Fails CLOSED: if registrations can't be read we return nothing
+     * rather than inventing a field.
+     * @param {string} eventId
+     * @param {Array} playerIdsOnBoard - player_ids already ranked
+     */
+    async getNotStartedRegistrations(eventId, playerIdsOnBoard = []) {
+        if (!eventId) return [];
+        try {
+            await this.waitForSupabase();
+            const { data, error } = await window.SupabaseDB.client
+                .from('event_registrations')
+                .select('player_id, player_name, handicap, status')
+                .eq('event_id', eventId);
+            if (error) return [];
+
+            const onBoard = new Set((playerIdsOnBoard || []).map(String));
+            return (data || [])
+                .filter(r => r.player_id
+                    && !onBoard.has(String(r.player_id))
+                    && String(r.status || '').toLowerCase() !== 'cancelled')
+                .map(r => ({
+                    player_id: r.player_id,
+                    player_name: r.player_name || 'Player',
+                    scorecard_id: null,
+                    total_gross: 0,
+                    total_net: 0,
+                    total_stableford: 0,
+                    holes_completed: 0,
+                    thru: '-',
+                    handicap: r.handicap,
+                    status: 'not_started',
+                    position: null,
+                    tied: false,
+                    countback: { last9: 0, last6: 0, last3: 0, last1: 0 },
+                    scores: [],
+                    _notStarted: true
+                }));
+        } catch (e) {
+            console.warn('[SocietyGolf] getNotStartedRegistrations failed:', e);
+            return [];
+        }
     }
 
     subscribeToScorecards(eventId, callback) {
@@ -87044,8 +87105,8 @@ class LiveScorecardSystem {
                 .select('player_id, player_name, created_at, scores(hole_number, gross_score)')
                 .neq('status', 'abandoned');
             if (this.eventId) {
-                const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
-                q = q.eq('event_id', this.eventId).gte('created_at', since);
+                // No date window: event_id already scopes this to one round (v1115).
+                q = q.eq('event_id', this.eventId);
             } else if (this.courseId || this.courseData?.id) {
                 const course = this.courseId || this.courseData?.id;
                 const now = new Date();
@@ -87056,13 +87117,10 @@ class LiveScorecardSystem {
             } else { return; }
             const { data } = await q;
             if (!data) return;
-            // Dedup by player — keep most recent scorecard
-            const best = new Map();
-            for (const sc of data) {
-                const t = sc.created_at ? Date.parse(sc.created_at) : 0;
-                const ex = best.get(sc.player_id);
-                if (!ex || t >= ex._t) { sc._t = t; best.set(sc.player_id, sc); }
-            }
+            // Dedup by player — ONE rule shared with every other board (v1115): a completed card
+            // beats a live one, then most holes, then newest. Was "most recent", so a stray second
+            // Start Round emptied this match board.
+            const best = window.bestCardsByPlayer(data);
             const map = {}, names = {};
             for (const sc of best.values()) {
                 if (sc.player_name) names[sc.player_id] = sc.player_name;
@@ -87090,8 +87148,8 @@ class LiveScorecardSystem {
                 .not('match_play_config', 'is', null)
                 .neq('status', 'abandoned');
             if (this.eventId) {
-                const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
-                q = q.eq('event_id', this.eventId).gte('created_at', since);
+                // No date window: event_id already scopes this to one round (v1115).
+                q = q.eq('event_id', this.eventId);
             } else if (this.courseId || this.courseData?.id) {
                 const course = this.courseId || this.courseData?.id;
                 const now = new Date();
@@ -101136,6 +101194,11 @@ class LiveScorecardSystem {
             return '<p class="text-center py-8 text-gray-500">No scores in this event yet</p>';
         }
 
+        // Ranked scorers first, then the rest of the registered field. Not-started players never
+        // take a position number — `entry.position || (index + 1)` would have handed them one.
+        const _started = leaderboard.filter(e => !e._notStarted);
+        const _notStarted = leaderboard.filter(e => e._notStarted);
+
         // Match the Group Leaderboard display with Gross, Net, and Stableford Points
         return `
             <div class="overflow-x-auto">
@@ -101154,7 +101217,7 @@ class LiveScorecardSystem {
                         </tr>
                     </thead>
                     <tbody>
-                        ${leaderboard.map((entry, index) => `
+                        ${_started.map((entry, index) => `
                             <tr class="border-b border-gray-200">
                                 <td class="py-2 px-2 font-bold">${entry.position || (index + 1)}</td>
                                 <td class="py-2 px-2"><span data-golfer-av="${entry.player_id || ''}" data-golfer-av-nm="${String(entry.player_name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="20">${entry.player_name || 'Unknown'}</span></td>
@@ -101162,6 +101225,13 @@ class LiveScorecardSystem {
                                 <td class="py-2 px-2 text-center">${entry.total_gross || 0}</td>
                                 <td class="py-2 px-2 text-center bg-blue-50">${entry.total_net || 0}</td>
                                 <td class="py-2 px-2 text-center bg-green-50 font-bold text-green-700">${entry.total_stableford || 0}</td>
+                            </tr>
+                        `).join('')}
+                        ${_notStarted.map(entry => `
+                            <tr class="border-b border-gray-200 opacity-60">
+                                <td class="py-2 px-2 font-bold text-gray-400">&ndash;</td>
+                                <td class="py-2 px-2"><span data-golfer-av="${entry.player_id || ''}" data-golfer-av-nm="${String(entry.player_name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="20">${entry.player_name || 'Unknown'}</span></td>
+                                <td class="py-2 px-2 text-gray-400 text-xs" colspan="4">${_lvT('orgscore.notstarted', 'Not started')}</td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -101189,9 +101259,9 @@ class LiveScorecardSystem {
             const sel = 'player_id, player_name, group_id, created_at, scoring_format, scores(hole_number, gross_score, stableford_points)';
             let scorecards = [];
             if (this.eventId) {
-                const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+                // No date window: event_id already scopes this to one round (v1115).
                 const { data } = await window.SupabaseDB.client.from('scorecards').select(sel)
-                    .eq('event_id', this.eventId).gte('created_at', since).neq('status', 'abandoned');
+                    .eq('event_id', this.eventId).neq('status', 'abandoned');
                 scorecards = data || [];
             } else if (this.groupId) {
                 const { data } = await window.SupabaseDB.client.from('scorecards').select(sel)
@@ -101234,14 +101304,8 @@ class LiveScorecardSystem {
             }
             if (!teamDefs.length) return '';
 
-            // newest scorecard per player (same dedup as the bottom sheet)
-            const best = new Map();
-            for (const sc of scorecards) {
-                const ex = best.get(sc.player_id);
-                const tNew = sc.created_at ? Date.parse(sc.created_at) : 0;
-                const tOld = ex && ex.created_at ? Date.parse(ex.created_at) : 0;
-                if (!ex || tNew > tOld || (tNew === tOld && (sc.scores || []).length > (ex.scores || []).length)) best.set(sc.player_id, sc);
-            }
+            // ONE dedup rule, shared with every other board (v1115): completed > most holes > newest.
+            const best = window.bestCardsByPlayer(scorecards);
             const rowById = new Map();
             best.forEach((sc, pid) => {
                 const holePts = new Array(18).fill(null);
@@ -150816,18 +150880,7 @@ class OrganizerScoringSystem {
                     // the player as "In Progress". Pick the BEST card instead: a completed card
                     // over a live one, then most holes played, then newest. (Same rule live.html
                     // and results.html use for their per-player dedup.)
-                    const holeCount = (c) => (c.scores || []).filter(s => s && s.gross_score != null).length;
-                    const bestByPlayer = new Map();
-                    for (const card of scorecards) {
-                        const ex = bestByPlayer.get(card.player_id);
-                        if (!ex) { bestByPlayer.set(card.player_id, card); continue; }
-                        const cc = card.status === 'completed' ? 1 : 0, cx = ex.status === 'completed' ? 1 : 0;
-                        const hc = holeCount(card), hx = holeCount(ex);
-                        const newer = new Date(card.created_at || 0) > new Date(ex.created_at || 0);
-                        const better = (cc !== cx) ? (cc > cx) : (hc !== hx) ? (hc > hx) : newer;
-                        if (better) bestByPlayer.set(card.player_id, card);
-                    }
-                    const uniqueScorecards = Array.from(bestByPlayer.values());
+                    const uniqueScorecards = Array.from(window.bestCardsByPlayer(scorecards).values());
                     console.log(`[OrganizerScoring] ✅ Loaded ${scorecards.length} scorecards, deduplicated to ${uniqueScorecards.length} unique players (best card per player)`);
                     // The nines the FIELD is actually playing — off their cards, not the event row.
                     this._playedCourseName = window.CourseNines.fromCards(uniqueScorecards) || this._playedCourseName;

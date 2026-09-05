@@ -379,6 +379,25 @@
         }
 
         // ---------- State ----------
+        // ONE dedup rule, identical to the app's window.pickBestCard (v1115): a COMPLETED card
+        // beats a live one, then most holes played, then newest. Kept inline because this page
+        // is standalone. Previously most-holes-only, with no preference for a finished round.
+        function pickBestCard(a, b) {
+            if (!a) return b;
+            if (!b) return a;
+            const holes = c => (c.scores || []).filter(x => x && x.gross_score != null).length;
+            const ca = a.status === 'completed' ? 1 : 0, cb = b.status === 'completed' ? 1 : 0;
+            if (ca !== cb) return ca > cb ? a : b;
+            const ha = holes(a), hb = holes(b);
+            if (ha !== hb) return ha > hb ? a : b;
+            return Date.parse(a.created_at || 0) >= Date.parse(b.created_at || 0) ? a : b;
+        }
+        function bestCardsByPlayer(cards) {
+            const m = new Map();
+            for (const sc of (cards || [])) m.set(sc.player_id, pickBestCard(m.get(sc.player_id), sc));
+            return m;
+        }
+
         const state = {
             socKey: null,          // selected society key
             events: [],            // published events of selected society (newest first)
@@ -708,14 +727,8 @@
                 );
                 if (seq !== state.evSeq) return;
 
-                // best scorecard per player (most holes, else latest) — same dedup as live.html
-                const best = new Map();
-                for (const sc of cards){
-                    const ex = best.get(sc.player_id);
-                    const n = (sc.scores||[]).length, xn = ex ? (ex.scores||[]).length : -1;
-                    if (!ex || n > xn || (n === xn && new Date(sc.created_at) > new Date(ex.created_at))) best.set(sc.player_id, sc);
-                }
-                const unique = [...best.values()];
+                // best scorecard per player — the shared rule (see pickBestCard above).
+                const unique = [...bestCardsByPlayer(cards).values()];
 
                 const entries = unique.map(sc => {
                     const hs = new Array(18).fill(null), hp = new Array(18).fill(null), hsi = new Array(18).fill(null), hpts = new Array(18).fill(null);

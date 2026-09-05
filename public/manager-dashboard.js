@@ -55,6 +55,8 @@
         { id: 'management', label: 'Management', icon: 'badge', color: 'gray' }
     ];
     const DEPT_PREFIX = { caddy: 'CAD', fnb: 'FNB', proshop: 'PS', maintenance: 'MNT', reception: 'RCP', security: 'SEC', management: 'MGT' };
+    // App roles a self-registered staff member can ask for (StaffSetup.ROLES in index.html)
+    const ROLE_LABEL = { manager: 'Manager', proshop: 'Pro Shop', caddymaster: 'Caddy Master', maintenance: 'Maintenance' };
     const CHANNELS = [
         { id: 'caddy-master', label: 'Caddy Master', icon: 'sports_golf', color: 'green', desc: 'Caddy assignments & scheduling' },
         { id: 'proshop', label: 'Pro Shop', icon: 'storefront', color: 'teal', desc: 'Sales, inventory & rentals' },
@@ -723,7 +725,7 @@
         if (!silent && !MD._loaded.staff) host.innerHTML = MD.spinner();
         try {
             const { data, error } = await db().from('course_staff').select('*')
-                .eq('course_id', MD.course.id).neq('status', 'deleted')
+                .eq('course_id', MD.course.id).not('status', 'in', '(deleted,rejected)')
                 .order('department').order('first_name').limit(1000);
             if (error) throw error;
             if (seq !== MD._seq.staff) return;
@@ -739,12 +741,14 @@
         const host = document.getElementById('mgr-staff-body');
         if (!host) return;
         const st = MD._staffState;
-        const counts = { all: st.rows.length };
+        const counts = { all: st.rows.length, pending: st.rows.filter(r => r.status === 'pending').length };
         DEPARTMENTS.forEach(d => counts[d.id] = st.rows.filter(r => r.department === d.id).length);
         const q = st.q.toLowerCase();
         const rows = st.rows.filter(r =>
-            (st.dept === 'all' || r.department === st.dept) &&
-            (!q || [r.first_name, r.last_name, r.nickname, r.employee_id, r.position, r.phone].join(' ').toLowerCase().includes(q)));
+            (st.dept === 'all' || (st.dept === 'pending' ? r.status === 'pending' : r.department === st.dept)) &&
+            (!q || [r.first_name, r.last_name, r.nickname, r.employee_id, r.position, r.phone].join(' ').toLowerCase().includes(q)))
+            // self-registered people waiting on approval come first — they are blocked until acted on
+            .sort((a, b) => (b.status === 'pending') - (a.status === 'pending'));
         const deptOf = (id) => DEPARTMENTS.find(d => d.id === id) || DEPARTMENTS[6];
         const chip = (id, label, n) => `
           <button data-dept="${id}" class="mgr-staff-dept px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${st.dept === id ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">${esc(label)} <span class="opacity-70">${n}</span></button>`;
@@ -760,14 +764,16 @@
             </div>
             <div class="flex gap-1.5 mt-2.5 overflow-x-auto pb-0.5">
               ${chip('all', tr('mgr.allstaff', 'All'), counts.all)}
+              ${counts.pending ? chip('pending', tr('mgr.pending', 'Pending'), counts.pending) : ''}
               ${DEPARTMENTS.map(d => chip(d.id, d.label, counts[d.id])).join('')}
             </div>
           </div>
           ${rows.length ? `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">` + rows.map(r => {
             const d = deptOf(r.department);
-            const inactive = r.status !== 'active';
+            const pending = r.status === 'pending';
+            const inactive = !pending && r.status !== 'active';
             return `
-              <div class="bg-white rounded-xl border ${inactive ? 'border-gray-200 opacity-60' : 'border-gray-200'} p-3 hover:shadow-md transition">
+              <div class="bg-white rounded-xl border ${pending ? 'border-amber-300 ring-1 ring-amber-100' : (inactive ? 'border-gray-200 opacity-60' : 'border-gray-200')} p-3 hover:shadow-md transition">
                 <div class="flex items-center gap-3">
                   <div class="w-10 h-10 rounded-full bg-green-100 text-green-700 flex items-center justify-center font-bold text-sm">${esc((r.first_name || '?')[0] || '?')}${esc((r.last_name || ' ')[0] || '')}</div>
                   <div class="min-w-0 flex-1">
@@ -776,13 +782,21 @@
                   </div>
                   <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600">${mi(d.icon)} ${esc(d.label)}</span>
                 </div>
+                ${pending ? `
+                <div class="mt-2.5">
+                  <div class="text-[11px] text-amber-700 font-medium mb-2">${mi('hourglass_top', 'text-amber-500')} ${esc(tr('mgr.wantsrole', 'requests'))} <b>${esc(ROLE_LABEL[r.requested_role] || r.requested_role || '')}</b>${r.employee_id ? ' · ' + esc(r.employee_id) : ''}</div>
+                  <div class="flex gap-2">
+                    <button data-appr="${esc(r.id)}" class="mgr-staff-appr flex-1 py-1.5 bg-green-600 text-white rounded-lg text-xs font-semibold hover:bg-green-700">${mi('check')} ${esc(tr('mgr.approve', 'Approve'))}</button>
+                    <button data-rej="${esc(r.id)}" class="mgr-staff-rej px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-200">${esc(tr('mgr.reject', 'Reject'))}</button>
+                  </div>
+                </div>` : `
                 <div class="flex items-center justify-between mt-2.5">
                   <span class="text-[11px] ${inactive ? 'text-gray-400' : 'text-green-600'} font-medium">${mi('circle', inactive ? 'text-gray-300' : 'text-green-500')} ${esc(inactive ? tr('mgr.inactive', 'Inactive') : tr('mgr.active', 'Active'))}${r.phone ? ' · <a class="text-blue-600" href="tel:' + esc(r.phone) + '">' + esc(r.phone) + '</a>' : ''}</span>
                   <span class="flex gap-1">
                     <button data-edit="${esc(r.id)}" class="mgr-staff-edit p-1.5 rounded-lg hover:bg-gray-100 text-gray-500" title="${esc(tr('common.edit', 'Edit'))}"><span class="material-symbols-outlined" style="font-size:16px;">edit</span></button>
                     <button data-tgl="${esc(r.id)}" class="mgr-staff-tgl p-1.5 rounded-lg hover:bg-gray-100 text-gray-500" title="${esc(inactive ? tr('mgr.activate', 'Activate') : tr('mgr.deactivate', 'Deactivate'))}"><span class="material-symbols-outlined" style="font-size:16px;">${inactive ? 'toggle_off' : 'toggle_on'}</span></button>
                   </span>
-                </div>
+                </div>`}
               </div>`;
           }).join('') + `</div>`
           : `<div class="bg-white rounded-xl border border-gray-200 text-center py-12 text-gray-400">
@@ -793,6 +807,8 @@
         host.querySelectorAll('.mgr-staff-dept').forEach(b => b.addEventListener('click', () => { MD._staffState.dept = b.dataset.dept; MD.renderStaff(); }));
         host.querySelectorAll('.mgr-staff-edit').forEach(b => b.addEventListener('click', () => MD.openStaffModal(b.dataset.edit)));
         host.querySelectorAll('.mgr-staff-tgl').forEach(b => b.addEventListener('click', () => MD.toggleStaff(b.dataset.tgl)));
+        host.querySelectorAll('.mgr-staff-appr').forEach(b => b.addEventListener('click', () => MD.decideStaff(b.dataset.appr, true)));
+        host.querySelectorAll('.mgr-staff-rej').forEach(b => b.addEventListener('click', () => MD.decideStaff(b.dataset.rej, false)));
         const si = document.getElementById('mgrStaffSearch');
         if (si) si.addEventListener('input', (e) => {
             MD._staffState.q = e.target.value;
@@ -901,6 +917,56 @@
         r.status = to;
         MD.renderStaff();
     };
+    // Approve / reject a self-registered staff member. Approving is what actually GRANTS
+    // the app role — StaffSetup only ever files a pending row, so nobody self-promotes.
+    MD.decideStaff = async function (id, approve) {
+        const r = MD._staffState.rows.find(x => x.id === id);
+        if (!r) return;
+        const role = ROLE_LABEL[r.requested_role] ? r.requested_role : null;
+        if (approve && !role) { toast('Unknown role on this request', 'error'); return; }
+        const who = `${r.first_name || ''} ${r.last_name || ''}`.trim();
+        if (!confirm(approve
+            ? `Approve ${who} as ${ROLE_LABEL[role]} at ${MD.course.name}?`
+            : `Reject the staff access request from ${who}?`)) return;
+        try {
+            const now = new Date().toISOString();
+            const upd = approve
+                ? { status: 'active', approved_at: now, approved_by: uid(), updated_at: now }
+                : { status: 'rejected', approved_at: now, approved_by: uid(), updated_at: now };
+            const { error, data } = await db().from('course_staff').update(upd).eq('id', id).select();
+            if (error || !(data || []).length) throw error || new Error('no rows');
+
+            if (approve && r.user_id) {
+                const { error: pe } = await db().from('user_profiles').update({
+                    role: role,
+                    is_staff: true,
+                    is_manager: role === 'manager',
+                    is_proshop: role === 'proshop',
+                    managed_course_id: MD.course.id,
+                    managed_course_name: MD.course.name,
+                    home_club: MD.course.name
+                }).eq('line_user_id', r.user_id);
+                if (pe) throw pe;
+            }
+
+            // Tell them — SecureDM pushes to LINE as well as the in-app inbox
+            if (r.user_id && window.SecureDM) {
+                const msg = approve
+                    ? `Your staff access at ${MD.course.name} has been approved. Log out and back in to open your ${ROLE_LABEL[role]} dashboard.`
+                    : `Your staff access request at ${MD.course.name} was not approved. Please speak to your manager.`;
+                try { await window.SecureDM.send(uid(), r.user_id, msg); } catch (e) { console.warn('[MD] staff notify', e); }
+            }
+
+            Object.assign(r, upd);
+            toast(approve ? tr('mgr.approved', 'Approved — they now have staff access') : tr('mgr.rejected', 'Request rejected'), 'success');
+            if (!approve) MD._staffState.rows = MD._staffState.rows.filter(x => x.id !== id);
+            MD.renderStaff();
+        } catch (e) {
+            console.error('[MD] staff decide', e);
+            toast('Update failed', 'error');
+        }
+    };
+
     MD.exportStaffCSV = function () {
         const rows = MD._staffState.rows;
         const head = ['employee_id', 'first_name', 'last_name', 'nickname', 'department', 'position', 'phone', 'employment_type', 'status', 'start_date'];

@@ -5445,7 +5445,9 @@
             font: 200 44px/1 'Outfit','Instrument Sans',sans-serif; min-width: 34px; text-align: center; color: #F2F5F7; flex: none;
         }
         body.theme-light #scorecardActiveSection .scv3-prev-digit { color: #10151B; }
-        #scorecardActiveSection .scv3-prev-calc { font: 500 10.5px/1.4 'JetBrains Mono',monospace; letter-spacing: .05em; color: #8C96A1; margin-top: 5px; }
+        #scorecardActiveSection .scv3-prev-calc { font: 600 10.5px/1.4 'JetBrains Mono',monospace; letter-spacing: .05em; color: #A8B2BD; margin-top: 5px; }
+        /* It's an instruction now, so it has to be readable: #8C96A1 on white was ~3.1:1, under the floor. */
+        body.theme-light #scorecardActiveSection .scv3-prev-calc { color: #5A6672; }
         #scorecardActiveSection .scv3-prev-x {
             width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
             color: #8C96A1; display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none;
@@ -9512,6 +9514,8 @@
                 'scorecard.trad.pickup': 'No Point · Pickup',
                 'scorecard.trad.edit': 'Edit',
                 'scorecard.trad.saves': 'saves instantly',
+                'scorecard.entry.grosshint': 'TAP GROSS STROKES — NOT NET OR POINTS',
+                'scorecard.trad.grossonly': 'gross only',
                 'scorecard.trad.birdie': 'Birdie+',
                 'scorecard.trad.bogey': 'Bogey+',
                 'scorecard.gshot.two': 'A Two on the Par 3!',
@@ -11905,6 +11909,8 @@
                 'scorecard.trad.pickup': 'ไม่มีแต้ม · เก็บลูก',
                 'scorecard.trad.edit': 'แก้ไข',
                 'scorecard.trad.saves': 'บันทึกทันที',
+                'scorecard.entry.grosshint': 'แตะสกอร์กรอส ไม่ใช่เน็ตหรือแต้ม',
+                'scorecard.trad.grossonly': 'กรอสเท่านั้น',
                 'scorecard.trad.birdie': 'เบอร์ดี้ขึ้นไป',
                 'scorecard.trad.bogey': 'โบกี้ขึ้นไป',
                 'scorecard.gshot.two': 'ตี 2 บนพาร์ 3!',
@@ -14171,6 +14177,8 @@
                 'scorecard.trad.pickup': '노 포인트 · 픽업',
                 'scorecard.trad.edit': '수정',
                 'scorecard.trad.saves': '즉시 저장',
+                'scorecard.entry.grosshint': '그로스 타수 입력 — 네트·포인트 아님',
+                'scorecard.trad.grossonly': '그로스만',
                 'scorecard.trad.birdie': '버디 이상',
                 'scorecard.trad.bogey': '보기 이상',
                 'scorecard.gshot.two': '파3에서 2타!',
@@ -16617,6 +16625,8 @@
                 'scorecard.trad.pickup': 'ノーポイント · ピックアップ',
                 'scorecard.trad.edit': '編集',
                 'scorecard.trad.saves': '即時保存',
+                'scorecard.entry.grosshint': 'グロス打数を入力 — ネット・ポイント不可',
+                'scorecard.trad.grossonly': 'グロスのみ',
                 'scorecard.trad.birdie': 'バーディ以上',
                 'scorecard.trad.bogey': 'ボギー以上',
                 'scorecard.gshot.two': 'パー3で2!',
@@ -55386,7 +55396,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <span class="scv3-prev-digit" id="scv3PrevDigit">&ndash;</span>
                                         <div style="flex:1;min-width:0;">
                                             <span style="display:block;" id="activePlayerName">Select a player</span>
-                                            <div class="scv3-prev-calc" id="scv3PrevCalc">TAP A NUMBER &mdash; SAVES INSTANTLY</div>
+                                            <div class="scv3-prev-calc" id="scv3PrevCalc">TAP GROSS STROKES &mdash; NOT NET OR POINTS</div>
                                         </div>
                                         <button class="scv3-prev-x" onclick="LiveScorecardManager.clearScore()" title="Clear typed score">
                                             <span class="material-symbols-outlined">close</span>
@@ -90293,7 +90303,11 @@ class LiveScorecardSystem {
                         }
                     } else {
                         dEl.textContent = '–';
-                        cEl.textContent = 'TAP A NUMBER — SAVES INSTANTLY';
+                        // Pete 2026-09-05, live from Treasure Hill: golfers were entering NET or
+                        // STABLEFORD POINTS here. The empty state is the moment they decide what to
+                        // tap, so it names the unit and both wrong answers. The filled state below
+                        // already reads 'GROSS n → NET n → n PTS', which teaches the same thing.
+                        cEl.textContent = _lvT('scorecard.entry.grosshint', 'TAP GROSS STROKES — NOT NET OR POINTS');
                     }
                     // NET PAR hint on the keypad key = par + strokes received
                     document.querySelectorAll('.keypad-num-btn.scv3-hint').forEach(function(b) { b.classList.remove('scv3-hint'); });
@@ -92505,7 +92519,7 @@ class LiveScorecardSystem {
         const npLabel = _lvT('scorecard.trad.netpar', 'NET PAR');
         let html = '<div class="tradv-ehead"><span class="who">' + firstName + '</span>' +
             '<span class="ctx">' + (target.cur ? '' : _lvT('scorecard.trad.edit', 'Edit').toUpperCase() + ' · ') +
-            'H' + target.hole + ' · ' + npLabel + ' ' + netPar + ' · ' + _lvT('scorecard.trad.saves', 'saves instantly') + '</span>' +
+            'H' + target.hole + ' · ' + npLabel + ' ' + netPar + ' · ' + _lvT('scorecard.trad.grossonly', 'gross only') + '</span>' +
             (target.cur ? '' : '<button class="xsel" aria-label="' + t('a11y.close') + '" onclick="LiveScorecardManager.tradClearSel()">✕</button>') +
             '</div>';
         html += '<div class="tradv-numrow">';

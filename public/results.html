@@ -659,8 +659,13 @@
                 const [evRes, resRes, cardRes, winRes, rndRes, pairRes, regRes] = await Promise.all([
                     sb.from('society_events').select('id,title,course_name,event_date,format,society_id,divisions,course_id').eq('id', eventId).maybeSingle(),
                     sb.from('event_results').select('*').eq('event_id', eventId).order('position', {ascending:true}),
+                    // Abandoned cards must never rank here either. This was the ONLY board without
+                    // the filter, so a round ended via the End button still showed on Results while
+                    // being absent from the organizer board, live.html and the in-round board — and
+                    // an abandoned card with MORE holes could out-rank the player's real card in the
+                    // dedup below. (Prod: an 18-hole abandoned card on 2026-08-26.)
                     sb.from('scorecards').select(`id, player_id, player_name, total_gross, total_net, handicap, playing_handicap, status, created_at, scoring_format, group_id, course_id, course_name,
-                        scores (hole_number, gross_score, net_score, stableford_points, par, stroke_index)`).eq('event_id', eventId),
+                        scores (hole_number, gross_score, net_score, stableford_points, par, stroke_index)`).eq('event_id', eventId).neq('status', 'abandoned'),
                     sb.from('event_winnings').select('player_id, player_name, category, label, notes, division').eq('event_id', eventId),
                     sb.from('rounds').select('id, golfer_id, player_name, total_gross, total_net, total_stableford, holes_played, handicap_used, status').eq('society_event_id', eventId),
                     // Tee sheet made? (the trigger) + the registered field (who to list).

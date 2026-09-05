@@ -10210,6 +10210,7 @@
                 'lb.thru': 'Thru',
                 'lb.net': 'NET',
                 'lb.noplayers': 'No players yet',
+                'lb.notstarted': 'Not started',
                 'lb.autoupdates': 'Auto-updates on score entry',
                 'lb.scramble.rule': 'teams rank by NET (gross − team hcp)',
                 'lightview.loadingteesheet': 'Loading tee sheet…',
@@ -12544,6 +12545,7 @@
                 'lb.thru': 'ผ่าน',
                 'lb.net': 'เน็ต',
                 'lb.noplayers': 'ยังไม่มีผู้เล่น',
+                'lb.notstarted': 'ยังไม่เริ่ม',
                 'lb.autoupdates': 'อัปเดตอัตโนมัติเมื่อบันทึกสกอร์',
                 'lb.scramble.rule': 'จัดอันดับทีมด้วยเน็ต (กรอส − แฮนดิแคปทีม)',
                 'lightview.loadingteesheet': 'กำลังโหลดตารางออกรอบ…',
@@ -15105,6 +15107,7 @@
                 'lb.thru': 'Thru',
                 'lb.net': 'NET',
                 'lb.noplayers': '아직 플레이어가 없습니다',
+                'lb.notstarted': '시작 전',
                 'lb.autoupdates': '스코어 입력 시 자동 업데이트',
                 'lb.scramble.rule': '팀은 NET(그로스 − 팀 핸디캡)으로 순위',
                 'lightview.loadingteesheet': '티 시트 불러오는 중…',
@@ -17252,6 +17255,7 @@
                 'lb.thru': 'Thru',
                 'lb.net': 'NET',
                 'lb.noplayers': 'まだプレイヤーがいません',
+                'lb.notstarted': '未スタート',
                 'lb.autoupdates': 'スコア入力で自動更新',
                 'lb.scramble.rule': 'チームはNET（グロス − チームHCP）で順位',
                 'lightview.loadingteesheet': 'ティーシートを読み込み中…',
@@ -19764,15 +19768,14 @@
 
                 let scorecards = [];
                 if (eventId) {
-                    // Window back far enough to include cards started the day before (timezone /
-                    // pre-created scorecards). event_id already scopes to this specific round, so
-                    // a generous window can't pull in a different event's players.
-                    const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+                    // NO date window: event_id already scopes this to one round, and the old
+                    // 48h floor was the only board with it — a card pre-created or started
+                    // earlier dropped off HERE while still showing on live.html and the
+                    // organizer board. Same query shape as those two now.
                     const { data } = await window.SupabaseDB.client
                         .from('scorecards')
-                        .select('player_id, player_name, group_id, created_at, scoring_format, handicap, course_name, scores(hole_number, gross_score, net_score, stableford_points, par)')
+                        .select('id, player_id, player_name, group_id, created_at, status, scoring_format, handicap, course_name, scores(hole_number, gross_score, net_score, stableford_points, par)')
                         .eq('event_id', eventId)
-                        .gte('created_at', since)
                         .neq('status', 'abandoned');
                     scorecards = data || [];
                     // v1065 rescue (mirror of live.html v954): a REGISTERED golfer who started
@@ -19843,22 +19846,48 @@
                 }
                 if (_lbCourseEl) _lbCourseEl.textContent = _lbPlayed.base || '';
 
-                if (scorecards.length === 0) {
-                    content.innerHTML = '<p style="text-align:center;color:#9ca3af;padding:20px;">' + tt('lb.noplayers', 'No players yet') + '</p>';
-                    return;
-                }
-
-                // Deduplicate by player_id — keep the MOST RECENT scorecard (so a player's
-                // current round wins over an earlier round the same day), tiebreak by most holes.
+                // Deduplicate by player_id using the SAME "best card" rule as the organizer
+                // board, live.html and results.html: a completed card beats a live one, then
+                // most holes played, then newest. This board used to keep the NEWEST card, so
+                // an accidental second Start Round (newer, 0 holes) masked the player's real
+                // 17-hole card and showed them at 0 through — the same player reading
+                // differently here than on every other board.
+                const _holeCount = (c) => (c.scores || []).filter(x => x && x.gross_score != null).length;
                 const best = new Map();
                 for (const sc of scorecards) {
                     const existing = best.get(sc.player_id);
                     if (!existing) { best.set(sc.player_id, sc); continue; }
-                    const tNew = sc.created_at ? Date.parse(sc.created_at) : 0;
-                    const tOld = existing.created_at ? Date.parse(existing.created_at) : 0;
-                    if (tNew > tOld || (tNew === tOld && (sc.scores || []).length > (existing.scores || []).length)) {
-                        best.set(sc.player_id, sc);
-                    }
+                    const cc = sc.status === 'completed' ? 1 : 0, cx = existing.status === 'completed' ? 1 : 0;
+                    const hc = _holeCount(sc), hx = _holeCount(existing);
+                    const newer = Date.parse(sc.created_at || 0) > Date.parse(existing.created_at || 0);
+                    const better = (cc !== cx) ? (cc > cx) : (hc !== hx) ? (hc > hx) : newer;
+                    if (better) best.set(sc.player_id, sc);
+                }
+
+                // Every REGISTERED player belongs on this board too, with or without a card
+                // yet — the same rule live.html (v1106) and the organizer board already use.
+                // Without it this board listed only golfers who had started, so a player
+                // looking for a groupmate who hadn't teed off yet concluded the system had
+                // lost them. Regs unreadable => no merge (fail closed, never invent a field).
+                let _notStartedRegs = [];
+                if (eventId) {
+                    try {
+                        const { data: _allRegs, error: _regErr } = await window.SupabaseDB.client
+                            .from('event_registrations')
+                            .select('player_id, player_name, handicap, status')
+                            .eq('event_id', eventId);
+                        if (!_regErr) {
+                            const _withCard = new Set([...best.keys()].map(String));
+                            _notStartedRegs = (_allRegs || []).filter(r => r.player_id
+                                && !_withCard.has(String(r.player_id))
+                                && String(r.status || '').toLowerCase() !== 'cancelled');
+                        }
+                    } catch (e) { console.warn('[LiveLeaderboard] registration merge failed', e); }
+                }
+
+                if (best.size === 0 && _notStartedRegs.length === 0) {
+                    content.innerHTML = '<p style="text-align:center;color:#9ca3af;padding:20px;">' + tt('lb.noplayers', 'No players yet') + '</p>';
+                    return;
                 }
 
                 // Build leaderboard with hole-by-hole data
@@ -19879,9 +19908,21 @@
                     });
                     const net = scores.reduce((s, h) => s + ((h.net_score != null) ? Number(h.net_score) : (Number(h.gross_score) || 0)), 0);
                     return { id: sc.player_id, name: sc.player_name || 'Player', pts, gross, net, thru, holes, holePts, holePars, hcp: sc.handicap, group: sc.group_id || '' };
-                }).sort((a, b) => _lbMedal
+                });
+
+                // Registered but not started — zeros, always ranked last.
+                for (const r of _notStartedRegs) {
+                    rows.push({
+                        id: r.player_id, name: r.player_name || 'Player',
+                        pts: 0, gross: 0, net: 0, thru: 0,
+                        holes: new Array(18).fill(null), holePts: new Array(18).fill(null),
+                        holePars: new Array(18).fill(4), hcp: r.handicap, group: '', notStarted: true
+                    });
+                }
+
+                rows.sort((a, b) => (a.notStarted ? 1 : 0) - (b.notStarted ? 1 : 0) || (_lbMedal
                     ? ((a.thru ? a.net : 999) - (b.thru ? b.net : 999) || a.gross - b.gross || b.thru - a.thru)
-                    : (b.pts - a.pts || a.gross - b.gross));
+                    : (b.pts - a.pts || a.gross - b.gross)));
 
                 const cellStyle = (score, par) => {
                     if (score === null) return 'color:#cbd5e1;';
@@ -20069,6 +20110,19 @@
 
                 content.innerHTML = rows.map((r, i) => {
                     const isMe = r.id === currentPlayerId;
+
+                    // Registered, not teed off yet: one compact line, no 18 empty hole cells —
+                    // a 35-player field would otherwise bury the players who ARE scoring.
+                    if (r.notStarted) {
+                        return `<div style="opacity:0.55;border-bottom:1px solid #e2e8f0;padding:6px 4px;display:flex;align-items:center;justify-content:space-between;">
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <span style="font-size:14px;color:#9ca3af;width:14px;display:inline-block;">–</span>
+                                <span style="color:#0f172a;font-size:13px;" data-golfer-av="${r.id || ''}" data-golfer-av-nm="${String(r.name || '').replace(/"/g, '&quot;')}">${r.name}</span>
+                            </div>
+                            <span style="color:#9ca3af;font-size:11px;">${tt('lb.notstarted', 'Not started')}</span>
+                        </div>`;
+                    }
+
                     const medal = i === 0 ? micon('military_tech', 'text-yellow-500') : i === 1 ? micon('military_tech', 'text-gray-400') : i === 2 ? micon('military_tech', 'text-amber-700') : (i + 1);
                     const bg = isMe ? 'background:#ecfdf5;' : '';
                     const bold = isMe ? 'font-weight:700;' : '';
@@ -91960,6 +92014,56 @@ class LiveScorecardSystem {
     _deviceUser() {
         return String(window.Auth?.currentUserId || window.AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id') || '');
     }
+
+    // Ending MY round must never end someone else's. The old abandon sweep was
+    // `.eq('event_id').in('player_id', everyone-in-my-group)` with no group and no ownership
+    // scope, so one player tapping End abandoned the live cards of groupmates scoring on their
+    // OWN phones — and of the same players in any OTHER group of that event. Every board filters
+    // `status <> 'abandoned'`, so those players silently vanished from the organizer board,
+    // live.html, Spectate and the in-round board while still on the course, and their remaining
+    // hole saves wrote to a dead card. (Prod: 2026-09-04 14:55:20 — one sweep, 4 cards, 2
+    // different controlling devices; Paul Lanzetta was self-scoring and got wiped by Moore's End.)
+    // This abandons ONLY the cards this device is entitled to end: cards it controls, or that
+    // nobody controls. A groupmate holding their own card keeps it and stays on every board.
+    async _abandonOwnedCards(localIds) {
+        const sb = window.SupabaseDB?.client;
+        if (!sb) return 0;
+        const me = this._deviceUser();
+        const ids = new Set((localIds || []).filter(id => id && !String(id).startsWith('local_')).map(String));
+
+        // Cards this round left behind that the local id map doesn't know about (resumed
+        // sessions, scramble starts). Scoped to THIS group so other groups in the event are never touched.
+        try {
+            const pids = (this.players || []).map(p => String(p.lineUserId || p.id)).filter(Boolean);
+            if (this.eventId && this.groupId && pids.length) {
+                const { data } = await sb.from('scorecards').select('id')
+                    .eq('event_id', this.eventId).eq('group_id', this.groupId)
+                    .in('player_id', pids).eq('status', 'in_progress');
+                (data || []).forEach(r => ids.add(String(r.id)));
+            }
+        } catch (e) { /* best effort — the local id list below still runs */ }
+
+        if (!ids.size) return 0;
+
+        // Ownership gate: never abandon a card another device is holding.
+        let abandonable = [...ids];
+        try {
+            const { data: owners } = await sb.from('scorecards')
+                .select('id, controlled_by').in('id', abandonable);
+            if (owners && owners.length) {
+                abandonable = owners
+                    .filter(c => !c.controlled_by || String(c.controlled_by) === String(me))
+                    .map(c => String(c.id));
+            }
+        } catch (e) { /* can't read owners → fall through and abandon only what we know is ours */ }
+
+        if (!abandonable.length) return 0;
+        try {
+            await sb.from('scorecards').update({ status: 'abandoned' }).in('id', abandonable);
+            console.log('[LiveScorecard] Abandoned ' + abandonable.length + ' card(s) this device owns; left ' + (ids.size - abandonable.length) + ' held by other devices');
+        } catch (e) { console.warn('[LiveScorecard] abandon failed (non-fatal):', e); }
+        return abandonable.length;
+    }
     // Who can actually hold a card on their own phone = anyone who can LOG IN. This app has
     // three auth providers: LINE (U…), Google (GOOGLE-…) and Kakao (KAKAO-…). Everything else
     // in user_profiles is synthetic and has no device — TRGG-… (918 rows), MANUAL-…/manual-…,
@@ -93521,18 +93625,9 @@ class LiveScorecardSystem {
                 // below) — this branch was localStorage-only, leaving in_progress rows that
                 // fed the "Unfinished Round Found" prompt for 18h and sat on live boards.
                 try {
-                    if (window.SupabaseDB?.client) {
-                        const abandonIds = Object.values(this.scorecards || {}).filter(id => id && !String(id).startsWith('local_'));
-                        if (abandonIds.length) {
-                            await window.SupabaseDB.client.from('scorecards').update({ status: 'abandoned' }).in('id', abandonIds);
-                        }
-                        const _pids = (this.players || []).map(p => String(p.lineUserId || p.id)).filter(Boolean);
-                        if (this.eventId && _pids.length) {
-                            await window.SupabaseDB.client.from('scorecards').update({ status: 'abandoned' })
-                                .eq('event_id', this.eventId).in('player_id', _pids).eq('status', 'in_progress');
-                        }
-                        console.log('[LiveScorecard] 🚫 Zero-score round abandoned — scorecards marked abandoned in DB');
-                    }
+                    // Ownership-scoped (see _abandonOwnedCards): a groupmate scoring on their own
+                    // phone keeps their live card instead of being wiped off every board.
+                    await this._abandonOwnedCards(Object.values(this.scorecards || {}));
                 } catch (e) { console.warn('[LiveScorecard] Failed to mark scorecards abandoned:', e); }
                 this.clearRoundState();
                 this.stopAutoSaveTimer();
@@ -93582,21 +93677,10 @@ class LiveScorecardSystem {
                     // spectator board. Previously only local state was cleared, leaving the cards
                     // in_progress + spectatable — so ended-not-finished rounds lingered on the board.
                     try {
-                        if (window.SupabaseDB?.client) {
-                            // Mark abandoned by KNOWN scorecard id (local map) AND by event+player. The local map
-                            // can be empty/local-only (scramble start, or a resumed session), which used to leave
-                            // the cards in_progress on the organizer board — the event+player sweep covers those.
-                            const abandonIds = Object.values(this.scorecards || {}).filter(id => id && !String(id).startsWith('local_'));
-                            if (abandonIds.length) {
-                                await window.SupabaseDB.client.from('scorecards').update({ status: 'abandoned' }).in('id', abandonIds);
-                            }
-                            const _pids = (this.players || []).map(p => String(p.lineUserId || p.id)).filter(Boolean);
-                            if (this.eventId && _pids.length) {
-                                await window.SupabaseDB.client.from('scorecards').update({ status: 'abandoned' })
-                                    .eq('event_id', this.eventId).in('player_id', _pids).eq('status', 'in_progress');
-                            }
-                            console.log('[LiveScorecard] 🚫 Round abandoned — marked its scorecards abandoned (dropped from boards)');
-                        }
+                        // Mark abandoned by KNOWN scorecard id (local map) PLUS this group's leftover
+                        // in_progress cards — the local map can be empty/local-only (scramble start, or a
+                        // resumed session). Ownership-scoped: never ends a card another device is holding.
+                        await this._abandonOwnedCards(Object.values(this.scorecards || {}));
                     } catch (e) { console.warn('[LiveScorecard] Failed to mark scorecards abandoned:', e); }
                     this.clearRoundState();
                     this.stopAutoSaveTimer();

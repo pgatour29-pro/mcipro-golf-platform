@@ -64203,6 +64203,16 @@ document.addEventListener('DOMContentLoaded', function() {
                             <input type="text" id="societyName" class="w-full rounded-lg border px-3 py-2" placeholder="e.g., Phuket Golf Society">
                         </div>
 
+                        <!-- Short Code (v1119) — labels the society where the full name will not fit -->
+                        <div class="mb-6">
+                            <label class="block text-sm font-medium text-gray-700 mb-2" for="societyShortCode">Short Code</label>
+                            <input type="text" id="societyShortCode" maxlength="4" autocomplete="off"
+                                   class="w-28 rounded-lg border px-3 py-2 uppercase tracking-widest font-bold"
+                                   placeholder="TRGG"
+                                   oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+                            <p class="text-xs text-gray-500 mt-1">2 to 4 letters or numbers, e.g. TRGG. Golfers see this wherever your full name will not fit &mdash; filter chips, tight tables. Must be unique across all societies.</p>
+                        </div>
+
                         <!-- Description (Optional) -->
                         <div class="mb-6">
                             <label class="block text-sm font-medium text-gray-700 mb-2">Description (Optional)</label>
@@ -76784,8 +76794,21 @@ class SocietyGolfSupabase {
             // Query 2: Get society profiles
             window.SupabaseDB.client
                 .from('society_profiles')
-                .select('organizer_id, society_name, society_logo')
-                .in('organizer_id', organizerIds),
+                .select('id, organizer_id, society_name, society_logo, short_code')
+                .in('organizer_id', organizerIds)
+                .then(result => {
+                    // short_code arrived in the v1119 migration. If this app build reaches a
+                    // database that hasn't run it yet, retry without the column — losing the
+                    // codes is fine, losing every society name and logo is not.
+                    if (result.error && /short_code/.test(result.error.message || '')) {
+                        console.warn('[SocietyGolf] short_code column missing — retrying without it');
+                        return window.SupabaseDB.client
+                            .from('society_profiles')
+                            .select('id, organizer_id, society_name, society_logo')
+                            .in('organizer_id', organizerIds);
+                    }
+                    return result;
+                }),
 
             // Query 3: Get user's registrations (if logged in) - only need event IDs
             playerId ? window.SupabaseDB.client
@@ -76886,7 +76909,8 @@ class SocietyGolfSupabase {
             societyMap['trgg-pattaya'] = {
                 organizer_id: 'trgg-pattaya',
                 society_name: 'Travellers Rest Golf Group',
-                society_logo: 'societylogos/trgg.jpg'
+                society_logo: 'societylogos/trgg.jpg',
+                short_code: 'TRGG'
             };
         }
 
@@ -76972,6 +76996,11 @@ class SocietyGolfSupabase {
                 organizerName: e.organizer_name,
                 societyName: society?.society_name || societyIdMap[e.society_id] || e.organizer_name,
                 societyLogo: society?.society_logo || '',
+                // v1119: organizer-set 2-4 char code + the society_profiles row id.
+                // societyProfileId is what society_members/society_handicaps key on, so it is the
+                // only reliable way to tell "a society I'm a member of" from "any society".
+                societyCode: society?.short_code || '',
+                societyProfileId: society?.id || e.society_id || null,
                 // Only add creator info for golfer-created events without society affiliation
                 creatorName: (!society && creatorProfile) ? creatorProfile.name : '',
                 creatorPhoto: (!society && creatorProfile) ? creatorProfile.pictureUrl : '',
@@ -78287,6 +78316,7 @@ class SocietyGolfSupabase {
                 organizerId: data.organizer_id,
                 societyName: data.society_name,
                 societyLogo: data.society_logo,
+                shortCode: data.short_code || '',
                 description: data.description,
                 createdAt: data.created_at,
                 updatedAt: data.updated_at
@@ -78304,12 +78334,17 @@ class SocietyGolfSupabase {
                 organizer_id: profileData.organizerId,
                 society_name: profileData.societyName,
                 society_logo: profileData.societyLogo,
+                short_code: profileData.shortCode || null,
                 description: profileData.description
             })
             .select()
             .single();
 
         if (error) {
+            if (/short_code/.test(error.message || '') && error.code === '42703') {
+                console.warn('[SocietyGolfDB] short_code column missing — saving without it');
+                return this._createProfileNoCode(profileData);
+            }
             console.error('[SocietyGolfDB] Error creating profile:', error);
             throw error;
         }
@@ -78324,6 +78359,7 @@ class SocietyGolfSupabase {
             .update({
                 society_name: profileData.societyName,
                 society_logo: profileData.societyLogo,
+                short_code: profileData.shortCode || null,
                 description: profileData.description,
                 updated_at: new Date().toISOString()
             })
@@ -78332,10 +78368,46 @@ class SocietyGolfSupabase {
             .single();
 
         if (error) {
+            if (/short_code/.test(error.message || '') && error.code === '42703') {
+                console.warn('[SocietyGolfDB] short_code column missing — saving without it');
+                return this._updateProfileNoCode(organizerId, profileData);
+            }
             console.error('[SocietyGolfDB] Error updating profile:', error);
             throw error;
         }
 
+        return data;
+    }
+
+    // Pre-migration fallbacks for the two writes above (see sql/2026-09-06_society_short_code.sql)
+    async _createProfileNoCode(profileData) {
+        const { data, error } = await window.SupabaseDB.client
+            .from('society_profiles')
+            .insert({
+                organizer_id: profileData.organizerId,
+                society_name: profileData.societyName,
+                society_logo: profileData.societyLogo,
+                description: profileData.description
+            })
+            .select()
+            .single();
+        if (error) { console.error('[SocietyGolfDB] Error creating profile:', error); throw error; }
+        return data;
+    }
+
+    async _updateProfileNoCode(organizerId, profileData) {
+        const { data, error } = await window.SupabaseDB.client
+            .from('society_profiles')
+            .update({
+                society_name: profileData.societyName,
+                society_logo: profileData.societyLogo,
+                description: profileData.description,
+                updated_at: new Date().toISOString()
+            })
+            .eq('organizer_id', organizerId)
+            .select()
+            .single();
+        if (error) { console.error('[SocietyGolfDB] Error updating profile:', error); throw error; }
         return data;
     }
 
@@ -110927,6 +110999,8 @@ This action cannot be undone.`);
             if (profile) {
                 document.getElementById('societyName').value = profile.societyName || '';
                 document.getElementById('societyDescription').value = profile.description || '';
+                const _scEl = document.getElementById('societyShortCode');
+                if (_scEl) _scEl.value = profile.shortCode || '';
 
                 if (profile.societyLogo) {
                     const preview = document.getElementById('societyLogoPreview');
@@ -111030,9 +111104,14 @@ This action cannot be undone.`);
                 this.tempLogoData = null; // Clear temp data
             }
 
+            // v1119: short code — 2-4 chars, A-Z0-9, unique across societies (DB enforces both).
+            const shortCode = ((document.getElementById('societyShortCode') || {}).value || '')
+                .trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
             const profileData = {
                 organizerId: organizerId,
                 societyName: document.getElementById('societyName').value.trim(),
+                shortCode: shortCode,
                 description: document.getElementById('societyDescription').value.trim(),
                 societyLogo: logoUrl
             };
@@ -111040,7 +111119,12 @@ This action cannot be undone.`);
             console.log('[SocietyOrganizer] Profile data to save:', profileData);
 
             if (!profileData.societyName) {
-                NotificationManager.show('Please enter society name', 'error');
+                window.NotificationManager.show('Please enter society name', 'error');
+                return;
+            }
+
+            if (shortCode && (shortCode.length < 2 || shortCode.length > 4)) {
+                window.NotificationManager.show('Short code must be 2 to 4 letters or numbers', 'error');
                 return;
             }
 
@@ -111068,7 +111152,16 @@ This action cannot be undone.`);
         } catch (error) {
             console.error('[SocietyOrganizer] Error saving profile:', error);
             console.error('[SocietyOrganizer] Error details:', JSON.stringify(error, null, 2));
-            NotificationManager.show('ERROR: ' + (error.message || error.toString()), 'error');
+            // 23505 = unique violation. The only unique column an organizer can collide on here
+            // is short_code, so say that instead of leaking a Postgres string.
+            const msg = String(error?.message || error || '');
+            if (error?.code === '23505' || /short_code/.test(msg)) {
+                window.NotificationManager.show('That short code is already taken by another society — pick a different one', 'error');
+            } else if (/short_code_fmt/.test(msg)) {
+                window.NotificationManager.show('Short code must be 2 to 4 letters or numbers', 'error');
+            } else {
+                window.NotificationManager.show('ERROR: ' + (msg || 'could not save profile'), 'error');
+            }
         }
     }
 
@@ -161035,7 +161128,7 @@ showOrganizerTab = function(tabName) {
     })();
     </script>
     <script src="oo-1on1.js?v=1105"></script>
-    <script src="g3-desk.js?v=1108"></script>
+    <script src="g3-desk.js?v=1119"></script>
     <script src="g3-org.js?v=1108"></script>
 </body>
 

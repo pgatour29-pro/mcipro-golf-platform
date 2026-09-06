@@ -33,17 +33,17 @@
 
   /* ---------- i18n keys (EN/TH/KO/JA at parity; added to the app dicts at load) ---------- */
   var DICT = {
-    en: { 'g3.today': 'Today', 'g3.leave': 'Leave', 'g3.tee': 'Tee', 'g3.event': 'Event', 'g3.playingwith': 'Playing with', 'g3.caddy': 'Caddy', 'g3.weather': 'Weather', 'g3.group': 'Group', 'g3.of': 'of', 'g3.teesheet': 'Tee sheet', 'g3.messagegroup': 'Messages', 'g3.thisweek': 'This week', 'g3.registered': 'registered', 'g3.tapday': 'Tap a row to open the event', 'g3.day': 'Day', 'g3.society': 'Society', 'g3.course': 'Course', 'g3.transport': 'Transport', 'g3.status': 'Status', 'g3.register': 'Register', 'g3.going': 'Registered', 'g3.paid': 'Paid', 'g3.van': 'Van', 'g3.owncar': 'Own car', 'g3.livenow': 'Live now', 'g3.rounds': 'rounds', 'g3.round': 'round', 'g3.nonelive': 'No rounds live right now', 'g3.players': 'players', 'g3.casual': 'Casual round', 'g3.handicap': 'Handicap', 'g3.last': 'Last', 'g3.best': 'best', 'g3.pts': 'pts', 'g3.norounds': 'No rounds posted yet', 'g3.messages': 'Messages', 'g3.new': 'new', 'g3.nomsgs': 'No messages yet', 'g3.you': 'You', 'g3.noevent': 'No upcoming round', 'g3.noevent.sub': 'Register for an event and it shows here', 'g3.groupsnotpub': 'Groups not published yet', 'g3.nocaddy': 'No caddy yet', 'g3.noevents.week': 'Nothing on your calendar this week', 'g3.search': 'Search players, events, courses', 'g3.playgolf': 'Play golf', 'g3.liveboards': 'Live boards', 'g3.results': 'Results', 'g3.mygame': 'My game', 'g3.roundhistory': 'Round history', 'g3.analytics': 'Analytics', 'g3.around': 'Around the course', 'g3.schedule': 'Schedule', 'g3.caddies': 'Caddies', 'g3.food': 'Food', 'g3.teetime': 'Tee time', 'g3.conditions': 'Conditions', 'g3.societyevents': 'Society events', 'g3.orders': 'Orders', 'g3.expand': 'Expand', 'g3.collapse': 'Collapse', 'g3.date': 'Date', 'g3.gross': 'Gross' },
-    th: { 'g3.today': 'วันนี้', 'g3.leave': 'ออกเดินทาง', 'g3.tee': 'ทีออฟ', 'g3.event': 'รายการ', 'g3.playingwith': 'เล่นกับ', 'g3.caddy': 'แคดดี้', 'g3.weather': 'อากาศ', 'g3.group': 'กลุ่ม', 'g3.of': 'จาก', 'g3.teesheet': 'ตารางทีออฟ', 'g3.messagegroup': 'ข้อความ', 'g3.thisweek': 'สัปดาห์นี้', 'g3.registered': 'ลงทะเบียนแล้ว', 'g3.tapday': 'แตะแถวเพื่อเปิดรายการ', 'g3.day': 'วัน', 'g3.society': 'สมาคม', 'g3.course': 'สนาม', 'g3.transport': 'การเดินทาง', 'g3.status': 'สถานะ', 'g3.register': 'ลงทะเบียน', 'g3.going': 'ลงทะเบียนแล้ว', 'g3.paid': 'ชำระแล้ว', 'g3.van': 'รถตู้', 'g3.owncar': 'รถส่วนตัว', 'g3.livenow': 'กำลังแข่งสด', 'g3.rounds': 'รอบ', 'g3.round': 'รอบ', 'g3.nonelive': 'ยังไม่มีรอบที่กำลังแข่งอยู่', 'g3.players': 'ผู้เล่น', 'g3.casual': 'รอบทั่วไป', 'g3.handicap': 'แฮนดิแคป', 'g3.last': 'ล่าสุด', 'g3.best': 'ดีที่สุด', 'g3.pts': 'แต้ม', 'g3.norounds': 'ยังไม่มีรอบที่บันทึก', 'g3.messages': 'ข้อความ', 'g3.new': 'ใหม่', 'g3.nomsgs': 'ยังไม่มีข้อความ', 'g3.you': 'คุณ', 'g3.noevent': 'ไม่มีรอบที่กำลังจะมาถึง', 'g3.noevent.sub': 'ลงทะเบียนรายการแล้วจะแสดงที่นี่', 'g3.groupsnotpub': 'ยังไม่ประกาศกลุ่ม', 'g3.nocaddy': 'ยังไม่มีแคดดี้', 'g3.noevents.week': 'สัปดาห์นี้ไม่มีรายการในปฏิทินของคุณ', 'g3.search': 'ค้นหาผู้เล่น รายการ สนาม', 'g3.playgolf': 'เล่นกอล์ฟ', 'g3.liveboards': 'กระดานสด', 'g3.results': 'ผลการแข่งขัน', 'g3.mygame': 'เกมของฉัน', 'g3.roundhistory': 'ประวัติรอบ', 'g3.analytics': 'สถิติ', 'g3.around': 'รอบสนาม', 'g3.schedule': 'ตารางเวลา', 'g3.caddies': 'แคดดี้', 'g3.food': 'อาหาร', 'g3.teetime': 'จองทีไทม์', 'g3.conditions': 'สภาพสนาม', 'g3.societyevents': 'รายการสมาคม', 'g3.orders': 'คำสั่งซื้อ', 'g3.expand': 'ขยาย', 'g3.collapse': 'ย่อ', 'g3.date': 'วันที่', 'g3.gross': 'กรอส' },
-    ko: { 'g3.today': '오늘', 'g3.leave': '출발', 'g3.tee': '티오프', 'g3.event': '이벤트', 'g3.playingwith': '동반자', 'g3.caddy': '캐디', 'g3.weather': '날씨', 'g3.group': '조', 'g3.of': '/', 'g3.teesheet': '티시트', 'g3.messagegroup': '메시지', 'g3.thisweek': '이번 주', 'g3.registered': '등록', 'g3.tapday': '행을 눌러 이벤트 열기', 'g3.day': '날짜', 'g3.society': '모임', 'g3.course': '코스', 'g3.transport': '교통', 'g3.status': '상태', 'g3.register': '등록', 'g3.going': '등록됨', 'g3.paid': '결제완료', 'g3.van': '밴', 'g3.owncar': '자차', 'g3.livenow': '실시간', 'g3.rounds': '라운드', 'g3.round': '라운드', 'g3.nonelive': '지금 진행 중인 라운드가 없습니다', 'g3.players': '명', 'g3.casual': '캐주얼 라운드', 'g3.handicap': '핸디캡', 'g3.last': '최근', 'g3.best': '베스트', 'g3.pts': '점', 'g3.norounds': '아직 기록된 라운드가 없습니다', 'g3.messages': '메시지', 'g3.new': '새 메시지', 'g3.nomsgs': '메시지가 없습니다', 'g3.you': '나', 'g3.noevent': '예정된 라운드 없음', 'g3.noevent.sub': '이벤트에 등록하면 여기에 표시됩니다', 'g3.groupsnotpub': '조 편성 미공개', 'g3.nocaddy': '캐디 미배정', 'g3.noevents.week': '이번 주 일정이 없습니다', 'g3.search': '선수, 이벤트, 코스 검색', 'g3.playgolf': '플레이', 'g3.liveboards': '실시간 보드', 'g3.results': '결과', 'g3.mygame': '내 게임', 'g3.roundhistory': '라운드 기록', 'g3.analytics': '분석', 'g3.around': '코스 주변', 'g3.schedule': '일정', 'g3.caddies': '캐디', 'g3.food': '식사', 'g3.teetime': '티타임', 'g3.conditions': '코스 상태', 'g3.societyevents': '모임 이벤트', 'g3.orders': '주문', 'g3.expand': '펼치기', 'g3.collapse': '접기', 'g3.date': '날짜', 'g3.gross': '그로스' },
-    ja: { 'g3.today': '今日', 'g3.leave': '出発', 'g3.tee': 'ティー', 'g3.event': 'イベント', 'g3.playingwith': '同伴者', 'g3.caddy': 'キャディ', 'g3.weather': '天気', 'g3.group': '組', 'g3.of': '/', 'g3.teesheet': 'ティーシート', 'g3.messagegroup': 'メッセージ', 'g3.thisweek': '今週', 'g3.registered': '登録', 'g3.tapday': '行をタップしてイベントを開く', 'g3.day': '日', 'g3.society': '団体', 'g3.course': 'コース', 'g3.transport': '交通', 'g3.status': '状態', 'g3.register': '登録', 'g3.going': '登録済み', 'g3.paid': '支払済み', 'g3.van': 'バン', 'g3.owncar': '自家用車', 'g3.livenow': 'ライブ', 'g3.rounds': 'ラウンド', 'g3.round': 'ラウンド', 'g3.nonelive': '現在ライブ中のラウンドはありません', 'g3.players': '人', 'g3.casual': 'カジュアルラウンド', 'g3.handicap': 'ハンディキャップ', 'g3.last': '直近', 'g3.best': 'ベスト', 'g3.pts': '点', 'g3.norounds': 'まだ記録されたラウンドがありません', 'g3.messages': 'メッセージ', 'g3.new': '新着', 'g3.nomsgs': 'メッセージはありません', 'g3.you': '自分', 'g3.noevent': '予定されたラウンドはありません', 'g3.noevent.sub': 'イベントに登録するとここに表示されます', 'g3.groupsnotpub': '組み合わせ未発表', 'g3.nocaddy': 'キャディ未定', 'g3.noevents.week': '今週の予定はありません', 'g3.search': '選手・イベント・コースを検索', 'g3.playgolf': 'プレー', 'g3.liveboards': 'ライブボード', 'g3.results': '結果', 'g3.mygame': 'マイゲーム', 'g3.roundhistory': 'ラウンド履歴', 'g3.analytics': '分析', 'g3.around': 'コース周辺', 'g3.schedule': 'スケジュール', 'g3.caddies': 'キャディ', 'g3.food': '食事', 'g3.teetime': 'ティータイム', 'g3.conditions': 'コース状態', 'g3.societyevents': '団体イベント', 'g3.orders': '注文', 'g3.expand': '展開', 'g3.collapse': '折りたたむ', 'g3.date': '日付', 'g3.gross': 'グロス' }
+    en: { 'g3.today': 'Today', 'g3.leave': 'Leave', 'g3.tee': 'Tee', 'g3.event': 'Event', 'g3.playingwith': 'Playing with', 'g3.caddy': 'Caddy', 'g3.weather': 'Weather', 'g3.group': 'Group', 'g3.of': 'of', 'g3.teesheet': 'Tee sheet', 'g3.messagegroup': 'Messages', 'g3.thisweek': 'This week', 'g3.registered': 'registered', 'g3.tapday': 'Tap a row to open the event', 'g3.day': 'Day', 'g3.society': 'Society', 'g3.course': 'Course', 'g3.transport': 'Transport', 'g3.status': 'Status', 'g3.register': 'Register', 'g3.going': 'Registered', 'g3.paid': 'Paid', 'g3.van': 'Van', 'g3.owncar': 'Own car', 'g3.livenow': 'Live now', 'g3.rounds': 'rounds', 'g3.round': 'round', 'g3.nonelive': 'No rounds live right now', 'g3.players': 'players', 'g3.casual': 'Casual round', 'g3.handicap': 'Handicap', 'g3.last': 'Last', 'g3.best': 'best', 'g3.pts': 'pts', 'g3.norounds': 'No rounds posted yet', 'g3.messages': 'Messages', 'g3.new': 'new', 'g3.nomsgs': 'No messages yet', 'g3.you': 'You', 'g3.noevent': 'No upcoming round', 'g3.noevent.sub': 'Register for an event and it shows here', 'g3.groupsnotpub': 'Groups not published yet', 'g3.nocaddy': 'No caddy yet', 'g3.noevents.week': 'Nothing on your calendar this week', 'g3.search': 'Search players, events, courses', 'g3.playgolf': 'Play golf', 'g3.liveboards': 'Live boards', 'g3.results': 'Results', 'g3.mygame': 'My game', 'g3.roundhistory': 'Round history', 'g3.analytics': 'Analytics', 'g3.around': 'Around the course', 'g3.schedule': 'Schedule', 'g3.caddies': 'Caddies', 'g3.food': 'Food', 'g3.teetime': 'Tee time', 'g3.conditions': 'Conditions', 'g3.societyevents': 'Society events', 'g3.orders': 'Orders', 'g3.expand': 'Expand', 'g3.collapse': 'Collapse', 'g3.date': 'Date', 'g3.all': 'All', 'g3.mine': 'Mine', 'g3.more': 'more', 'g3.clear': 'Clear', 'g3.findsoc': 'Find a society…', 'g3.mysocs': 'My societies', 'g3.othersocs': 'Other societies', 'g3.done': 'Done', 'g3.clearall': 'Clear all', 'g3.socsel': '{n} of {t} societies', 'g3.nosocmatch': 'No society matches', 'g3.pinsoc': 'Keep in the bar', 'g3.nofiltered': 'Nothing this week for that filter', 'g3.gross': 'Gross' },
+    th: { 'g3.today': 'วันนี้', 'g3.leave': 'ออกเดินทาง', 'g3.tee': 'ทีออฟ', 'g3.event': 'รายการ', 'g3.playingwith': 'เล่นกับ', 'g3.caddy': 'แคดดี้', 'g3.weather': 'อากาศ', 'g3.group': 'กลุ่ม', 'g3.of': 'จาก', 'g3.teesheet': 'ตารางทีออฟ', 'g3.messagegroup': 'ข้อความ', 'g3.thisweek': 'สัปดาห์นี้', 'g3.registered': 'ลงทะเบียนแล้ว', 'g3.tapday': 'แตะแถวเพื่อเปิดรายการ', 'g3.day': 'วัน', 'g3.society': 'สมาคม', 'g3.course': 'สนาม', 'g3.transport': 'การเดินทาง', 'g3.status': 'สถานะ', 'g3.register': 'ลงทะเบียน', 'g3.going': 'ลงทะเบียนแล้ว', 'g3.paid': 'ชำระแล้ว', 'g3.van': 'รถตู้', 'g3.owncar': 'รถส่วนตัว', 'g3.livenow': 'กำลังแข่งสด', 'g3.rounds': 'รอบ', 'g3.round': 'รอบ', 'g3.nonelive': 'ยังไม่มีรอบที่กำลังแข่งอยู่', 'g3.players': 'ผู้เล่น', 'g3.casual': 'รอบทั่วไป', 'g3.handicap': 'แฮนดิแคป', 'g3.last': 'ล่าสุด', 'g3.best': 'ดีที่สุด', 'g3.pts': 'แต้ม', 'g3.norounds': 'ยังไม่มีรอบที่บันทึก', 'g3.messages': 'ข้อความ', 'g3.new': 'ใหม่', 'g3.nomsgs': 'ยังไม่มีข้อความ', 'g3.you': 'คุณ', 'g3.noevent': 'ไม่มีรอบที่กำลังจะมาถึง', 'g3.noevent.sub': 'ลงทะเบียนรายการแล้วจะแสดงที่นี่', 'g3.groupsnotpub': 'ยังไม่ประกาศกลุ่ม', 'g3.nocaddy': 'ยังไม่มีแคดดี้', 'g3.noevents.week': 'สัปดาห์นี้ไม่มีรายการในปฏิทินของคุณ', 'g3.search': 'ค้นหาผู้เล่น รายการ สนาม', 'g3.playgolf': 'เล่นกอล์ฟ', 'g3.liveboards': 'กระดานสด', 'g3.results': 'ผลการแข่งขัน', 'g3.mygame': 'เกมของฉัน', 'g3.roundhistory': 'ประวัติรอบ', 'g3.analytics': 'สถิติ', 'g3.around': 'รอบสนาม', 'g3.schedule': 'ตารางเวลา', 'g3.caddies': 'แคดดี้', 'g3.food': 'อาหาร', 'g3.teetime': 'จองทีไทม์', 'g3.conditions': 'สภาพสนาม', 'g3.societyevents': 'รายการสมาคม', 'g3.orders': 'คำสั่งซื้อ', 'g3.expand': 'ขยาย', 'g3.collapse': 'ย่อ', 'g3.date': 'วันที่', 'g3.all': 'ทั้งหมด', 'g3.mine': 'ของฉัน', 'g3.more': 'เพิ่มเติม', 'g3.clear': 'ล้าง', 'g3.findsoc': 'ค้นหาสมาคม…', 'g3.mysocs': 'สมาคมของฉัน', 'g3.othersocs': 'สมาคมอื่น', 'g3.done': 'เสร็จสิ้น', 'g3.clearall': 'ล้างทั้งหมด', 'g3.socsel': '{n} จาก {t} สมาคม', 'g3.nosocmatch': 'ไม่พบสมาคม', 'g3.pinsoc': 'ปักหมุดไว้ในแถบ', 'g3.nofiltered': 'สัปดาห์นี้ไม่มีรายการตามตัวกรองนี้', 'g3.gross': 'กรอส' },
+    ko: { 'g3.today': '오늘', 'g3.leave': '출발', 'g3.tee': '티오프', 'g3.event': '이벤트', 'g3.playingwith': '동반자', 'g3.caddy': '캐디', 'g3.weather': '날씨', 'g3.group': '조', 'g3.of': '/', 'g3.teesheet': '티시트', 'g3.messagegroup': '메시지', 'g3.thisweek': '이번 주', 'g3.registered': '등록', 'g3.tapday': '행을 눌러 이벤트 열기', 'g3.day': '날짜', 'g3.society': '모임', 'g3.course': '코스', 'g3.transport': '교통', 'g3.status': '상태', 'g3.register': '등록', 'g3.going': '등록됨', 'g3.paid': '결제완료', 'g3.van': '밴', 'g3.owncar': '자차', 'g3.livenow': '실시간', 'g3.rounds': '라운드', 'g3.round': '라운드', 'g3.nonelive': '지금 진행 중인 라운드가 없습니다', 'g3.players': '명', 'g3.casual': '캐주얼 라운드', 'g3.handicap': '핸디캡', 'g3.last': '최근', 'g3.best': '베스트', 'g3.pts': '점', 'g3.norounds': '아직 기록된 라운드가 없습니다', 'g3.messages': '메시지', 'g3.new': '새 메시지', 'g3.nomsgs': '메시지가 없습니다', 'g3.you': '나', 'g3.noevent': '예정된 라운드 없음', 'g3.noevent.sub': '이벤트에 등록하면 여기에 표시됩니다', 'g3.groupsnotpub': '조 편성 미공개', 'g3.nocaddy': '캐디 미배정', 'g3.noevents.week': '이번 주 일정이 없습니다', 'g3.search': '선수, 이벤트, 코스 검색', 'g3.playgolf': '플레이', 'g3.liveboards': '실시간 보드', 'g3.results': '결과', 'g3.mygame': '내 게임', 'g3.roundhistory': '라운드 기록', 'g3.analytics': '분석', 'g3.around': '코스 주변', 'g3.schedule': '일정', 'g3.caddies': '캐디', 'g3.food': '식사', 'g3.teetime': '티타임', 'g3.conditions': '코스 상태', 'g3.societyevents': '모임 이벤트', 'g3.orders': '주문', 'g3.expand': '펼치기', 'g3.collapse': '접기', 'g3.date': '날짜', 'g3.all': '전체', 'g3.mine': '내 모임', 'g3.more': '더보기', 'g3.clear': '지우기', 'g3.findsoc': '모임 검색…', 'g3.mysocs': '내 모임', 'g3.othersocs': '다른 모임', 'g3.done': '완료', 'g3.clearall': '모두 지우기', 'g3.socsel': '모임 {t}개 중 {n}개', 'g3.nosocmatch': '일치하는 모임 없음', 'g3.pinsoc': '바에 고정', 'g3.nofiltered': '이 필터에 해당하는 일정이 없습니다', 'g3.gross': '그로스' },
+    ja: { 'g3.today': '今日', 'g3.leave': '出発', 'g3.tee': 'ティー', 'g3.event': 'イベント', 'g3.playingwith': '同伴者', 'g3.caddy': 'キャディ', 'g3.weather': '天気', 'g3.group': '組', 'g3.of': '/', 'g3.teesheet': 'ティーシート', 'g3.messagegroup': 'メッセージ', 'g3.thisweek': '今週', 'g3.registered': '登録', 'g3.tapday': '行をタップしてイベントを開く', 'g3.day': '日', 'g3.society': '団体', 'g3.course': 'コース', 'g3.transport': '交通', 'g3.status': '状態', 'g3.register': '登録', 'g3.going': '登録済み', 'g3.paid': '支払済み', 'g3.van': 'バン', 'g3.owncar': '自家用車', 'g3.livenow': 'ライブ', 'g3.rounds': 'ラウンド', 'g3.round': 'ラウンド', 'g3.nonelive': '現在ライブ中のラウンドはありません', 'g3.players': '人', 'g3.casual': 'カジュアルラウンド', 'g3.handicap': 'ハンディキャップ', 'g3.last': '直近', 'g3.best': 'ベスト', 'g3.pts': '点', 'g3.norounds': 'まだ記録されたラウンドがありません', 'g3.messages': 'メッセージ', 'g3.new': '新着', 'g3.nomsgs': 'メッセージはありません', 'g3.you': '自分', 'g3.noevent': '予定されたラウンドはありません', 'g3.noevent.sub': 'イベントに登録するとここに表示されます', 'g3.groupsnotpub': '組み合わせ未発表', 'g3.nocaddy': 'キャディ未定', 'g3.noevents.week': '今週の予定はありません', 'g3.search': '選手・イベント・コースを検索', 'g3.playgolf': 'プレー', 'g3.liveboards': 'ライブボード', 'g3.results': '結果', 'g3.mygame': 'マイゲーム', 'g3.roundhistory': 'ラウンド履歴', 'g3.analytics': '分析', 'g3.around': 'コース周辺', 'g3.schedule': 'スケジュール', 'g3.caddies': 'キャディ', 'g3.food': '食事', 'g3.teetime': 'ティータイム', 'g3.conditions': 'コース状態', 'g3.societyevents': '団体イベント', 'g3.orders': '注文', 'g3.expand': '展開', 'g3.collapse': '折りたたむ', 'g3.date': '日付', 'g3.all': 'すべて', 'g3.mine': '自分', 'g3.more': 'さらに', 'g3.clear': 'クリア', 'g3.findsoc': '団体を検索…', 'g3.mysocs': '自分の団体', 'g3.othersocs': 'その他の団体', 'g3.done': '完了', 'g3.clearall': 'すべてクリア', 'g3.socsel': '{t}団体中{n}団体', 'g3.nosocmatch': '該当する団体なし', 'g3.pinsoc': 'バーに固定', 'g3.nofiltered': 'この絞り込みに該当する予定はありません', 'g3.gross': 'グロス' }
   };
   try { if (typeof translations !== 'undefined') Object.keys(DICT).forEach(function (l) { if (translations[l]) Object.assign(translations[l], DICT[l]); }); } catch (e) {}
 
   /* ---------- CSS (desktop only) ---------- */
   /* v1087: base hides live OUTSIDE the media query - a desktop window resized under 1024px (or a tablet rotating to
      portrait) drops .g3 but keeps the built rail/cards in the DOM; without this they rendered as raw blocks. */
-  var CSS = "#g3Rail,#g3Title,#g3Band,#g3Right,#g3Week{display:none}#g3Home,#g3Left{display:contents}\n@media (min-width:1024px){\n" +
+  var CSS = "#g3Rail,#g3Title,#g3Band,#g3Right,#g3Week,.g3-wkpop{display:none}#g3Home,#g3Left{display:contents}\n@media (min-width:1024px){\n" +
   /* v1086: transform:none is LOAD-BEARING - .screen.active leaves a transform on the dashboard, which traps position:fixed
      (the rail) inside the dashboard box. Harmless while the home was viewport-locked; once the page can scroll the rail
      grew with the page and the me-card slid off the bottom. */
@@ -140,7 +140,7 @@
   ".g3-card .g3-list{min-height:0;overflow:auto}\n" +
   /* v1086: EXPANDABLE cards. Collapsed = a cap (This week grows with the viewport, never under ~6 rows; Live/Messages ~4 rows),
      the list scrolls inside. .xp (header toggle, persisted) = no cap, the whole list shows and the page scrolls. */
-  "#g3Week .g3-list{max-height:max(268px,calc(100vh - 664px))}\n" +
+  "#g3Week .g3-list{max-height:max(268px,calc(100vh - 710px))}\n" +
   "#g3Live .g3-list{max-height:216px}#g3Msgs .g3-list{max-height:max(216px,calc(100vh - 604px))}\n" +
   "#g3Hcp .g3-hcpl{display:none}\n" +
   ".g3-card.xp .g3-list,.g3-card.xp .g3-bd{max-height:none !important}\n" +
@@ -186,6 +186,51 @@
   "#golferDashboard.g3:not(.theme-light) .g3-row .tx .s,#golferDashboard.g3:not(.theme-light) .g3-empty,#golferDashboard.g3:not(.theme-light) .g3-kv dt,#golferDashboard.g3:not(.theme-light) .g3-card .g3-hd .hint,#golferDashboard.g3:not(.theme-light) #g3Band .g3-cell .k{color:#B2BCC6}\n" +
   "#golferDashboard.g3:not(.theme-light) .g3-xp{background:#16241C;border-color:#2F4237;color:#B2BCC6}#golferDashboard.g3:not(.theme-light) .g3-card.xp .g3-xp{background:rgba(74,222,128,.14);color:#4ade80;border-color:rgba(74,222,128,.3)}#golferDashboard.g3:not(.theme-light) .g3-hcpl{border-color:#1F2E25}#golferDashboard.g3:not(.theme-light) .g3-hcpv.user-handicap{background:rgba(74,222,128,.14);color:#4ade80;box-shadow:inset 0 0 0 1px rgba(74,222,128,.35)}\n" +
   "#golferDashboard.g3:not(.theme-light) .g3-btn{background:#16241C;border-color:#2F4237;color:#EAF2EC}#golferDashboard.g3:not(.theme-light) .g3-pill{background:#16241C;color:#B2BCC6}#golferDashboard.g3:not(.theme-light) .g3-pill.turf{background:rgba(74,222,128,.14);color:#4ade80}\n" +
+  /* ---- v1119 SOCIETY FILTER: one strip under the This-week header. Shape adapts to how many
+     societies have events this week: chips while they fit, then All / Mine / your starred ones
+     / "+N more" which opens a searchable picker. The picker is body-mounted (.g3-card is
+     overflow:hidden, and .screen transforms trap position:fixed inside the dashboard box). ---- */
+  ".g3-flt{display:flex;align-items:center;gap:7px;padding:9px 14px;border-bottom:1px solid #DDE5DE;background:#FAFCFA;flex:none;flex-wrap:nowrap;overflow:hidden}\n" +
+  ".g3-fc{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:999px;border:1px solid #DDE5DE;background:#fff;color:#425148;font:700 12.5px/1 'Instrument Sans',sans-serif;cursor:pointer;white-space:nowrap;flex:none}\n" +
+  ".g3-fc:hover{background:#F3F6F3;color:#17221C}\n" +
+  ".g3-fc i.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}\n" +
+  ".g3-fc b{font-weight:800;opacity:.6;font-size:11.5px}\n" +
+  ".g3-fc.on{color:#fff;border-color:transparent}.g3-fc.on:hover{color:#fff;filter:brightness(1.08)}.g3-fc.on i.dot{background:rgba(255,255,255,.9) !important}.g3-fc.on b{opacity:.85}\n" +
+  ".g3-fc .material-symbols-outlined{font-size:17px;margin:0 -3px 0 -1px}\n" +
+  ".g3-fc.more{color:#17221C;border-style:dashed}.g3-fc.more.act{background:#E7F7EC;color:#15803d;border-color:#BFE3C9;border-style:solid}\n" +
+  ".g3-fdiv{width:1px;height:18px;background:#DDE5DE;flex:none;margin:0 3px}\n" +
+  ".g3-fend{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none;padding-left:8px}\n" +
+  ".g3-clr{border:0;background:none;color:#6B7A70;font:700 12px/1 'Instrument Sans',sans-serif;cursor:pointer;text-decoration:underline;padding:0}\n" +
+  ".g3-clr:hover{color:#17221C}\n" +
+  ".g3-wkpop{display:block;position:fixed;width:344px;background:#fff;border:1px solid #DDE5DE;border-radius:12px;box-shadow:0 1px 2px rgba(11,59,42,.06),0 14px 34px rgba(11,59,42,.18);z-index:60;overflow:hidden;font-family:'Instrument Sans',sans-serif}\n" +
+  ".g3-wkpop .sr{padding:10px;border-bottom:1px solid #DDE5DE;position:relative}\n" +
+  ".g3-wkpop .sr .material-symbols-outlined{position:absolute;left:20px;top:19px;font-size:18px;color:#6B7A70;pointer-events:none}\n" +
+  ".g3-wkpop .sr input{width:100%;height:34px;border:1px solid #DDE5DE;border-radius:9px;padding:0 10px 0 33px;font:600 13px/1 'Instrument Sans',sans-serif;color:#17221C;outline:none;background:#fff}\n" +
+  ".g3-wkpop .sr input:focus{border-color:#15803d;box-shadow:0 0 0 3px rgba(21,128,61,.12)}\n" +
+  ".g3-wkpop .bd{max-height:286px;overflow:auto}\n" +
+  ".g3-wkpop .gl{font:800 10.5px/1 'Instrument Sans',sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#6B7A70;padding:11px 12px 6px}\n" +
+  ".g3-wkpop .it{display:flex;align-items:center;gap:9px;padding:7px 12px;cursor:pointer;font-size:13.5px;color:#17221C}\n" +
+  ".g3-wkpop .it:hover{background:#F3F6F3}\n" +
+  ".g3-wkpop .cb{width:16px;height:16px;border:1.5px solid #B9C6BC;border-radius:4px;flex:none;display:inline-flex;align-items:center;justify-content:center}\n" +
+  ".g3-wkpop .cb.on{background:#15803d;border-color:#15803d}.g3-wkpop .cb .material-symbols-outlined{font-size:14px;color:#fff}\n" +
+  ".g3-wkpop .it i.dot{width:9px;height:9px;border-radius:50%;flex:none}\n" +
+  ".g3-wkpop .it .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}\n" +
+  ".g3-wkpop .it .ct{font:700 11.5px/1 'JetBrains Mono',ui-monospace,monospace;color:#6B7A70}\n" +
+  ".g3-wkpop .it .st{font-size:17px;color:#D6DED8;flex:none}.g3-wkpop .it .st.on{color:#B45309}.g3-wkpop .it .st:hover{color:#8A5F0E}\n" +
+  ".g3-wkpop .ft{display:flex;align-items:center;justify-content:space-between;padding:9px 10px;border-top:1px solid #DDE5DE;background:#FAFCFA}\n" +
+  "#g3Week .g3-tbl td.day{border-left:3px solid transparent}\n" +
+  /* dark colour theme */
+  "#golferDashboard.g3:not(.theme-light) .g3-flt{background:#16241C;border-color:#1F2E25}\n" +
+  "#golferDashboard.g3:not(.theme-light) .g3-fc{background:#111C16;border-color:#2F4237;color:#B2BCC6}\n" +
+  "#golferDashboard.g3:not(.theme-light) .g3-fc:hover{background:#16241C;color:#EAF2EC}\n" +
+  "#golferDashboard.g3:not(.theme-light) .g3-fdiv{background:#2F4237}\n" +
+  ".g3-wkpop.dark{background:#111C16;border-color:#2F4237;color:#EAF2EC}\n" +
+  ".g3-wkpop.dark .sr,.g3-wkpop.dark .ft{border-color:#1F2E25;background:#16241C}\n" +
+  ".g3-wkpop.dark .sr input{background:#111C16;border-color:#2F4237;color:#EAF2EC}\n" +
+  ".g3-wkpop.dark .it{color:#EAF2EC}.g3-wkpop.dark .it:hover{background:#16241C}\n" +
+  ".g3-wkpop.dark .gl,.g3-wkpop.dark .it .ct{color:#8A978E}\n" +
+  ".g3-wkpop.dark .cb{border-color:#2F4237}.g3-wkpop.dark .it .st{color:#2F4237}\n" +
+  ".g3-wkpop.dark .g3-btn{background:#16241C;border-color:#2F4237;color:#EAF2EC}\n" +
   "}\n";
 
   var RAIL = [
@@ -222,6 +267,11 @@
       this._mq = window.matchMedia(MQ);
       var self = this;
       try { this._mq.addEventListener('change', function () { self.apply(); }); } catch (e) { try { this._mq.addListener(function () { self.apply(); }); } catch (e2) {} }
+      /* the This-week filter strip is fitted by measurement — a resize changes what fits */
+      window.addEventListener('resize', function () {
+        clearTimeout(self._rsz);
+        self._rsz = setTimeout(function () { if (self._wk && !self._wkPop) self.renderWeek(); }, 200);
+      });
       this.apply();
     },
 
@@ -276,13 +326,24 @@
           if (/showGolferTab\('food'/.test(oc) || /showGolferTab\('booking'/.test(oc)) c.classList.add('g3-hide');
         });
         var xp = function (id) { return '<button type="button" class="g3-xp" data-xp="' + id + '" title="' + esc(T('g3.expand', 'Expand')) + '" aria-label="' + esc(T('g3.expand', 'Expand')) + '" aria-expanded="false"><span class="material-symbols-outlined">expand_more</span></button>'; };
-        left.insertAdjacentHTML('beforeend', '<div class="g3-card fill" id="g3Week"><div class="g3-hd"><h3>' + esc(T('g3.thisweek', 'This week')) + '</h3><span class="g3-pill turf" id="g3WeekN" style="display:none"></span><span class="hint">' + esc(T('g3.tapday', 'Tap a row to open the event')) + '</span>' + xp('g3Week') + '</div><div class="g3-list" id="g3WeekBody"><div class="g3-empty">…</div></div></div>');
+        left.insertAdjacentHTML('beforeend', '<div class="g3-card fill" id="g3Week"><div class="g3-hd"><h3>' + esc(T('g3.thisweek', 'This week')) + '</h3><span class="g3-pill turf" id="g3WeekN" style="display:none"></span><span class="g3-pill" id="g3WeekSoc" style="display:none"></span><span class="hint">' + esc(T('g3.tapday', 'Tap a row to open the event')) + '</span>' + xp('g3Week') + '</div><div class="g3-flt" id="g3WeekFlt" style="display:none"></div><div class="g3-list" id="g3WeekBody"><div class="g3-empty">…</div></div></div>');
         home.querySelector('#g3Right').innerHTML =
           '<div class="g3-card" id="g3Live"><div class="g3-hd"><h3>' + esc(T('g3.livenow', 'Live now')) + '</h3><span class="g3-pill" id="g3LivePill"></span>' + xp('g3Live') + '</div><div class="g3-list" id="g3LiveBody"><div class="g3-empty">…</div></div></div>' +
           '<div class="g3-card" id="g3Hcp"><div class="g3-hd"><h3>' + esc(T('g3.handicap', 'Handicap')) + '</h3><span class="g3-hcpv user-handicap">--</span>' + xp('g3Hcp') + '</div><div class="g3-bd" id="g3HcpBody"><div class="g3-empty">…</div></div></div>' +
           '<div class="g3-card fill" id="g3Msgs"><div class="g3-hd"><h3>' + esc(T('g3.messages', 'Messages')) + '</h3><span class="messagesBadge g3-pill signal" style="display:none">0</span>' + xp('g3Msgs') + '</div><div class="g3-list" id="g3MsgsBody"><div class="g3-empty">…</div></div></div>';
         /* expand/collapse: one delegated handler; the state survives reloads (localStorage g3xp = {cardId:1}) */
-        home.addEventListener('click', function (ev) { var b = ev.target.closest('.g3-xp'); if (!b) return; ev.preventDefault(); ev.stopPropagation(); G3.toggle(b.getAttribute('data-xp')); });
+        home.addEventListener('click', function (ev) {
+          var b = ev.target.closest('.g3-xp');
+          if (b) { ev.preventDefault(); ev.stopPropagation(); G3.toggle(b.getAttribute('data-xp')); return; }
+          /* v1119 society filter strip — one delegated handler for every chip */
+          var f = ev.target.closest('#g3WeekFlt button'); if (!f) return;
+          ev.preventDefault(); ev.stopPropagation();
+          if (f.classList.contains('g3-clr')) { G3.wkClear(); return; }
+          var act = f.getAttribute('data-act'), soc = f.getAttribute('data-soc'), sc = f.getAttribute('data-scope');
+          if (act === 'more') G3.wkMore();
+          else if (soc) G3.wkPick(soc);
+          else if (sc) G3.wkScope(sc);
+        });
         var saved = {}; try { saved = JSON.parse(localStorage.getItem('g3xp') || '{}') || {}; } catch (e) { saved = {}; }
         Object.keys(saved).forEach(function (id) { if (saved[id]) G3.toggle(id, true); });
       }
@@ -415,8 +476,12 @@
     },
 
     /* ---------- THIS WEEK: the golfer's browse list (same source/visibility as the Events tab) ---------- */
+    /* ---------- THIS WEEK: the golfer's browse list (same source/visibility as the Events tab) ----------
+       v1119: fetch once into this._wk, then renderWeek() paints the society filter strip AND the table
+       from it. Clicking a chip re-renders only — it never refetches. */
     loadWeek: async function (_retry) {
       var body = document.getElementById('g3WeekBody'); if (!body) return;
+      if (this._wkPop) return; /* picker is open — the 60s poll must not repaint under the cursor */
       var G = window.GolferEventsSystem, me = uid(), db = sb();
       if (!G || !me || !db) { if ((_retry || 0) < 8) setTimeout(function () { G3.loadWeek((_retry || 0) + 1); }, 1500); return; }
       try {
@@ -438,23 +503,319 @@
           var r = await db.from('event_registrations').select('event_id, want_transport, special_requests, payment_status, status').eq('player_id', me).in('event_id', regIds);
           (r.data || []).forEach(function (x) { if (x.status !== 'cancelled') mine[x.event_id] = x; });
         }
-        var n = document.getElementById('g3WeekN');
-        if (n) { var rc = regIds.length; n.style.display = rc ? '' : 'none'; n.textContent = rc + ' ' + T('g3.registered', 'registered'); }
-        if (!list.length) { body.innerHTML = '<div class="g3-empty">' + esc(T('g3.noevents.week', 'Nothing on your calendar this week')) + '</div>'; return; }
-        var todayStr = ymd(new Date());
-        var rows = list.slice(0, 40).map(function (ev) {
-          var ds = String(ev.date).slice(0, 10), d = new Date(ds + 'T00:00:00');
-          var dayLbl = ''; try { dayLbl = d.toLocaleDateString(loc(), { weekday: 'short', day: 'numeric' }); } catch (x) { dayLbl = ds; }
-          var reg = mine[ev.id], van = reg && reg.special_requests && reg.special_requests.van;
-          var tr = reg ? ((reg.want_transport || (van && van !== 'own')) ? '<span class="g3-pill sky">' + esc(T('g3.van', 'Van') + (van && van !== 'own' && van !== true ? ' ' + van : '')) + '</span>' : '<span class="g3-pill">' + esc(T('g3.owncar', 'Own car')) + '</span>') : '<span style="color:#6B7A70">—</span>';
-          var st = ev.isUserRegistered ? (reg && reg.payment_status === 'paid' ? '<span class="g3-pill solid">' + esc(T('g3.paid', 'Paid')) + '</span>' : '<span class="g3-pill turf">' + esc(T('g3.going', 'Registered')) + '</span>') : '<button class="g3-btn p" style="height:30px;padding:0 12px" onclick="event.stopPropagation();GolferEventsSystem.openEventDetail(\'' + esc(ev.id) + '\')">' + esc(T('g3.register', 'Register')) + '</button>';
-          var soc = shortSoc(ev.societyName || ev.organizerName || '');
-          var course = ev.courseName || ev.name || ev.title || '';
-          var cnt = (ev.registeredCount != null) ? (ev.registeredCount + (ev.maxPlayers ? '/' + ev.maxPlayers : '')) : '';
-          return '<tr class="' + (ds === todayStr ? 'on' : '') + '" onclick="GolferEventsSystem.openEventDetail(\'' + esc(ev.id) + '\')"><td style="font-weight:700">' + esc(dayLbl) + '</td><td>' + esc(soc) + '</td><td class="nm">' + esc(course) + '</td><td class="mono">' + esc(hhmm(ev.departureTime) || '—') + '</td><td class="mono">' + esc(hhmm(ev.startTime) || '—') + '</td><td>' + tr + '</td><td class="mono" style="color:#425148">' + esc(cnt) + '</td><td>' + st + '</td></tr>';
-        }).join('');
-        body.innerHTML = '<table class="g3-tbl"><thead><tr><th>' + esc(T('g3.day', 'Day')) + '</th><th>' + esc(T('g3.society', 'Society')) + '</th><th>' + esc(T('g3.course', 'Course')) + '</th><th class="mono">' + esc(T('g3.leave', 'Leave')) + '</th><th class="mono">' + esc(T('g3.tee', 'Tee')) + '</th><th>' + esc(T('g3.transport', 'Transport')) + '</th><th class="mono">' + esc(T('g3.players', 'players')) + '</th><th>' + esc(T('g3.status', 'Status')) + '</th></tr></thead><tbody>' + rows + '</tbody></table>';
+        await this.loadMySocieties();
+        this._wk = { list: list, regs: mine };
+        this.renderWeek();
       } catch (err) { console.warn('[G3Desk] week', err); body.innerHTML = ''; }
+    },
+
+    /* Society ids the golfer is an actual MEMBER of (Pete 2026-09-06: "I like the member").
+       society_members is the source of truth, but legacy joins only ever wrote society_handicaps
+       rows — the Profile screen unions both, so this must too or long-standing members read as
+       non-members and "Mine" comes back empty. Both key on society_profiles.id. Once per session. */
+    loadMySocieties: async function () {
+      if (this._mySocs) return this._mySocs;
+      var me = uid(), db = sb(); if (!me || !db) return (this._mySocs = {});
+      var ids = {};
+      try {
+        var res = await Promise.allSettled([
+          db.from('society_members').select('society_id').eq('golfer_id', me).eq('status', 'active'),
+          db.from('society_handicaps').select('society_id').eq('golfer_id', me).not('society_id', 'is', null)
+        ]);
+        res.forEach(function (r) {
+          if (r.status !== 'fulfilled') return;
+          (((r.value || {}).data) || []).forEach(function (x) { if (x.society_id) ids[x.society_id] = 1; });
+        });
+      } catch (e) { console.warn('[G3Desk] memberships', e); }
+      this._mySocs = ids;
+      return ids;
+    },
+
+    /* One stable identity per society. society_profiles.id is what memberships key on so it wins;
+       organizer_id covers events with no profile row, then the raw name. */
+    _wkKey: function (ev) { return String(ev.societyProfileId || ev.organizerId || ev.societyName || ev.organizerName || '?'); },
+
+    /* Colour per society. The dot is only useful if no two societies ON SCREEN share one, so the
+       hash picks a preferred slot and _wkSocs walks to the next free one on a clash — deterministic,
+       and a society keeps its colour as long as the surrounding set does. Past 10 societies in one
+       week the palette repeats; the short code carries the identity from there.
+       House rule: no purple (pink/magenta/fuchsia/indigo count) — greens, blues, browns, teals, slate. */
+    _WKPAL: ['#15803d', '#1A53AD', '#8A5F0E', '#8F2E20', '#0F766E', '#B45309', '#3F6212', '#475569', '#0E7490', '#A16207'],
+    _wkHash: function (key) {
+      var h = 0, k = String(key || '');
+      for (var i = 0; i < k.length; i++) { h = ((h << 5) - h + k.charCodeAt(i)) | 0; }
+      return Math.abs(h);
+    },
+
+    _wkfLoad: function () {
+      var f = { sel: [], scope: 'all', star: [] };
+      try {
+        var o = JSON.parse(localStorage.getItem('g3wkflt') || '{}') || {};
+        if (Array.isArray(o.sel)) f.sel = o.sel.map(String);
+        if (o.scope === 'mine') f.scope = 'mine';
+        if (Array.isArray(o.star)) f.star = o.star.map(String);
+      } catch (e) {}
+      return f;
+    },
+    _wkfSave: function () { try { localStorage.setItem('g3wkflt', JSON.stringify(this._wkf || {})); } catch (e) {} },
+
+    /* Every society with an event in the window, busiest first. Counts come from the UNFILTERED
+       week so a chip's number never moves when you filter by it. */
+    _wkSocs: function (list) {
+      var my = this._mySocs || {}, map = {}, order = [];
+      (list || []).forEach(function (ev) {
+        var k = G3._wkKey(ev);
+        if (!map[k]) {
+          map[k] = {
+            key: k, n: 0,
+            name: ev.societyName || ev.organizerName || k,
+            code: ev.societyCode || shortSoc(ev.societyName || ev.organizerName || ''),
+            c: '#B9C6BC',
+            mine: !!(ev.societyProfileId && my[ev.societyProfileId])
+          };
+          order.push(map[k]);
+        }
+        map[k].n++;
+      });
+      order.sort(function (a, b) { return (b.n - a.n) || String(a.name).localeCompare(String(b.name)); });
+      /* colours assigned busiest-first so the most visible societies keep their preferred slot */
+      var pal = this._WKPAL, used = {};
+      order.forEach(function (s) {
+        var i = G3._wkHash(s.key) % pal.length, tries = 0;
+        while (used[pal[i]] && tries < pal.length) { i = (i + 1) % pal.length; tries++; }
+        s.c = pal[i]; used[pal[i]] = 1;
+      });
+      return order;
+    },
+
+    renderWeek: function () {
+      var d = this._wk, body = document.getElementById('g3WeekBody'); if (!d || !body) return;
+      var f = this._wkf || (this._wkf = this._wkfLoad());
+      var socs = this._wkSocs(d.list), by = {};
+      socs.forEach(function (s) { by[s.key] = s; });
+      /* a society with nothing on this week has no chip, so it cannot stay selected */
+      f.sel = (f.sel || []).filter(function (k) { return by[k]; });
+      var live = socs.length > 1; /* no bar on screen => no filter, or it could not be undone */
+      var list = d.list.filter(function (ev) {
+        if (!live) return true;
+        var s = by[G3._wkKey(ev)];
+        if (f.sel.length) return !!s && f.sel.indexOf(s.key) >= 0;
+        if (f.scope === 'mine') return !!(s && s.mine);
+        return true;
+      });
+      this._renderWkBar(socs);
+      /* the pills describe what you are LOOKING AT, so they follow the filter */
+      var regN = list.filter(function (ev) { return ev.isUserRegistered; }).length;
+      var n = document.getElementById('g3WeekN');
+      if (n) { n.style.display = regN ? '' : 'none'; n.textContent = regN + ' ' + T('g3.registered', 'registered'); }
+      var sp = document.getElementById('g3WeekSoc');
+      if (sp) {
+        if (f.sel.length && live) { sp.style.display = ''; sp.textContent = String(T('g3.socsel', '{n} of {t} societies')).replace('{n}', f.sel.length).replace('{t}', socs.length); }
+        else if (f.scope === 'mine' && live) { sp.style.display = ''; sp.textContent = T('g3.mine', 'Mine'); }
+        else sp.style.display = 'none';
+      }
+      if (!list.length) {
+        var msg = d.list.length ? T('g3.nofiltered', 'Nothing this week for that filter') : T('g3.noevents.week', 'Nothing on your calendar this week');
+        body.innerHTML = '<div class="g3-empty">' + esc(msg) + '</div>';
+        return;
+      }
+      var todayStr = ymd(new Date());
+      var rows = list.slice(0, 40).map(function (ev) {
+        var ds = String(ev.date).slice(0, 10), dt = new Date(ds + 'T00:00:00');
+        var dayLbl = ''; try { dayLbl = dt.toLocaleDateString(loc(), { weekday: 'short', day: 'numeric' }); } catch (x) { dayLbl = ds; }
+        var reg = d.regs[ev.id], van = reg && reg.special_requests && reg.special_requests.van;
+        var tr = reg ? ((reg.want_transport || (van && van !== 'own')) ? '<span class="g3-pill sky">' + esc(T('g3.van', 'Van') + (van && van !== 'own' && van !== true ? ' ' + van : '')) + '</span>' : '<span class="g3-pill">' + esc(T('g3.owncar', 'Own car')) + '</span>') : '<span style="color:#6B7A70">—</span>';
+        var st = ev.isUserRegistered ? (reg && reg.payment_status === 'paid' ? '<span class="g3-pill solid">' + esc(T('g3.paid', 'Paid')) + '</span>' : '<span class="g3-pill turf">' + esc(T('g3.going', 'Registered')) + '</span>') : '<button class="g3-btn p" style="height:30px;padding:0 12px" onclick="event.stopPropagation();GolferEventsSystem.openEventDetail(\'' + esc(ev.id) + '\')">' + esc(T('g3.register', 'Register')) + '</button>';
+        var s = by[G3._wkKey(ev)] || { c: '#B9C6BC', code: '' };
+        var soc = s.code || shortSoc(ev.societyName || ev.organizerName || '');
+        var course = ev.courseName || ev.name || ev.title || '';
+        var cnt = (ev.registeredCount != null) ? (ev.registeredCount + (ev.maxPlayers ? '/' + ev.maxPlayers : '')) : '';
+        return '<tr class="' + (ds === todayStr ? 'on' : '') + '" onclick="GolferEventsSystem.openEventDetail(\'' + esc(ev.id) + '\')"><td class="day" style="font-weight:700;border-left-color:' + s.c + '">' + esc(dayLbl) + '</td><td><span style="display:inline-flex;align-items:center;gap:6px"><i style="width:8px;height:8px;border-radius:50%;background:' + s.c + ';display:inline-block;flex:none"></i>' + esc(soc) + '</span></td><td class="nm">' + esc(course) + '</td><td class="mono">' + esc(hhmm(ev.departureTime) || '—') + '</td><td class="mono">' + esc(hhmm(ev.startTime) || '—') + '</td><td>' + tr + '</td><td class="mono" style="color:#425148">' + esc(cnt) + '</td><td>' + st + '</td></tr>';
+      }).join('');
+      body.innerHTML = '<table class="g3-tbl"><thead><tr><th>' + esc(T('g3.day', 'Day')) + '</th><th>' + esc(T('g3.society', 'Society')) + '</th><th>' + esc(T('g3.course', 'Course')) + '</th><th class="mono">' + esc(T('g3.leave', 'Leave')) + '</th><th class="mono">' + esc(T('g3.tee', 'Tee')) + '</th><th>' + esc(T('g3.transport', 'Transport')) + '</th><th class="mono">' + esc(T('g3.players', 'players')) + '</th><th>' + esc(T('g3.status', 'Status')) + '</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    },
+
+    /* The filter strip. One society (or none) = nothing to separate, so no bar at all. */
+    _renderWkBar: function (socs) {
+      var strip = document.getElementById('g3WeekFlt'); if (!strip) return;
+      if (socs.length < 2) { strip.style.display = 'none'; strip.innerHTML = ''; return; }
+      strip.style.display = '';
+      var f = this._wkf, sel = f.sel || [], star = f.star || [];
+      var allN = 0, mineN = 0, mineHas = false;
+      socs.forEach(function (s) { allN += s.n; if (s.mine) { mineN += s.n; mineHas = true; } });
+      var none = !sel.length;
+      var onAll = none && f.scope === 'all', onMine = none && f.scope === 'mine';
+      var h = '<button type="button" class="g3-fc' + (onAll ? ' on' : '') + '"' + (onAll ? ' style="background:#425148"' : '') + ' data-scope="all"><i class="dot"></i>' + esc(T('g3.all', 'All')) + ' <b>' + allN + '</b></button>';
+      if (mineHas) h += '<button type="button" class="g3-fc' + (onMine ? ' on' : '') + '"' + (onMine ? ' style="background:#15803d"' : '') + ' data-scope="mine"><span class="material-symbols-outlined">group</span>' + esc(T('g3.mine', 'Mine')) + ' <b>' + mineN + '</b></button>';
+      h += '<span class="g3-fdiv"></span>';
+      /* Bar order = selected (a society you picked is never the chip that gets dropped), then
+         starred, then the ones you are a MEMBER of, then the busiest. Without the member rank the
+         bar fills with whichever strangers happen to run the most events that week. */
+      var rank = function (s) { return sel.indexOf(s.key) >= 0 ? 0 : (star.indexOf(s.key) >= 0 ? 1 : (s.mine ? 2 : 3)); };
+      socs.slice().sort(function (a, b) { return rank(a) - rank(b); }).forEach(function (s) {
+        var on = sel.indexOf(s.key) >= 0;
+        h += '<button type="button" class="g3-fc' + (on ? ' on' : '') + '"' + (on ? ' style="background:' + s.c + '"' : '') + ' data-soc="' + esc(s.key) + '" data-sel="' + (on ? '1' : '0') + '" title="' + esc(s.name) + '"><i class="dot" style="background:' + s.c + '"></i>' + esc(s.code || s.name) + ' <b>' + s.n + '</b></button>';
+      });
+      h += '<button type="button" class="g3-fc more" data-act="more"></button>';
+      h += '<span class="g3-fend">' + ((sel.length || f.scope === 'mine') ? '<button type="button" class="g3-clr">' + esc(T('g3.clear', 'Clear')) + '</button>' : '') + '</span>';
+      strip.innerHTML = h;
+      this._fitWkBar(socs.length);
+    },
+
+    /* The strip is ONE line. Drop unselected society chips from the right until it fits; whatever
+       got dropped lives behind "+N more". Measured, never guessed — code lengths and the four
+       languages all change the widths. The button is sized at its widest BEFORE measuring so it
+       can only ever shrink afterwards. */
+    _fitWkBar: function (total) {
+      var strip = document.getElementById('g3WeekFlt'); if (!strip) return;
+      var more = strip.querySelector('[data-act="more"]'); if (!more) return;
+      if (!strip.clientWidth) { /* not laid out yet — measuring now would fit nothing */
+        more.style.display = 'none';
+        var self = this;
+        setTimeout(function () { if (document.getElementById('g3WeekFlt') === strip) self._fitWkBar(total); }, 300);
+        return;
+      }
+      var label = function (n) { return '+' + n + ' ' + esc(T('g3.more', 'more')) + '<span class="material-symbols-outlined">expand_more</span>'; };
+      var over = function () { return strip.scrollWidth > strip.clientWidth + 1; };
+      var chips = Array.prototype.slice.call(strip.querySelectorAll('[data-soc]'));
+      /* Pass 1: assume no picker is needed. The button costs ~110px, which at 1280 is the
+         difference between "three societies, three chips" and one of them hidden behind a
+         dropdown nobody needed. If every chip fits without it, there is nothing to open. */
+      more.style.display = 'none';
+      chips.forEach(function (c) { c.style.display = ''; });
+      if (!over()) { more.classList.remove('act'); return; }
+      /* Pass 2: the picker has to exist, so budget for it at its widest and drop unselected
+         chips from the right until the row fits. Measured, never guessed — code lengths and
+         the four languages all change the widths. */
+      more.style.display = ''; more.innerHTML = label(total);
+      var i = chips.length - 1, hidden = 0;
+      while (i >= 0 && over()) {
+        var c = chips[i--];
+        if (c.getAttribute('data-sel') === '1') continue;
+        c.style.display = 'none'; hidden++;
+      }
+      var left = total - (chips.length - hidden);
+      if (left > 0) more.innerHTML = label(left);
+      else more.style.display = 'none';
+      if (this._wkPop) more.classList.add('act');
+    },
+
+    /* ---- filter actions. Every one re-renders from the cached week; none of them refetch. ---- */
+    wkScope: function (sc) {
+      var f = this._wkf || (this._wkf = this._wkfLoad());
+      f.scope = (sc === 'mine' && f.scope === 'mine' && !(f.sel || []).length) ? 'all' : sc;
+      f.sel = [];
+      this._wkfSave(); this.renderWeek(); this._wkPopBody();
+    },
+    wkPick: function (key) {
+      var f = this._wkf || (this._wkf = this._wkfLoad());
+      var i = (f.sel || []).indexOf(key);
+      if (i >= 0) f.sel.splice(i, 1); else f.sel.push(key);
+      if (f.sel.length) f.scope = 'all';
+      this._wkfSave(); this.renderWeek(); this._wkPopBody();
+    },
+    wkClear: function () {
+      var f = this._wkf || (this._wkf = this._wkfLoad());
+      f.sel = []; f.scope = 'all';
+      this._wkfSave(); this.renderWeek(); this._wkPopBody();
+    },
+    wkStar: function (key) {
+      var f = this._wkf || (this._wkf = this._wkfLoad());
+      var i = (f.star || []).indexOf(key);
+      if (i >= 0) f.star.splice(i, 1); else f.star.push(key);
+      this._wkfSave(); this.renderWeek(); this._wkPopBody();
+    },
+
+    /* ---- the society picker. Body-mounted: .g3-card is overflow:hidden and .screen transforms
+       trap position:fixed inside the dashboard box, so it cannot live inside the card. ---- */
+    wkMore: function () {
+      if (this._wkPop) { this.wkPopClose(); return; }
+      var btn = document.querySelector('#g3WeekFlt [data-act="more"]'); if (!btn) return;
+      var dash = document.getElementById('golferDashboard');
+      var el = document.createElement('div');
+      el.className = 'g3-wkpop' + (dash && !dash.classList.contains('theme-light') ? ' dark' : '');
+      el.id = 'g3WeekPop';
+      el.innerHTML = '<div class="sr"><span class="material-symbols-outlined">search</span><input type="text" autocomplete="off" spellcheck="false" placeholder="' + esc(T('g3.findsoc', 'Find a society…')) + '"></div><div class="bd"></div><div class="ft"><button type="button" class="g3-clr" data-pop="clear">' + esc(T('g3.clearall', 'Clear all')) + '</button><button type="button" class="g3-btn" style="height:30px" data-pop="done">' + esc(T('g3.done', 'Done')) + '</button></div>';
+      el.addEventListener('click', function (ev) {
+        var st = ev.target.closest('.st');
+        if (st) { ev.preventDefault(); ev.stopPropagation(); G3.wkStar(st.getAttribute('data-k')); return; }
+        var it = ev.target.closest('.it');
+        if (it) { ev.preventDefault(); G3.wkPick(it.getAttribute('data-k')); return; }
+        var a = ev.target.closest('[data-pop]'); if (!a) return;
+        ev.preventDefault();
+        if (a.getAttribute('data-pop') === 'clear') G3.wkClear(); else G3.wkPopClose();
+      });
+      el.addEventListener('input', function (ev) {
+        if (!ev.target || ev.target.tagName !== 'INPUT') return;
+        G3._wkQ = ev.target.value || ''; G3._wkPopBody();
+      });
+      document.body.appendChild(el);
+      this._wkPop = el; this._wkQ = '';
+      this._wkPopBody();
+      this._wkPopPlace();
+      btn.classList.add('act');
+      document.addEventListener('mousedown', this._wkPopOut, true);
+      document.addEventListener('keydown', this._wkPopKey, true);
+      window.addEventListener('resize', this._wkPopBail, true);
+      window.addEventListener('scroll', this._wkPopBail, true);
+      try { el.querySelector('input').focus(); } catch (e) {}
+    },
+
+    _wkPopPlace: function () {
+      var el = this._wkPop; if (!el) return;
+      var btn = document.querySelector('#g3WeekFlt [data-act="more"]');
+      var r = btn ? btn.getBoundingClientRect() : null, w = 344;
+      var top = r ? r.bottom + 6 : 120, left = r ? r.right - w : 100;
+      el.style.top = Math.round(Math.max(8, Math.min(top, window.innerHeight - 140))) + 'px';
+      el.style.left = Math.round(Math.max(8, Math.min(left, window.innerWidth - w - 8))) + 'px';
+    },
+
+    /* stable references — anonymous ones could never be removed again */
+    _wkPopOut: function (ev) {
+      if (!G3._wkPop) return;
+      if (G3._wkPop.contains(ev.target)) return;
+      if (ev.target.closest && ev.target.closest('#g3WeekFlt [data-act="more"]')) return;
+      G3.wkPopClose();
+    },
+    _wkPopKey: function (ev) { if (ev.key === 'Escape' && G3._wkPop) { ev.preventDefault(); G3.wkPopClose(); } },
+    _wkPopBail: function (ev) {
+      if (!G3._wkPop) return;
+      var t = ev && ev.target;
+      if (t && t.nodeType === 1 && G3._wkPop.contains(t)) return; /* scrolling the society list */
+      G3.wkPopClose();
+    },
+
+    wkPopClose: function () {
+      var el = this._wkPop; if (!el) return;
+      this._wkPop = null; this._wkQ = '';
+      document.removeEventListener('mousedown', this._wkPopOut, true);
+      document.removeEventListener('keydown', this._wkPopKey, true);
+      window.removeEventListener('resize', this._wkPopBail, true);
+      window.removeEventListener('scroll', this._wkPopBail, true);
+      try { el.remove(); } catch (e) {}
+      var btn = document.querySelector('#g3WeekFlt [data-act="more"]'); if (btn) btn.classList.remove('act');
+      this.renderWeek();
+    },
+
+    _wkPopBody: function () {
+      var el = this._wkPop; if (!el) return;
+      var bd = el.querySelector('.bd'); if (!bd) return;
+      var f = this._wkf || { sel: [], star: [] }, sel = f.sel || [], star = f.star || [];
+      var socs = this._wkSocs((this._wk || {}).list || []);
+      var q = String(this._wkQ || '').trim().toLowerCase();
+      var hit = function (s) { return !q || String(s.name).toLowerCase().indexOf(q) >= 0 || String(s.code).toLowerCase().indexOf(q) >= 0; };
+      var row = function (s) {
+        var on = sel.indexOf(s.key) >= 0, st = star.indexOf(s.key) >= 0;
+        return '<div class="it" data-k="' + esc(s.key) + '"><span class="cb' + (on ? ' on' : '') + '">' + (on ? '<span class="material-symbols-outlined">check</span>' : '') + '</span>' +
+          '<i class="dot" style="background:' + s.c + '"></i><span class="nm">' + esc(s.name) + '</span><span class="ct">' + s.n + '</span>' +
+          '<span class="material-symbols-outlined st' + (st ? ' on' : '') + '" data-k="' + esc(s.key) + '" title="' + esc(T('g3.pinsoc', 'Keep in the bar')) + '">' + (st ? 'star' : 'star_outline') + '</span></div>';
+      };
+      var mine = socs.filter(function (s) { return s.mine && hit(s); });
+      var rest = socs.filter(function (s) { return !s.mine && hit(s); });
+      var h = '';
+      if (mine.length) h += '<div class="gl">' + esc(T('g3.mysocs', 'My societies')) + ' · ' + mine.length + '</div>' + mine.map(row).join('');
+      if (rest.length) h += (mine.length ? '<div class="gl">' + esc(T('g3.othersocs', 'Other societies')) + ' · ' + rest.length + '</div>' : '') + rest.map(row).join('');
+      bd.innerHTML = h || '<div class="g3-empty">' + esc(T('g3.nosocmatch', 'No society matches')) + '</div>';
     },
 
     /* ---------- LIVE NOW: same query as LiveRoundsBadge (spectatable, in_progress, today) grouped by group ---------- */

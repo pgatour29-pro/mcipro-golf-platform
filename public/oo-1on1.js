@@ -12,8 +12,11 @@
    phone cube home + bottom dock + More sheet, desktop tab strip). ONE screen, TWO personas:
    OneOnOne.enter('member') from the golfer cube / desktop rail, OneOnOne.enter('partner') from
    the caddie cube / tab / drawer. The golfer + caddie dashboards keep ONLY those entry points.
-   Views — member: browse → partner → book · mine · calendar · admin(oo_admins) · messages(exits)
-           partner: requests · calendar · profile · photos · earnings · messages(exits)
+   Views — member: browse → partner → book · mine · calendar · admin(oo_admins) · messages → thread
+           partner: requests · calendar · profile · photos · earnings · messages → thread
+   Messages (2026-09-06) are 1on1's OWN inbox/sent on oo_messages — never direct_messages, never the app
+   Messages screen: a hidden partner must not appear in the main inbox, and a member must be able to tell a
+   1on1 message from a society one at a glance.
    Back (FAB / hardware / header ◀) = OneOnOne.handleBack(): ask sheet → More sheet → internal
    view stack → phone cube home → exit to the dashboard that opened it.
    v1092: THIRD persona 'admin' (oo_admins = Jason/JOA + Pete) — admins land on their own home
@@ -56,6 +59,11 @@
       'oo.optin.title': 'Offer 1on1 playing-partner service', 'oo.optin.desc': 'Play rounds with members and share your local knowledge. Prefilled from your caddie profile — edit anything.',
       'oo.optin.submit': 'Submit for approval', 'oo.awaiting': 'Awaiting approval', 'oo.approved': 'Approved — visible to members', 'oo.suspended': 'Suspended',
       'oo.save': 'Save', 'oo.saved': 'Saved', 'oo.displayname': 'Display name', 'oo.availdays': 'Days I can play', 'oo.blackouts': 'Unavailable dates',
+      'oo.msg.inbox': 'Inbox', 'oo.msg.sent': 'Sent', 'oo.msg.to': 'To {name}', 'oo.msg.write': 'Write a message…', 'oo.msg.send': 'Send',
+      'oo.msg.writeto': 'New message to', 'oo.msg.unreadn': '{n} unread', 'oo.msg.none.chip': 'No new messages',
+      'oo.msg.none.inbox': 'No messages yet. Your 1on1 messages stay here, separate from your other messages.',
+      'oo.msg.none.sent': 'Nothing sent yet.', 'oo.msg.none.thread': 'No messages with this person yet.',
+      'oo.partner': 'Partner', 'oo.push.msg': '{name} sent you a 1on1 message.',
       'oo.gal.review': 'Under review', 'oo.gal.rejected': 'Photo not accepted: {reason}',
       'oo.addblackout': 'Add', 'oo.note': 'Note', 'oo.gallery': 'Photos', 'oo.addphoto': 'Add photo', 'oo.cover': 'Cover', 'oo.setcover': 'Set as cover',
       'oo.delete': 'Delete', 'oo.deleteq': 'Delete this photo?', 'oo.posts': 'Posts', 'oo.addpost': 'Add post', 'oo.caption': 'Caption', 'oo.body': 'Text',
@@ -92,6 +100,11 @@
       'oo.optin.title': 'เปิดบริการคู่เล่น 1on1', 'oo.optin.desc': 'ออกรอบกับสมาชิกและแบ่งปันความรู้ท้องถิ่น ข้อมูลเติมจากโปรไฟล์แคดดี้ แก้ไขได้ทุกอย่าง',
       'oo.optin.submit': 'ส่งเพื่อขออนุมัติ', 'oo.awaiting': 'รออนุมัติ', 'oo.approved': 'อนุมัติแล้ว — สมาชิกมองเห็น', 'oo.suspended': 'ถูกระงับ',
       'oo.save': 'บันทึก', 'oo.saved': 'บันทึกแล้ว', 'oo.displayname': 'ชื่อที่แสดง', 'oo.availdays': 'วันที่เล่นได้', 'oo.blackouts': 'วันที่ไม่ว่าง', 'oo.addblackout': 'เพิ่ม', 'oo.note': 'หมายเหตุ',
+      'oo.msg.inbox': 'กล่องขาเข้า', 'oo.msg.sent': 'ที่ส่งแล้ว', 'oo.msg.to': 'ถึง {name}', 'oo.msg.write': 'เขียนข้อความ…', 'oo.msg.send': 'ส่ง',
+      'oo.msg.writeto': 'ข้อความใหม่ถึง', 'oo.msg.unreadn': 'ยังไม่ได้อ่าน {n}', 'oo.msg.none.chip': 'ไม่มีข้อความใหม่',
+      'oo.msg.none.inbox': 'ยังไม่มีข้อความ ข้อความ 1on1 จะอยู่ที่นี่ แยกจากข้อความอื่น',
+      'oo.msg.none.sent': 'ยังไม่ได้ส่งข้อความ', 'oo.msg.none.thread': 'ยังไม่มีข้อความกับคนนี้',
+      'oo.partner': 'พาร์ทเนอร์', 'oo.push.msg': '{name} ส่งข้อความ 1on1 ถึงคุณ',
       'oo.gal.review': 'อยู่ระหว่างตรวจสอบ', 'oo.gal.rejected': 'รูปนี้ไม่ผ่านการตรวจสอบ: {reason}',
       'oo.gallery': 'รูปภาพ', 'oo.addphoto': 'เพิ่มรูป', 'oo.cover': 'ปก', 'oo.setcover': 'ตั้งเป็นรูปปก', 'oo.delete': 'ลบ', 'oo.deleteq': 'ลบรูปนี้?', 'oo.posts': 'โพสต์', 'oo.addpost': 'เพิ่มโพสต์',
       'oo.caption': 'คำบรรยาย', 'oo.body': 'ข้อความ', 'oo.earn.total': 'ตอบรับแล้ว', 'oo.earn.paid': 'จ่ายแล้ว', 'oo.earn.unpaid': 'ยังไม่จ่าย', 'oo.uploading': 'กำลังอัปโหลด…', 'oo.maxphotos': 'สูงสุด 8 รูป',
@@ -122,6 +135,11 @@
       'oo.optin.title': '1on1 라운딩 파트너 서비스 제공', 'oo.optin.desc': '회원과 라운딩하고 현지 정보를 공유하세요. 캐디 프로필에서 자동 입력됩니다. 모두 수정 가능합니다.',
       'oo.optin.submit': '승인 요청', 'oo.awaiting': '승인 대기 중', 'oo.approved': '승인됨 — 회원에게 공개', 'oo.suspended': '정지됨',
       'oo.save': '저장', 'oo.saved': '저장됨', 'oo.displayname': '표시 이름', 'oo.availdays': '라운딩 가능 요일', 'oo.blackouts': '불가능한 날짜', 'oo.addblackout': '추가', 'oo.note': '메모',
+      'oo.msg.inbox': '받은 메시지', 'oo.msg.sent': '보낸 메시지', 'oo.msg.to': '{name}님에게', 'oo.msg.write': '메시지를 입력하세요…', 'oo.msg.send': '보내기',
+      'oo.msg.writeto': '새 메시지 받는 사람', 'oo.msg.unreadn': '읽지 않음 {n}건', 'oo.msg.none.chip': '새 메시지 없음',
+      'oo.msg.none.inbox': '아직 메시지가 없습니다. 1on1 메시지는 다른 메시지와 분리되어 여기에 보관됩니다.',
+      'oo.msg.none.sent': '보낸 메시지가 없습니다.', 'oo.msg.none.thread': '이 상대와 주고받은 메시지가 없습니다.',
+      'oo.partner': '파트너', 'oo.push.msg': '{name}님이 1on1 메시지를 보냈습니다.',
       'oo.gal.review': '검토 중', 'oo.gal.rejected': '사진이 승인되지 않았습니다: {reason}',
       'oo.gallery': '사진', 'oo.addphoto': '사진 추가', 'oo.cover': '대표', 'oo.setcover': '대표 사진으로', 'oo.delete': '삭제', 'oo.deleteq': '이 사진을 삭제할까요?', 'oo.posts': '게시글', 'oo.addpost': '게시글 추가',
       'oo.caption': '제목', 'oo.body': '내용', 'oo.earn.total': '수락됨', 'oo.earn.paid': '결제 완료', 'oo.earn.unpaid': '미결제', 'oo.uploading': '업로드 중…', 'oo.maxphotos': '사진은 최대 8장입니다.',
@@ -152,6 +170,11 @@
       'oo.optin.title': '1on1同伴サービスを提供', 'oo.optin.desc': '会員とラウンドし、ローカル情報を共有します。キャディプロフィールから自動入力。すべて編集できます。',
       'oo.optin.submit': '承認を申請', 'oo.awaiting': '承認待ち', 'oo.approved': '承認済 — 会員に公開', 'oo.suspended': '停止中',
       'oo.save': '保存', 'oo.saved': '保存しました', 'oo.displayname': '表示名', 'oo.availdays': 'プレー可能な曜日', 'oo.blackouts': '不可日', 'oo.addblackout': '追加', 'oo.note': 'メモ',
+      'oo.msg.inbox': '受信', 'oo.msg.sent': '送信済み', 'oo.msg.to': '{name} さんへ', 'oo.msg.write': 'メッセージを入力…', 'oo.msg.send': '送信',
+      'oo.msg.writeto': '新規メッセージの宛先', 'oo.msg.unreadn': '未読 {n} 件', 'oo.msg.none.chip': '新着メッセージなし',
+      'oo.msg.none.inbox': 'まだメッセージはありません。1on1 のメッセージは他のメッセージとは分けてここに残ります。',
+      'oo.msg.none.sent': '送信したメッセージはありません。', 'oo.msg.none.thread': 'この相手とのメッセージはまだありません。',
+      'oo.partner': 'パートナー', 'oo.push.msg': '{name} さんから 1on1 メッセージが届きました。',
       'oo.gal.review': '確認中', 'oo.gal.rejected': 'この写真は承認されませんでした: {reason}',
       'oo.gallery': '写真', 'oo.addphoto': '写真を追加', 'oo.cover': 'カバー', 'oo.setcover': 'カバーにする', 'oo.delete': '削除', 'oo.deleteq': 'この写真を削除しますか？', 'oo.posts': '投稿', 'oo.addpost': '投稿を追加',
       'oo.caption': 'タイトル', 'oo.body': '本文', 'oo.earn.total': '承諾', 'oo.earn.paid': '支払済', 'oo.earn.unpaid': '未払い', 'oo.uploading': 'アップロード中…', 'oo.maxphotos': '写真は最大8枚です。',
@@ -326,12 +349,6 @@
       if (recipientId.indexOf('KAKAO-') === 0) { await sb().functions.invoke('kakao-push', { body: { recipient_id: recipientId, message: msg } }); }
       else if (recipientId.charAt(0) === 'U') { await sb().functions.invoke('line-push-notification', { body: { type: 'system_alert', recipient_id: recipientId, message: msg } }); }
     } catch (e) { console.warn('[1on1] push', e); }
-  }
-
-  async function sendDm(recipientId) {
-    var text = await ask(T('oo.message', 'Message'), '');
-    if (!text) return;
-    try { await window.SecureDM.send(uid(), recipientId, text); toast(T('oo.msgsent', 'Message sent'), 'success'); } catch (e) { toast(errMsg(e), 'error'); }
   }
 
   /* tiny body-mounted ask sheet (no native prompt(); .screen transforms trap fixed modals → mount on body) */
@@ -584,7 +601,6 @@
       try {
         this.standalone = true;
         try { document.body.classList.add('oo-standalone'); } catch (e) {}
-        try { if (window.MessagesSystem && MessagesSystem.init) Promise.resolve(MessagesSystem.init()).catch(function () {}); } catch (e) {}   /* body-mounted chat view for DMs */
         this.captureInvite();
         var session = null;
         for (var i = 0; i < 6; i++) { try { var r = await sb().auth.getSession(); session = r && r.data && r.data.session; } catch (e) {} if (session) break; await new Promise(function (res) { setTimeout(res, 700); }); }
@@ -636,7 +652,12 @@
       if (dash) dash.classList.toggle('oo-on', on);
       if (!on) return;
       this.paintCube();
-      if (me && me.signed_in) this.subscribeMember();
+      if (me && me.signed_in) {
+        this.subscribeMember();
+        this.subscribeMessages();                                   /* 2026-09-06: 1on1 inbox is live from the cube on */
+        var self0 = this;
+        this.loadMessages(true).then(function () { self0.paintCube(); if (self0.isOpen()) self0.paintShell(); }).catch(function () {});
+      }
     },
     paintCube() {
       var me = this.me || {}; var txt = T('oo.cube.open', 'Find a partner');
@@ -647,7 +668,7 @@
       if (up) txt = TT('oo.cube.upcoming', { n: up });
       if (!this._needsRelogin && me.member && me.member.status === 'active' && me.photo_ok === false) txt = T('oo.cube.photo', 'Add a facial photo');   /* v1100: the photo rule outranks the rest */
       try { GolferCubeInfo.setPill('cubeInfo1on1', txt); } catch (e) {}
-      try { DashboardBadges.setBadge('ooCubeBadge', this.unseenResponses()); } catch (e) {}
+      try { DashboardBadges.setBadge('ooCubeBadge', this.unseenResponses() + this.unreadMsgs()); } catch (e) {}
     },
     unseenResponses() {
       var seen = 0; try { seen = parseInt(localStorage.getItem('oo_seen_' + uid()) || '0', 10) || 0; } catch (e) {}
@@ -678,12 +699,14 @@
       await this.refreshMe(true);
       try { document.body.classList.toggle('oo-partner-caddie', !!(this.me && this.me.partner)); } catch (e) {}   /* v1101: no caddie opt-in any more */
       await this.cadLoad();
+      await this.loadMessages(true);
       this.cadBadge();
       this.subscribePartner();
+      this.subscribeMessages();
       if (this.isOpen() && this.side === 'partner') { this.paintShell(); this.render(); }
     },
     cadBadge() {
-      var n = (this.cad.bookings || []).filter(function (b) { return b.status === 'requested' && b.date_from >= today(); }).length;
+      var n = (this.cad.bookings || []).filter(function (b) { return b.status === 'requested' && b.date_from >= today(); }).length + this.unreadMsgs();
       ['cadCube1on1Badge', 'cadTab1on1Badge'].forEach(function (id) { var el = document.getElementById(id); if (el) { el.textContent = n; el.style.display = n ? 'inline-flex' : 'none'; } });
     },
     subscribePartner() {
@@ -716,7 +739,7 @@
     isPhone() { try { return window.mgrIsPhone ? mgrIsPhone() : window.matchMedia('(max-width: 767px)').matches; } catch (e) { return false; } },
     isOpen() { var s = document.getElementById('ooDashboard'); return !!(s && s.classList.contains('active')); },
     defaultView() { return this.side === 'partner' ? 'requests' : (this.side === 'admin' ? 'overview' : 'browse'); },
-    group(v) { return (v === 'partner' || v === 'book') ? 'browse' : v; },   /* 'terms' is its own view (More sheet only) */
+    group(v) { return (v === 'partner' || v === 'book') ? 'browse' : (v === 'thread' ? 'messages' : v); },   /* 'terms' is its own view (More sheet only) */
 
     async enter(side) {
       this.side = side === 'partner' ? 'partner' : (side === 'admin' ? 'admin' : 'member');
@@ -731,7 +754,7 @@
       if (this.side === 'member' && this.needsPin()) this.nav('browse'); else if (this.isPhone()) this.home(); else this.nav(this.defaultView());
       try { window.scrollTo(0, 0); } catch (e) {}
       /* data in the background; the shell is already on screen. Stale results (user left / re-entered) are dropped. */
-      var load = this.side === 'member' ? Promise.all([this.loadMine(), this.loadLiked()]) : (this.side === 'partner' ? this.cadLoad() : this.admLoad());
+      var load = this.side === 'member' ? Promise.all([this.loadMine(), this.loadLiked(), this.loadMessages(true)]) : (this.side === 'partner' ? Promise.all([this.cadLoad(), this.loadMessages(true)]) : Promise.all([this.admLoad(), this.loadMessages(true)]));
       Promise.resolve(load).then(function () { if (seq !== self._seq || !self.isOpen()) return; self.paintShell(); if (self.view !== 'home') self.render(); }).catch(function () {});
       if ((Date.now() - this._meAt) > 15000) this.refreshMe().then(function () { if (seq !== self._seq || !self.isOpen()) return; self.paintPhotoBar(); if (self.view !== 'home') self.render(); }).catch(function () {});
     },
@@ -755,7 +778,7 @@
     /* mhvGo('oo', view) (cubes/dock) and the desktop tab strip both land here */
     nav(view, keepStack) {
       if (view === 'default' || view === 'home' || view === 'overview') view = this.defaultView();
-      if (view === 'messages' && !this.standalone) { this.exit('messages'); return; }   /* v1101: standalone partners get an in-screen chat list */
+      /* 2026-09-06: 1on1 has its OWN inbox/sent (oo_messages) — Messages never leaves for the main Messages screen */
       if (view === 'logout' || (view === 'exit' && this.standalone)) { this.logoutAsk(); return; }
       if (view === 'exit') { this.exit(); return; }
       if (view === 'asmember') { this.enter('member'); return; }
@@ -819,7 +842,7 @@
           cube('profile', '#e2e7ec', '#f5f7f9', T('oo.seg.profile', 'Profile'), 'ooHomeProfChip', T('oo.cube.profile.chip', 'Rate, days, bio'), 'cuPlayers') +
           cube('photos', '#dbeafe', '#eff6ff', T('oo.seg.photos', 'Photos & posts'), 'ooHomePhotoChip', TT('oo.cube.photos.chip', { n: 0, m: 0 }), 'cuCard') +
           cube('earnings', '#f6e7d4', '#fdf7ef', T('oo.seg.earnings', 'Earnings'), 'ooHomeEarnChip', T('oo.cube.earn.chip', 'Accepted × rate'), 'cuTag') +
-          cube('messages', '#dbe4f0', '#f2f6fb', T('oo.cube.msgs', 'Messages'), null, T('oo.cube.msgs.partner', 'Chat with members'), 'cuChat') + '</div>';
+          cube('messages', '#dbe4f0', '#f2f6fb', T('oo.cube.msgs', 'Messages'), 'ooHomeMsgChip', T('oo.cube.msgs.partner', 'Chat with members'), 'cuChat', 'ooHomeMsgBadge') + '</div>';
         tabs = [['requests', 'inbox', 'oo.seg.requests', 'Requests', 'ooTabReqBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar'], ['profile', 'person', 'oo.seg.profile', 'Profile'], ['photos', 'photo_library', 'oo.seg.photos', 'Photos & posts'], ['earnings', 'payments', 'oo.seg.earnings', 'Earnings']];
         dock = [['requests', 'inbox', 'oo.seg.requests', 'Requests', 'ooDockReqBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar'], ['profile', 'person', 'oo.seg.profile', 'Profile']];
         more = [['photos', 'photo_library', 'oo.seg.photos', 'Photos & posts'], ['earnings', 'payments', 'oo.seg.earnings', 'Earnings'], ['messages', 'chat', 'oo.cube.msgs', 'Messages'], ['terms', 'gavel', 'oo.terms', 'Terms & disclaimers']].concat(this.standalone ? [['logout', 'logout', 'oo.logout', 'Log out']] : [['exit', 'logout', 'oo.exit', 'Back to my dashboard']]);
@@ -828,7 +851,7 @@
           cube('liked', '#fee2e2', '#fff1f2', T('oo.seg.liked', 'Saved'), 'ooHomeLikedChip', TT('oo.cube.liked.chip', { n: (this.liked || []).length }), 'cuTrophy') +
           cube('mine', '#dbeafe', '#eff6ff', T('oo.seg.mine', 'My bookings'), 'ooHomeMineChip', T('oo.cube.mine.chip', 'Requests & upcoming'), 'cuClip', 'ooHomeMineBadge') +
           cube('calendar', '#f4e6c8', '#fcf6e9', T('oo.seg.calendar', 'Calendar'), 'ooHomeCalChip', T('oo.cube.cal.chip', 'Booked dates'), 'cuCal') +
-          cube('messages', '#dbe4f0', '#f2f6fb', T('oo.cube.msgs', 'Messages'), null, T('oo.cube.msgs.member', 'Chat with partners'), 'cuChat') +
+          cube('messages', '#dbe4f0', '#f2f6fb', T('oo.cube.msgs', 'Messages'), 'ooHomeMsgChip', T('oo.cube.msgs.member', 'Chat with partners'), 'cuChat', 'ooHomeMsgBadge') +
           (admin ? '<button type="button" class="mgc" style="--p1:#e2e7ec;--p2:#f5f7f9" onclick="OneOnOne.enter(\'admin\')"><div class="t">' + esc(T('oo.seg.admin', 'Admin')) + '</div><div class="chip" id="ooHomeAdmChip">' + esc(T('oo.cube.admin.chip', 'Approvals & invites')) + '</div>' + art('cuCog') + '<span class="badge" id="ooHomeAdmBadge">0</span></button>' : '') + '</div>';
         tabs = [['browse', 'search', 'oo.seg.browse', 'Browse'], ['liked', 'favorite', 'oo.seg.liked', 'Saved'], ['mine', 'receipt_long', 'oo.seg.mine', 'My bookings', 'ooTabMineBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar']];
         if (admin) tabs.push(['admin', 'admin_panel_settings', 'oo.seg.admin', 'Admin', 'ooTabAdmBadge']);
@@ -877,6 +900,7 @@
         if (this.cad.savedBy != null) set('ooHomeProfChip', TT('oo.cube.savedby', { n: this.cad.savedBy }));
         var unpaid = (this.cad.bookings || []).filter(function (b) { return (b.status === 'accepted' || b.status === 'completed') && b.payment_status !== 'paid'; }).reduce(function (a, b) { return a + (Number(b.fee_quoted) || 0); }, 0);
         set('ooHomeEarnChip', unpaid ? T('oo.earn.unpaid', 'Unpaid') + ' ' + money(unpaid, 'THB') : T('oo.cube.earn.chip', 'Accepted × rate'));
+        this.paintMsgChip(set, badge);
         return;
       }
       var up = (this.bookings || []).filter(function (b) { return b.status === 'accepted' && b.date_to >= today(); }).length;
@@ -887,6 +911,7 @@
       var d2 = bookedDays(this.bookings);
       set('ooHomeCalChip', d2 ? TT('oo.cube.cal.n', { n: d2 }) : T('oo.cube.cal.none', 'No booked dates'));
       set('ooHomeLikedChip', TT('oo.cube.liked.chip', { n: (this.liked || []).length }));
+      this.paintMsgChip(set, badge);
       if (me.admin && document.getElementById('ooHomeAdmChip')) {
         var self2 = this; var applyAdm = function () {
           var st2 = self2.adm.stats || self2.admStats(); var pend2 = st2.members_pending + st2.partners_pending;
@@ -1052,7 +1077,8 @@
         if (v === 'profile') return this.cadRenderProfile(banner);
         if (v === 'photos') return this.cadRenderPhotos(banner);
         if (v === 'earnings') return this.cadRenderEarnings(banner);
-        if (v === 'messages') return this.cadRenderMessages(banner);
+        if (v === 'messages') { this.ensureMessages(); return this.renderMessages(banner); }
+        if (v === 'thread') { this.ensureMessages(); return this.renderThread(banner); }
         return this.cadRenderRequests(banner);
       }
       if (v === 'admin') { this.enter('admin'); return; }
@@ -1060,6 +1086,8 @@
       if (gate) { root.innerHTML = gate; return; }
       if (v === 'terms') { root.innerHTML = this.termsHtml(false); return; }
       if (this.termsNeeded('member')) { root.innerHTML = this.termsHtml(true); return; }   /* v1105 */
+      if (v === 'messages') { this.ensureMessages(); return this.renderMessages(''); }
+      if (v === 'thread') { this.ensureMessages(); return this.renderThread(''); }
       if (v === 'mine') return this.renderMine();
       if (v === 'liked') return this.renderLiked();
       if (v === 'calendar') return this.renderMemberCalendar();
@@ -1464,7 +1492,7 @@
       if (otherId && b.status !== 'requested') h += '<button type="button" class="oo-btn" style="color:#64748b" onclick="OneOnOne.report(\'' + b.id + '\', \'' + esc(otherId) + '\')">' + esc(T('oo.report', 'Report')) + '</button>';
       return h + '</div></div></div>';
     },
-    dm(id) { if (this.standalone && window.MessagesSystem && MessagesSystem.openDirectConversation) { try { return MessagesSystem.openDirectConversation(id); } catch (e) { console.warn('[1on1] dm', e); } } return sendDm(id); },
+    dm(id, name) { return this.openThread(id, name); },   /* 2026-09-06: 1on1 messages stay in 1on1 */
     async cancel(id, side) {
       var reason = await confirmSheet(T('oo.cancelq', 'Cancel this booking?'), T('oo.cancel', 'Cancel')); if (reason === null) return;
       try {
@@ -1539,17 +1567,189 @@
       try { await rpc('oo_partner_optin', { p: this.readProfileForm() }); toast(T('oo.saved', 'Saved'), 'success'); await this.refreshMe(true); await this.cadLoad(); this.subscribePartner(); this.buildShell(); this.paintShell(); this.nav('profile'); }
       catch (e) { toast(errMsg(e), 'error'); if (btn) btn.disabled = false; }
     },
-    /* v1101: standalone partners have no dashboard inbox — list the members with an accepted booking and open the
-       body-mounted chat (MessagesSystem.openDirectConversation) directly */
-    cadRenderMessages(banner) {
-      var root = document.getElementById('ooRoot'); var self = this; var seen = {}; var rows = [];
-      (this.cad.bookings || []).forEach(function (b) { if ((b.status === 'accepted' || b.status === 'completed') && b.member_id && !seen[b.member_id]) { seen[b.member_id] = 1; rows.push(b); } });
-      root.innerHTML = (banner || '') + '<div class="oo-card" style="max-width:720px"><h4>' + esc(T('oo.cube.msgs', 'Messages')) + '</h4>' + (rows.length ? rows.map(function (b) {
-        var name = (b.oo_members && b.oo_members.display_name) || b.member_id; var pic = (self.cad.photos || {})[b.member_id] || '';
-        return '<div class="oo-row" style="align-items:center">' + self.admAvatar(pic, name) + '<div style="flex:1;min-width:0"><div style="font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(name) + '</div><div class="oo-kv">' + esc(fmtRange(b.date_from, b.date_to)) + (b.course_name ? ' · ' + esc(b.course_name) : '') + '</div></div>' +
-          '<button type="button" class="oo-btn pri" onclick="OneOnOne.dm(\'' + esc(b.member_id) + '\')">' + esc(T('oo.message', 'Message')) + '</button></div>';
-      }).join('') : '<div class="oo-kv" style="text-align:center;padding:14px">' + esc(T('oo.msgs.none', DICT.en['oo.msgs.none'])) + '</div>') + '</div>';
+    /* =====================================================================================
+       1on1 MESSAGES (2026-09-06) — Pete: "messaging needs a separation from the main messages …
+       lets set it up so there is a 1on1 messaging inbox and sent box". Own table (oo_messages), own
+       INBOX / SENT boxes, own thread view. Nothing here touches direct_messages or the app-wide
+       Messages screen, so a 1on1 conversation can never surface next to a society one — and a hidden
+       partner never appears in the main inbox. Names come stamped on the row (each side is invisible
+       to the other under oo_* RLS), so no lookup and no raw LINE id ever reaches the screen.
+       ===================================================================================== */
+    msgs: { inbox: [], sent: [], thread: [], box: 'inbox', withId: '', withName: '', loadedAt: 0 },
+
+    async loadMessages(force) {
+      var c = sb(), me = uid(); if (!c || !me) return;
+      if (!force && (Date.now() - this.msgs.loadedAt) < 15000) return;
+      try {
+        var i = await c.from('oo_messages').select('*').eq('recipient_id', me).eq('recipient_deleted', false)
+          .order('created_at', { ascending: false }).limit(300);
+        this.msgs.inbox = i.data || [];
+      } catch (e) { this.msgs.inbox = []; }
+      try {
+        var s = await c.from('oo_messages').select('*').eq('sender_id', me).eq('sender_deleted', false)
+          .order('created_at', { ascending: false }).limit(300);
+        this.msgs.sent = s.data || [];
+      } catch (e) { this.msgs.sent = []; }
+      this.msgs.loadedAt = Date.now();
     },
+    /* the views are painted synchronously; refresh in the background and repaint once (same pattern as 'mine') */
+    ensureMessages() {
+      if ((Date.now() - this.msgs.loadedAt) < 15000) return;
+      var self = this;
+      this.loadMessages(true).then(function () {
+        if (!self.isOpen()) return;
+        self.paintShell(); self.paintCube();
+        if (self.view === 'messages') self.render();
+        else if (self.view === 'thread') self.loadThread(self.msgs.withId).then(function () { if (self.view === 'thread') self.render(); });
+      }).catch(function () {});
+    },
+    unreadMsgs() { return (this.msgs.inbox || []).filter(function (m) { return !m.read_at; }).length; },
+    paintMsgChip(set, badge) {
+      var n = this.unreadMsgs();
+      set('ooHomeMsgChip', n ? TT('oo.msg.unreadn', { n: n }) : T('oo.msg.none.chip', DICT.en['oo.msg.none.chip']));
+      ['ooHomeMsgBadge'].forEach(function (id) { badge(id, n); });
+    },
+    msgBox(box) { this.msgs.box = box === 'sent' ? 'sent' : 'inbox'; this.render(); },
+    /* today = the time, older = the date (a message list needs the time to be readable) */
+    msgWhen(ts) {
+      try {
+        var d = new Date(ts);
+        if (d.toDateString() === new Date().toDateString()) return d.toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' });
+      } catch (e) {}
+      return this.fmtDate(ts);
+    },
+    /* the counterparty on a row, and the best name we hold for an id */
+    msgOther(m) { var me = uid(); return m.sender_id === me ? { id: m.recipient_id, name: m.recipient_name } : { id: m.sender_id, name: m.sender_name }; },
+    msgNameFor(id, fallback) {
+      var hit = null, me = uid();
+      (this.msgs.inbox || []).concat(this.msgs.sent || [], this.msgs.thread || []).some(function (m) {
+        if (m.sender_id === id && m.sender_name) { hit = m.sender_name; return true; }
+        if (m.recipient_id === id && m.recipient_name) { hit = m.recipient_name; return true; }
+        return false;
+      });
+      if (hit) return hit;
+      if (this.side !== 'partner') {
+        var b = (this.bookings || []).find(function (x) { return x.oo_partners && x.oo_partners.user_id === id; });
+        if (b && b.oo_partners && b.oo_partners.display_name) return b.oo_partners.display_name;
+      } else {
+        var b2 = (this.cad.bookings || []).find(function (x) { return x.member_id === id; });
+        if (b2 && b2.oo_members && b2.oo_members.display_name) return b2.oo_members.display_name;
+      }
+      return fallback || (this.side === 'partner' ? T('oo.rv.member', 'Member') : T('oo.partner', 'Partner'));
+    },
+    /* who this persona may write to: the people it already has bookings with (the DB allows any 1on1 identity) */
+    msgContacts() {
+      var self = this, out = [], seen = {};
+      var add = function (id, name) { if (id && id !== uid() && !seen[id]) { seen[id] = 1; out.push({ id: id, name: name || self.msgNameFor(id) }); } };
+      if (this.side === 'partner') (this.cad.bookings || []).forEach(function (b) { if (b.status !== 'requested') add(b.member_id, b.oo_members && b.oo_members.display_name); });
+      else (this.bookings || []).forEach(function (b) { if (b.status !== 'declined' && b.oo_partners) add(b.oo_partners.user_id, b.oo_partners.display_name); });
+      return out;
+    },
+
+    renderMessages(banner) {
+      var root = document.getElementById('ooRoot'); if (!root) return;
+      var self = this, box = this.msgs.box === 'sent' ? 'sent' : 'inbox';
+      var rows = box === 'inbox' ? (this.msgs.inbox || []) : (this.msgs.sent || []);
+      var unread = this.unreadMsgs();
+      var seg = '<div class="oo-fr">' +
+        '<button type="button" class="oo-fc' + (box === 'inbox' ? ' on' : '') + '" onclick="OneOnOne.msgBox(\'inbox\')">' + esc(T('oo.msg.inbox', 'Inbox')) + (unread ? ' · ' + unread : '') + '</button>' +
+        '<button type="button" class="oo-fc' + (box === 'sent' ? ' on' : '') + '" onclick="OneOnOne.msgBox(\'sent\')">' + esc(T('oo.msg.sent', 'Sent')) + '</button></div>';
+      var contacts = this.msgContacts();
+      var write = contacts.length ? '<div class="oo-card" style="margin-top:8px;max-width:720px"><div class="oo-kv">' + esc(T('oo.msg.writeto', 'New message to')) + '</div>' +
+        '<div class="oo-fr" style="margin-top:6px">' + contacts.slice(0, 12).map(function (c) {
+          return '<button type="button" class="oo-fc" onclick="OneOnOne.openThread(\'' + esc(c.id) + '\')">' + esc(c.name) + '</button>';
+        }).join('') + '</div></div>' : '';
+      var list = rows.length ? rows.map(function (m) { return self.msgRow(m, box); }).join('')
+        : '<div class="oo-kv" style="text-align:center;padding:18px">' + esc(box === 'inbox' ? T('oo.msg.none.inbox', DICT.en['oo.msg.none.inbox']) : T('oo.msg.none.sent', DICT.en['oo.msg.none.sent'])) + '</div>';
+      root.innerHTML = (banner || '') + seg + write + '<div class="oo-card" style="margin-top:8px;max-width:720px">' + list + '</div>';
+    },
+    msgRow(m, box) {
+      var o = this.msgOther(m), unread = box === 'inbox' && !m.read_at;
+      var name = o.name || this.msgNameFor(o.id);
+      var snippet = String(m.body || '').replace(/\s+/g, ' ').slice(0, 90);
+      return '<div class="oo-row" style="align-items:center;cursor:pointer" onclick="OneOnOne.openThread(\'' + esc(o.id) + '\')">' +
+        this.admAvatar('', name) +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">' +
+            '<div style="font-weight:' + (unread ? '900' : '700') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+              (unread ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-right:6px"></span>' : '') +
+              esc(box === 'sent' ? TT('oo.msg.to', { name: name }) : name) + '</div>' +
+            '<span class="oo-kv" style="white-space:nowrap">' + esc(this.msgWhen(m.created_at)) + '</span></div>' +
+          '<div class="oo-kv" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(snippet) + '</div></div>' +
+        '<button type="button" class="oo-btn" style="padding:3px 7px;color:#64748b" aria-label="' + esc(T('oo.delete', 'Delete')) + '" onclick="event.stopPropagation();OneOnOne.delMsg(\'' + m.id + '\')">✕</button></div>';
+    },
+
+    async openThread(id, name) {
+      if (!id) return;
+      this.msgs.withId = id; this.msgs.withName = name || this.msgNameFor(id);
+      this.msgs.thread = [];
+      if (this.view !== 'thread') this.go('thread'); else this.render();
+      await this.loadThread(id);
+      if (this.view === 'thread') this.render();
+      try { if ((this.msgs.inbox || []).some(function (m) { return m.sender_id === id && !m.read_at; })) { await rpc('oo_messages_read', { p_from: id }); await this.loadMessages(true); this.paintShell(); this.paintCube(); } } catch (e) {}
+    },
+    async loadThread(id) {
+      var c = sb(), me = uid(); if (!c || !me || !id) return;
+      try {
+        var r = await c.from('oo_messages').select('*').in('sender_id', [me, id]).in('recipient_id', [me, id])
+          .order('created_at', { ascending: true }).limit(500);
+        this.msgs.thread = r.data || [];
+      } catch (e) { this.msgs.thread = []; }
+    },
+    renderThread(banner) {
+      var root = document.getElementById('ooRoot'); if (!root) return;
+      var me = uid(), name = this.msgs.withName || this.msgNameFor(this.msgs.withId);
+      var rows = (this.msgs.thread || []).filter(function (m) { return m.sender_id === me ? !m.sender_deleted : !m.recipient_deleted; });
+      var bubbles = rows.length ? rows.map(function (m) {
+        var mine = m.sender_id === me;
+        return '<div style="display:flex;justify-content:' + (mine ? 'flex-end' : 'flex-start') + ';margin:6px 0">' +
+          '<div style="max-width:78%;padding:8px 10px;border-radius:12px;background:' + (mine ? '#dcfce7' : '#f1f5f9') + ';border:1px solid ' + (mine ? '#bbf7d0' : '#e2e8f0') + '">' +
+            '<div style="white-space:pre-wrap;color:#0f172a;font-size:14px">' + esc(m.body || '') + '</div>' +
+            '<div class="oo-kv" style="text-align:right;margin-top:2px">' + esc(OO.msgWhen(m.created_at)) + '</div></div></div>';
+      }).join('') : '<div class="oo-kv" style="text-align:center;padding:16px">' + esc(T('oo.msg.none.thread', DICT.en['oo.msg.none.thread'])) + '</div>';
+      root.innerHTML = (banner || '') +
+        '<div class="oo-card" style="max-width:720px"><div style="display:flex;align-items:center;gap:8px">' + this.admAvatar('', name) +
+          '<div style="font-weight:800;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(name) + '</div>' +
+          '<button type="button" class="oo-btn" onclick="OneOnOne.nav(\'messages\')">' + esc(T('oo.msg.inbox', 'Inbox')) + '</button></div>' +
+          '<div style="margin-top:8px;max-height:52vh;overflow-y:auto">' + bubbles + '</div>' +
+          '<div style="display:flex;gap:6px;align-items:flex-end;margin-top:10px">' +
+            '<textarea id="ooMsgBody" class="oo-in" rows="2" maxlength="2000" style="flex:1;resize:vertical" placeholder="' + esc(T('oo.msg.write', 'Write a message…')) + '"></textarea>' +
+            '<button type="button" class="oo-btn pri" onclick="OneOnOne.sendMsg()">' + esc(T('oo.msg.send', 'Send')) + '</button></div></div>';
+    },
+    async sendMsg() {
+      var ta = document.getElementById('ooMsgBody'); var text = ((ta && ta.value) || '').trim();
+      var to = this.msgs.withId; if (!text || !to) return;
+      try {
+        var row = await rpc('oo_send_message', { p_to: to, p_body: text, p_booking: null });
+        if (ta) ta.value = '';
+        push(to, 'oo.push.msg', { name: (row && row.sender_name) || '' });
+        await this.loadThread(to); await this.loadMessages(true);
+        if (this.view === 'thread') this.render();
+        this.paintShell(); this.paintCube();
+      } catch (e) { toast(errMsg(e), 'error'); }
+    },
+    async delMsg(id) {
+      try { await rpc('oo_message_delete', { p_id: id }); await this.loadMessages(true); if (this.msgs.withId) await this.loadThread(this.msgs.withId); this.paintShell(); this.paintCube(); this.render(); }
+      catch (e) { toast(errMsg(e), 'error'); }
+    },
+    subscribeMessages() {
+      var c = sb(), me = uid(); if (!c || !me) return;
+      try { if (this._msgChan) { c.removeChannel(this._msgChan); this._msgChan = null; } } catch (e) {}
+      var self = this;
+      try {
+        this._msgChan = c.channel('oo_msgs_' + me)
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'oo_messages', filter: 'recipient_id=eq.' + me }, function () {
+            self.loadMessages(true).then(function () {
+              self.paintCube(); if (!self.isOpen()) return;
+              self.paintShell();
+              if (self.view === 'messages') self.render();
+              else if (self.view === 'thread') self.loadThread(self.msgs.withId).then(function () { if (self.view === 'thread') self.render(); });
+            });
+          })
+          .subscribe();
+      } catch (e) { console.warn('[1on1] realtime messages', e); }
+    },
+
     cadRenderProfile(banner) {
       var root = document.getElementById('ooRoot'); var p = this.cad.partner; var self = this;
       var rv = (this.cad.reviews || []).filter(function (r) { return r.status === 'visible'; }); var avg = rv.length ? (rv.reduce(function (a, r) { return a + r.rating; }, 0) / rv.length).toFixed(1) : null;

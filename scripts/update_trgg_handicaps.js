@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
-const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTg0MzY2OSwiZXhwIjoyMDc1NDE5NjY5fQ.yz1WTV7h_qpaJu3kQ0pEKHMF3rw-_fSLmdne_3Rb6Yc';
+const SUPABASE_SERVICE_KEY = 'REDACTED_SERVICE_ROLE_KEY_ROTATED_2026_09_06';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 

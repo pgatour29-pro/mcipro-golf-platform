@@ -32,8 +32,8 @@ async function insert() {
   const resp = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/rest/v1/society_events', {
     method: 'POST',
     headers: {
-      'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTg0MzY2OSwiZXhwIjoyMDc1NDE5NjY5fQ.yz1WTV7h_qpaJu3kQ0pEKHMF3rw-_fSLmdne_3Rb6Yc',
-      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTg0MzY2OSwiZXhwIjoyMDc1NDE5NjY5fQ.yz1WTV7h_qpaJu3kQ0pEKHMF3rw-_fSLmdne_3Rb6Yc',
+      'apikey': 'REDACTED_SERVICE_ROLE_KEY_ROTATED_2026_09_06',
+      'Authorization': 'Bearer REDACTED_SERVICE_ROLE_KEY_ROTATED_2026_09_06',
       'Content-Type': 'application/json',
       'Prefer': 'return=representation'
     },

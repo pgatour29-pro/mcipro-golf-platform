@@ -34,7 +34,7 @@ BEGIN
         url := 'https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification',
         headers := jsonb_build_object(
             'Content-Type', 'application/json',
-            'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTg0MzY2OSwiZXhwIjoyMDc1NDE5NjY5fQ.Gin1bCpBR_xCgDPzYsOPbNqIN-fBsd68lW1OBbi_wcA'
+            'Authorization', 'Bearer REDACTED_SERVICE_ROLE_KEY_ROTATED_2026_09_06'
         ),
         body := jsonb_build_object(
             'type', 'group_message',

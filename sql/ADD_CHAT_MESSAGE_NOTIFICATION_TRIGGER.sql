@@ -13,7 +13,7 @@ DECLARE
     edge_function_url TEXT := 'https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification';
     payload JSONB;
     notification_type TEXT;
-    service_role_key TEXT := 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTg0MzY2OSwiZXhwIjoyMDc1NDE5NjY5fQ.Gin1bCpBR_xCgDPzYsOPbNqIN-fBsd68lW1OBbi_wcA';
+    service_role_key TEXT := 'REDACTED_SERVICE_ROLE_KEY_ROTATED_2026_09_06';
 BEGIN
     -- Determine notification type based on table and operation
     IF TG_TABLE_NAME = 'society_events' THEN

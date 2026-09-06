@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SUPABASE_URL = 'https://ccqydamycfekrnobupux.supabase.co';
-const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNjcXlkYW15Y2Zla3Jub2J1cHV4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNzg1NjQ4MywiZXhwIjoyMDQzNDMyNDgzfQ.DzmKBZe88Sxr24xgHcYT-cZC1nMJdOygmhtqy5CIdVk';
+const SUPABASE_SERVICE_KEY = 'REDACTED_SERVICE_ROLE_KEY_ROTATED_2026_09_06';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 

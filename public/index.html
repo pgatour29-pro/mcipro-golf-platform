@@ -395,7 +395,7 @@
     <!-- REMOVED: hole-by-hole-leaderboard-enhancement.js causes mobile stack overflow -->
     <script src="golf-buddies-v2.js?v=17" defer></script>
     <script src="food-fgv1.js?v=3" defer></script>
-    <script src="content-moderation.js?v=2" defer></script>
+    <script src="content-moderation.js?v=1122" defer></script>
 
     <style>
         /* CSS Variables for Premium Theme */
@@ -25400,10 +25400,16 @@
             modal.classList.add('hidden');
         }
 
-        function previewCourseRequestPhoto(input) {
+        async function previewCourseRequestPhoto(input) {
             const preview = document.getElementById('courseRequestPhotoPreview');
             const placeholder = document.getElementById('courseRequestPhotoPlaceholder');
             const img = document.getElementById('courseRequestPhotoImg');
+
+            /* 2026-09-06: server safety screen before the photo is attached to the request (fails closed) */
+            if (input.files && input.files[0] && window.ContentModeration && ContentModeration.screenImage) {
+                const s = await ContentModeration.screenImage(input.files[0], 'course');
+                if (!s.safe) { window.NotificationManager && NotificationManager.show(s.reason, 'error'); input.value = ''; return; }
+            }
 
             if (input.files && input.files[0]) {
                 const reader = new FileReader();
@@ -31650,10 +31656,15 @@ Sent from Login Page`;
                 });
             },
 
-            handlePhotos(files) {
+            async handlePhotos(files) {
                 const preview = document.getElementById('conditionPhotoPreview');
-                Array.from(files).forEach(file => {
-                    if (this.photoFiles.length >= 5) return;
+                for (const file of Array.from(files)) {
+                    if (this.photoFiles.length >= 5) break;
+                    /* 2026-09-06: condition photos are shown to everyone at the course — screen server-side */
+                    if (window.ContentModeration && ContentModeration.screenImage) {
+                        const s = await ContentModeration.screenImage(file, 'course');
+                        if (!s.safe) { window.NotificationManager && NotificationManager.show(s.reason, 'error'); continue; }
+                    }
                     this.photoFiles.push(file);
                     const reader = new FileReader();
                     reader.onload = (e) => {
@@ -31667,7 +31678,7 @@ Sent from Login Page`;
                         preview.appendChild(div);
                     };
                     reader.readAsDataURL(file);
-                });
+                }
             },
 
             removePhoto(idx, el) {
@@ -32339,9 +32350,14 @@ Sent from Login Page`;
                 }
             },
 
-            onLogo(files) {
+            async onLogo(files) {
                 const file = files && files[0];
                 if (!file) return;
+                /* 2026-09-06: server safety screen before the logo is accepted (fails closed) */
+                if (window.ContentModeration && ContentModeration.screenImage) {
+                    const s = await ContentModeration.screenImage(file, 'logo');
+                    if (!s.safe) { window.NotificationManager && NotificationManager.show(s.reason, 'error'); return; }
+                }
                 this._logoFile = file;
                 const reader = new FileReader();
                 reader.onload = (e) => {
@@ -37335,9 +37351,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
 
-                // Content moderation: validate file type, size (2MB), strip EXIF, NSFW check
+                // Content moderation: validate file type, size (2MB), strip EXIF, NSFW check + server screen (2026-09-06)
                 if (window.ContentModeration) {
-                    const result = await ContentModeration.processImage(file);
+                    const result = await ContentModeration.processImage(file, 'profile');
                     if (!result.valid) {
                         if (window.NotificationManager) {
                             NotificationManager.show(result.error, 'error');
@@ -44476,12 +44492,17 @@ document.addEventListener('DOMContentLoaded', function() {
             },
 
             // Handle photo upload and preview
-            handlePhotoUpload(files) {
+            async handlePhotoUpload(files) {
                 const previewContainer = document.getElementById('photoPreview');
                 if (!previewContainer) return;
 
-                Array.from(files).forEach((file, index) => {
+                for (const [index, file] of Array.from(files).entries()) {
                     if (file.type.startsWith('image/')) {
+                        /* 2026-09-06: server safety screen before the photo joins the job */
+                        if (window.ContentModeration && ContentModeration.screenImage) {
+                            const s = await ContentModeration.screenImage(file, 'maintenance');
+                            if (!s.safe) { window.NotificationManager && NotificationManager.show(s.reason, 'error'); continue; }
+                        }
                         const reader = new FileReader();
                         reader.onload = (e) => {
                             const photoId = Date.now() + '_' + index;
@@ -44508,7 +44529,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         };
                         reader.readAsDataURL(file);
                     }
-                });
+                }
             },
 
             // Remove photo from upload
@@ -46707,7 +46728,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     try { await cb(f); }
                     catch(e) {
                         console.error('[CaddyPhoto] Quick add failed:', e);
-                        NotificationManager.show('Photo upload failed', 'error');
+                        NotificationManager.show((e && e.message) || 'Photo upload failed', 'error');
                     }
                 };
                 inp.click();
@@ -46715,6 +46736,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
             async _uploadPhotoFile(file, userId) {
                 const blob = await this._shrinkPhoto(file);
+                /* 2026-09-06: notebook photos are shown to other golfers (roster, Next Round) — screen server-side */
+                if (window.ContentModeration && ContentModeration.screenImage) {
+                    const s = await ContentModeration.screenImage(blob, 'caddy');
+                    if (!s.safe) throw new Error(s.reason);
+                }
                 const path = `notebook/${userId}_${Date.now()}.jpg`;
                 const { error } = await window.SupabaseDB.client.storage
                     .from('caddy_photos').upload(path, blob, { cacheControl: '3600', upsert: false, contentType: 'image/jpeg' });
@@ -46792,7 +46818,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         photoUrl = await this._uploadPhotoFile(this._photoFile, userId);
                     } catch(e) {
                         console.error('[CaddyNotebook] Photo upload failed:', e);
-                        NotificationManager.show('Photo upload failed — saving caddy without photo', 'warning');
+                        NotificationManager.show(((e && e.message) || 'Photo upload failed') + ' — saving caddy without photo', 'warning');
                     }
                 }
 
@@ -111036,7 +111062,7 @@ This action cannot be undone.`);
         }
     }
 
-    handleLogoUpload(event) {
+    async handleLogoUpload(event) {
         const file = event.target.files[0];
         if (!file) return;
 
@@ -111050,6 +111076,12 @@ This action cannot be undone.`);
         if (!file.type.startsWith('image/')) {
             NotificationManager.show('Please upload an image file', 'error');
             return;
+        }
+
+        /* 2026-09-06: server safety screen before the logo is accepted (fails closed) */
+        if (window.ContentModeration && ContentModeration.screenImage) {
+            const s = await ContentModeration.screenImage(file, 'logo');
+            if (!s.safe) { NotificationManager.show(s.reason, 'error'); event.target.value = ''; return; }
         }
 
         // Read file as base64
@@ -124552,6 +124584,11 @@ const MarketplaceSystem = {
             if (file.size > 5 * 1024 * 1024) {
                 NotificationManager.show('Image must be smaller than 5MB', 'warning');
                 continue;
+            }
+            /* 2026-09-06: listing photos are public to every member — screen server-side (fails closed) */
+            if (window.ContentModeration && ContentModeration.screenImage) {
+                const s = await ContentModeration.screenImage(file, 'listing');
+                if (!s.safe) { NotificationManager.show(s.reason, 'error'); continue; }
             }
 
             const reader = new FileReader();

@@ -296,11 +296,74 @@ window.ContentModeration = (function() {
     }
 
     /**
-     * Full image processing pipeline: validate → strip EXIF → NSFW check
+     * SERVER-SIDE safety screen (2026-09-06). The NSFWJS pass below runs in the browser and FAILS OPEN — a blocked
+     * CDN, a classify error or a missing script all let the image through, and nothing stops a determined client
+     * writing to storage directly. Every surface whose photo is shown to OTHER people therefore also asks the
+     * edge function `image-screen` (Gemini) before the write, and treats "no verdict" as a refusal.
+     * @param {Blob} blob      the processed image
+     * @param {string} context profile | caddy | logo | listing | course | maintenance | general — tunes the prompt
+     * @returns {Promise<{safe: boolean, reason: string|null}>}
+     */
+    // a small JPEG copy for the classifier — the ORIGINAL is what gets uploaded; this only keeps the payload light
+    function screenCopy(blob) {
+        return new Promise((resolve) => {
+            try {
+                const img = new Image();
+                const url = URL.createObjectURL(blob);
+                img.onload = () => {
+                    URL.revokeObjectURL(url);
+                    try {
+                        const max = 1024;
+                        const ratio = Math.min(1, max / Math.max(img.width || 1, img.height || 1));
+                        const c = document.createElement('canvas');
+                        c.width = Math.max(1, Math.round((img.width || 1) * ratio));
+                        c.height = Math.max(1, Math.round((img.height || 1) * ratio));
+                        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+                        c.toBlob(b => resolve(b || blob), 'image/jpeg', 0.8);
+                    } catch (e) { resolve(blob); }
+                };
+                img.onerror = () => { URL.revokeObjectURL(url); resolve(blob); };
+                img.src = url;
+            } catch (e) { resolve(blob); }
+        });
+    }
+
+    async function screenImage(blob, context) {
+        try {
+            const client = window.SupabaseDB && window.SupabaseDB.client;
+            if (!client || !client.functions) return { safe: false, reason: 'Photo check is unavailable right now. Please try again.' };
+            const small = await screenCopy(blob);
+            const b64 = await new Promise((resolve, reject) => {
+                const r = new FileReader();
+                r.onload = () => resolve(String(r.result || '').split(',')[1] || '');
+                r.onerror = () => reject(new Error('read_failed'));
+                r.readAsDataURL(small);
+            });
+            if (!b64) return { safe: false, reason: 'Photo check failed. Please try again.' };
+            const res = await client.functions.invoke('image-screen', {
+                body: { image_b64: b64, mime: 'image/jpeg', context: context || 'general' }
+            });
+            if (res.error || !res.data) {
+                console.warn('[ContentModeration] image-screen unavailable', res.error);
+                return { safe: false, reason: 'Photo check is unavailable right now. Please try again.' };
+            }
+            if (res.data.ok) return { safe: true, reason: null };
+            return { safe: false, reason: 'This image doesn\'t meet our community guidelines. Please upload an appropriate image.' };
+        } catch (err) {
+            console.warn('[ContentModeration] screenImage error', err);
+            return { safe: false, reason: 'Photo check is unavailable right now. Please try again.' };
+        }
+    }
+
+    /**
+     * Full image processing pipeline: validate → strip EXIF → NSFW check → server screen
      * @param {File} file
+     * @param {string} [context] when given (profile | caddy | logo | listing | course | maintenance | general) the
+     *        processed image is ALSO screened server-side and a missing verdict blocks the upload (fail closed).
+     *        Omit it for images only the uploader ever sees (scorecard OCR, pin sheets, schedule imports).
      * @returns {Promise<{valid: boolean, error: string|null, processedBlob: Blob|null}>}
      */
-    async function processImage(file) {
+    async function processImage(file, context) {
         // Step 1: Basic validation
         const fileCheck = validateFile(file);
         if (!fileCheck.valid) {
@@ -316,10 +379,18 @@ window.ContentModeration = (function() {
                 return { valid: false, error: 'Image is still too large after processing. Please use a smaller image.', processedBlob: null };
             }
 
-            // Step 4: NSFW check (if loaded)
+            // Step 4: NSFW check in the browser (fast, but fails open)
             const nsfwResult = await checkNSFW(cleanBlob);
             if (!nsfwResult.safe) {
                 return { valid: false, error: nsfwResult.reason, processedBlob: null };
+            }
+
+            // Step 5: server screen for anything other people will see (fail closed)
+            if (context) {
+                const screened = await screenImage(cleanBlob, context);
+                if (!screened.safe) {
+                    return { valid: false, error: screened.reason, processedBlob: null };
+                }
             }
 
             return { valid: true, error: null, processedBlob: cleanBlob };
@@ -1303,6 +1374,7 @@ window.ContentModeration = (function() {
         validateFile,
         stripExif,
         processImage,
+        screenImage,
         checkRateLimit,
         clearLastMessage,
         CHAR_LIMITS,

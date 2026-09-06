@@ -3,6 +3,7 @@
 // Returns structured JSON with hole-by-hole scores
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { rateLimit } from "../_shared/ratelimit.ts";
 
 // Get API key from Supabase Vault
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
@@ -38,6 +39,8 @@ serve(async (req) => {
     if (req.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
     }
+    const _rl = await rateLimit(req, "analyze-scorecard", 10);
+    if (_rl) return _rl;
 
     // Check for API key
     if (!ANTHROPIC_API_KEY) {

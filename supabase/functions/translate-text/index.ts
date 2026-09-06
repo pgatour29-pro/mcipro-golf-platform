@@ -6,6 +6,7 @@
 // Output: { translated: string }
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { rateLimit } from "../_shared/ratelimit.ts";
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
@@ -26,6 +27,8 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+  const _rl = await rateLimit(req, "translate-text", 60);
+  if (_rl) return _rl;
 
   try {
     if (!GEMINI_API_KEY) {

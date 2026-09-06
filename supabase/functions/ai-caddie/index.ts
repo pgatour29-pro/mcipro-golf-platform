@@ -2,6 +2,7 @@
 // Processes natural language commands and returns structured actions
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { rateLimit } from "../_shared/ratelimit.ts";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 
@@ -39,6 +40,8 @@ Deno.serve(async (req) => {
       },
     });
   }
+  const _rl = await rateLimit(req, "ai-caddie", 20);
+  if (_rl) return _rl;
 
   if (!ANTHROPIC_API_KEY) {
     return json(500, { error: "ANTHROPIC_API_KEY not set" });

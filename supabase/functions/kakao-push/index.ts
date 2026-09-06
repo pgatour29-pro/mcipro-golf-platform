@@ -7,6 +7,7 @@
 // Output: { success, notified, reason? }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { rateLimit } from "../_shared/ratelimit.ts";
 
 const KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token";
 const KAKAO_MEMO_URL = "https://kapi.kakao.com/v2/api/talk/memo/default/send";
@@ -28,6 +29,8 @@ const json = (b: unknown, s = 200) =>
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const _rl = await rateLimit(req, "kakao-push", 30);
+  if (_rl) return _rl;
 
   try {
     const { recipient_id, message } = await req.json().catch(() => ({}));

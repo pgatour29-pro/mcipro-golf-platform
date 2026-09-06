@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { rateLimit } from "../_shared/ratelimit.ts";
 
 const ALLOWED_ORIGINS = ["https://mycaddipro.com", "https://www.mycaddipro.com"];
 
@@ -18,6 +19,8 @@ const json = (b: any, s = 200, origin: string | null) =>
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: getCorsHeaders(origin) });
+  const _rl = await rateLimit(req, "secure-dm", 60);
+  if (_rl) return _rl;
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
 
   try {

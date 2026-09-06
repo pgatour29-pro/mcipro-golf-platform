@@ -10,6 +10,7 @@
 // supabase.functions.invoke always sends) is required, nothing more — the function exposes no data.
 import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 import { corsHeaders, preflight } from "../_shared/cors.ts";
+import { rateLimit } from "../_shared/ratelimit.ts";
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
 const MODEL = "gemini-flash-latest";
@@ -90,6 +91,8 @@ async function classifyOnce(bytes: Uint8Array, mime: string, note: string, attem
 Deno.serve(async (req: Request) => {
   const pre = preflight(req);
   if (pre) return pre;
+  const _rl = await rateLimit(req, "image-screen", 30);
+  if (_rl) return _rl;
   const origin = req.headers.get("origin");
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405, origin);
   if (!GEMINI_API_KEY) return json({ error: "gemini_not_configured" }, 500, origin);

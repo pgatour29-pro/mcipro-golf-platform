@@ -4,6 +4,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { rateLimit } from "../_shared/ratelimit.ts";
 
 const LINE_MESSAGING_API = "https://api.line.me/v2/bot/message/push";
 const LINE_MULTICAST_API = "https://api.line.me/v2/bot/message/multicast";
@@ -201,6 +202,8 @@ serve(async (req) => {
     if (req.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
     }
+    const _rl = await rateLimit(req, "line-push-notification", 30);
+    if (_rl) return _rl;
 
     const rawBody = await req.text();
     console.log("[LINE Push] RAW BODY:", rawBody.substring(0, 500));

@@ -4,6 +4,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { rateLimit } from "../_shared/ratelimit.ts";
 
 // Get API keys from environment
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_API_KEY");
@@ -44,6 +45,8 @@ serve(async (req) => {
     if (req.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
     }
+    const _rl = await rateLimit(req, "analyze-pinsheet", 10);
+    if (_rl) return _rl;
 
     // Check for API key
     if (!GOOGLE_API_KEY) {

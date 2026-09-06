@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { rateLimit } from "../_shared/ratelimit.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,6 +10,8 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+  const _rl = await rateLimit(req, "ai-coach", 20);
+  if (_rl) return _rl;
 
   try {
     const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');

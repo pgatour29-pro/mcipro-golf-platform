@@ -56,6 +56,7 @@
       'oo.optin.title': 'Offer 1on1 playing-partner service', 'oo.optin.desc': 'Play rounds with members and share your local knowledge. Prefilled from your caddie profile — edit anything.',
       'oo.optin.submit': 'Submit for approval', 'oo.awaiting': 'Awaiting approval', 'oo.approved': 'Approved — visible to members', 'oo.suspended': 'Suspended',
       'oo.save': 'Save', 'oo.saved': 'Saved', 'oo.displayname': 'Display name', 'oo.availdays': 'Days I can play', 'oo.blackouts': 'Unavailable dates',
+      'oo.gal.review': 'Under review', 'oo.gal.rejected': 'Photo not accepted: {reason}',
       'oo.addblackout': 'Add', 'oo.note': 'Note', 'oo.gallery': 'Photos', 'oo.addphoto': 'Add photo', 'oo.cover': 'Cover', 'oo.setcover': 'Set as cover',
       'oo.delete': 'Delete', 'oo.deleteq': 'Delete this photo?', 'oo.posts': 'Posts', 'oo.addpost': 'Add post', 'oo.caption': 'Caption', 'oo.body': 'Text',
       'oo.earn.total': 'Accepted', 'oo.earn.paid': 'Paid', 'oo.earn.unpaid': 'Unpaid', 'oo.uploading': 'Uploading…', 'oo.maxphotos': 'Maximum 8 photos.',
@@ -91,6 +92,7 @@
       'oo.optin.title': 'เปิดบริการคู่เล่น 1on1', 'oo.optin.desc': 'ออกรอบกับสมาชิกและแบ่งปันความรู้ท้องถิ่น ข้อมูลเติมจากโปรไฟล์แคดดี้ แก้ไขได้ทุกอย่าง',
       'oo.optin.submit': 'ส่งเพื่อขออนุมัติ', 'oo.awaiting': 'รออนุมัติ', 'oo.approved': 'อนุมัติแล้ว — สมาชิกมองเห็น', 'oo.suspended': 'ถูกระงับ',
       'oo.save': 'บันทึก', 'oo.saved': 'บันทึกแล้ว', 'oo.displayname': 'ชื่อที่แสดง', 'oo.availdays': 'วันที่เล่นได้', 'oo.blackouts': 'วันที่ไม่ว่าง', 'oo.addblackout': 'เพิ่ม', 'oo.note': 'หมายเหตุ',
+      'oo.gal.review': 'อยู่ระหว่างตรวจสอบ', 'oo.gal.rejected': 'รูปนี้ไม่ผ่านการตรวจสอบ: {reason}',
       'oo.gallery': 'รูปภาพ', 'oo.addphoto': 'เพิ่มรูป', 'oo.cover': 'ปก', 'oo.setcover': 'ตั้งเป็นรูปปก', 'oo.delete': 'ลบ', 'oo.deleteq': 'ลบรูปนี้?', 'oo.posts': 'โพสต์', 'oo.addpost': 'เพิ่มโพสต์',
       'oo.caption': 'คำบรรยาย', 'oo.body': 'ข้อความ', 'oo.earn.total': 'ตอบรับแล้ว', 'oo.earn.paid': 'จ่ายแล้ว', 'oo.earn.unpaid': 'ยังไม่จ่าย', 'oo.uploading': 'กำลังอัปโหลด…', 'oo.maxphotos': 'สูงสุด 8 รูป',
       'oo.legend.booked': 'จองแล้ว', 'oo.legend.requested': 'รอตอบรับ', 'oo.legend.off': 'ไม่ว่าง',
@@ -120,6 +122,7 @@
       'oo.optin.title': '1on1 라운딩 파트너 서비스 제공', 'oo.optin.desc': '회원과 라운딩하고 현지 정보를 공유하세요. 캐디 프로필에서 자동 입력됩니다. 모두 수정 가능합니다.',
       'oo.optin.submit': '승인 요청', 'oo.awaiting': '승인 대기 중', 'oo.approved': '승인됨 — 회원에게 공개', 'oo.suspended': '정지됨',
       'oo.save': '저장', 'oo.saved': '저장됨', 'oo.displayname': '표시 이름', 'oo.availdays': '라운딩 가능 요일', 'oo.blackouts': '불가능한 날짜', 'oo.addblackout': '추가', 'oo.note': '메모',
+      'oo.gal.review': '검토 중', 'oo.gal.rejected': '사진이 승인되지 않았습니다: {reason}',
       'oo.gallery': '사진', 'oo.addphoto': '사진 추가', 'oo.cover': '대표', 'oo.setcover': '대표 사진으로', 'oo.delete': '삭제', 'oo.deleteq': '이 사진을 삭제할까요?', 'oo.posts': '게시글', 'oo.addpost': '게시글 추가',
       'oo.caption': '제목', 'oo.body': '내용', 'oo.earn.total': '수락됨', 'oo.earn.paid': '결제 완료', 'oo.earn.unpaid': '미결제', 'oo.uploading': '업로드 중…', 'oo.maxphotos': '사진은 최대 8장입니다.',
       'oo.legend.booked': '예약됨', 'oo.legend.requested': '요청됨', 'oo.legend.off': '불가',
@@ -149,6 +152,7 @@
       'oo.optin.title': '1on1同伴サービスを提供', 'oo.optin.desc': '会員とラウンドし、ローカル情報を共有します。キャディプロフィールから自動入力。すべて編集できます。',
       'oo.optin.submit': '承認を申請', 'oo.awaiting': '承認待ち', 'oo.approved': '承認済 — 会員に公開', 'oo.suspended': '停止中',
       'oo.save': '保存', 'oo.saved': '保存しました', 'oo.displayname': '表示名', 'oo.availdays': 'プレー可能な曜日', 'oo.blackouts': '不可日', 'oo.addblackout': '追加', 'oo.note': 'メモ',
+      'oo.gal.review': '確認中', 'oo.gal.rejected': 'この写真は承認されませんでした: {reason}',
       'oo.gallery': '写真', 'oo.addphoto': '写真を追加', 'oo.cover': 'カバー', 'oo.setcover': 'カバーにする', 'oo.delete': '削除', 'oo.deleteq': 'この写真を削除しますか？', 'oo.posts': '投稿', 'oo.addpost': '投稿を追加',
       'oo.caption': 'タイトル', 'oo.body': '本文', 'oo.earn.total': '承諾', 'oo.earn.paid': '支払済', 'oo.earn.unpaid': '未払い', 'oo.uploading': 'アップロード中…', 'oo.maxphotos': '写真は最大8枚です。',
       'oo.legend.booked': '予約済', 'oo.legend.requested': 'リクエスト', 'oo.legend.off': '不可',
@@ -1560,14 +1564,15 @@
       var photos = this.cad.media.filter(function (m) { return m.kind === 'photo' && m.storage_path; }); var posts = this.cad.media.filter(function (m) { return m.kind === 'post'; });
       var urls = await signedUrls(photos.map(function (m) { return m.storage_path; }));
       root.innerHTML = banner +
-        '<div class="oo-card"><div style="display:flex;justify-content:space-between;align-items:center"><h4 style="margin:0">' + esc(T('oo.gallery', 'Photos')) + ' (' + photos.length + '/12)</h4>' +
+        '<div class="oo-card"><div style="display:flex;justify-content:space-between;align-items:center"><h4 style="margin:0">' + esc(T('oo.gallery', 'Photos')) + ' (' + photos.length + '/8)</h4>' +
         '<label class="oo-btn pri" style="cursor:pointer">' + esc(T('oo.addphoto', 'Add photo')) + '<input type="file" accept="image/*" style="display:none" onchange="OneOnOne.upload(this)"></label></div>' +
         '<div id="ooUpMsg" class="oo-kv"></div>' +
         '<div class="oo-gal" style="margin-top:8px">' + photos.map(function (m) {
           var isCover = m.id === p.cover_media_id;
           return '<div class="g">' + (urls[m.storage_path] ? '<img src="' + esc(urls[m.storage_path]) + '" alt="">' : '') + (isCover ? '<span class="cv">' + esc(T('oo.cover', 'Cover')) + '</span>' : '') +
+            (m.status === 'pending' ? '<span class="cv" style="background:#b45309">' + esc(T('oo.gal.review', DICT.en['oo.gal.review'])) + '</span>' : '') +
             (m.status === 'hidden' ? '<span class="cv" style="background:#b91c1c">' + esc(T('oo.adm.hide', 'Hidden')) + '</span>' : '') +
-            '<div style="position:absolute;right:4px;bottom:4px;display:flex;gap:4px">' + (isCover ? '' : '<button type="button" class="oo-btn" style="padding:3px 7px;font-size:12px;line-height:1" title="' + esc(T('oo.setcover', 'Set as cover')) + '" aria-label="' + esc(T('oo.setcover', 'Set as cover')) + '" onclick="OneOnOne.setCover(\'' + m.id + '\')">★</button>') +
+            '<div style="position:absolute;right:4px;bottom:4px;display:flex;gap:4px">' + (isCover || m.status !== 'visible' ? '' : '<button type="button" class="oo-btn" style="padding:3px 7px;font-size:12px;line-height:1" title="' + esc(T('oo.setcover', 'Set as cover')) + '" aria-label="' + esc(T('oo.setcover', 'Set as cover')) + '" onclick="OneOnOne.setCover(\'' + m.id + '\')">★</button>') +
             '<button type="button" class="oo-btn warn" style="padding:3px 7px;font-size:12px;line-height:1" aria-label="' + esc(T('oo.delete', 'Delete')) + '" onclick="OneOnOne.delMedia(\'' + m.id + '\', \'' + esc(m.storage_path) + '\')">✕</button></div></div>';
         }).join('') + '</div></div>' +
         '<div class="oo-card" style="margin-top:10px"><div style="display:flex;justify-content:space-between;align-items:center"><h4 style="margin:0">' + esc(T('oo.posts', 'Posts')) + '</h4><button type="button" class="oo-btn" onclick="OneOnOne.addPost()">' + esc(T('oo.addpost', 'Add post')) + '</button></div>' +
@@ -1588,8 +1593,14 @@
         var path = 'partners/' + p.id + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 7) + '.jpg';
         var up = await sb().storage.from('oo-media').upload(path, blob, { contentType: blob.type || 'image/jpeg', upsert: false }); if (up.error) throw up.error;
         var ins = await sb().from('oo_media').insert({ partner_id: p.id, kind: 'photo', storage_path: path, sort_order: photos.length }).select('id').single(); if (ins.error) throw ins.error;
-        if (!p.cover_media_id) { await sb().from('oo_partners').update({ cover_media_id: ins.data.id }).eq('id', p.id); }
+        /* 2026-09-06: the row lands 'pending' (DB trigger) — no member sees it until oo-photo-check clears it.
+           The cover is set server-side on the first APPROVED photo; a rejected one is deleted, bytes and all. */
+        if (msg) msg.textContent = T('oo.photo.checking', 'Checking photo…');
+        var scr = await sb().functions.invoke('oo-photo-check', { body: { media_id: ins.data.id } });
         await this._afterMedia();
+        if (scr.error) { toast(T('oo.gal.review', DICT.en['oo.gal.review']), 'info'); }
+        else if (scr.data && scr.data.ok) { toast(T('oo.photo.ok', 'Photo accepted'), 'success'); }
+        else { toast(TT('oo.gal.rejected', { reason: (scr.data && (scr.data.reason || scr.data.category)) || '' }), 'error'); }
       } catch (e) { toast(errMsg(e), 'error'); if (msg) msg.textContent = ''; }
     },
     async setCover(id) { try { var r = await sb().from('oo_partners').update({ cover_media_id: id }).eq('id', this.cad.partner.id); if (r.error) throw r.error; await this._afterMedia(); } catch (e) { toast(errMsg(e), 'error'); } },

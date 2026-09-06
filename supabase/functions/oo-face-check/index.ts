@@ -32,6 +32,9 @@ heavily stylised art, logos, text, screenshots, objects, animals, cars, scenery,
 photos where no face is visible, or a face too small, blurred, masked or turned away to recognise.
 Do not reject a normal photograph merely because it is polished, professionally lit or looks like a stock photo —
 if it plausibly shows a real person's face, accept it. When unsure between "photo" and "avatar", choose "photo".
+Separately, set safe=false for ANY photo showing nudity or partial nudity, underwear, lingerie, swimwear,
+see-through clothing, a sexualised pose or framing, or sexual content of any kind — a visible face does not make
+such a photo acceptable. Ordinary clothing, including golf attire and sleeveless tops, is safe.
 Answer strictly as JSON.`;
 
 function json(body: unknown, status: number, origin: string | null): Response {
@@ -51,7 +54,7 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
   }
 }
 
-interface Verdict { is_photograph: boolean; face_visible: boolean; kind: string; reason: string }
+interface Verdict { is_photograph: boolean; face_visible: boolean; safe: boolean; kind: string; reason: string }
 
 // Gemini sometimes wraps the JSON in prose or a code fence despite responseMimeType — take the first {...} block, retry once.
 async function classify(bytes: Uint8Array, mime: string): Promise<Verdict> {
@@ -88,10 +91,11 @@ async function classifyOnce(bytes: Uint8Array, mime: string, attempt = 0): Promi
             properties: {
               is_photograph: { type: "boolean", description: "true only for a genuine camera photograph of a real person" },
               face_visible: { type: "boolean", description: "true only if a real human face is clearly visible and recognisable" },
+              safe: { type: "boolean", description: "false for nudity, underwear, swimwear, see-through or sexualised content" },
               kind: { type: "string", enum: ["photo", "illustration", "avatar", "emoji", "logo", "text", "object", "animal", "scenery", "other"] },
               reason: { type: "string", description: "one short sentence" },
             },
-            required: ["is_photograph", "face_visible", "kind", "reason"],
+            required: ["is_photograph", "face_visible", "safe", "kind", "reason"],
           },
         },
       }),
@@ -106,6 +110,7 @@ async function classifyOnce(bytes: Uint8Array, mime: string, attempt = 0): Promi
   return {
     is_photograph: v.is_photograph === true,
     face_visible: v.face_visible === true,
+    safe: v.safe !== false,
     kind: String(v.kind ?? "other"),
     reason: String(v.reason ?? "").slice(0, 200),
   };
@@ -172,7 +177,7 @@ Deno.serve(async (req: Request) => {
     console.error("[oo-face-check] classify", e);
     return json({ error: "check_failed", detail: String(e).slice(0, 700) }, 502, origin);
   }
-  const ok = verdict.is_photograph && verdict.face_visible && verdict.kind === "photo";
+  const ok = verdict.is_photograph && verdict.face_visible && verdict.safe && verdict.kind === "photo";
 
   // 4. stamp it (service role) — the only path that can mark a member's photo verified
   if (ok && !dry && lineId) {
@@ -184,5 +189,5 @@ Deno.serve(async (req: Request) => {
       return json({ error: "save_failed", detail: error.message }, 500, origin);
     }
   }
-  return json({ ok, kind: verdict.kind, reason: verdict.reason, url, dry }, 200, origin);
+  return json({ ok, kind: verdict.kind, safe: verdict.safe, reason: verdict.reason, url, dry }, 200, origin);
 });

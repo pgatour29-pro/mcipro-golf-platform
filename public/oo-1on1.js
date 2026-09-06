@@ -1898,10 +1898,14 @@
     /* --- bookings --- */
     admBookingRow(b) {
       var open = (b.status === 'requested' || b.status === 'accepted') && b.date_to >= today();
+      var pending = b.status === 'requested' && b.date_to >= today();   /* admin answers FOR the partner (oo_respond allows it) */
       return '<div class="oo-row"><div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div style="font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc((b.oo_members && b.oo_members.display_name) || this.admName(b.member_id)) + ' → ' + esc((b.oo_partners && b.oo_partners.display_name) || '') + '</div>' + stChip(b.status) + '</div>' +
         '<div class="oo-kv"><b>' + esc(fmtRange(b.date_from, b.date_to)) + '</b>' + (b.course_name ? ' · ' + esc(b.course_name) : '') + ' · ' + esc(b.holes) + ' ' + esc(T('oo.holes', 'holes')) + (b.fee_quoted != null ? ' · ' + esc(money(b.fee_quoted, b.currency)) + ' ' + esc(T(b.payment_status === 'paid' ? 'oo.paid' : 'oo.unpaid', b.payment_status)) : '') + '</div>' +
         (b.notes ? '<div class="oo-kv" style="white-space:pre-wrap">' + esc(b.notes) + '</div>' : '') + (b.decline_reason ? '<div class="oo-kv">' + esc(T('oo.reasonlbl', 'Reason')) + ': ' + esc(b.decline_reason) + '</div>' : '') + (b.cancel_reason ? '<div class="oo-kv">' + esc(T('oo.cancel', 'Cancel')) + ' ' + esc(T('oo.by', 'by')) + ' ' + esc(b.cancelled_by || '') + ': ' + esc(b.cancel_reason) + '</div>' : '') +
-        (open ? '<div style="margin-top:6px"><button type="button" class="oo-btn warn" onclick="OneOnOne.cancel(\'' + b.id + '\', \'admin\')">' + esc(T('oo.cancel', 'Cancel')) + '</button></div>' : '') + '</div></div>';
+        (open ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' +
+          (pending ? '<button type="button" class="oo-btn pri" onclick="OneOnOne.admRespond(\'' + b.id + '\', true)">' + esc(T('oo.accept', 'Accept')) + '</button>' +
+                     '<button type="button" class="oo-btn" onclick="OneOnOne.admRespond(\'' + b.id + '\', false)">' + esc(T('oo.decline', 'Decline')) + '</button>' : '') +
+          '<button type="button" class="oo-btn warn" onclick="OneOnOne.cancel(\'' + b.id + '\', \'admin\')">' + esc(T('oo.cancel', 'Cancel')) + '</button></div>' : '') + '</div></div>';
     },
     admRenderBookings() {
       var root = document.getElementById('ooRoot'); var a = this.adm; var f = a.f.bookings; var t = today(); var s = a.stats || this.admStats();
@@ -1961,6 +1965,18 @@
     async admPhoto(user, ok) { try { await rpc('oo_admin_set_photo', { p_user: user, p_ok: !!ok }); toast(T('oo.saved', 'Saved'), 'success'); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } },
     async admMember(user, status) { try { await rpc('oo_admin_set_member', { p_user: user, p_status: status, p_expires: null, p_notes: null }); if (status === 'active') push(user, 'oo.push.member_ok2', {}); toast(T('oo.saved', 'Saved'), 'success'); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } },
     async admPartner(id, status, userId) { try { await rpc('oo_admin_set_partner', { p_partner: id, p_status: status, p_active: null }); if (status === 'approved' && userId) push(userId, 'oo.push.partner_ok', {}); toast(T('oo.saved', 'Saved'), 'success'); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } },
+    /* the admin answers a request ON BEHALF of the partner (she is offline / on the course). Same RPC, same
+       member push as the partner screen — oo_respond checks the BOOKING partner's terms, not the admin's. */
+    async admRespond(id, accept) {
+      var b = (this.adm.bookings || []).find(function (x) { return x.id === id; });
+      var reason = null;
+      if (!accept) { reason = await confirmSheet(T('oo.declineq', 'Decline this request?'), T('oo.decline', 'Decline')); if (reason === null) return; }
+      try {
+        var row = await rpc('oo_respond', { p_booking: id, p_accept: !!accept, p_reason: reason || null });
+        push(row.member_id, accept ? 'oo.push.accepted' : 'oo.push.declined', { name: (b && b.oo_partners && b.oo_partners.display_name) || '', range: fmtRange(row.date_from, row.date_to), course: row.course_name || '' });
+        toast(T('oo.saved', 'Saved'), 'success'); await this.admRefresh();
+      } catch (e) { toast(errMsg(e), 'error'); }
+    },
     async admMedia(id, status) { try { await rpc('oo_admin_set_media', { p_media: id, p_status: status }); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } },
     async admReport(id, status) { try { await rpc('oo_admin_set_report', { p_report: id, p_status: status }); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } }
   };

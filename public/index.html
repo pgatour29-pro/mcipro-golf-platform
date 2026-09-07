@@ -47612,11 +47612,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (window.Authentication?.login) return Authentication.login(role);
             if (window.Auth?.login) return Auth.login(role);
             if (window.LineAuthentication?.login) return LineAuthentication.login();
-            // Fallback: just route to golfer dashboard for demos/dev
-            if (window.ScreenManager?.navigateTo) {
-                ScreenManager.navigateTo('golferDashboard');
-                return true;
-            }
+            // v1139: a "route to golferDashboard for demos/dev" fallback used to sit here. It was
+            // doubly dead — ScreenManager is a bare class (never on window) and has no navigateTo —
+            // and had it ever fired it would have dropped an UNAUTHENTICATED visitor straight into
+            // the dashboard. Login fails closed instead.
             console.warn('No login handler found.');
             return false;
         };
@@ -74568,34 +74567,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     <script>
     (function () {
-      // Pick the best available login impl, or use a safe fallback
-      function resolveLoginImpl() {
-        if (window.FallbackAuthentication && typeof FallbackAuthentication.login === 'function') return FallbackAuthentication.login;
-        if (window.Authentication && typeof Authentication.login === 'function') return Authentication.login;
-        if (window.Auth && typeof Auth.login === 'function') return Auth.login;
-        if (window.LineAuthentication && typeof LineAuthentication.login === 'function') return LineAuthentication.login;
-
-        // 🔧 Fallback: mark a demo golfer as logged in and jump to golferDashboard
-        return async function () {
-          try {
-            window.AppState = window.AppState || {};
-            const user = { id: 'john_mitchell', name: 'John Mitchell', role: 'golfer' };
-            AppState.user = user;
-            localStorage.setItem('mcipro_current_user', JSON.stringify(user));
-            if (window.ScreenManager && typeof ScreenManager.navigateTo === 'function') {
-              ScreenManager.navigateTo('golferDashboard');
-            } else {
-              // last-resort route change if ScreenManager isn't ready yet
-              location.hash = '#golferDashboard';
-            }
-            console.info('[Login] Fallback login used.');
-            return true;
-          } catch (e) {
-            console.error('[Login] Fallback failed', e);
-            return false;
-          }
-        };
-      }
+      // v1139: resolveLoginImpl() lived here and was never called by anything. Its last branch
+      // wrote a fake { id:'john_mitchell', role:'golfer' } session into localStorage and routed to
+      // the dashboard — via ScreenManager.navigateTo, which does not exist on a bare class that is
+      // never on window. Dead demo auth, deleted. The button binding below is all this IIFE does.
 
       // REMOVED: window.login definition here - conflicts with one in HEAD
       // The window.login at line 19538 handles all auth systems properly
@@ -162361,7 +162336,7 @@ showOrganizerTab = function(tabName) {
     })();
     </script>
     <script src="oo-1on1.js?v=1123"></script>
-    <script src="g3-desk.js?v=1138"></script>
+    <script src="g3-desk.js?v=1139"></script>
     <script src="g3-org.js?v=1108"></script>
 </body>
 

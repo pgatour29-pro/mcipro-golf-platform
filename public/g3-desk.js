@@ -54,6 +54,14 @@
   "#g3Rail .g3-logo{display:block;width:100%;max-width:168px;height:auto}\n" +
   "#g3Rail .g3-brand small{display:block;font-family:inherit;font-family:'Instrument Sans',sans-serif;font-size:10.5px;font-weight:600;color:rgba(255,255,255,.55);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}\n" +
   "#g3Rail .g3-grp{font-size:10.5px;font-weight:700;color:rgba(255,255,255,.45);padding:12px 10px 4px}\n" +
+  /* v1137 (Pete): the G3 rail hides #ghd2Tabs, and the old More-dropdown ADMIN group went with it —
+     the controls survived only in the phone drawer. They come back here as a rail group, gated the
+     same way the 1on1 item is: CSS-hidden unless TRGGScheduleSync.init() (Pete's LINE id ONLY) puts
+     .g3-adm on #golferDashboard. No other user can reach them, on any width. */
+  "#g3Rail [data-adm]{display:none !important}\n" +
+  "#golferDashboard.g3-adm #g3Rail .g3-grp[data-adm]{display:block !important;color:#fca5a5}\n" +
+  "#golferDashboard.g3-adm #g3Rail .g3-it[data-adm]{display:flex !important}\n" +
+  "#g3Rail .g3-it[data-adm] .material-symbols-outlined{color:#fca5a5}\n" +
   "#g3Rail .g3-nav{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none}\n#g3Rail .g3-nav::-webkit-scrollbar{display:none}\n" +
   "#g3Rail .g3-it{display:flex;align-items:center;gap:12px;width:100%;height:38px;padding:0 10px;border-radius:11px;color:rgba(255,255,255,.8);font-size:14px;font-weight:600;position:relative;background:none;border:0;cursor:pointer;text-align:left;font-family:inherit}\n" +
   "#g3Rail .g3-it .material-symbols-outlined{font-size:21px;color:rgba(255,255,255,.75)}\n" +
@@ -253,7 +261,15 @@
     { tab: 'food', icon: 'restaurant', k: 'g3.food', fb: 'Food' },
     { tab: 'status', icon: 'receipt_long', k: 'g3.orders', fb: 'Orders' },
     { tab: 'booking', icon: 'sports_golf', k: 'g3.teetime', fb: 'Tee time' },
-    { tab: 'conditions', icon: 'grass', k: 'g3.conditions', fb: 'Conditions' }
+    { tab: 'conditions', icon: 'grass', k: 'g3.conditions', fb: 'Conditions' },
+    /* Pete-only (v1137) — the same six controls the phone drawer has. English only: one person sees them. */
+    { grp: 'g3.admin', fb: 'Admin', adm: true },
+    { act: 'admin', icon: 'admin_panel_settings', k: null, fb: 'Admin', adm: true },
+    { act: 'trggsync', icon: 'cloud_sync', k: null, fb: 'Sync TRGG Schedule', adm: true },
+    { act: 'trgghcp', icon: 'content_paste', k: null, fb: 'Update TRGG Handicaps', adm: true },
+    { act: 'poyupd', icon: 'trophy', k: null, fb: 'Update POY Data', adm: true },
+    { act: 'poyview', icon: 'emoji_events', k: null, fb: 'POY Leaderboard', adm: true },
+    { act: 'alerts', icon: 'history', k: null, fb: 'Alert History', adm: true }
   ];
   var TITLES = { overview: ['g3.today', 'Today'], societyevents: ['g3.societyevents', 'Society events'], scorecard: ['g3.playgolf', 'Play golf'], rounds: ['g3.roundhistory', 'Round history'], golfanalytics: ['g3.analytics', 'Analytics'], schedule: ['g3.schedule', 'Schedule'], caddies: ['g3.caddies', 'Caddies'], messages: ['g3.messages', 'Messages'], marketplace: [null, '19th Hole'], food: ['g3.food', 'Food'], status: ['g3.orders', 'Orders'], booking: ['g3.teetime', 'Tee time'], conditions: ['g3.conditions', 'Conditions'] };
   TITLES.oo = ['oo.title', '1on1'];
@@ -293,10 +309,11 @@
       var rail = document.createElement('aside'); rail.id = 'g3Rail'; rail.setAttribute('aria-label', 'Navigation');
       var h = '<div class="g3-brand"><img class="g3-logo" src="/mcipro-wordmark-white.png" alt="MyCaddiPro"><small class="club-affiliation-mirror" id="g3BrandSub"></small></div><nav class="g3-nav">';
       RAIL.forEach(function (it) {
-        if (it.grp !== undefined) { if (it.grp) h += '<div class="g3-grp">' + esc(T(it.grp, it.fb)) + '</div>'; return; }
+        var adm = it.adm ? ' data-adm' : '';
+        if (it.grp !== undefined) { if (it.grp) h += '<div class="g3-grp"' + adm + '>' + esc(T(it.grp, it.fb)) + '</div>'; return; }
         var label = it.k ? T(it.k, it.fb) : it.fb;
         var badge = it.badge ? '<span class="' + it.badge + '">0</span>' : (it.badgeId ? '<span class="g3-n turf" id="' + it.badgeId + '">0</span>' : '');
-        h += '<button type="button" class="g3-it" data-tab="' + (it.tab || '') + '" data-act="' + (it.act || '') + '" title="' + esc(label) + '"><span class="material-symbols-outlined">' + it.icon + '</span><span>' + esc(label) + '</span>' + badge + '</button>';
+        h += '<button type="button" class="g3-it" data-tab="' + (it.tab || '') + '" data-act="' + (it.act || '') + '"' + adm + ' title="' + esc(label) + '"><span class="material-symbols-outlined">' + it.icon + '</span><span>' + esc(label) + '</span>' + badge + '</button>';
       });
       h += '</nav><div class="g3-me" title="Profile"><img class="user-avatar" alt="" style="display:none"><div style="min-width:0;flex:1"><div class="g3-nm"><span class="user-name-display">Golfer</span></div><div class="g3-sb">HCP <span class="user-handicap">--</span></div></div><span class="material-symbols-outlined" style="color:rgba(255,255,255,.6);font-size:20px">unfold_more</span></div>';
       rail.innerHTML = h;
@@ -374,6 +391,13 @@
         if (act === 'results') { if (window.SocietyResultsHub) SocietyResultsHub.open(); return; }
         if (act === 'teesheet') { if (window.GolferCubeInfo) GolferCubeInfo.openTeeSheetCube(); return; }
         if (act === 'oo') { if (window.OneOnOne) OneOnOne.open(); return; } /* 1on1 (v1091): its own screen, not a golfer tab */
+        /* v1137 Pete-only admin group — every one of these calls the SAME function the phone drawer calls */
+        if (act === 'admin') { if (window.ScreenManager) ScreenManager.showScreen('adminDashboard'); return; }
+        if (act === 'trggsync') { if (window.TRGGScheduleSync) TRGGScheduleSync.sync(); return; }
+        if (act === 'trgghcp') { if (window.showTRGGHandicapPasteModal) showTRGGHandicapPasteModal(); return; }
+        if (act === 'poyupd') { if (window.showTRGGPOYUpdateModal) showTRGGPOYUpdateModal(); return; }
+        if (act === 'poyview') { if (window.POYView) POYView.open(); return; }
+        if (act === 'alerts') { if (window.EmergencyAlertInbox) EmergencyAlertInbox.open(); return; }
         if (tab) showGolferTab(tab, ev);
       } catch (e) { console.warn('[G3Desk] go', e); }
     },

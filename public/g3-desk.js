@@ -392,7 +392,10 @@
         if (act === 'teesheet') { if (window.GolferCubeInfo) GolferCubeInfo.openTeeSheetCube(); return; }
         if (act === 'oo') { if (window.OneOnOne) OneOnOne.open(); return; } /* 1on1 (v1091): its own screen, not a golfer tab */
         /* v1137 Pete-only admin group — every one of these calls the SAME function the phone drawer calls */
-        if (act === 'admin') { if (window.ScreenManager) ScreenManager.showScreen('adminDashboard'); return; }
+        /* ScreenManager is a bare `class` — it lives in the global LEXICAL scope and is NEVER put on
+           window, so `window.ScreenManager` is undefined and the guard swallowed the click (v1138).
+           Same trap as OrganizerScoringSystem, in reverse: use the bare name + typeof. */
+        if (act === 'admin') { if (typeof ScreenManager !== 'undefined' && ScreenManager.showScreen) ScreenManager.showScreen('adminDashboard'); return; }
         if (act === 'trggsync') { if (window.TRGGScheduleSync) TRGGScheduleSync.sync(); return; }
         if (act === 'trgghcp') { if (window.showTRGGHandicapPasteModal) showTRGGHandicapPasteModal(); return; }
         if (act === 'poyupd') { if (window.showTRGGPOYUpdateModal) showTRGGPOYUpdateModal(); return; }

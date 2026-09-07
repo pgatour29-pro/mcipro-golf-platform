@@ -84016,9 +84016,10 @@ class LiveScorecardSystem {
         return tees.find(t => String(t.color || t.name || '').toLowerCase() === val) || null;
     }
 
-    // Renders "White 70.7/121 — CH: Pete 1 · Dirk 16 …" in the setup card (under the tee
-    // pills) and, when the scoring screen is up, in a strip under #holeInfoStrip. Falls
-    // back to the logged-in user alone when no roster exists yet. No ratings → no strip.
+    // Renders "White 70.7/121 — CH: Pete 1 · Dirk 16 …" in the SETUP CARD ONLY (under the
+    // tee pills, in Play Golf). Falls back to the logged-in user alone when no roster
+    // exists yet. No ratings → no strip. It is deliberately NOT on the live scoring
+    // screen — see the v1134 note below.
     renderCourseHcpStrip() {
         try {
             const tee = this._selectedTeeForCH();
@@ -84058,19 +84059,13 @@ class LiveScorecardSystem {
                 el.style.display = html ? '' : 'none';
             }
 
-            // Live scoring strip (created once under the hole info cluster)
-            const holeStrip = document.getElementById('holeInfoStrip');
-            if (holeStrip) {
-                let el = document.getElementById('liveCourseHcpStrip');
-                if (!el) {
-                    el = document.createElement('div');
-                    el.id = 'liveCourseHcpStrip';
-                    el.style.cssText = 'font-size:11px;line-height:1.6;padding:2px 12px 4px;';
-                    holeStrip.insertAdjacentElement('afterend', el);
-                }
-                el.innerHTML = html;
-                el.style.display = html ? '' : 'none';
-            }
+            // v1134 (Pete 2026-09-07): NO course-handicap strip on the live screen. The
+            // index->course-handicap conversion is a SETUP fact, settled before the first
+            // tee shot; on the scoring screen it burned three lines at the top of a view
+            // that must fit the hole cluster through the keypad without scrolling. It
+            // belongs in Play Golf only. Do not re-add a #liveCourseHcpStrip.
+            const stale = document.getElementById('liveCourseHcpStrip');
+            if (stale) stale.remove();
         } catch (e) { console.warn('[LiveScorecard] CH strip render failed (non-fatal):', e); }
     }
     // ===== END CHV1 =====

@@ -7160,6 +7160,232 @@
         body.theme-sun #golferDashboard #golfer-scorecard #scorecardActiveSection #tradCardView .tradv-startnine button.on { font-weight:800 !important; }
         /* ===== END SUNLIGHT MODE ===== */
 
+        /* ================================================================
+           GLASS MODE (MCG1) -- body.theme-glass, the THIRD value on the
+           ThemeMode base axis (light | dark | glass).
+
+           Sun (v1132) is an axis ON TOP of light. Glass is not: it is a
+           base in its own right, derived from the DARK default, so every
+           existing dark rule keeps applying and this layer overrides only
+           the surface treatment. Light and Glass are mutually exclusive.
+
+           Scope is ONE container -- #golfer-scorecard -- which is exactly
+           and only the three surfaces Pete asked for: the Play Golf round
+           tabs, #scorecardStartSection (Start Round) and
+           #scorecardActiveSection (the scoring engine). Nothing outside
+           that tab may be touched by anything in this block.
+
+           The recipe is the approved MCG1 mockup
+           (mockups/glass-schema/mcipro-glass.html): a procedural dawn
+           canvas painted behind the tab, a veil that dims+lifts it, and
+           translucent backdrop-blurred surfaces over the top. The veil is
+           NOT decoration -- crystal type over a sunrise only stays legible
+           because the ground behind it is blurred and dimmed first.
+
+           BACKDROP-ROOT TRAP: backdrop-filter samples only what is painted
+           inside its own backdrop root. #golfer-scorecard,
+           #scorecardActiveSection and .premium-card all carry
+           transform:translateZ(0) / will-change:transform as scroll-perf
+           hints, and each of those can open a new backdrop root -- which
+           would leave every glass surface blurring an EMPTY backdrop
+           (flat grey, no ground). Glass mode therefore drops those hints
+           inside its own scope only; dark and light keep them untouched.
+           ================================================================ */
+
+        /* ---- the ground -------------------------------------------------
+           Mounted as a child of the tab and positioned ABSOLUTE, not fixed:
+           the existing #golfer-scorecard::before gradient already proved
+           (v619) that fixed backdrops block touch scroll on mobile. The
+           inner .gg-stick is position:sticky, which parks the canvas at the
+           viewport for the whole scroll of the tab without costing a
+           full-page-height canvas. */
+        #glassGround { display:none; }
+        /* z-index:0 is LOad-BEARING, not tidiness: it makes the tab its own stacking context
+           so the z-index:-1 ground stays INSIDE it and paints above its own background.
+           Without it the ground escapes to #golferDashboard's context (that element keeps
+           its translateZ(0)) and the tab's opaque #04140E paints straight over the dawn --
+           invisible in a round, and only accidentally visible on the start screen because
+           that state has no background of its own. A plain z-index stacking context is
+           also safe for the blur: unlike filter/opacity/isolation it opens no backdrop
+           root, and the ground is inside it either way. */
+        body.theme-glass #golferDashboard #golfer-scorecard { position:relative !important; z-index:0 !important; }
+        /* FULL BLEED: #golfer-scorecard sits inside a .max-w-7xl px-3/px-6/px-8 wrapper, so
+           tab-aligned leaves the dawn inset by the gutter with dead dashboard colour down
+           both edges. Centring a 100vw box on the TAB is not the answer either -- desktop
+           puts a ~256px rail to the left of it, so tab-centre is not viewport-centre and the
+           ground lands ~116px off. The offset has to be MEASURED, so left/right stay plain
+           (no !important) and GlassGround.fit() overrides them inline. Unfitted it simply
+           degrades to tab-aligned, never to overflow. */
+        body.theme-glass #golferDashboard #golfer-scorecard > #glassGround {
+            display:block !important; position:absolute !important;
+            top:0 !important; bottom:0 !important;
+            left:0; right:0;
+            z-index:-1; pointer-events:none; overflow:hidden;
+        }
+        #glassGround .gg-stick { position:sticky; top:0; width:100%; height:100vh; display:block; }
+        @supports (height:100dvh) { #glassGround .gg-stick { height:100dvh; } }
+        /* The ground is BLURRED, exactly as the mockup blurs the scene inside each phone:
+           crystal type over a sunrise only survives if the sunrise is a WASH, not a picture.
+           Unblurred, the dawn is a thin hard horizon band that reads as nothing. scale()
+           pushes the blur's soft edges outside the clip box so the ground does not fade off
+           at the screen edges. Start Round keeps more of the scene; the scoring engine pushes
+           it further back -- the deeper into working UI, the quieter the ground (mockup uses
+           blur 34/.94 on events, 46/.78 on live scoring). */
+        #glassGround canvas {
+            display:block; width:100%; height:100%;
+            transform:scale(1.22); transform-origin:center;
+            filter:blur(34px) brightness(0.94) saturate(1.3);
+            -webkit-filter:blur(34px) brightness(0.94) saturate(1.3);
+        }
+        body.theme-glass #golferDashboard.round-active #golfer-scorecard #glassGround canvas {
+            filter:blur(46px) brightness(0.78) saturate(1.2);
+            -webkit-filter:blur(46px) brightness(0.78) saturate(1.2);
+        }
+        #glassGround .gg-veil {
+            position:absolute; inset:0; pointer-events:none;
+            background:linear-gradient(180deg, rgba(4,20,14,0.52) 0%, rgba(4,20,14,0.20) 26%,
+                       rgba(4,20,14,0.16) 56%, rgba(4,20,14,0.48) 86%, rgba(4,20,14,0.74) 100%);
+        }
+
+        /* ---- tokens + backdrop-root repair ------------------------------ */
+        body.theme-glass #golferDashboard #golfer-scorecard {
+            --gl-ink:#F4FBF7; --gl-dim:#B6C8BF; --gl-faint:#8CA79B;
+            --gl-glass:rgba(255,255,255,0.075); --gl-glass2:rgba(255,255,255,0.12);
+            --gl-stroke:rgba(255,255,255,0.16); --gl-stroke2:rgba(255,255,255,0.28);
+            --gl-grn:#22c55e; --gl-grnhi:#4ade80; --gl-grnD:#16a34a;
+            --gl-dawn:#FFB765; --gl-amb:#fbbf24; --gl-alert:#f87171; --gl-blue:#60a5fa;
+            --gl-blur:blur(26px) saturate(1.5);
+            background:#04140E !important;
+        }
+        body.theme-glass #golferDashboard.round-active #golfer-scorecard { background:#04140E !important; }
+        /* the dark immersive gradient would sit on top of the ground */
+        body.theme-glass #golferDashboard.round-active #golfer-scorecard::before { display:none !important; }
+        /* see BACKDROP-ROOT TRAP above */
+        body.theme-glass #golferDashboard #golfer-scorecard,
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection,
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .premium-card {
+            transform:none !important; -webkit-transform:none !important; will-change:auto !important;
+        }
+
+        /* ---- shared glass primitive ------------------------------------- */
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .premium-card,
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-cluster,
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .sc-group-wrapper,
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection #roundTimerBar,
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardStartSection.premium-card,
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardStartSection .scv3-group {
+            background:var(--gl-glass) !important;
+            border:1px solid var(--gl-stroke) !important;
+            backdrop-filter:var(--gl-blur) !important;
+            -webkit-backdrop-filter:var(--gl-blur) !important;
+            box-shadow:none !important;
+        }
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardStartSection.premium-card {
+            background:transparent !important; border:none !important;
+            backdrop-filter:none !important; -webkit-backdrop-filter:none !important;
+        }
+
+        /* ---- Play Golf round-type tabs (PGV1) ---------------------------- */
+        body.theme-glass #golferDashboard #scorecardStartSection .scv3-rtabs {
+            background:var(--gl-glass) !important; border:1px solid var(--gl-stroke) !important;
+            backdrop-filter:var(--gl-blur) !important; -webkit-backdrop-filter:var(--gl-blur) !important;
+            box-shadow:none !important;
+        }
+        body.theme-glass #golferDashboard #scorecardStartSection .scv3-rtabs .scv3-rtab { color:var(--gl-dim) !important; }
+        /* sunlight rule survives into glass: the ACTIVE tab is a solid green fill, never a tint */
+        body.theme-glass #golferDashboard #scorecardStartSection .scv3-rtabs .scv3-rtab.active,
+        body.theme-glass #golferDashboard #scorecardStartSection .scv3-rtabs .scv3-rtab.active * {
+            background:var(--gl-grnD) !important; color:#FFFFFF !important;
+        }
+
+        /* ---- Start Round rows ------------------------------------------- */
+        body.theme-glass #golferDashboard #scorecardStartSection .scv3-group #scorecardCourseSelect,
+        body.theme-glass #golferDashboard #scorecardStartSection .scv3-group #roundSocietySelect {
+            color:var(--gl-ink) !important;
+        }
+
+        /* ---- scoring engine: hole cluster -------------------------------- */
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-chev,
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-mini {
+            background:var(--gl-glass2) !important; border:1px solid var(--gl-stroke) !important;
+            color:var(--gl-ink) !important;
+        }
+        body.theme-glass #golferDashboard #golfer-scorecard span#currentHoleNumber.scv3-gauge-n { color:var(--gl-ink) !important; }
+        body.theme-glass #golferDashboard #golfer-scorecard span#currentHoleInfo.scv3-meta { color:var(--gl-dim) !important; }
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-gauge-k { color:var(--gl-faint) !important; }
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-gauge::before {
+            background:conic-gradient(from 210deg, var(--gl-grnD) 0deg, var(--gl-grnhi) var(--scv3deg,0deg),
+                       rgba(255,255,255,0.12) var(--scv3deg,0deg) 300deg, transparent 300deg) !important;
+        }
+
+        /* ---- scoring engine: player cards -------------------------------- */
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-pc {
+            background:var(--gl-glass) !important; border:1px solid var(--gl-stroke) !important;
+            backdrop-filter:var(--gl-blur) !important; -webkit-backdrop-filter:var(--gl-blur) !important;
+        }
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-pc.needs-score {
+            border-color:rgba(74,222,128,0.45) !important; background:rgba(34,197,94,0.10) !important;
+        }
+        /* solid green fill, not a tint -- the active card must survive glare */
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-pc.is-active {
+            background:var(--gl-grnD) !important; border-color:var(--gl-grnhi) !important;
+            box-shadow:0 0 0 1px rgba(74,222,128,0.55), 0 0 22px rgba(34,197,94,0.28) !important;
+        }
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-pc .sc-player-name,
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-pc .sc-player-score { color:var(--gl-ink) !important; }
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-pc .sc-player-score.is-empty { color:var(--gl-faint) !important; }
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-pc.is-active .sc-player-name,
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-pc.is-active .sc-player-score,
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-pc.is-active .scv3-pc-hcp,
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-pc.is-active .scv3-pc-pts { color:#FFFFFF !important; }
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-pc-hcp { color:var(--gl-dim) !important; }
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-pc-pts { color:var(--gl-grnhi) !important; }
+
+        /* ---- scoring engine: keypad -------------------------------------- */
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .keypad-num-btn {
+            background:var(--gl-glass2) !important; border:1px solid var(--gl-stroke2) !important;
+            color:var(--gl-ink) !important; box-shadow:none !important;
+            backdrop-filter:blur(20px) !important; -webkit-backdrop-filter:blur(20px) !important;
+        }
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .keypad-num-btn:active {
+            background:var(--gl-grnD) !important; border-color:var(--gl-grnhi) !important; color:#FFFFFF !important;
+        }
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection .keypad-special-btn {
+            background:var(--gl-glass) !important; border:1px solid var(--gl-stroke) !important;
+            color:var(--gl-ink) !important; box-shadow:none !important;
+        }
+
+        /* ---- hole progress dots ------------------------------------------ */
+        body.theme-glass #golferDashboard #golfer-scorecard .hole-dot { background:rgba(255,255,255,0.20) !important; }
+        body.theme-glass #golferDashboard #golfer-scorecard .hole-dot.played { background:var(--gl-grnhi) !important; }
+        body.theme-glass #golferDashboard #golfer-scorecard .hole-dot.current {
+            background:var(--gl-dawn) !important; box-shadow:0 0 10px rgba(255,183,101,0.55) !important;
+        }
+
+        /* ---- TRADV: token-driven, so the v1004 COLOR SHIELD repaints itself.
+           Never add a second palette here -- redefine the tokens only. ------ */
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection #tradCardView {
+            --tcv-card:rgba(255,255,255,0.055); --tcv-line:var(--gl-stroke); --tcv-ink:var(--gl-ink);
+            --tcv-mut:var(--gl-dim); --tcv-grid:rgba(255,255,255,0.14); --tcv-green:var(--gl-grnhi);
+            --tcv-chip:#15803d; --tcv-red:var(--gl-alert); --tcv-blue:var(--gl-blue);
+            --tcv-key:rgba(255,255,255,0.05); --tcv-act:#B3402F;
+        }
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection #tradCardView .tradv-card,
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection #tradCardView .tradv-entry {
+            backdrop-filter:var(--gl-blur) !important; -webkit-backdrop-filter:var(--gl-blur) !important;
+        }
+        body.theme-glass #golferDashboard #golfer-scorecard #scorecardActiveSection #tradCardView .tradv-foot button {
+            backdrop-filter:blur(20px) !important; -webkit-backdrop-filter:blur(20px) !important;
+        }
+
+        /* ---- the SUN pill has no meaning in glass (dawn vs 40,000 lux) ---- */
+        body.theme-glass #golferDashboard #golfer-scorecard [data-sun-toggle] { display:none !important; }
+
+        /* Phones flatten animations to 0.01ms (v1059); nothing here animates, but the
+           ground must never be asked to repaint on a scroll frame. */
+        @media (prefers-reduced-motion:reduce) { #glassGround .gg-stick { position:absolute; top:0; } }
+        /* ===== END GLASS MODE ===== */
+
 
         /* ============================================================
            GSHOT — Great Shot broadcast toast (v1033). Popped by
@@ -33021,6 +33247,11 @@ Sent from Login Page`;
             // advances past any hole completed while this device was elsewhere in the app.
             if (tabName === 'scorecard') { try { LiveScorecardManager?.resyncAndCatchUp?.('tab'); } catch (e) {} }
 
+            // GLASS MODE (MCG1): glass is gated to this tab, so ENTERING it must paint the
+            // dawn ground and LEAVING it must drop back to the dark base. Unconditional --
+            // apply() is a few class toggles, and the leave case matters as much as the enter.
+            try { if (window.ThemeMode) ThemeMode.apply(); } catch (e) {}
+
             // Scroll to top when switching tabs
             window.scrollTo(0, 0);
 
@@ -53590,6 +53821,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
             <!-- Live Scorecard Tab -->
             <div id="golfer-scorecard" class="tab-content">
+                <!-- GLASS MODE (MCG1): procedural dawn ground for body.theme-glass. Absolute,
+                     never fixed (v619: fixed backdrops block touch scroll on mobile); the inner
+                     sticky box parks the canvas at the viewport. Painted by GlassGround.paint(),
+                     inert and display:none in every other theme. -->
+                <div id="glassGround" aria-hidden="true">
+                    <div class="gg-stick"><canvas id="glassGroundCanvas"></canvas><div class="gg-veil"></div></div>
+                </div>
                 <div class="space-y-3 md:space-y-6">
 
                     <!-- Mode Toggle: Live Round / Demo Round / Post Score / Virtual Card.
@@ -145673,6 +145911,126 @@ window.DashboardMode = {
    (golfInfo.colorTheme) + localStorage, same merge-don't-clobber
    pattern as DashboardMode.persist().
    ============================================================ */
+/* ============================================================
+   GlassGround (MCG1) — the procedural dawn course painted behind
+   the golfer scorecard tab in body.theme-glass. Ported verbatim
+   from the approved mockup (mockups/glass-schema/mcipro-glass.html,
+   paintScene) — same gradients, same stripe/dew maths, so the
+   shipped screen matches the signed-off shots.
+
+   Deliberately STATIC: one paint per size change, no rAF loop. The
+   mockup animates its full-page backdrop; on a phone held for a
+   4-hour round that is battery we are not spending, and the ground
+   sits under a blur + veil where the shimmer is invisible anyway.
+
+   Paints only when glass is actually on — ThemeMode.apply() drives
+   sync(), so every other theme leaves this completely inert.
+   ============================================================ */
+window.GlassGround = {
+    _bound: false,
+    _w: 0, _h: 0,
+
+    // Reach the viewport edges from inside a gutter'd, possibly rail-offset wrapper.
+    // clientWidth (not 100vw) so a desktop scrollbar cannot push the ground wide.
+    fit() {
+        var sc = document.getElementById('golfer-scorecard');
+        var gnd = document.getElementById('glassGround');
+        if (!sc || !gnd) return;
+        // containing block is the tab's PADDING box, hence + clientLeft
+        var off = sc.getBoundingClientRect().left + sc.clientLeft;
+        gnd.style.left = (-off) + 'px';
+        gnd.style.right = 'auto';
+        gnd.style.width = document.documentElement.clientWidth + 'px';
+    },
+
+    paint(force) {
+        this.fit();
+        var c = document.getElementById('glassGroundCanvas');
+        if (!c) return;
+        if (!document.body.classList.contains('theme-glass')) return;
+        var cw = c.clientWidth, ch = c.clientHeight;
+        if (cw < 2 || ch < 2) return;                     // laid out but not measured yet
+        // CSS blurs this by 34-46px, so a full device-resolution buffer is pure waste --
+        // a small one upscales to an identical wash for a fraction of the memory and paint.
+        var k = Math.min(1, 420 / Math.max(cw, ch));
+        var w = Math.max(2, Math.round(cw * k));
+        var h = Math.max(2, Math.round(ch * k));
+        if (!force && w === this._w && h === this._h) return;
+        this._w = w; this._h = h;
+        c.width = w; c.height = h;
+        var g = c.getContext('2d');
+        if (!g) return;
+
+        /* sky + sun */
+        var sky = g.createLinearGradient(0, 0, 0, h * 0.30);
+        sky.addColorStop(0, '#0A2C21'); sky.addColorStop(0.55, '#1E5A4A'); sky.addColorStop(1, '#B9834C');
+        g.fillStyle = sky; g.fillRect(0, 0, w, h * 0.30);
+        var sun = g.createRadialGradient(w * 0.70, h * 0.28, 0, w * 0.70, h * 0.28, h * 0.34);
+        sun.addColorStop(0, 'rgba(255,222,166,.75)');
+        sun.addColorStop(0.45, 'rgba(226,150,88,.20)');
+        sun.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = sun; g.fillRect(0, 0, w, h * 0.62);
+
+        /* treeline — layered sines, not noise, so it is identical every paint */
+        g.fillStyle = 'rgba(5,26,20,.94)';
+        g.beginPath(); g.moveTo(0, h); g.lineTo(0, h * 0.30);
+        for (var x = 0; x <= w; x += w / 50) {
+            var n = Math.sin(x * 0.02) * 0.4 + Math.sin(x * 0.061) * 0.3 + Math.sin(x * 0.13) * 0.2;
+            g.lineTo(x, h * 0.30 - n * h * 0.035);
+        }
+        g.lineTo(w, h); g.closePath(); g.fill();
+
+        /* fairway */
+        var turf = g.createLinearGradient(0, h * 0.30, 0, h);
+        turf.addColorStop(0, '#1C5140'); turf.addColorStop(0.22, '#0E3126');
+        turf.addColorStop(0.62, '#072016'); turf.addColorStop(1, '#03110C');
+        g.fillStyle = turf; g.fillRect(0, h * 0.30, w, h * 0.70);
+
+        /* mown stripes, converging toward the sun */
+        for (var i = 0; i < 22; i += 2) {
+            var t0 = i / 22, t1 = (i + 1) / 22;
+            var y0 = h * 0.31 + Math.pow(t0, 1.5) * h * 0.69;
+            var y1 = h * 0.31 + Math.pow(t1, 1.5) * h * 0.69;
+            g.fillStyle = 'rgba(150,212,176,' + (0.035 * (1 - t0 * 0.7)).toFixed(3) + ')';
+            g.fillRect(0, y0, w, y1 - y0);
+        }
+
+        /* dew glint off the sun */
+        g.globalCompositeOperation = 'screen';
+        for (var k = 0; k < 80; k++) {
+            var yy = h * (0.32 + 0.66 * Math.pow(k / 80, 1.25)), ss = yy / h;
+            var xx = w * (0.08 + 0.88 * ((k * 0.618) % 1));
+            g.fillStyle = 'rgba(226,240,206,' + (0.03 + 0.08 * (1 - ss)).toFixed(3) + ')';
+            g.beginPath(); g.ellipse(xx, yy, (4 + ss * 40), (0.7 + ss * 1.9), 0, 0, 7); g.fill();
+        }
+        g.globalCompositeOperation = 'source-over';
+
+        /* vignette */
+        var vg = g.createRadialGradient(w / 2, h * 0.45, h * 0.14, w / 2, h * 0.5, h * 0.95);
+        vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(2,12,8,.66)');
+        g.fillStyle = vg; g.fillRect(0, 0, w, h);
+    },
+
+    // Called from ThemeMode.apply() on every theme/tab change.
+    sync(on) {
+        if (!on) return;
+        var self = this;
+        this.paint();
+        // The tab may still be mid-layout on the frame the class lands.
+        requestAnimationFrame(function () { self.paint(); });
+        if (!this._bound) {
+            this._bound = true;
+            var t = null;
+            var re = function () {
+                clearTimeout(t);
+                t = setTimeout(function () { self.paint(true); }, 120);
+            };
+            window.addEventListener('resize', re);
+            window.addEventListener('orientationchange', re);
+        }
+    }
+};
+
 window.ThemeMode = {
     KEY: 'mcipro_colorTheme',
     // Pete 2026-08-16: EVERYONE lands in LIGHT color theme at login/page-load; Dark is the
@@ -145690,10 +146048,10 @@ window.ThemeMode = {
     stored() {
         try {
             var pv = AppState && AppState.currentUser && AppState.currentUser.profileData && AppState.currentUser.profileData.golfInfo && AppState.currentUser.profileData.golfInfo.colorTheme;
-            if (pv === 'light' || pv === 'dark') return pv;
+            if (pv === 'light' || pv === 'dark' || pv === 'glass') return pv;
         } catch (e) {}
         var lv = localStorage.getItem(this.KEY);
-        if (lv === 'light' || lv === 'dark') return lv;
+        if (lv === 'light' || lv === 'dark' || lv === 'glass') return lv;
         return null;
     },
 
@@ -145745,21 +146103,54 @@ window.ThemeMode = {
     toggleSun() { this.setSun(!this.sunOn()); },
     // ===== END SUN =========================================================
 
+    // ===== GLASS (MCG1) ====================================================
+    // Third value on the BASE axis, not an axis on top of one: glass is derived
+    // from the dark default (never .theme-light), so light and glass are mutually
+    // exclusive and every dark rule keeps applying underneath it.
+    // Gated to the golfer scorecard TAB -- that one container is exactly the three
+    // surfaces this is scoped to (Play Golf tabs, Start Round, scoring engine), and
+    // gating here keeps the dawn ground off every other screen in the app.
+    glassAvailable() {
+        try {
+            var sc = document.getElementById('golfer-scorecard');
+            return !!(sc && sc.classList.contains('active'));
+        } catch (e) { return false; }
+    },
+
+    // What the toggle moves to next. Glass only joins the cycle where it can
+    // actually paint, so the toggle never looks dead on another tab.
+    _next() {
+        var m = this.get();
+        if (m === 'light') return 'dark';
+        if (m === 'dark') return this.glassAvailable() ? 'glass' : 'light';
+        return 'light';
+    },
+    // ===== END GLASS =======================================================
+
     apply() {
-        var on = (this.get() === 'light');
+        var mode = this.get();
+        var on = (mode === 'light');
         var sun = on && this.sunOn() && this.sunAvailable();
+        // glass chosen but off-tab falls back to the dark base -- never to light
+        var glass = (mode === 'glass') && this.glassAvailable();
         var dash = document.getElementById('golferDashboard');
         if (dash) dash.classList.toggle('theme-light', on);
         document.body.classList.toggle('theme-light', on);
         document.body.classList.toggle('theme-sun', sun);
         if (dash) dash.classList.toggle('theme-sun', sun);
+        document.body.classList.toggle('theme-glass', glass);
+        if (dash) dash.classList.toggle('theme-glass', glass);
+        try { if (window.GlassGround) window.GlassGround.sync(glass); } catch (e) {}
         // Update every theme toggle button (icon + label show what you switch TO)
+        var nxt = this._next();
+        var nIcon = (nxt === 'dark') ? 'dark_mode' : (nxt === 'glass') ? 'blur_on' : 'light_mode';
+        var nLabel = (nxt === 'dark') ? 'Dark' : (nxt === 'glass') ? 'Glass' : 'Light';
         var btns = document.querySelectorAll('[data-theme-toggle]');
         for (var i = 0; i < btns.length; i++) {
             var ic = btns[i].querySelector('.theme-toggle-icon');
-            if (ic) ic.textContent = on ? 'dark_mode' : 'light_mode';
+            if (ic) ic.textContent = nIcon;
             var lb = btns[i].querySelector('.theme-toggle-label');
-            if (lb) lb.textContent = on ? 'Dark' : 'Light';
+            if (lb) lb.textContent = nLabel;
         }
         // Every SUN pill (SCV3 cluster + TRADV legend) mirrors the state
         var sp = document.querySelectorAll('[data-sun-toggle]');
@@ -145768,7 +146159,9 @@ window.ThemeMode = {
 
     set(theme, persist) {
         if (theme === 'sun') { this.setSun(true); return; }   // legacy/UI safety net
-        if (theme !== 'light' && theme !== 'dark') return;
+        if (theme !== 'light' && theme !== 'dark' && theme !== 'glass') return;
+        // Sun rides light; glass is a dark-derived base. They cannot both be on.
+        if (theme === 'glass' && this.sunOn()) { this._sun = false; try { localStorage.setItem(this.SUNKEY, 'off'); } catch (e) {} }
         this._session = theme;
         try { localStorage.setItem(this.KEY, theme); } catch (e) {}
         try {
@@ -145782,11 +146175,14 @@ window.ThemeMode = {
         if (persist !== false) this.persist(theme);
     },
 
+    // light -> dark -> glass -> light (glass only where it can paint; see _next)
     toggle() {
-        var next = (this.get() === 'light') ? 'dark' : 'light';
+        var next = this._next();
         this.set(next);
         try {
-            var msg = (next === 'light') ? 'Light theme — bright & outdoor-readable' : 'Dark theme';
+            var msg = (next === 'light') ? 'Light theme — bright & outdoor-readable'
+                    : (next === 'glass') ? 'Glass theme — dawn course behind the card'
+                    : 'Dark theme';
             if (window.NotificationManager) NotificationManager.show(msg, 'success', 2000);
         } catch (e) {}
     },

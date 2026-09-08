@@ -95,6 +95,27 @@ const team2 = [
     { id: 'd', name: 'D', handicap: 0, scores: sc(Array(18).fill(7)) }
 ];
 const tm = E.calculateTeamMatchPlay(team1, team2, H, false, false, 'bestball_tiebreaker');
+// =========================================================
+// Burapha A+B, 2026-09-08 — the round that exposed the plus-handicap rule.
+// Pete 0.8 + Justin 7.4  v  Rocky +1.5 + Richard 13.8, four-ball stableford.
+// Rocky is the low man but his plus still costs him a stroke on the SI-18 hole,
+// which is hole 3. That single stroke is the difference between 1 UP and 2 UP.
+// =========================================================
+{
+    const bura = [[1,4,14],[2,4,6],[3,3,18],[4,4,8],[5,5,12],[6,3,16],[7,5,10],[8,4,4],[9,4,2],
+                  [10,4,3],[11,4,13],[12,3,17],[13,4,9],[14,4,5],[15,5,11],[16,4,1],[17,3,15],[18,5,7]]
+        .map(([hole,par,si]) => ({ hole, par, stroke_index: si }));
+    const mk = (n,h,g) => ({ playerId:n, playerName:n, handicap:h,
+                             scores: g.map((s,i)=>({ hole_number:i+1, gross_score:s })) });
+    const A = [mk('Pete',0.8,[3,3,3]),  mk('Justin',7.4,[4,4,3])];
+    const B = [mk('Rocky',-1.5,[4,4,3]), mk('Richard',13.8,[4,4,3])];
+    const r = E.calculateTeamMatchPlay(A, B, bura, true, true, 'bestball_tiebreaker');
+    eq('Burapha: plus handicap gives back on SI 18 → Pete+Justin 2 UP', r.overall, 2);
+    eq('Burapha H1 halved', r.holeResults[0].result, 'AS');
+    eq('Burapha H2 won on the second ball', r.holeResults[1].result, 'W');
+    eq('Burapha H3 won on the second ball (Rocky drops to 1 pt)', r.holeResults[2].result, 'W');
+}
+
 check('Team match: Team1 best ball wins every hole (overall +18-ish, all W)',
     tm.overall > 0 && (tm.holeResults || []).filter(r => r.result === 'W').length >= 9,
     `overall=${tm.overall}, W holes=${(tm.holeResults || []).filter(r => r.result === 'W').length}`);
@@ -228,7 +249,10 @@ eq('normalizeDuplicateSI: hcp 9 on the normalized card = 9 strokes (was 18 via t
 // v1074: match play plays off the DIFFERENCE
 // =========================================================
 eq('relativeMatchHandicaps: 19 vs 2 → [17, 0]', E.relativeMatchHandicaps([19, 2]), [17, 0]);
-eq('relativeMatchHandicaps: +2 vs 5 → [0, 7]', E.relativeMatchHandicaps(['+2', 5]), [0, 7]);
+// A plus player gives his strokes BACK; the field does not get handed an extra shot.
+// (Pete 2026-09-08 — the match must agree with the stableford column on the card.)
+eq('relativeMatchHandicaps: +2 vs 5 → [-2, 5] (plus gives back)', E.relativeMatchHandicaps(['+2', 5]), [-2, 5]);
+eq('relativeMatchHandicaps: all-plus field +2/+1 → [-2, -1]', E.relativeMatchHandicaps(['+2', '+1']), [-2, -1]);
 eq('relativeMatchHandicaps: four-ball 12/18/6/20 → [6,12,0,14]', E.relativeMatchHandicaps([12, 18, 6, 20]), [6, 12, 0, 14]);
 {
     // A hcp 19 vs B hcp 2 on an SI 1-18 par-4 card: A shoots 5 on SI 2, 4 elsewhere; B 4 everywhere.

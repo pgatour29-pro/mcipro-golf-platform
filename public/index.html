@@ -82400,7 +82400,12 @@ class LiveScorecardSystem {
                 return Number.isFinite(v) ? v : 0;
             };
             const php = (handicaps || []).map(h => (h === undefined || h === null || h === '') ? 0 : tph(h));
-            const lowest = php.length ? Math.min(...php) : 0;
+            // The baseline is SCRATCH, never a plus handicap. The low man plays off the
+            // lowest handicap in the match, but a plus player still gives his strokes back
+            // to the field instead of the whole field being handed an extra shot.
+            // (Pete 2026-09-08, Burapha: Rocky +1.5 must still give one back on the SI-18
+            // hole — the match has to agree with the stableford column on the same card.)
+            const lowest = php.length ? Math.max(0, Math.min(...php)) : 0;
             return php.map(v => v - lowest);
         },
 
@@ -83081,14 +83086,19 @@ class LiveScorecardSystem {
             let overallClosedOn = null; // Hole where overall 18 match was won (e.g., 17 for "2 & 1")
 
             // Pre-compute shot allocations per player using the SINGLE source of truth —
-            // relative to the LOWEST handicap in the match (four-ball: everyone plays off the low man)
+            // relative to the low man, floored at scratch so a plus handicap gives strokes back
             const shotAllocations = new Map();
             const _allHcps = [...team1Data, ...team2Data].map(pp => pp && pp.handicap);
-            const _lowestHcp = _allHcps.length ? _allHcps[this.relativeMatchHandicaps(_allHcps).indexOf(0)] : 0;
+            // ONE call across the whole field. The old code re-derived the baseline pairwise
+            // via indexOf(0), which returns -1 (and an undefined baseline) the moment no
+            // player sits exactly on it — as happens whenever the low man is a plus.
+            const _rel = this.relativeMatchHandicaps(_allHcps);
+            const _relByHcp = new Map();
+            _allHcps.forEach((h, i) => { const k = String(h); if (!_relByHcp.has(k)) _relByHcp.set(k, _rel[i]); });
             const getShotsForPlayer = (playerHcp) => {
                 const key = String(playerHcp);
                 if (!shotAllocations.has(key)) {
-                    const rel = this.relativeMatchHandicaps([playerHcp, _lowestHcp])[0];
+                    const rel = _relByHcp.has(key) ? _relByHcp.get(key) : 0;
                     shotAllocations.set(key, this.allocHandicapShots(courseHoles, rel));
                 }
                 return shotAllocations.get(key);
@@ -88645,7 +88655,7 @@ class LiveScorecardSystem {
         const isTeam = teams && (teams.teamA || []).length && (teams.teamB || []).length;
 
         if (isTeam) {
-            const gameMode = document.querySelector('input[name="teamGameMode"]:checked')?.value || this.matchPlayTeamGameMode || 'bestball_halves';
+            const gameMode = document.querySelector('input[name="teamGameMode"]:checked')?.value || this.matchPlayTeamGameMode || 'bestball_tiebreaker';
             const modeNames = { bestball_tiebreaker: 'Best ball (2nd ball breaks ties)', bestball_halves: 'Best ball (ties halve the hole)', combined: 'Combined (both scores added)' };
             const aLabel = this.teamLabel(teams.teamA), bLabel = this.teamLabel(teams.teamB);
             // Live team-scoring switcher — change the mode mid-round without restarting.
@@ -90729,7 +90739,7 @@ class LiveScorecardSystem {
                     matchPlayConfig.teams = this.matchPlayTeams;
                     // Save team game mode
                     const teamGameModeEl = document.querySelector('input[name="teamGameMode"]:checked');
-                    matchPlayConfig.teamGameMode = teamGameModeEl?.value || 'bestball_halves';
+                    matchPlayConfig.teamGameMode = teamGameModeEl?.value || this.matchPlayTeamGameMode || 'bestball_tiebreaker';
                 }
                 if (this.roundRobinMatches) {
                     matchPlayConfig.roundRobin = this.roundRobinMatches;
@@ -90821,7 +90831,7 @@ class LiveScorecardSystem {
                     matchPlayConfig.teams = this.matchPlayTeams;
                     // Save team game mode
                     const teamGameModeEl = document.querySelector('input[name="teamGameMode"]:checked');
-                    matchPlayConfig.teamGameMode = teamGameModeEl?.value || 'bestball_halves';
+                    matchPlayConfig.teamGameMode = teamGameModeEl?.value || this.matchPlayTeamGameMode || 'bestball_tiebreaker';
                 }
                 if (this.roundRobinMatches) {
                     matchPlayConfig.roundRobin = this.roundRobinMatches;
@@ -95453,7 +95463,7 @@ class LiveScorecardSystem {
                                     const useStblfd = mpMethodRadio?.value === 'stableford' || saveStablefordIsScoring;
                                     // Get team game mode from UI
                                     const teamGameModeRadio = document.querySelector('input[name="teamGameMode"]:checked');
-                                    const teamGameMode = teamGameModeRadio?.value || 'bestball_halves';
+                                    const teamGameMode = teamGameModeRadio?.value || this.matchPlayTeamGameMode || 'bestball_tiebreaker';
                                     const teamResults = engine.calculateTeamMatchPlay(
                                         teamConfigSave.teamA,
                                         actualTeamB.slice(0, 2),
@@ -98350,7 +98360,7 @@ class LiveScorecardSystem {
                 const settlementStablefordIsScoring = this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford');
                 const useStableford = mpMethodRadioSettlement?.value === 'stableford' || settlementStablefordIsScoring;
                 // Get team game mode from UI
-                const teamGameModeSettlement = document.querySelector('input[name="teamGameMode"]:checked')?.value || 'bestball_halves';
+                const teamGameModeSettlement = document.querySelector('input[name="teamGameMode"]:checked')?.value || this.matchPlayTeamGameMode || 'bestball_tiebreaker';
 
                 // Ensure exactly 2 players per team
                 const team1Settlement = teamConfig.teamA.slice(0, 2);
@@ -100914,7 +100924,7 @@ class LiveScorecardSystem {
                 const teamStablefordIsScoring = this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford');
                 const teamUseStableford = matchPlayMethodRadio2?.value === 'stableford' || teamStablefordIsScoring;
                 // Get team game mode from UI
-                const teamGameModeLeaderboard = document.querySelector('input[name="teamGameMode"]:checked')?.value || 'bestball_halves';
+                const teamGameModeLeaderboard = document.querySelector('input[name="teamGameMode"]:checked')?.value || this.matchPlayTeamGameMode || 'bestball_tiebreaker';
 
                 // Ensure exactly 2 players per team
                 const team1 = teamConfig.teamA.slice(0, 2);
@@ -102038,7 +102048,7 @@ class LiveScorecardSystem {
                     }
 
                     // Get team game mode
-                    const teamGameMode = document.querySelector('input[name="teamGameMode"]:checked')?.value || 'bestball_halves';
+                    const teamGameMode = document.querySelector('input[name="teamGameMode"]:checked')?.value || this.matchPlayTeamGameMode || 'bestball_tiebreaker';
                     const gameModeLabel = teamGameMode === 'bestball_tiebreaker' ? 'Best Ball + Tiebreaker'
                                         : teamGameMode === 'bestball_halves' ? 'Best Ball - Halves'
                                         : 'Combined Scores';

@@ -25649,11 +25649,25 @@
                             // Caddy sign-up: ask for course + caddy number NOW so the roster
                             // claim happens at registration, then land on the caddie dashboard.
                             try { window.RegIntent && RegIntent.clear(); } catch (e) {}
-                            CaddySetup.open({ firstRun: true });
+                            if (window.WelcomeIntro) {
+                                WelcomeIntro.gate({
+                                    userId: lineUserId,
+                                    name: profile.displayName || '',
+                                    role: 'caddie',
+                                    onDone: function () { CaddySetup.open({ firstRun: true }); }
+                                });
+                            } else { CaddySetup.open({ firstRun: true }); }
                         } else if (__staffIntent) {
                             // Staff sign-up: the account exists as a golfer; the staff role is
                             // granted by a roster claim or a manager's approval, never by asking.
-                            StaffSetup.open({ firstRun: true });
+                            if (window.WelcomeIntro) {
+                                WelcomeIntro.gate({
+                                    userId: lineUserId,
+                                    name: profile.displayName || '',
+                                    role: 'staff',
+                                    onDone: function () { StaffSetup.open({ firstRun: true }); }
+                                });
+                            } else { StaffSetup.open({ firstRun: true }); }
                         } else {
                             // Show one-time username reminder popup
                             const hasSeenUsernameReminder = localStorage.getItem(`username_reminder_${lineUserId}`);
@@ -25691,106 +25705,20 @@
                 }
             }
 
+            // The one-time message a brand-new golfer sees before the dashboard: thank you,
+            // the mission, and the FAQ recap that matters on day one (nobody ever pays).
+            // The username nudge and the TRGG auto-setup block ride inside it.
             static showUsernameReminderModal(lineUserId, trggMatch) {
-                console.log('[LINE] Showing username reminder modal');
-
-                // Build modal content
-                let message = `
-                    <div style="text-align: left;">
-                        <h3 style="margin-bottom: 15px; color: #065f46; font-size: 20px;">
-                            <span class="material-symbols-outlined" style="font-size:inherit;vertical-align:middle;line-height:1;">waving_hand</span> Welcome to MciPro Golf Platform!
-                        </h3>
-                        <p style="margin-bottom: 15px; font-size: 16px;">
-                            Your profile has been created successfully!
-                        </p>
-                `;
-
-                if (trggMatch) {
-                    message += `
-                        <div style="background: #d1fae5; border: 2px solid #065f46; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
-                            <p style="margin: 0 0 10px 0; font-weight: bold; color: #065f46;">
-                                <span class="material-symbols-outlined" style="font-size:inherit;vertical-align:middle;line-height:1;">task_alt</span> Travellers Rest Group Member Detected
-                            </p>
-                            <p style="margin: 0; font-size: 14px; color: #064e3b;">
-                                We found your existing information and automatically set up:
-                            </p>
-                            <ul style="margin: 10px 0 0 20px; font-size: 14px; color: #064e3b;">
-                                <li><strong>Handicap:</strong> ${trggMatch.handicap || 0}</li>
-                                <li><strong>Society:</strong> Travellers Rest Group</li>
-                            </ul>
-                        </div>
-                    `;
-                }
-
-                message += `
-                        <div style="background: #fef3c7; border: 2px solid #d97706; border-radius: 8px; padding: 15px;">
-                            <p style="margin: 0 0 10px 0; font-weight: bold; color: #92400e;">
-                                ${micon('edit_note')} Important: Create Your Username
-                            </p>
-                            <p style="margin: 0; font-size: 14px; color: #92400e;">
-                                Please go to your profile settings and create a unique username.
-                                This will help other golfers identify you on the platform!
-                            </p>
-                        </div>
-                    </div>
-                `;
-
-                // Create modal HTML
-                const modal = document.createElement('div');
-                modal.id = 'username-reminder-modal';
-                modal.style.cssText = `
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    width: 100%;
-                    height: 100%;
-                    background: rgba(0, 0, 0, 0.5);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    z-index: 10000;
-                `;
-
-                modal.innerHTML = `
-                    <div style="
-                        background: white;
-                        border-radius: 12px;
-                        padding: 30px;
-                        max-width: 500px;
-                        width: 90%;
-                        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-                    ">
-                        ${message}
-                        <button id="username-reminder-ok-btn" style="
-                            width: 100%;
-                            margin-top: 20px;
-                            padding: 12px;
-                            background: #065f46;
-                            color: white;
-                            border: none;
-                            border-radius: 8px;
-                            font-size: 16px;
-                            font-weight: 600;
-                            cursor: pointer;
-                        ">
-                            Got It, Take Me to Dashboard
-                        </button>
-                    </div>
-                `;
-
-                document.body.appendChild(modal);
-
-                // Handle OK button click
-                document.getElementById('username-reminder-ok-btn').addEventListener('click', () => {
-                    // Mark as seen
-                    localStorage.setItem(`username_reminder_${lineUserId}`, 'true');
-                    console.log('[LINE] Username reminder marked as seen');
-
-                    // Remove modal
-                    modal.remove();
-
-                    // Redirect to dashboard
-                    this.redirectToDashboard();
+                console.log('[LINE] Showing welcome intro');
+                const self = this;
+                if (!window.WelcomeIntro) { self.redirectToDashboard(); return; }
+                WelcomeIntro.gate({
+                    userId: lineUserId,
+                    name: AppState.currentUser?.name || '',
+                    role: AppState.currentUser?.role || 'golfer',
+                    trggMatch: trggMatch,
+                    username: true,
+                    onDone: function () { self.redirectToDashboard(); }
                 });
             }
 
@@ -26824,8 +26752,17 @@
 
                 NotificationManager.show(`Welcome to MyCaddiPro! Your ${providerName} account has been created.`, 'success');
                 if (window.MobileDebug) window.MobileDebug.log('Redirecting to dashboard...', 'success');
-                LineAuthentication.redirectToDashboard();
                 LoadingManager.hide();
+                // Same welcome every other registration door shows — mission + "you never pay".
+                if (window.WelcomeIntro) {
+                    WelcomeIntro.gate({
+                        userId: uniqueUserId,
+                        name: newProfile.name,
+                        role: newProfile.role,
+                        username: true,
+                        onDone: function () { LineAuthentication.redirectToDashboard(); }
+                    });
+                } else { LineAuthentication.redirectToDashboard(); }
 
             } catch (err) {
                 console.error(`[OAuth] Failed to create user:`, err);
@@ -162096,6 +162033,236 @@ showOrganizerTab = function(tabName) {
             
 
     <!-- Global Scroll-to-Top Button (bottom-right) -->
+    <!-- ============================================================================
+         WELCOME INTRO — the one-time message every NEW account sees at registration
+         ----------------------------------------------------------------------------
+         Fired from every registration door (LINE golfer / caddy / staff, and the
+         Kakao+Google OAuth create path) the moment the profile row exists, BEFORE the
+         dashboard or the caddy/staff setup sheet. It says thank you, states the
+         mission, and recaps the part of the FAQ that matters most on day one: nobody
+         ever pays for this. "Read the full FAQ" opens showFAQPage() on top.
+         Language dict is inline (same pattern as showFAQPage) — this text is only ever
+         rendered once per account and never re-rendered by updateLanguage().
+         Skipped for the hidden 1on1 partner role: she is not here for the golf community.
+         ============================================================================ -->
+    <script>
+    window.WelcomeIntro = {
+        _seenKey(userId) { return 'mcipro_welcome_seen_' + userId; },
+
+        // Show only if this account has never seen it (and is not a 1on1 partner).
+        gate(opts) {
+            const done = opts.onDone || function () {};
+            try {
+                if (opts.role === 'oo_partner') return done();
+                if (opts.userId && localStorage.getItem(this._seenKey(opts.userId))) return done();
+            } catch (e) {}
+            this.show(opts);
+        },
+
+        openFaq() {
+            try {
+                showFAQPage();
+                const f = document.getElementById('faqModal');
+                if (f) f.style.zIndex = '10060';
+            } catch (e) { console.warn('[Welcome] FAQ open failed:', e); }
+        },
+
+        close(userId, onDone) {
+            try {
+                if (userId) {
+                    localStorage.setItem(this._seenKey(userId), 'true');
+                    // Legacy key: the golfer path gates on this one before it ever calls us.
+                    localStorage.setItem('username_reminder_' + userId, 'true');
+                }
+            } catch (e) {}
+            document.getElementById('welcomeIntroModal')?.remove();
+            document.body.style.overflow = '';
+            if (typeof onDone === 'function') onDone();
+        },
+
+        // opts: { userId, name, role, trggMatch, username (show the username nudge), onDone }
+        show(opts = {}) {
+            const lang = (function () {
+                try { return localStorage.getItem('mci-pro-language') || localStorage.getItem('mcipro_language') || 'en'; }
+                catch (e) { return 'en'; }
+            })();
+
+            const W = {
+                en: {
+                    hi: 'Welcome to MyCaddiPro', thanks: 'Thank you for joining the community',
+                    missionTitle: 'Why this platform exists',
+                    mission: 'MyCaddiPro is a peer-to-peer platform built to grow a golf community that all shares the same information — one place where golfing events, handicaps and wins live together, and where your own achievements can be shared across the whole community.',
+                    sharedTitle: 'What the community shares',
+                    shared: [
+                        'Events — the same schedule, entry list and tee sheet for everyone',
+                        'Handicaps — one number that follows you across every society',
+                        'Wins — results and leaderboards the whole community can see',
+                        'Achievements — your rounds, your milestones, your best moments'
+                    ],
+                    freeTitle: '100% FREE', freeLead: 'You never pay for MyCaddiPro.',
+                    freeBody: 'No subscription, no premium tier, no hidden costs. Every feature — live scoring, handicaps, event registration, leaderboards, every game format — is free for every golfer.',
+                    freePoints: [
+                        'No one is authorised to charge you for MyCaddiPro. If anybody asks you to pay for access, do not pay them — report it to your society organizer.',
+                        'Event fees you see in the app (green fee, transport, competition) are the real cost of playing golf. They go to the golf course or your society organizer, never to MyCaddiPro.',
+                        'Built for the Pattaya golf community, free to use.'
+                    ],
+                    faqBtn: 'Read the full FAQ', go: 'Let’s play golf',
+                    trggTitle: 'Travellers Rest Group member detected',
+                    trggLead: 'We found your existing information and set up:',
+                    trggHcp: 'Handicap', trggSoc: 'Society',
+                    userTitle: 'One thing to do: create your username',
+                    userBody: 'Open your profile settings and pick a unique username. It is how other golfers find and recognise you on the platform.'
+                },
+                th: {
+                    hi: 'ยินดีต้อนรับสู่ MyCaddiPro', thanks: 'ขอบคุณที่เข้าร่วมชุมชนของเรา',
+                    missionTitle: 'ทำไมจึงมีแพลตฟอร์มนี้',
+                    mission: 'MyCaddiPro เป็นแพลตฟอร์มแบบเพื่อนถึงเพื่อน (peer-to-peer) ที่สร้างขึ้นเพื่อพัฒนาชุมชนกอล์ฟที่ใช้ข้อมูลชุดเดียวกันทั้งหมด — ที่เดียวที่รวมอีเวนต์กอล์ฟ แฮนดิแคป และชัยชนะไว้ด้วยกัน และแบ่งปันความสำเร็จของคุณให้ทั้งชุมชนได้เห็น',
+                    sharedTitle: 'สิ่งที่ชุมชนแบ่งปันกัน',
+                    shared: [
+                        'อีเวนต์ — ตารางแข่ง รายชื่อผู้ลงทะเบียน และ tee sheet ชุดเดียวกันสำหรับทุกคน',
+                        'แฮนดิแคป — ตัวเลขเดียวที่ติดตามคุณไปทุกสมาคม',
+                        'ชัยชนะ — ผลการแข่งและลีดเดอร์บอร์ดที่ทั้งชุมชนเห็นได้',
+                        'ความสำเร็จ — รอบที่คุณเล่น ก้าวสำคัญ และช่วงเวลาที่ดีที่สุดของคุณ'
+                    ],
+                    freeTitle: '100% ฟรี', freeLead: 'คุณไม่ต้องจ่ายเงินให้ MyCaddiPro เลย',
+                    freeBody: 'ไม่มีค่าสมาชิก ไม่มีระดับพรีเมียม ไม่มีค่าใช้จ่ายแอบแฝง ทุกฟีเจอร์ — สกอร์สด แฮนดิแคป การลงทะเบียนอีเวนต์ ลีดเดอร์บอร์ด และทุกรูปแบบการแข่ง — ฟรีสำหรับนักกอล์ฟทุกคน',
+                    freePoints: [
+                        'ไม่มีใครได้รับอนุญาตให้เรียกเก็บเงินค่าใช้ MyCaddiPro หากมีคนขอให้คุณจ่ายเงินเพื่อเข้าใช้งาน อย่าจ่าย และแจ้งผู้จัดสมาคมของคุณ',
+                        'ค่าธรรมเนียมอีเวนต์ที่แสดงในแอป (กรีนฟี ค่ารถ ค่าแข่งขัน) คือค่าใช้จ่ายจริงในการออกรอบ จ่ายให้สนามกอล์ฟหรือผู้จัดสมาคม ไม่ใช่ MyCaddiPro',
+                        'สร้างขึ้นเพื่อชุมชนกอล์ฟพัทยา ใช้งานฟรี'
+                    ],
+                    faqBtn: 'อ่านคำถามที่พบบ่อยทั้งหมด', go: 'ไปเล่นกอล์ฟกันเลย',
+                    trggTitle: 'พบข้อมูลสมาชิก Travellers Rest Group',
+                    trggLead: 'เราพบข้อมูลเดิมของคุณและตั้งค่าให้แล้ว:',
+                    trggHcp: 'แฮนดิแคป', trggSoc: 'สมาคม',
+                    userTitle: 'อีกหนึ่งอย่าง: ตั้งชื่อผู้ใช้ของคุณ',
+                    userBody: 'เปิดการตั้งค่าโปรไฟล์แล้วเลือกชื่อผู้ใช้ที่ไม่ซ้ำใคร เพื่อให้นักกอล์ฟคนอื่นค้นหาและจดจำคุณได้บนแพลตฟอร์ม'
+                },
+                ko: {
+                    hi: 'MyCaddiPro에 오신 것을 환영합니다', thanks: '커뮤니티에 함께해 주셔서 감사합니다',
+                    missionTitle: '이 플랫폼이 존재하는 이유',
+                    mission: 'MyCaddiPro는 모두가 같은 정보를 공유하는 골프 커뮤니티를 키우기 위해 만들어진 P2P(peer-to-peer) 플랫폼입니다. 골프 이벤트, 핸디캡, 우승 기록이 한곳에 모이고, 여러분의 성취를 커뮤니티 전체와 공유할 수 있습니다.',
+                    sharedTitle: '커뮤니티가 공유하는 것',
+                    shared: [
+                        '이벤트 — 모두에게 동일한 일정, 참가자 명단, 티 시트',
+                        '핸디캡 — 모든 소사이어티에서 따라다니는 하나의 숫자',
+                        '우승 — 커뮤니티 전체가 볼 수 있는 결과와 리더보드',
+                        '성취 — 여러분의 라운드, 기록, 최고의 순간'
+                    ],
+                    freeTitle: '100% 무료', freeLead: 'MyCaddiPro에 돈을 낼 일은 없습니다.',
+                    freeBody: '구독료, 프리미엄 등급, 숨겨진 비용이 없습니다. 실시간 스코어링, 핸디캡, 이벤트 등록, 리더보드, 모든 게임 형식까지 모든 기능이 모든 골퍼에게 무료입니다.',
+                    freePoints: [
+                        '누구도 MyCaddiPro 이용료를 청구할 권한이 없습니다. 누군가 접근 비용을 요구하면 지불하지 마시고 소사이어티 관리자에게 알려주세요.',
+                        '앱에 표시된 이벤트 비용(그린피, 교통비, 대회비)은 실제 라운드 비용입니다. 골프장이나 소사이어티 관리자에게 지불되며 MyCaddiPro가 받지 않습니다.',
+                        '파타야 골프 커뮤니티를 위해 만들어졌고, 무료로 사용합니다.'
+                    ],
+                    faqBtn: '전체 FAQ 읽기', go: '골프 치러 가기',
+                    trggTitle: 'Travellers Rest Group 회원 확인',
+                    trggLead: '기존 정보를 찾아 다음을 설정했습니다:',
+                    trggHcp: '핸디캡', trggSoc: '소사이어티',
+                    userTitle: '한 가지만: 사용자 이름을 만들어 주세요',
+                    userBody: '프로필 설정에서 고유한 사용자 이름을 정하세요. 다른 골퍼들이 플랫폼에서 여러분을 찾고 알아보는 방법입니다.'
+                },
+                ja: {
+                    hi: 'MyCaddiProへようこそ', thanks: 'コミュニティにご参加いただきありがとうございます',
+                    missionTitle: 'このプラットフォームの目的',
+                    mission: 'MyCaddiProは、全員が同じ情報を共有するゴルフコミュニティを育てるために作られたピアツーピアのプラットフォームです。ゴルフイベント、ハンディキャップ、勝利の記録がひとつの場所にまとまり、あなたの達成をコミュニティ全体と共有できます。',
+                    sharedTitle: 'コミュニティが共有するもの',
+                    shared: [
+                        'イベント — 全員が同じスケジュール、エントリーリスト、ティーシート',
+                        'ハンディキャップ — どのソサエティでも付いてくる一つの数字',
+                        '勝利 — コミュニティ全体が見られる結果とリーダーボード',
+                        '達成 — あなたのラウンド、節目、最高の瞬間'
+                    ],
+                    freeTitle: '100% 無料', freeLead: 'MyCaddiProにお金を払うことはありません。',
+                    freeBody: 'サブスクリプション料金、プレミアムティア、隠れたコストはありません。ライブスコアリング、ハンディキャップ、イベント登録、リーダーボード、すべてのゲーム形式が、すべてのゴルファーに無料です。',
+                    freePoints: [
+                        'MyCaddiProの利用料を請求する権限は誰にもありません。アクセスへの支払いを求められても支払わず、ソサエティのオーガナイザーに報告してください。',
+                        'アプリに表示されるイベント費用（グリーンフィー、交通費、競技費）は実際のプレー費用です。ゴルフ場またはオーガナイザーに支払われ、MyCaddiProには入りません。',
+                        'パタヤのゴルフコミュニティのために作られ、無料で使えます。'
+                    ],
+                    faqBtn: 'FAQをすべて読む', go: 'ゴルフを始める',
+                    trggTitle: 'Travellers Rest Group メンバーを検出',
+                    trggLead: '既存の情報を見つけて次を設定しました:',
+                    trggHcp: 'ハンディキャップ', trggSoc: 'ソサエティ',
+                    userTitle: 'ひとつだけ: ユーザー名を作成してください',
+                    userBody: 'プロフィール設定でユニークなユーザー名を決めてください。他のゴルファーがあなたを見つけて認識する方法です。'
+                }
+            };
+            const w = W[lang] || W.en;
+            const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+            const name = (opts.name || '').trim();
+
+            document.getElementById('welcomeIntroModal')?.remove();
+            const m = document.createElement('div');
+            m.id = 'welcomeIntroModal';
+            m.style.cssText = 'position:fixed;inset:0;z-index:10050;background:#fff;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;';
+
+            const trggHtml = opts.trggMatch ? `
+                <div style="background:#ecfdf5;border:1px solid #059669;border-radius:12px;padding:14px;margin-bottom:16px;">
+                    <p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#065f46;">${esc(w.trggTitle)}</p>
+                    <p style="margin:0;font-size:13px;color:#047857;">${esc(w.trggLead)}</p>
+                    <ul style="margin:8px 0 0 18px;padding:0;list-style:disc;font-size:13px;color:#047857;line-height:1.7;">
+                        <li>${esc(w.trggHcp)}: <strong>${esc(opts.trggMatch.handicap || 0)}</strong></li>
+                        <li>${esc(w.trggSoc)}: <strong>Travellers Rest Group</strong></li>
+                    </ul>
+                </div>` : '';
+
+            const userHtml = opts.username ? `
+                <div style="background:#fffbeb;border:1px solid #d97706;border-radius:12px;padding:14px;margin-bottom:16px;">
+                    <p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#92400e;">${esc(w.userTitle)}</p>
+                    <p style="margin:0;font-size:13px;color:#92400e;line-height:1.6;">${esc(w.userBody)}</p>
+                </div>` : '';
+
+            m.innerHTML = `
+                <div style="max-width:600px;margin:0 auto;padding:28px 16px 40px;">
+                    <div style="text-align:center;margin-bottom:24px;">
+                        <div style="font-size:44px;line-height:1;margin-bottom:8px;">&#9971;</div>
+                        <h1 style="font-size:23px;font-weight:800;color:#111;margin:0 0 6px;">${esc(w.hi)}</h1>
+                        <p style="font-size:14px;color:#6b7280;margin:0;">${esc(w.thanks)}${name ? ', ' + esc(name) : ''}</p>
+                    </div>
+
+                    <div style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);border:2px solid #059669;border-radius:16px;padding:20px;margin-bottom:16px;">
+                        <p style="font-size:15px;font-weight:800;color:#065f46;margin:0 0 8px;">${esc(w.missionTitle)}</p>
+                        <p style="font-size:13px;color:#047857;margin:0;line-height:1.7;">${esc(w.mission)}</p>
+                    </div>
+
+                    <div style="border:1px solid #e5e7eb;border-radius:14px;padding:16px;margin-bottom:16px;">
+                        <p style="font-size:14px;font-weight:700;color:#111;margin:0 0 10px;">${esc(w.sharedTitle)}</p>
+                        <ul style="margin:0;padding-left:20px;list-style:disc;font-size:13px;color:#4b5563;line-height:1.8;">
+                            ${w.shared.map(s => '<li>' + esc(s) + '</li>').join('')}
+                        </ul>
+                    </div>
+
+                    <div style="background:#f0fdf4;border:2px solid #059669;border-radius:16px;padding:20px;margin-bottom:16px;">
+                        <div style="font-size:26px;font-weight:900;color:#059669;text-align:center;margin-bottom:6px;">${esc(w.freeTitle)}</div>
+                        <p style="font-size:14px;font-weight:700;color:#065f46;margin:0 0 8px;text-align:center;">${esc(w.freeLead)}</p>
+                        <p style="font-size:13px;color:#047857;margin:0 0 12px;line-height:1.7;">${esc(w.freeBody)}</p>
+                        <ul style="margin:0;padding-left:20px;list-style:disc;font-size:13px;color:#065f46;line-height:1.8;">
+                            ${w.freePoints.map(s => '<li>' + esc(s) + '</li>').join('')}
+                        </ul>
+                    </div>
+
+                    ${trggHtml}
+                    ${userHtml}
+
+                    <button id="welcomeIntroFaqBtn" style="width:100%;padding:12px;margin-bottom:10px;background:#fff;color:#065f46;border:1.5px solid #059669;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">
+                        ${esc(w.faqBtn)}
+                    </button>
+                    <button id="welcomeIntroGoBtn" style="width:100%;padding:14px;background:#065f46;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;">
+                        ${esc(w.go)}
+                    </button>
+                </div>
+            `;
+
+            document.body.appendChild(m);
+            document.body.style.overflow = 'hidden';
+            document.getElementById('welcomeIntroFaqBtn').addEventListener('click', () => this.openFaq());
+            document.getElementById('welcomeIntroGoBtn').addEventListener('click', () => this.close(opts.userId, opts.onDone));
+        }
+    };
+    </script>
+
     <!-- FAQ Page -->
     <script>
     function showFAQPage() {

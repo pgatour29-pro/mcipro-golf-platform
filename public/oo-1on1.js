@@ -307,7 +307,11 @@
   var fmtD = function (s) { try { return new Date(s + 'T00:00:00').toLocaleDateString(loc(), { month: 'short', day: 'numeric' }); } catch (e) { return s; } };
   var fmtRange = function (a, b) { return a === b ? fmtD(a) : fmtD(a) + ' – ' + fmtD(b); };
   var money = function (n, cur) { if (n == null) return ''; return (cur || 'THB') === 'THB' ? '฿' + Number(n).toLocaleString() : Number(n).toLocaleString() + ' ' + cur; };
-  var loc2 = function () { try { var l = (window.currentLanguage || (window.LanguageManager && LanguageManager.current) || (localStorage.getItem('mcipro_language') || 'en')); return String(l).slice(0, 2).toLowerCase(); } catch (e) { return 'en'; } };
+  // 'mci-pro-language' is the ONLY key the app writes: window.currentLanguage does not exist
+  // (index.html declares it with `let`, which never lands on window) and there is no
+  // LanguageManager, so the old chain fell through to a dead key and served the consent
+  // terms in English to everyone. Same bug as the FAQ had (both fixed v1143).
+  var loc2 = function () { try { var l = (localStorage.getItem('mci-pro-language') || window.currentLanguage || 'en'); return String(l).slice(0, 2).toLowerCase(); } catch (e) { return 'en'; } };
   var toast = function (msg, kind) { try { window.NotificationManager.show(msg, kind || 'info'); } catch (e) { try { alert(msg); } catch (_) {} } };
   var errMsg = function (e) { var m = String((e && (e.message || e.error_description || e.details)) || e || ''); var k = m.match(/[a-z_]+/); var key = k && DICT.en['oo.err.' + k[0]] ? 'oo.err.' + k[0] : 'oo.err.generic'; return T(key, DICT.en[key]); };
   var STATUS_CLS = { requested: 'bg-amber-50 text-amber-800', accepted: 'bg-green-50 text-green-700', declined: 'bg-red-50 text-red-700', cancelled: 'bg-gray-100 text-gray-700', completed: 'bg-sky-50 text-sky-700', expired: 'bg-gray-100 text-gray-700' };

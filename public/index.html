@@ -162312,8 +162312,25 @@ showOrganizerTab = function(tabName) {
 
     <!-- FAQ Page -->
     <script>
+    // Language picker for the FAQ. It is the SAME choice as the app's EN/TH/KO/JA buttons:
+    // route it through changeLanguage() so it persists to 'mci-pro-language', sets the
+    // explicit-user-choice flag initializeLanguage() gates on, and re-translates the app
+    // behind the overlay — never a FAQ-only key (that bug shipped once, fixed v1143).
+    window.setFaqLanguage = function (lang) {
+        try {
+            if (typeof changeLanguage === 'function') changeLanguage(lang);
+            else localStorage.setItem('mci-pro-language', lang);
+        } catch (e) {
+            try { localStorage.setItem('mci-pro-language', lang); } catch (e2) {}
+        }
+        showFAQPage();
+    };
+
     function showFAQPage() {
-        const lang = localStorage.getItem('mcipro_language') || 'en';
+        const lang = (function () {
+            try { return localStorage.getItem('mci-pro-language') || localStorage.getItem('mcipro_language') || 'en'; }
+            catch (e) { return 'en'; }
+        })();
         const faqData = {
             en: {
                 back: 'Back', title: 'MyCaddiPro FAQ', subtitle: 'Frequently Asked Questions',
@@ -162398,7 +162415,7 @@ showOrganizerTab = function(tabName) {
                     <span class="material-symbols-outlined">arrow_back</span> ${t.back}
                 </button>
                 <span style="font-size:14px;font-weight:700;color:#059669;">FAQ</span>
-                <select onchange="localStorage.setItem('mcipro_language',this.value);showFAQPage();" style="font-size:12px;padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;background:white;">
+                <select onchange="setFaqLanguage(this.value)" style="font-size:12px;padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;background:white;">
                     <option value="en" ${lang==='en'?'selected':''}>English</option>
                     <option value="ko" ${lang==='ko'?'selected':''}>한국어</option>
                     <option value="th" ${lang==='th'?'selected':''}>ไทย</option>
@@ -162425,7 +162442,7 @@ showOrganizerTab = function(tabName) {
                     <p style="font-size:13px;color:#7f1d1d;margin:0;line-height:1.6;">${t.warnDetail}</p>
                     <div style="margin-top:16px;padding:12px;background:#fff;border-radius:10px;border:1px solid #fca5a5;">
                         <p style="font-size:12px;color:#991b1b;margin:0;font-weight:600;">${t.warnIf}</p>
-                        <ul style="font-size:12px;color:#7f1d1d;margin:8px 0 0;padding-left:20px;line-height:1.8;">
+                        <ul style="font-size:12px;color:#7f1d1d;margin:8px 0 0;padding-left:20px;list-style:disc;line-height:1.8;">
                             ${t.warnTips.map(tip => '<li>' + tip + '</li>').join('')}
                         </ul>
                     </div>
@@ -162549,7 +162566,7 @@ showOrganizerTab = function(tabName) {
         } catch (e) {}
     })();
     </script>
-    <script src="oo-1on1.js?v=1123"></script>
+    <script src="oo-1on1.js?v=1143"></script>
     <script src="g3-desk.js?v=1139"></script>
     <script src="g3-org.js?v=1108"></script>
 </body>

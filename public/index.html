@@ -9100,6 +9100,7 @@
                 'careg.roster.alltaken': 'Every number on file for this course is already claimed — type yours below.',
                 'careg.roster.nomatch': 'No unclaimed number on file starts with that — a new record will be created.',
                 'careg.roster.taken': '{n} more already claimed',
+                'careg.roster.more': '+{n} more — type your number to narrow it down',
                 'careg.claimline': 'That\'s you? Finish setup to claim this record',
                 'careg.setup.saveclaim': 'Claim this record',
                 'streg.cta': 'Register as Course Staff',
@@ -11511,6 +11512,7 @@
                 'careg.roster.alltaken': 'หมายเลขของสนามนี้ถูกใช้ครบแล้ว — พิมพ์หมายเลขของคุณด้านล่าง',
                 'careg.roster.nomatch': 'ไม่มีหมายเลขที่ว่างขึ้นต้นแบบนี้ — ระบบจะสร้างข้อมูลใหม่ให้คุณ',
                 'careg.roster.taken': 'อีก {n} หมายเลขถูกใช้แล้ว',
+                'careg.roster.more': 'อีก {n} รายการ — พิมพ์หมายเลขของคุณเพื่อค้นหา',
                 'careg.claimline': 'ใช่คุณใช่ไหม? กดเสร็จสิ้นเพื่อเชื่อมกับข้อมูลนี้',
                 'careg.setup.saveclaim': 'ยืนยันว่าเป็นฉัน',
                 'streg.cta': 'ลงทะเบียนเป็นพนักงานสนาม',
@@ -13913,6 +13915,7 @@
                 'careg.roster.alltaken': '이 코스의 번호는 모두 연결되었습니다 — 아래에 입력하세요.',
                 'careg.roster.nomatch': '해당 번호로 시작하는 미연결 기록이 없습니다 — 새 기록이 생성됩니다.',
                 'careg.roster.taken': '{n}개는 이미 연결됨',
+                'careg.roster.more': '+{n}개 더 — 번호를 입력해 좁혀보세요',
                 'careg.claimline': '본인이 맞나요? 설정을 완료하면 이 기록과 연결됩니다',
                 'careg.setup.saveclaim': '이 기록과 연결',
                 'streg.cta': '코스 직원으로 등록',
@@ -16373,6 +16376,7 @@
                 'careg.roster.alltaken': 'このコースの番号はすべて登録済みです — 下に入力してください。',
                 'careg.roster.nomatch': 'その番号で始まる未登録の記録はありません — 新しい記録を作成します。',
                 'careg.roster.taken': '他{n}件は登録済み',
+                'careg.roster.more': '他{n}件 — 番号を入力して絞り込んでください',
                 'careg.claimline': 'ご本人ですか？ 設定を完了するとこの記録に紐付きます',
                 'careg.setup.saveclaim': 'この記録に紐付ける',
                 'streg.cta': 'コーススタッフとして登録',
@@ -31280,10 +31284,15 @@
                         + '</p>';
                     return;
                 }
+                // NO nested scroller — the sheet card is the scroller, and a bottom sheet
+                // pads any inline-overflow box by 92px (the safe-area rule ~4551), which a
+                // scrolling grid inherits as a dead tail. Cap the list; typing narrows it.
+                const shown = list.slice(0, 60);
                 const picked = window._caddyPickedId;
                 box.innerHTML = '<p class="text-xs font-semibold text-gray-700 mb-1.5">' + t('careg.roster.title') + '</p>'
-                    + '<div class="grid grid-cols-3 gap-2" style="max-height:238px;overflow-y:auto">'
-                    + list.map(r => this._rosterCard(r, r.id === picked)).join('') + '</div>'
+                    + '<div class="grid grid-cols-3 gap-2">'
+                    + shown.map(r => this._rosterCard(r, r.id === picked)).join('') + '</div>'
+                    + (list.length > shown.length ? '<p class="text-[11px] text-gray-400 mt-1.5">' + t('careg.roster.more').replace('{n}', list.length - shown.length) + '</p>' : '')
                     + (res.takenCount ? '<p class="text-[11px] text-gray-400 mt-1.5">' + t('careg.roster.taken').replace('{n}', res.takenCount) + '</p>' : '');
             },
 
@@ -31297,7 +31306,7 @@
                     + 'class="text-left p-1.5 rounded-xl border ' + (on ? 'border-green-500 bg-green-50 ring-2 ring-green-200' : 'border-gray-200 bg-white') + '">'
                     + '<span class="relative w-full h-16 rounded-lg overflow-hidden bg-green-50 flex items-center justify-center">'
                     + '<span class="text-green-700 font-extrabold text-sm">' + num + '</span>'
-                    + (r.photo_url ? '<img src="' + esc(r.photo_url) + '" alt="" loading="lazy" class="absolute inset-0 w-full h-full object-cover" onerror="this.remove()">' : '')
+                    + (r.photo_url ? '<img src="' + esc(r.photo_url) + '" alt="" loading="lazy" class="absolute inset-0 w-full h-full object-cover object-top" onerror="this.remove()">' : '')
                     + '</span>'
                     + '<span class="block mt-1 text-[11px] font-bold text-gray-900 leading-tight">#' + num + '</span>'
                     + (nm ? '<span class="block text-[10px] text-gray-500 truncate">' + esc(nm) + '</span>' : '')

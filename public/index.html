@@ -10931,7 +10931,7 @@
                 'scorecard.whoscore.nores': 'No one found — check the spelling',
                 'scorecard.whoscore.loading': 'Loading players…',
                 'scorecard.whoscore.addfail': 'Could not add that player — try again',
-                'scorecard.whoscore.sub': 'Your group is set from the tee sheet. Untick anyone another phone is scoring \u2014 they stay on your card. Use the red button to take someone off the card completely.',
+                'scorecard.whoscore.sub': 'Your group is set from the tee sheet. Untick anyone another phone is scoring. Use the red button to take someone off your card right away.',
                 'scorecard.whoscore.group': 'Whole group',
                 'scorecard.whoscore.justme': 'Just myself',
                 'scorecard.whoscore.confirm': 'Confirm',
@@ -13330,7 +13330,7 @@
                 'scorecard.whoscore.nores': 'ไม่พบใคร — ลองตรวจตัวสะกดอีกครั้ง',
                 'scorecard.whoscore.loading': 'กำลังโหลดรายชื่อผู้เล่น…',
                 'scorecard.whoscore.addfail': 'เพิ่มผู้เล่นไม่สำเร็จ — ลองอีกครั้ง',
-                'scorecard.whoscore.sub': 'กลุ่มของคุณถูกตั้งจากตารางออกรอบแล้ว เอาเครื่องหมายถูกออกสำหรับคนที่เครื่องอื่นจดให้ (ยังอยู่ในการ์ดของคุณ) หรือกดปุ่มสีแดงเพื่อเอาออกจากการ์ด',
+                'scorecard.whoscore.sub': 'กลุ่มของคุณถูกตั้งจากตารางออกรอบแล้ว เอาเครื่องหมายถูกออกสำหรับคนที่เครื่องอื่นจดให้ หรือกดปุ่มสีแดงเพื่อเอาออกจากการ์ดทันที',
                 'scorecard.whoscore.group': 'ทั้งกลุ่ม',
                 'scorecard.whoscore.justme': 'เฉพาะตัวเอง',
                 'scorecard.whoscore.confirm': 'ยืนยัน',
@@ -15956,7 +15956,7 @@
                 'scorecard.whoscore.nores': '찾을 수 없습니다 — 철자를 확인하세요',
                 'scorecard.whoscore.loading': '플레이어 불러오는 중…',
                 'scorecard.whoscore.addfail': '추가하지 못했습니다 — 다시 시도하세요',
-                'scorecard.whoscore.sub': '티시트에서 그룹이 설정되었습니다. 다른 기기가 기록하는 사람은 체크를 해제하세요 — 카드에는 남습니다. 카드에서 완전히 제외하려면 빨간 버튼을 누르세요.',
+                'scorecard.whoscore.sub': '티시트에서 그룹이 설정되었습니다. 다른 기기가 기록하는 사람은 체크를 해제하세요. 빨간 버튼을 누르면 바로 카드에서 제외됩니다.',
                 'scorecard.whoscore.group': '그룹 전체',
                 'scorecard.whoscore.justme': '나만',
                 'scorecard.whoscore.confirm': '확인',
@@ -18168,7 +18168,7 @@
                 'scorecard.whoscore.nores': '見つかりません — つづりをご確認ください',
                 'scorecard.whoscore.loading': 'プレーヤーを読み込み中…',
                 'scorecard.whoscore.addfail': '追加できませんでした — もう一度お試しください',
-                'scorecard.whoscore.sub': 'ティーシートからグループが設定されました。他の端末が記録する人はチェックを外してください（カードには残ります）。赤いボタンでカードから完全に削除できます。',
+                'scorecard.whoscore.sub': 'ティーシートからグループが設定されました。他の端末が記録する人はチェックを外してください。赤いボタンを押すとすぐにカードから外れます。',
                 'scorecard.whoscore.group': 'グループ全員',
                 'scorecard.whoscore.justme': '自分だけ',
                 'scorecard.whoscore.confirm': '確定',
@@ -84965,17 +84965,19 @@ class LiveScorecardSystem {
     // ONE row shape for everyone in the prompt — tee-sheet mates and anyone added by the search.
     // TWO separate actions, because golfers were using the tick box to mean both things and the
     // ones they "removed" stayed on the card greyed out (Pete 2026-09-09):
-    //   tick box = "I'm keeping score for them"  → unticked they STAY on your card, another phone
-    //              scores them (that's what "Just myself" does to the whole group)
-    //   red X    = "they are not in my group"    → off the card entirely, right here, with Undo
+    //   tick box = "I'm keeping score for them" → unticked, another phone scores them and
+    //              startRound drops them off THIS card at the tee (that's what "Just myself"
+    //              does to the whole group) — they stay in the event and on the leaderboard
+    //   red X    = "they are not in my group"   → off the card right now, with Undo
     _whoScoreRowHtml(p) {
         const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
         const tt = (k, fb) => { try { return (typeof _lvT === 'function') ? _lvT(k, fb) : fb; } catch (e) { return fb; } };
         const rid = 'scWSRow' + (this._wsRowSeq = (this._wsRowSeq || 0) + 1);
         const pid = String(p.lineUserId || p.id);
         const off = p.scoringEnabled === false;
+        // The handicap yields its space to the NOT SCORING chip — at 360px both would eat the name
         const hcp = (p.handicap == null || p.handicap === '') ? '' :
-            `<span style="font:700 10px/1 'JetBrains Mono',monospace;color:#64748b;background:#f1f5f9;border-radius:6px;padding:3px 6px;flex-shrink:0;">${esc(window.formatHandicapDisplay ? window.formatHandicapDisplay(p.handicap) : p.handicap)}</span>`;
+            `<span data-whoscore-hcp style="display:${off ? 'none' : 'inline-block'};font:700 10px/1 'JetBrains Mono',monospace;color:#64748b;background:#f1f5f9;border-radius:6px;padding:3px 6px;flex-shrink:0;">${esc(window.formatHandicapDisplay ? window.formatHandicapDisplay(p.handicap) : p.handicap)}</span>`;
         return `
             <div id="${rid}" data-whoscore-row="${esc(pid)}" style="display:flex;align-items:center;gap:6px;">
                 <label style="flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:${off ? '#fffbeb' : '#f8fafc'};border:1px solid ${off ? '#fde68a' : '#e2e8f0'};cursor:pointer;">
@@ -85168,6 +85170,8 @@ class LiveScorecardSystem {
                 lab.style.borderColor = b.checked ? '#e2e8f0' : '#fde68a';
                 const chip = lab.querySelector('[data-whoscore-off]');
                 if (chip) chip.style.display = b.checked ? 'none' : 'inline-block';
+                const hcp = lab.querySelector('[data-whoscore-hcp]');
+                if (hcp) hcp.style.display = b.checked ? 'inline-block' : 'none';
             }
         });
         const go = document.getElementById('scWhoScoreGo');

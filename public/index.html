@@ -8249,6 +8249,11 @@
            neighbouring cards (no ragged left edge down the feed). */
         .scv3g-ec.ec-today { border:2px solid #22c55e; box-shadow:0 0 0 2px rgba(34,197,94,.28); padding:10px 11px; }
         .scv3g-ec.ec-reg { border:2px solid #3b82f6; box-shadow:0 0 0 2px rgba(59,130,246,.28); padding:10px 11px; }
+        /* Series rounds (v1158): a round of an ACTIVE multi-round series (King of the Mountain,
+           the Classic) is not a normal weekly game — RED border beats registered-blue and
+           today-green so the trip stays obvious in the feed even after you sign up. Must stay
+           BELOW ec-today/ec-reg: same specificity, source order decides. */
+        .scv3g-ec.ec-series { border:2px solid #ef4444; box-shadow:0 0 0 2px rgba(239,68,68,.28); padding:10px 11px; }
         /* Fav star lives IN the right action column (first row, above the fee) — NOT absolute in the
            card corner. The one-button-wide vertical .r column puts the fee digits exactly under that
            corner, so a pinned star sat ON the fee's last digit. */
@@ -129917,6 +129922,53 @@ window.tintDateInput = function(el) {
 });
 
 // ==================================================================
+// EVENT SERIES MARK (v1158) — which events are rounds of a multi-round SERIES
+// (King of the Mountain, the Classic) rather than a normal weekly game. The
+// society events list paints those cards with a RED border so a trip round is
+// never mistaken for the regular schedule.
+// Source of truth is event_series (status='active'): the round ids it links,
+// PLUS its title_prefix, so a round added to the trip after the series row was
+// written is still marked. One query, cached for the session.
+// ==================================================================
+window.EventSeriesMark = {
+    _ids: null,        // Set of event ids in an active series (null = not loaded yet)
+    _prefixes: [],     // lower-cased title prefixes of active series
+    _p: null,
+    load() {
+        if (this._p) return this._p;
+        const sb = window.SupabaseDB && SupabaseDB.client;
+        if (!sb) return Promise.resolve();   // no client yet — retry on the next load
+        this._p = (async () => {
+            try {
+                const { data } = await sb.from('event_series')
+                    .select('id,name,title_prefix,round_event_ids').eq('status', 'active');
+                const ids = new Set(), pre = [];
+                (data || []).forEach(sr => {
+                    (Array.isArray(sr.round_event_ids) ? sr.round_event_ids : [])
+                        .forEach(i => ids.add(String(i)));
+                    const t = String(sr.title_prefix || '').trim().toLowerCase();
+                    if (t) pre.push(t);
+                });
+                this._ids = ids;
+                this._prefixes = pre;
+            } catch (e) {
+                console.warn('[EventSeriesMark] load failed', e);
+                this._ids = this._ids || new Set();
+            }
+        })();
+        return this._p;
+    },
+    // Sync — safe to call from a render path. Returns false until load() resolves,
+    // so callers must render again after awaiting load (loadEvents does).
+    is(event) {
+        if (!event || !this._ids) return false;
+        if (event.id && this._ids.has(String(event.id))) return true;
+        const t = String(event.title || event.name || '').trim().toLowerCase();
+        return !!t && this._prefixes.some(p => t.startsWith(p));
+    }
+};
+
+// ==================================================================
 // GOLFER EVENTS SYSTEM - Browse and Register for Society Events
 // ==================================================================
 class GolferEventsManager {
@@ -130388,6 +130440,9 @@ class GolferEventsManager {
 
     async loadEvents(showLoading = true) {
         try {
+            // Which events are rounds of an active series (red-bordered cards) — fetched in
+            // parallel with the events themselves, awaited before the first render below.
+            const seriesP = window.EventSeriesMark ? window.EventSeriesMark.load() : null;
             // Load ALL society events (now includes user registration status in one call)
             const events = await window.SocietyGolfDB.getAllPublicEvents();
 
@@ -130401,6 +130456,8 @@ class GolferEventsManager {
 
             // Populate the society filter dropdown
             await this.populateSocietyFilter();
+
+            if (seriesP) { try { await seriesP; } catch (e) { /* cards just render unmarked */ } }
 
             // Apply public/private filter
             this.filterEvents();
@@ -131244,8 +131301,11 @@ class GolferEventsManager {
         // Border state (v930): blue "you're in" dominates green "happening today/tomorrow" —
         // a registered player already knows the event is on; blue is their card's identity.
         const _ecState = isCancelled ? 'cancelled' : isUserRegistered ? 'ec-reg' : (isImminent && !isPast) ? 'ec-today' : '';
+        // Rounds of an active multi-round series (King of the Mountain) get the RED border on
+        // top of that state — cancelled keeps its own rose card.
+        const _ecSeries = (!isCancelled && window.EventSeriesMark && window.EventSeriesMark.is(event)) ? ' ec-series' : '';
         return `
-            <div id="event-card-${event.id}" class="scv3g-ec ${_ecState}" onclick="GolferEventsSystem.openEventDetail('${event.id}', ${event.isUserRegistered ? 'true' : 'false'})">
+            <div id="event-card-${event.id}" class="scv3g-ec ${_ecState}${_ecSeries}" onclick="GolferEventsSystem.openEventDetail('${event.id}', ${event.isUserRegistered ? 'true' : 'false'})">
                 ${notificationBadge}
                 <div class="d ${window.dateCubeMood(event.date)}"><div class="w">${eventDate.toLocaleDateString(L.lang === 'ko' ? 'ko-KR' : 'en-US', { weekday: 'short' }).toUpperCase()}</div><div class="n">${eventDate.getDate()}</div></div>
                 <div class="m">

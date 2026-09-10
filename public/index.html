@@ -25197,6 +25197,16 @@
                     if (typeof ProfileSystem !== 'undefined') ProfileSystem.initializeDashboard();
                     if (typeof TodaysTeeTimeManager !== 'undefined') TodaysTeeTimeManager.updateTodaysTeeTime();
                 }, 500);
+
+                // WHAT'S NEW: one-time release note for EXISTING accounts, shown after the
+                // dashboard is up. gate() does its own waiting (install gate, welcome sheet)
+                // and never paints over the login screen.
+                try {
+                    if (window.WhatsNew) WhatsNew.gate({
+                        userId: AppState.currentUser.lineUserId || AppState.currentUser.id,
+                        role: AppState.currentUser.role
+                    });
+                } catch (e) { /* never block a login */ }
             }
 
             static getPermissions(role) {
@@ -163821,6 +163831,245 @@ showOrganizerTab = function(tabName) {
         }
     };
     </script>
+    <!-- ============================================================================
+         WHAT'S NEW — the one-time release note every EXISTING account sees once,
+         after it lands on its dashboard.
+         ----------------------------------------------------------------------------
+         Keyed per user AND per release (REL), so the next feature reuses this module
+         by bumping REL and swapping the copy — nobody re-reads an old note.
+         NEVER on the login screen (hard rule): gate() waits for a dashboard, and it
+         stands down for good if the new-account WelcomeIntro sheet is up — a brand
+         new golfer is not "catching up" on anything.
+         Shown to every role that uses the golf app (Pete 2026-09-10: "send it out to
+         everyone"), caddies included. Only the hidden 1on1 partner role is skipped —
+         it is not a golf surface, the same exclusion WelcomeIntro makes.
+         The "Try it in a Demo Round" button stays golfer-only: it opens a tab no other
+         dashboard has.
+         The preview below is the REAL block view's markup, generic names, light form.
+         ============================================================================ -->
+    <script>
+    window.WhatsNew = {
+        REL: 'v1151-3hole',
+
+        _key(uid) { return 'mcipro_whatsnew_' + this.REL + '_' + (uid || 'anon'); },
+        seen(uid) { try { return !!localStorage.getItem(this._key(uid)); } catch (e) { return true; } },
+        markSeen(uid) { try { localStorage.setItem(this._key(uid), '1'); } catch (e) {} },
+
+        gate(opts) {
+            opts = opts || {};
+            const uid = opts.userId;
+            const role = String(opts.role || '');
+            // Everyone who uses the golf app gets it, caddies included — a caddy who knows
+            // her golfer can now score in threes is useful on the course. The ONLY exception
+            // is the hidden 1on1 partner role, which is not a golf surface at all (same rule
+            // WelcomeIntro applies).
+            if (role === 'oo_partner') { this.markSeen(uid); return; }
+            if (this.seen(uid)) return;
+            const self = this;
+            let tries = 0;
+            const wait = function () {
+                tries++;
+                // Registration welcome is on screen — this account is brand new. Stand down.
+                if (document.getElementById('welcomeIntroModal')) { self.markSeen(uid); return; }
+                const login = document.getElementById('loginScreen');
+                const onLogin = login && getComputedStyle(login).display !== 'none';
+                const busy = onLogin
+                    || document.getElementById('pwaInstallGate')
+                    || document.getElementById('pwaSessionGate')
+                    || document.getElementById('startNineConfirmModal')
+                    || document.getElementById('whoScoreModal');
+                if (!busy) { self.show(opts); return; }
+                if (tries < 14) setTimeout(wait, 1500);
+            };
+            setTimeout(wait, 2000);
+        },
+
+        close(uid) {
+            this.markSeen(uid);
+            document.getElementById('whatsNewModal')?.remove();
+            document.body.style.overflow = '';
+        },
+
+        tryDemo(uid) {
+            this.close(uid);
+            try {
+                if (typeof showGolferTab === 'function') showGolferTab('scorecard');
+                setTimeout(function () {
+                    try { window.PostScoreManager && PostScoreManager.setMode('demo'); } catch (e) {}
+                    try { window.scrollTo(0, 0); } catch (e) {}
+                }, 450);
+            } catch (e) { console.warn('[WhatsNew] demo open failed:', e); }
+        },
+
+        show(opts = {}) {
+            const lang = (function () {
+                try { return localStorage.getItem('mci-pro-language') || 'en'; } catch (e) { return 'en'; }
+            })();
+            const W = {
+                en: {
+                    tag: 'NEW', title: 'Score every 3 holes',
+                    lead: 'You do not have to open your phone on every hole any more. Enter three holes at a time and get back to your golf.',
+                    howTitle: 'How it works',
+                    how: [
+                        'Tap EVERY 3 HOLES on the Live Scorecard — it sits right at the top of the screen.',
+                        'Enter three holes at a time. The app moves down the block for you and opens the next three by itself.',
+                        'Every tap still saves on its own. There is no save button and nothing to lose if your phone dies.',
+                        'Blocks start where you turn it on: switch on after the 4th and they run 5·6·7, then 8·9·10.',
+                        'Works whether you are scoring only yourself, your team, or the whole group.'
+                    ],
+                    demoTitle: 'Try it first — Demo Round',
+                    demoBody: 'Play Golf → Demo is a full practice round with every button working. Tap anything, make mistakes, try any game. Nothing is saved — your handicap, your history and the leaderboards are never touched.',
+                    demoBtn: 'Try it in a Demo Round', ok: 'Got it',
+                    pvHole: 'HOLE', pvPts: 'BLOCK PTS', pvYou: 'You',
+                    pvR1: 'EVERY HOLE', pvR3: 'EVERY 3 HOLES',
+                    pvNote: 'Every tap saves on its own — nothing to press.'
+                },
+                th: {
+                    tag: 'ใหม่', title: 'บันทึกคะแนนทุก 3 หลุม',
+                    lead: 'ไม่ต้องหยิบมือถือขึ้นมาทุกหลุมอีกต่อไป กรอกทีละ 3 หลุมแล้วกลับไปเล่นกอล์ฟต่อได้เลย',
+                    howTitle: 'ใช้งานอย่างไร',
+                    how: [
+                        'แตะ "ทุก 3 หลุม" บนหน้าสกอร์การ์ดสด — อยู่ด้านบนสุดของหน้าจอ',
+                        'กรอกทีละ 3 หลุม แอปจะเลื่อนให้เองภายในชุด และเปิดชุดถัดไปให้อัตโนมัติ',
+                        'ทุกการแตะยังบันทึกทันทีเหมือนเดิม ไม่มีปุ่มบันทึก และไม่มีอะไรหายแม้มือถือดับ',
+                        'ชุดเริ่มจากจุดที่คุณเปิดใช้ เปิดหลังหลุม 4 ก็จะเป็น 5·6·7 แล้วต่อด้วย 8·9·10',
+                        'ใช้ได้ทั้งเมื่อบันทึกเฉพาะตัวเอง ทีมของคุณ หรือทั้งกลุ่ม'
+                    ],
+                    demoTitle: 'ลองก่อนได้ — รอบทดลอง',
+                    demoBody: 'Play Golf → Demo คือรอบซ้อมเต็มรูปแบบที่ทุกปุ่มใช้งานได้จริง แตะอะไรก็ได้ ทำผิดได้ ลองเกมไหนก็ได้ ไม่มีการบันทึกใด ๆ — แฮนดิแคป ประวัติ และลีดเดอร์บอร์ดของคุณไม่ถูกแตะต้อง',
+                    demoBtn: 'ลองในรอบทดลอง', ok: 'รับทราบ',
+                    pvHole: 'หลุม', pvPts: 'แต้มชุดนี้', pvYou: 'คุณ',
+                    pvR1: 'ทุกหลุม', pvR3: 'ทุก 3 หลุม',
+                    pvNote: 'ทุกการแตะบันทึกทันที ไม่ต้องกดอะไร'
+                },
+                ko: {
+                    tag: '새 기능', title: '3홀마다 입력하세요',
+                    lead: '이제 매 홀 휴대폰을 꺼낼 필요가 없습니다. 3홀씩 한 번에 입력하고 골프에 집중하세요.',
+                    howTitle: '사용 방법',
+                    how: [
+                        '실시간 스코어카드 맨 위의 "3홀마다"를 누르세요.',
+                        '3홀씩 입력합니다. 커서는 앱이 옮겨 주고, 다음 3홀도 알아서 열립니다.',
+                        '모든 입력은 여전히 즉시 저장됩니다. 저장 버튼이 없고, 배터리가 나가도 잃을 것이 없습니다.',
+                        '묶음은 켠 홀부터 시작합니다. 4번 홀 뒤에 켜면 5·6·7, 그다음 8·9·10입니다.',
+                        '본인만 입력하든, 팀이든, 조 전체든 모두 사용할 수 있습니다.'
+                    ],
+                    demoTitle: '먼저 체험해 보세요 — 체험 라운드',
+                    demoBody: 'Play Golf → Demo는 모든 버튼이 실제로 동작하는 연습 라운드입니다. 무엇이든 눌러 보고, 틀려도 되고, 어떤 게임이든 시도해 보세요. 아무것도 저장되지 않으며 핸디캡·기록·리더보드는 전혀 영향을 받지 않습니다.',
+                    demoBtn: '체험 라운드에서 해 보기', ok: '확인',
+                    pvHole: '홀', pvPts: '묶음 점수', pvYou: '나',
+                    pvR1: '매 홀', pvR3: '3홀마다',
+                    pvNote: '탭할 때마다 저장됩니다. 누를 버튼이 없습니다.'
+                },
+                ja: {
+                    tag: '新機能', title: '3ホールごとに入力',
+                    lead: '毎ホール携帯を開く必要はもうありません。3ホールまとめて入力して、ゴルフに戻りましょう。',
+                    howTitle: '使い方',
+                    how: [
+                        'ライブスコアカード上部の「3ホールごと」をタップします。',
+                        '3ホールずつ入力します。カーソルはアプリが動かし、次の3ホールも自動で開きます。',
+                        'タップごとに保存されるのは今までどおりです。保存ボタンはなく、電池が切れても失われません。',
+                        'まとまりはオンにしたホールから始まります。4番のあとなら5·6·7、次が8·9·10です。',
+                        '自分だけ、チーム、組全員 — どの入力でも使えます。'
+                    ],
+                    demoTitle: 'まず試す — 体験ラウンド',
+                    demoBody: 'Play Golf → Demo は、すべてのボタンが実際に動く練習ラウンドです。何を押しても、間違えても、どのゲームを試しても大丈夫。何も保存されず、ハンディキャップ・履歴・リーダーボードには一切影響しません。',
+                    demoBtn: '体験ラウンドで試す', ok: 'わかりました',
+                    pvHole: 'ホール', pvPts: 'まとまり得点', pvYou: 'あなた',
+                    pvR1: '毎ホール', pvR3: '3ホールごと',
+                    pvNote: 'タップごとに保存されます。押すボタンはありません。'
+                }
+            };
+            const w = W[lang] || W.en;
+            const esc = window.escHtml;
+            const uid = opts.userId;
+            const isGolfer = String(opts.role || 'golfer') === 'golfer';
+
+            // Preview rows: generic names, part-filled, cursor on the last hole.
+            const cols = [esc(w.pvYou), 'Demo 2', 'Demo 3', 'Demo 4'];
+            const rows = [
+                { h: 5, meta: 'P4 · SI3',  v: ['4', '5', '6', '4'] },
+                { h: 6, meta: 'P4 · SI5',  v: ['5', '6', '4', '5'] },
+                { h: 7, meta: 'P3 · SI17', v: [null, null, null, null] }
+            ];
+            const cell = (val, active) => active
+                ? '<div class="wnp-c wnp-on"><span class="wnp-car"></span></div>'
+                : '<div class="wnp-c ' + (val ? 'wnp-f' : 'wnp-e') + '">' + (val || '&ndash;') + '</div>';
+
+            let grid = '<div class="wnp-g"><div class="wnp-hk">' + esc(w.pvHole) + '</div>'
+                + cols.map(c => '<div class="wnp-p">' + c + '</div>').join('');
+            rows.forEach((r, ri) => {
+                grid += '<div class="wnp-h"><b>' + r.h + '</b><s>' + r.meta + '</s></div>';
+                r.v.forEach((v, ci) => { grid += cell(v, ri === 2 && ci === 0); });
+            });
+            grid += '<div class="wnp-sep"></div><div class="wnp-ftk">' + esc(w.pvPts) + '</div>'
+                + ['+3', '+4', '+4', '+3'].map(p => '<div class="wnp-pts">' + p + '</div>').join('')
+                + '</div>';
+
+            document.getElementById('whatsNewModal')?.remove();
+            const m = document.createElement('div');
+            m.id = 'whatsNewModal';
+            m.style.cssText = 'position:fixed;inset:0;z-index:10050;background:#fff;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;';
+            m.innerHTML = `
+                <style>
+                    #whatsNewModal .wnp-wrap { background:#ffffff; border:1px solid rgba(15,23,42,0.10); border-radius:16px; padding:10px 9px 9px; }
+                    #whatsNewModal .wnp-rail { display:flex; gap:2px; background:#fff; border:1px solid rgba(15,23,42,0.09); border-radius:16px; padding:4px; margin-bottom:9px; }
+                    #whatsNewModal .wnp-rail > span { flex:1; text-align:center; padding:8px 4px; border-radius:10px; font:700 9.5px/1 'JetBrains Mono',monospace; letter-spacing:.06em; color:#46525C; white-space:nowrap; }
+                    #whatsNewModal .wnp-rail > span.on { background:#16a34a; color:#fff; }
+                    #whatsNewModal .wnp-g { display:grid; grid-template-columns:56px repeat(4,1fr); gap:4px; }
+                    #whatsNewModal .wnp-hk { font:700 8px/1 'JetBrains Mono',monospace; letter-spacing:.14em; color:#96A1AC; display:flex; align-items:flex-end; padding-bottom:5px; }
+                    #whatsNewModal .wnp-p { text-align:center; padding-bottom:4px; font:700 11px/1.1 'Instrument Sans',sans-serif; color:#10151B; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+                    #whatsNewModal .wnp-h { display:flex; flex-direction:column; justify-content:center; gap:2px; }
+                    #whatsNewModal .wnp-h b { font:700 15px/1 'Instrument Sans',sans-serif; color:#10151B; }
+                    #whatsNewModal .wnp-h s { text-decoration:none; font:600 8.5px/1.2 'JetBrains Mono',monospace; color:#64748B; white-space:nowrap; }
+                    #whatsNewModal .wnp-c { height:42px; border-radius:11px; display:flex; align-items:center; justify-content:center; font:400 20px/1 'Outfit','Instrument Sans',sans-serif; }
+                    #whatsNewModal .wnp-e { background:#F5F7F8; border:1.5px dashed rgba(15,23,42,0.16); color:#A4AFBA; }
+                    #whatsNewModal .wnp-f { background:rgba(22,163,74,0.10); border:1.5px solid rgba(22,163,74,0.32); color:#10151B; }
+                    #whatsNewModal .wnp-on { background:#16a34a; border:1.5px solid #16a34a; box-shadow:0 0 0 3px rgba(34,197,94,0.22); }
+                    #whatsNewModal .wnp-car { display:block; width:2px; height:20px; background:#fff; border-radius:1px; }
+                    #whatsNewModal .wnp-sep { grid-column:1/-1; height:1px; background:rgba(15,23,42,0.07); margin:7px 0 1px; }
+                    #whatsNewModal .wnp-ftk { font:700 8px/1 'JetBrains Mono',monospace; letter-spacing:.12em; color:#96A1AC; display:flex; align-items:center; }
+                    #whatsNewModal .wnp-pts { text-align:center; font:700 12px/1 'JetBrains Mono',monospace; color:#15803d; padding-top:6px; }
+                    #whatsNewModal .wnp-note { display:flex; align-items:center; gap:6px; margin:8px 2px 0; font:600 9.5px/1.35 'JetBrains Mono',monospace; color:#64748B; }
+                    #whatsNewModal .wnp-note .material-symbols-outlined { font-size:13px; color:#16a34a; }
+                </style>
+                <div style="max-width:600px;margin:0 auto;padding:26px 16px 40px;">
+                    <div style="text-align:center;margin-bottom:18px;">
+                        <span style="display:inline-block;background:#16a34a;color:#fff;font-size:10px;font-weight:800;letter-spacing:.14em;padding:4px 10px;border-radius:9px;margin-bottom:10px;">${esc(w.tag)}</span>
+                        <h1 style="font-size:23px;font-weight:800;color:#111;margin:0 0 8px;">${esc(w.title)}</h1>
+                        <p style="font-size:14px;color:#6b7280;margin:0;line-height:1.6;">${esc(w.lead)}</p>
+                    </div>
+
+                    <div class="wnp-wrap" style="margin-bottom:16px;">
+                        <div class="wnp-rail"><span>${esc(w.pvR1)}</span><span class="on">${esc(w.pvR3)}</span></div>
+                        ${grid}
+                        <div class="wnp-note"><span class="material-symbols-outlined">cloud_done</span><span>${esc(w.pvNote)}</span></div>
+                    </div>
+
+                    <div style="border:1px solid #e5e7eb;border-radius:14px;padding:16px;margin-bottom:16px;">
+                        <p style="font-size:14px;font-weight:700;color:#111;margin:0 0 10px;">${esc(w.howTitle)}</p>
+                        <ul style="margin:0;padding-left:20px;list-style:disc;font-size:13px;color:#4b5563;line-height:1.8;">
+                            ${w.how.map(x => '<li>' + esc(x) + '</li>').join('')}
+                        </ul>
+                    </div>
+
+                    <div style="background:#fffbeb;border:1px solid #d97706;border-radius:14px;padding:16px;margin-bottom:18px;">
+                        <p style="font-size:14px;font-weight:700;color:#92400e;margin:0 0 6px;">${esc(w.demoTitle)}</p>
+                        <p style="font-size:13px;color:#92400e;margin:0;line-height:1.7;">${esc(w.demoBody)}</p>
+                    </div>
+
+                    ${isGolfer ? `<button id="whatsNewDemoBtn" style="width:100%;padding:13px;margin-bottom:10px;background:#fff;color:#065f46;border:1.5px solid #059669;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">${esc(w.demoBtn)}</button>` : ''}
+                    <button id="whatsNewOkBtn" style="width:100%;padding:14px;background:#065f46;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;">${esc(w.ok)}</button>
+                </div>
+            `;
+            document.body.appendChild(m);
+            document.body.style.overflow = 'hidden';
+            const demoBtn = document.getElementById('whatsNewDemoBtn');
+            if (demoBtn) demoBtn.addEventListener('click', () => this.tryDemo(uid));
+            document.getElementById('whatsNewOkBtn').addEventListener('click', () => this.close(uid));
+        }
+    };
+    </script>
+
 
     <!-- FAQ Page -->
     <script>

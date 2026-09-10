@@ -24893,6 +24893,23 @@
             static async setUserFromLineProfile(profile) {
                 const lineUserId = profile.userId;
 
+                // DIAGNOSTIC (2026-09-10, pairs with the line-oauth-exchange probe): records
+                // whether the avatar survived the trip from LINE to this function. Compare the
+                // two rows for one login — server "avatar present" + client false = we drop it
+                // in transit; both false = LINE never sent it. Remove once settled.
+                try {
+                    window.logClientError && window.logClientError('line_profile_probe_client', {
+                        message: profile.pictureUrl ? 'client got avatar' : 'client got NO avatar',
+                        source: 'setUserFromLineProfile',
+                        extra: {
+                            lineUserId: lineUserId,
+                            hasPictureUrl: !!profile.pictureUrl,
+                            profileKeys: Object.keys(profile || {}),
+                            inLineApp: (typeof liff !== 'undefined' && typeof liff.isInClient === 'function') ? (function () { try { return liff.isInClient(); } catch (e) { return 'err'; } })() : 'noliff'
+                        }
+                    });
+                } catch (e) { /* diagnostics must never block login */ }
+
                 // Query Supabase REST API DIRECTLY (bypass client issues).
                 // FAIL-CLOSED (2026-08-29): only a confirmed 200 + JSON array counts as an
                 // answer. One dropped fetch on flaky mobile data used to fall through to the

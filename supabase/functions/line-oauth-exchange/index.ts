@@ -82,22 +82,58 @@ Deno.serve(async (req: Request) => {
     // login, so a miss here sticks). Signature check is unnecessary: this JWT came straight
     // from LINE's token endpoint over TLS and we use one claim as a display URL.
     let linePictureUrl: string = lineProfile.pictureUrl || "";
-    if (!linePictureUrl && tokenData?.id_token) {
+    let idTokenPicture = false;
+    let idTokenDecodeError: string | null = null;
+    if (tokenData?.id_token) {
       try {
         const payload = String(tokenData.id_token).split(".")[1];
         const decoded = JSON.parse(
           atob(payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=")),
         );
         if (decoded?.picture) {
-          linePictureUrl = String(decoded.picture);
-          console.log("[line-oauth-exchange] pictureUrl recovered from id_token for:", lineUserId);
+          idTokenPicture = true;
+          if (!linePictureUrl) {
+            linePictureUrl = String(decoded.picture);
+            console.log("[line-oauth-exchange] pictureUrl recovered from id_token for:", lineUserId);
+          }
         }
       } catch (e) {
-        console.warn("[line-oauth-exchange] id_token picture decode failed:", String(e));
+        idTokenDecodeError = String(e);
+        console.warn("[line-oauth-exchange] id_token picture decode failed:", idTokenDecodeError);
       }
     }
     if (!linePictureUrl) {
       console.log("[line-oauth-exchange] no LINE avatar available for:", lineUserId);
+    }
+
+    // 2c. DIAGNOSTIC (2026-09-10): Pete reports every one of these accounts HAS a LINE photo,
+    // yet ~37% of registrations land faceless. Record what LINE actually handed us so the next
+    // login proves which side loses it — if this row says the avatar was present but the
+    // profile ends up empty, the loss is client-side; if it says MISSING, it is LINE's
+    // response. Nothing here is new PII: only the LINE id we already store, plus field names.
+    // Remove once the question is settled.
+    try {
+      await fetch(`${SB_URL}/rest/v1/client_errors`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          user_id: lineUserId,
+          kind: "line_profile_probe",
+          message: linePictureUrl ? "avatar present" : "avatar MISSING",
+          source: "line-oauth-exchange",
+          context: {
+            profileStatus: profRes.status,
+            profileKeys: Object.keys(lineProfile || {}),
+            hasProfilePictureUrl: !!lineProfile?.pictureUrl,
+            hasIdToken: !!tokenData?.id_token,
+            idTokenHasPicture: idTokenPicture,
+            idTokenDecodeError,
+            grantedScope: tokenData?.scope || null,
+          },
+        }),
+      });
+    } catch (probeErr) {
+      console.warn("[line-oauth-exchange] probe log failed:", String(probeErr));
     }
 
     // 3-6. Mint the v2 Supabase Auth session (profiles row + auth user + magic link).

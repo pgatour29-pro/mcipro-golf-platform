@@ -141,7 +141,7 @@
 
     <!-- Supabase MUST load BEFORE LIFF for login to work -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="supabase-config.js?v=20260618"></script>
+    <script src="supabase-config.js?v=20260910"></script>
 
     <script src="https://static.line-scdn.net/liff/edge/2.1/sdk.js"></script>
     <script src="js/scorecardProfileLoader.js"></script>
@@ -24853,12 +24853,20 @@
                         // when the profile has no photo from ANY source.
                         const pd0 = profileData || {};
                         const hasAnyPhoto = (pd0.media && pd0.media.profilePhoto) || pd0.linePictureUrl;
+                        // v1156: the guard used to be a PERMANENT one-shot flag, so a device that
+                        // bounced once while the LINE account still had no photo could never try
+                        // again — a user who sets their LINE picture afterwards stayed faceless
+                        // forever. Stamp the attempt instead and let it retry after a week (still
+                        // far longer than any session, so it can never loop).
+                        var __healStamp = 0;
+                        try { __healStamp = parseInt(localStorage.getItem('mcipro_liff_photo_heal_v1') || '0', 10) || 0; } catch (e) {}
+                        var __healDue = (Date.now() - __healStamp) > 7 * 24 * 60 * 60 * 1000;
                         if (!hasAnyPhoto
                             && location.origin === 'https://mycaddipro.com' // www-vs-apex trap: never bounce a www session onto the apex origin
                             && typeof liff.isInClient === 'function' && liff.isInClient()
                             && typeof liff.login === 'function'
-                            && !localStorage.getItem('mcipro_liff_photo_heal_v1')) {
-                            localStorage.setItem('mcipro_liff_photo_heal_v1', '1');
+                            && __healDue) {
+                            localStorage.setItem('mcipro_liff_photo_heal_v1', String(Date.now()));
                             console.log('[AvatarHeal] in-client LIFF re-auth for photo backfill');
                             liff.login({ redirectUri: 'https://mycaddipro.com/' });
                         }

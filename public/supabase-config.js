@@ -312,8 +312,37 @@ class SupabaseClient {
             return value;
         };
 
+        // MERGE-DON'T-CLOBBER (2026-09-10): profile_data used to be rebuilt from scratch on
+        // EVERY save, so any caller that didn't hand in a section wiped it. That is how LINE
+        // avatars kept vanishing: `linePictureUrl: profile.linePictureUrl || null` nulled the
+        // stored photo whenever a partial caller ran (the AUTO-RESTORE column↔JSONB sync in
+        // setUserFromLineProfile and the legacy createProfileScreen form both omit it), and the
+        // same call flattened media.profilePhoto / preferences / roleSpecific / skills /
+        // privacy / username. Read the stored row first; only overwrite what the caller supplied.
+        const __lineId = profile.line_user_id || profile.lineUserId;
+        let existingPD = {};
+        let existingLang = null;
+        if (__lineId) {
+            try {
+                const { data: __prev } = await this.client
+                    .from('user_profiles')
+                    .select('profile_data, language')
+                    .eq('line_user_id', __lineId)
+                    .maybeSingle();
+                if (__prev && __prev.profile_data && typeof __prev.profile_data === 'object') {
+                    existingPD = __prev.profile_data;
+                }
+                if (__prev && __prev.language) existingLang = __prev.language;
+            } catch (e) {
+                console.warn('[Supabase] Could not read existing profile_data, saving as-is:', e.message);
+            }
+        }
+        // Shallow-merge a section: stored keys survive, anything the caller sends wins.
+        const mergeSection = (key, incoming) => ({ ...(existingPD[key] || {}), ...(incoming || {}) });
+
         // Extract handicap value from all possible sources
-        const handicapValue = profile.handicap || profile.golfInfo?.handicap || profile.profile_data?.golfInfo?.handicap || null;
+        const handicapValue = profile.handicap || profile.golfInfo?.handicap || profile.profile_data?.golfInfo?.handicap
+            || existingPD.handicap || existingPD.golfInfo?.handicap || null;
 
         // CRITICAL: Only include fields that exist in database schema
         // DO NOT spread profile object - it may contain 'handicap' which doesn't exist as column
@@ -325,7 +354,10 @@ class SupabaseClient {
             phone: profile.phone,
             email: profile.email,
             home_club: profile.home_club || profile.homeClub,
-            language: profile.language || 'en',
+            // Same clobber trap as the avatar: the DB trigger sync_profile_columns_to_jsonb
+            // mirrors this column into profile_data.preferences.language, so defaulting to 'en'
+            // reset a Thai/Korean/Japanese user's language on any save that didn't pass one.
+            language: profile.language || existingLang || 'en',
 
             // ===== NEW: Society Affiliation Fields =====
             society_id: cleanUUID(profile.society_id || profile.societyId),
@@ -338,32 +370,35 @@ class SupabaseClient {
 
             // ===== NEW: Store FULL profile data in JSONB column =====
             profile_data: {
-                personalInfo: profile.personalInfo || {},
+                ...existingPD,
+                personalInfo: mergeSection('personalInfo', profile.personalInfo),
                 golfInfo: {
-                    ...(profile.golfInfo || {}),
+                    ...mergeSection('golfInfo', profile.golfInfo),
                     // Ensure homeClub is in JSONB for UI compatibility
-                    homeClub: profile.home_course_name || profile.homeCourseName || profile.golfInfo?.homeClub || profile.profile_data?.golfInfo?.homeClub || profile.home_club || profile.homeClub || '',
-                    homeCourseId: cleanUUID(profile.home_course_id || profile.homeCourseId || profile.golfInfo?.homeCourseId || profile.profile_data?.golfInfo?.homeCourseId),
+                    homeClub: profile.home_course_name || profile.homeCourseName || profile.golfInfo?.homeClub || profile.profile_data?.golfInfo?.homeClub || profile.home_club || profile.homeClub || existingPD.golfInfo?.homeClub || '',
+                    homeCourseId: cleanUUID(profile.home_course_id || profile.homeCourseId || profile.golfInfo?.homeCourseId || profile.profile_data?.golfInfo?.homeCourseId || existingPD.golfInfo?.homeCourseId),
                     // Use the same handicap value for consistency
                     handicap: handicapValue
                 },
                 organizationInfo: {
-                    ...(profile.organizationInfo || {}),
+                    ...mergeSection('organizationInfo', profile.organizationInfo),
                     // Ensure society data is in JSONB for UI compatibility
-                    societyName: profile.society_name || profile.societyName || profile.organizationInfo?.societyName || '',
-                    societyId: cleanUUID(profile.society_id || profile.societyId || profile.organizationInfo?.societyId)
+                    societyName: profile.society_name || profile.societyName || profile.organizationInfo?.societyName || existingPD.organizationInfo?.societyName || '',
+                    societyId: cleanUUID(profile.society_id || profile.societyId || profile.organizationInfo?.societyId || existingPD.organizationInfo?.societyId)
                 },
-                roleSpecific: profile.roleSpecific || {},
-                professionalInfo: profile.professionalInfo || {},
-                skills: profile.skills || {},
-                preferences: profile.preferences || {},
-                media: profile.media || {},
-                privacy: profile.privacy || {},
+                roleSpecific: mergeSection('roleSpecific', profile.roleSpecific),
+                professionalInfo: mergeSection('professionalInfo', profile.professionalInfo),
+                skills: mergeSection('skills', profile.skills),
+                preferences: mergeSection('preferences', profile.preferences),
+                media: mergeSection('media', profile.media),
+                privacy: mergeSection('privacy', profile.privacy),
                 // Store any additional fields
                 handicap: handicapValue,  // Use same value for consistency
-                username: profile.username || null,
-                userId: profile.userId || profile.lineUserId,
-                linePictureUrl: profile.linePictureUrl || null
+                username: profile.username || existingPD.username || null,
+                userId: profile.userId || profile.lineUserId || existingPD.userId,
+                // NEVER null an avatar we already hold — a caller that doesn't know about the
+                // photo must not be able to delete it (see the merge note above).
+                linePictureUrl: profile.linePictureUrl || existingPD.linePictureUrl || null
             }
         };
 

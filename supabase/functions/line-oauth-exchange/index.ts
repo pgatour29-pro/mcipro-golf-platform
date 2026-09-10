@@ -75,6 +75,31 @@ Deno.serve(async (req: Request) => {
     const lineUserId: string = lineProfile.userId;
     console.log("[line-oauth-exchange] LINE user:", lineUserId);
 
+    // 2b. Avatar fallback: /v2/profile omits pictureUrl in some responses even when the
+    // account has a photo. We ask for the `openid` scope, so the id_token carries the same
+    // value in its `picture` claim — read it rather than registering the user faceless
+    // (a profile that starts with no avatar only ever gets another chance via a fresh LINE
+    // login, so a miss here sticks). Signature check is unnecessary: this JWT came straight
+    // from LINE's token endpoint over TLS and we use one claim as a display URL.
+    let linePictureUrl: string = lineProfile.pictureUrl || "";
+    if (!linePictureUrl && tokenData?.id_token) {
+      try {
+        const payload = String(tokenData.id_token).split(".")[1];
+        const decoded = JSON.parse(
+          atob(payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=")),
+        );
+        if (decoded?.picture) {
+          linePictureUrl = String(decoded.picture);
+          console.log("[line-oauth-exchange] pictureUrl recovered from id_token for:", lineUserId);
+        }
+      } catch (e) {
+        console.warn("[line-oauth-exchange] id_token picture decode failed:", String(e));
+      }
+    }
+    if (!linePictureUrl) {
+      console.log("[line-oauth-exchange] no LINE avatar available for:", lineUserId);
+    }
+
     // 3-6. Mint the v2 Supabase Auth session (profiles row + auth user + magic link).
     // BEST-EFFORT: LINE has already vouched for this user, so a failure in any of
     // these steps must NEVER block the login — we return the profile without a
@@ -208,7 +233,7 @@ Deno.serve(async (req: Request) => {
       profile: {
         userId: lineUserId,
         displayName: lineProfile.displayName || profile?.display_name || "LINE User",
-        pictureUrl: lineProfile.pictureUrl || "",
+        pictureUrl: linePictureUrl,
         statusMessage: lineProfile.statusMessage || "",
       },
       // Keep LINE token for backward compat (profile restore uses it)

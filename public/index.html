@@ -5022,6 +5022,14 @@
         #paceBlockPanel .pcb-cell.locked { background:rgba(239,68,68,0.08); border:1.5px solid rgba(239,68,68,0.55); color:#f87171; }
         body.theme-light #golferDashboard #golfer-scorecard #paceBlockPanel .pcb-cell.locked { background:rgba(220,38,38,0.07) !important; border-color:#dc2626 !important; color:#dc2626 !important; }
         #paceBlockPanel .pcb-caret { display:block; width:2px; height:22px; background:#ffffff; border-radius:1px; opacity:.9; }
+        /* Entry runs DOWN a column — one player's three holes — so the column that is up
+           is marked, not just the single live cell. */
+        #paceBlockPanel .pcb-p.on b { color:#4ade80 !important; }
+        #paceBlockPanel .pcb-p.on::after { content:''; display:block; height:2px; border-radius:1px; background:#22c55e; margin:4px 22% 0; }
+        body.theme-light #golferDashboard #golfer-scorecard #paceBlockPanel .pcb-p.on b { color:#15803d !important; }
+        body.theme-light #golferDashboard #golfer-scorecard #paceBlockPanel .pcb-p.on::after { background:#16a34a; }
+        #paceBlockPanel .pcb-cell.pcb-col.empty { border-color:rgba(34,197,94,0.45); }
+        body.theme-light #golferDashboard #golfer-scorecard #paceBlockPanel .pcb-cell.pcb-col.empty { border-color:rgba(22,163,74,0.45) !important; }
         #paceBlockPanel .pcb-ftk { font:700 8px/1 'JetBrains Mono',monospace; letter-spacing:.12em; color:#8C96A1; display:flex; align-items:center; }
         body.theme-light #golferDashboard #golfer-scorecard #paceBlockPanel .pcb-ftk { color:#96A1AC !important; }
         #paceBlockPanel .pcb-pts { text-align:center; font:700 12px/1 'JetBrains Mono',monospace; letter-spacing:.04em; color:#4ade80; padding-top:6px; }
@@ -92505,54 +92513,7 @@ class LiveScorecardSystem {
             if (bp) bp.style.display = (this.bitsGame && this.bitsGame.enabled) ? 'flex' : 'none';
         } catch (e) { /* cosmetic */ }
 
-        // SCV3: preview card (GROSS → NET → PTS) + NET PAR key hint — cosmetic, never blocks scoring
-        try {
-            const apPrev = this.players.find(p => p.id === this.currentPlayerId);
-            const dEl = document.getElementById('scv3PrevDigit');
-            const cEl = document.getElementById('scv3PrevCalc');
-            if (dEl && cEl) {
-                if (!apPrev) {
-                    dEl.textContent = '–';
-                    cEl.textContent = 'SELECT A PLAYER';
-                } else {
-                    const holeObjPrev = this.courseData?.holes?.find(h => (h.hole_number || h.hole) === this.currentHole) || null;
-                    const parPrev = holeObjPrev ? (holeObjPrev.par || 4) : 4;
-                    let shotsPrev = 0;
-                    try {
-                        const enginePrev = LiveScorecardSystem?.GolfScoringEngine || null;
-                        if (enginePrev && this.courseData?.holes?.length) {
-                            const allocPrev = enginePrev.allocHandicapShots(this.courseData.holes, apPrev.handicap) || {};
-                            shotsPrev = allocPrev[this.currentHole] || 0;
-                        }
-                    } catch (e2) { shotsPrev = 0; }
-                    const grossPrev = this.getPlayerScore(apPrev.id, this.currentHole);
-                    if (grossPrev) {
-                        const netPrev = grossPrev - shotsPrev;
-                        dEl.textContent = grossPrev;
-                        if (isStablefordActive) {
-                            const ptsPrev = Math.max(0, 2 + (parPrev - netPrev));
-                            cEl.textContent = 'GROSS ' + grossPrev + ' → NET ' + netPrev + ' → ' + ptsPrev + ' PTS';
-                        } else {
-                            cEl.textContent = 'GROSS ' + grossPrev + ' → NET ' + netPrev;
-                        }
-                    } else {
-                        dEl.textContent = '–';
-                        // Pete 2026-09-05, live from Treasure Hill: golfers were entering NET or
-                        // STABLEFORD POINTS here. The empty state is the moment they decide what to
-                        // tap, so it names the unit and both wrong answers. The filled state below
-                        // already reads 'GROSS n → NET n → n PTS', which teaches the same thing.
-                        cEl.textContent = _lvT('scorecard.entry.grosshint', 'TAP GROSS STROKES — NOT NET OR POINTS');
-                    }
-                    // NET PAR hint on the keypad key = par + strokes received
-                    document.querySelectorAll('.keypad-num-btn.scv3-hint').forEach(function(b) { b.classList.remove('scv3-hint'); });
-                    const hintKey = parPrev + shotsPrev;
-                    if (hintKey >= 1 && hintKey <= 9) {
-                        const hintBtn = document.querySelector('.keypad-num-btn[onclick*="enterDigit(' + hintKey + ')"]');
-                        if (hintBtn) hintBtn.classList.add('scv3-hint');
-                    }
-                }
-            }
-        } catch (e) { /* cosmetic only */ }
+        this._paintEntryPreview();
 
         // TRADV: enforce the chosen scorecard view + repaint the grid. Idempotent, so every
         // path into renderHole (start, resume, realtime, ownership flips) lands on the right view.
@@ -94739,6 +94700,127 @@ class LiveScorecardSystem {
         const target = Math.max(0, Math.min(order.length - 1, idxs[0] + (dir < 0 ? -3 : 3)));
         this.paceGoToCell(order[target], 0);
     }
+    // The GROSS → NET → PTS readback above the keypad + the NET PAR key hint. Pulled out of
+    // renderHole so the 3-hole cursor can repaint it on its own without a full hole render.
+    _paintEntryPreview() {
+        // SCV3: preview card (GROSS → NET → PTS) + NET PAR key hint — cosmetic, never blocks scoring
+        try {
+            const isStablefordActive = this.scoringFormats && (this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford'));
+            const apPrev = this.players.find(p => p.id === this.currentPlayerId);
+            const dEl = document.getElementById('scv3PrevDigit');
+            const cEl = document.getElementById('scv3PrevCalc');
+            if (dEl && cEl) {
+                if (!apPrev) {
+                    dEl.textContent = '–';
+                    cEl.textContent = 'SELECT A PLAYER';
+                } else {
+                    const holeObjPrev = this.courseData?.holes?.find(h => (h.hole_number || h.hole) === this.currentHole) || null;
+                    const parPrev = holeObjPrev ? (holeObjPrev.par || 4) : 4;
+                    let shotsPrev = 0;
+                    try {
+                        const enginePrev = LiveScorecardSystem?.GolfScoringEngine || null;
+                        if (enginePrev && this.courseData?.holes?.length) {
+                            const allocPrev = enginePrev.allocHandicapShots(this.courseData.holes, apPrev.handicap) || {};
+                            shotsPrev = allocPrev[this.currentHole] || 0;
+                        }
+                    } catch (e2) { shotsPrev = 0; }
+                    const grossPrev = this.getPlayerScore(apPrev.id, this.currentHole);
+                    if (grossPrev) {
+                        const netPrev = grossPrev - shotsPrev;
+                        dEl.textContent = grossPrev;
+                        if (isStablefordActive) {
+                            const ptsPrev = Math.max(0, 2 + (parPrev - netPrev));
+                            cEl.textContent = 'GROSS ' + grossPrev + ' → NET ' + netPrev + ' → ' + ptsPrev + ' PTS';
+                        } else {
+                            cEl.textContent = 'GROSS ' + grossPrev + ' → NET ' + netPrev;
+                        }
+                    } else {
+                        dEl.textContent = '–';
+                        // Pete 2026-09-05, live from Treasure Hill: golfers were entering NET or
+                        // STABLEFORD POINTS here. The empty state is the moment they decide what to
+                        // tap, so it names the unit and both wrong answers. The filled state below
+                        // already reads 'GROSS n → NET n → n PTS', which teaches the same thing.
+                        cEl.textContent = _lvT('scorecard.entry.grosshint', 'TAP GROSS STROKES — NOT NET OR POINTS');
+                    }
+                    // NET PAR hint on the keypad key = par + strokes received
+                    document.querySelectorAll('.keypad-num-btn.scv3-hint').forEach(function(b) { b.classList.remove('scv3-hint'); });
+                    const hintKey = parPrev + shotsPrev;
+                    if (hintKey >= 1 && hintKey <= 9) {
+                        const hintBtn = document.querySelector('.keypad-num-btn[onclick*="enterDigit(' + hintKey + ')"]');
+                        if (hintBtn) hintBtn.classList.add('scv3-hint');
+                    }
+                }
+            }
+        } catch (e) { /* cosmetic only */ }
+    }
+
+    // Every (player, hole) cell of the current block in ENTRY ORDER.
+    // PLAYER-MAJOR (Pete 2026-09-10): one player's three holes, THEN the next player.
+    // Hole-major made the scorer poll all four players on every hole — "time consuming …
+    // having to go back and forth other players to see what they scored". Reading down a
+    // player's column is also exactly how the block grid is laid out.
+    _paceCells() {
+        const order = this.holeOrder || [];
+        const holes = this._paceBlockIdxs().map(i => order[i]);
+        const cells = [];
+        this._paceCards().forEach(p => holes.forEach(h => cells.push({ pid: p.id, hole: h })));
+        return cells;
+    }
+    // Move the keypad to a cell WITHOUT a full renderHole: in this mode the hole changes on
+    // nearly every tap, and renderHole rebuilds the whole group grid (that cost is why
+    // updatePlayerScoreDisplay exists). Everything a hole change actually needs is here.
+    _paceMoveCursor(pid, hole) {
+        const idx = (this.holeOrder || []).indexOf(Number(hole));
+        if (idx < 0) return false;
+        this.currentHoleIndex = idx;
+        this.currentHole = Number(hole);
+        if (idx > this.latestHoleIndex) this.latestHoleIndex = idx;
+        this.currentPlayerId = pid;
+        this.currentScore = '';
+        try { this._applyPaceBlock(); } catch (e) { /* cosmetic */ }
+        try { this._paintEntryPreview(); } catch (e) { /* cosmetic */ }
+        try { this.updateGoToCurrentButton(); } catch (e) {}
+        this.debouncedSaveRoundState();
+        return true;
+    }
+    // Where the cursor goes after a save in 3-hole mode.
+    _paceAdvanceAfterSave(savedPid, savedHole, score) {
+        this.updatePlayerScoreDisplay(savedPid, savedHole, score);
+        if (typeof liveLeaderboardOpen !== 'undefined' && liveLeaderboardOpen && typeof refreshLiveLeaderboard === 'function') {
+            try { refreshLiveLeaderboard(); } catch (e) {}
+        }
+        const cells = this._paceCells();
+        const at = cells.findIndex(c => c.pid === savedPid && c.hole === savedHole);
+
+        // Next cell in entry order.
+        if (at >= 0 && at < cells.length - 1) {
+            const n = cells[at + 1];
+            if (this._paceMoveCursor(n.pid, n.hole)) return;
+        }
+
+        // Ran off the end of the block. Anything still blank gets the cursor first — rolling
+        // forward with a gap is how holes end up unscored at the finish.
+        const gap = cells.find(c => !this.getPlayerScore(c.pid, c.hole));
+        if (gap) { this._paceMoveCursor(gap.pid, gap.hole); return; }
+
+        // Block complete — roll the window on. A beat first, so the last score registers.
+        const order = this.holeOrder || [];
+        const idxs = this._paceBlockIdxs();
+        const nextStart = (idxs[0] || 0) + 3;
+        try { this._applyPaceBlock(); } catch (e) {}
+        if (nextStart > order.length - 1) return;   // last block of the round: stay put
+        clearTimeout(this.autoAdvanceTimeout);
+        const self = this;
+        const fromHole = savedHole;
+        this.autoAdvanceTimeout = setTimeout(function () {
+            self.autoAdvanceTimeout = null;
+            // SKIP GUARD, same family as the hole-by-hole timers: never advance from a block
+            // the device has already left (a tap or a realtime sync may have moved it).
+            if (self.currentHole !== fromHole) return;
+            const cards = self._paceCards();
+            self._paceMoveCursor((cards[0] || {}).id || self.currentPlayerId, order[nextStart]);
+        }, 900);
+    }
     _applyPaceBlock() {
         const sec = document.getElementById('scorecardActiveSection');
         if (!sec) return;
@@ -94763,6 +94845,11 @@ class LiveScorecardSystem {
         const blockNo = Math.floor(Math.max(0, idxs[0] - anchor) / 3) + 1;
         const blockTotal = blockNo + Math.ceil(Math.max(0, order.length - (idxs[0] + idxs.length)) / 3);
         const range = holes.length > 1 ? (holes[0] + '-' + holes[holes.length - 1]) : String(holes[0]);
+        const curPid = this.currentPlayerId;
+        const curCol = Math.max(0, cards.findIndex(p => p.id === curPid));
+        // Entry runs DOWN a column (one player's three holes), so say which player is up.
+        const meta = esc(_lvT('scorecard.pace.block', 'BLOCK')) + ' ' + blockNo + '/' + blockTotal
+            + (cards.length > 1 ? ' · P' + (curCol + 1) + '/' + cards.length : '');
 
         // Previous block fully in? Say so once, then get out of the way.
         let saved = '';
@@ -94777,7 +94864,7 @@ class LiveScorecardSystem {
         g += '<div class="pcb-hk">' + esc(_lvT('scorecard.pace.holek', 'HOLE')) + '</div>';
         cards.forEach(function (p, i) {
             const hcpNum = (p.handicap !== undefined && p.handicap !== null && p.handicap !== '') ? Math.round(Number(p.handicap)) : null;
-            g += '<div class="pcb-p"><b>' + esc(labels[i]) + '</b><s>' + (hcpNum !== null ? esc(String(hcpNum)) : '&nbsp;') + '</s></div>';
+            g += '<div class="pcb-p' + (p.id === curPid ? ' on' : '') + '"><b>' + esc(labels[i]) + '</b><s>' + (hcpNum !== null ? esc(String(hcpNum)) : '&nbsp;') + '</s></div>';
         });
         holes.forEach(h => {
             const hd = this.getHoleData(h);
@@ -94790,7 +94877,8 @@ class LiveScorecardSystem {
                 const active = mine && h === this.currentHole && p.id === this.currentPlayerId;
                 const cls = !mine ? 'locked' : (active ? 'active' : (sc ? 'filled' : 'empty'));
                 const body = (active && !sc) ? '<span class="pcb-caret"></span>' : (sc ? sc : '&ndash;');
-                g += '<button class="pcb-cell ' + cls + '" onclick="LiveScorecardManager.paceGoToCell(' + h + ',' + i + ')">' + body + '</button>';
+                const col = (mine && p.id === curPid && !active) ? ' pcb-col' : '';
+                g += '<button class="pcb-cell ' + cls + col + '" onclick="LiveScorecardManager.paceGoToCell(' + h + ',' + i + ')">' + body + '</button>';
             });
         });
         g += '<div class="pcb-sep"></div><div class="pcb-ftk">' + esc(_lvT('scorecard.pace.ptsk', 'BLOCK PTS')) + '</div>';
@@ -94824,7 +94912,7 @@ class LiveScorecardSystem {
                 '</div></div>' +
                 '<div class="scv3-holeinfo">' +
                     '<div class="scv3-meta-row">' +
-                        '<span class="pcb-meta">' + esc(_lvT('scorecard.pace.block', 'BLOCK')) + ' ' + blockNo + '/' + blockTotal + '</span>' +
+                        '<span class="pcb-meta">' + meta + '</span>' +
                         '<span style="flex:1;"></span>' +
                         '<button onclick="LiveScorecardManager.completeRound(\'end\')" class="scv3-end" style="flex:none;">END</button>' +
                     '</div>' +
@@ -95413,7 +95501,13 @@ class LiveScorecardSystem {
         }
         const isLastPlayer = nextCtlIdx === -1;
 
-        if (!isLastPlayer) {
+        // 3-HOLE PACE owns its own rotation: one player's three holes, then the next player.
+        // The hole-by-hole rotation below (next player on THIS hole, then nextHole when the
+        // hole is done for everyone) is the wrong order for it, and its timers would fight
+        // the block cursor.
+        if (this._paceOn()) {
+            this._paceAdvanceAfterSave(savingPlayerId, savingHole, score);
+        } else if (!isLastPlayer) {
             // NOT last player — targeted DOM update + IMMEDIATE player switch
             this.updatePlayerScoreDisplay(savingPlayerId, savingHole, score);
             const nextPlayerId = this.players[nextCtlIdx].id;
@@ -163912,7 +164006,7 @@ showOrganizerTab = function(tabName) {
                     howTitle: 'How it works',
                     how: [
                         'Tap EVERY 3 HOLES on the Live Scorecard — it sits right at the top of the screen.',
-                        'Enter three holes at a time. The app moves down the block for you and opens the next three by itself.',
+                        'Enter one player\'s three holes, then the next player\'s. No more asking everyone what they got on every hole.',
                         'Every tap still saves on its own. There is no save button and nothing to lose if your phone dies.',
                         'Blocks start where you turn it on: switch on after the 4th and they run 5·6·7, then 8·9·10.',
                         'Works whether you are scoring only yourself, your team, or the whole group.'
@@ -163930,7 +164024,7 @@ showOrganizerTab = function(tabName) {
                     howTitle: 'ใช้งานอย่างไร',
                     how: [
                         'แตะ "ทุก 3 หลุม" บนหน้าสกอร์การ์ดสด — อยู่ด้านบนสุดของหน้าจอ',
-                        'กรอกทีละ 3 หลุม แอปจะเลื่อนให้เองภายในชุด และเปิดชุดถัดไปให้อัตโนมัติ',
+                        'กรอกของผู้เล่นคนหนึ่งให้ครบ 3 หลุม แล้วค่อยไปคนถัดไป ไม่ต้องถามทุกคนทีละหลุมอีกต่อไป',
                         'ทุกการแตะยังบันทึกทันทีเหมือนเดิม ไม่มีปุ่มบันทึก และไม่มีอะไรหายแม้มือถือดับ',
                         'ชุดเริ่มจากจุดที่คุณเปิดใช้ เปิดหลังหลุม 4 ก็จะเป็น 5·6·7 แล้วต่อด้วย 8·9·10',
                         'ใช้ได้ทั้งเมื่อบันทึกเฉพาะตัวเอง ทีมของคุณ หรือทั้งกลุ่ม'
@@ -163948,7 +164042,7 @@ showOrganizerTab = function(tabName) {
                     howTitle: '사용 방법',
                     how: [
                         '실시간 스코어카드 맨 위의 "3홀마다"를 누르세요.',
-                        '3홀씩 입력합니다. 커서는 앱이 옮겨 주고, 다음 3홀도 알아서 열립니다.',
+                        '한 선수의 3홀을 먼저 입력하고 다음 선수로 넘어갑니다. 홀마다 모두에게 스코어를 묻지 않아도 됩니다.',
                         '모든 입력은 여전히 즉시 저장됩니다. 저장 버튼이 없고, 배터리가 나가도 잃을 것이 없습니다.',
                         '묶음은 켠 홀부터 시작합니다. 4번 홀 뒤에 켜면 5·6·7, 그다음 8·9·10입니다.',
                         '본인만 입력하든, 팀이든, 조 전체든 모두 사용할 수 있습니다.'
@@ -163966,7 +164060,7 @@ showOrganizerTab = function(tabName) {
                     howTitle: '使い方',
                     how: [
                         'ライブスコアカード上部の「3ホールごと」をタップします。',
-                        '3ホールずつ入力します。カーソルはアプリが動かし、次の3ホールも自動で開きます。',
+                        '一人の3ホールを入力してから次の人へ。毎ホール全員にスコアを聞く必要はありません。',
                         'タップごとに保存されるのは今までどおりです。保存ボタンはなく、電池が切れても失われません。',
                         'まとまりはオンにしたホールから始まります。4番のあとなら5·6·7、次が8·9·10です。',
                         '自分だけ、チーム、組全員 — どの入力でも使えます。'

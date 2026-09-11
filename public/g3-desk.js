@@ -227,6 +227,17 @@
   ".g3-wkpop .it .st{font-size:17px;color:#D6DED8;flex:none}.g3-wkpop .it .st.on{color:#B45309}.g3-wkpop .it .st:hover{color:#8A5F0E}\n" +
   ".g3-wkpop .ft{display:flex;align-items:center;justify-content:space-between;padding:9px 10px;border-top:1px solid #DDE5DE;background:#FAFCFA}\n" +
   "#g3Week .g3-tbl td.day{border-left:3px solid transparent}\n" +
+  /* ---- v1162: the This-week table has to FIT its card. Status is the LAST column, so the
+     moment the table is wider than the card it is exactly the Registered pill / Register button
+     that gets clipped off the right edge (at 1366 the table wanted 875px inside a 684px card,
+     and .g3-list's overflow:auto turned that into a horizontal scrollbar nobody finds).
+     Course is the one elastic column - it truncates with an ellipsis. A capped cell also sets
+     the column's FLOOR (white-space:nowrap makes min-content the whole course name), so the cap
+     has to come down with the viewport; below 1500 the right rail gives back 40px as well.
+     Verified 1280 -> 2560: scrollWidth === clientWidth at every step. ---- */
+  "#g3Week .g3-tbl td.nm{max-width:240px;overflow:hidden;text-overflow:ellipsis}\n" +
+  "@media (max-width:1499px){#golferDashboard.g3.light-mode:not(.round-active) #g3Home{grid-template-columns:minmax(0,1fr) 340px}#g3Week .g3-tbl td.nm{max-width:190px}}\n" +
+  "@media (max-width:1365px){#g3Week .g3-tbl td.nm{max-width:130px}}\n" +
   /* dark colour theme */
   "#golferDashboard.g3:not(.theme-light) .g3-flt{background:#16241C;border-color:#1F2E25}\n" +
   "#golferDashboard.g3:not(.theme-light) .g3-fc{background:#111C16;border-color:#2F4237;color:#B2BCC6}\n" +
@@ -657,7 +668,7 @@
         var soc = s.code || shortSoc(ev.societyName || ev.organizerName || '');
         var course = ev.courseName || ev.name || ev.title || '';
         var cnt = (ev.registeredCount != null) ? (ev.registeredCount + (ev.maxPlayers ? '/' + ev.maxPlayers : '')) : '';
-        return '<tr class="' + (ds === todayStr ? 'on' : '') + '" onclick="GolferEventsSystem.openEventDetail(\'' + esc(ev.id) + '\')"><td class="day" style="font-weight:700;border-left-color:' + s.c + '">' + esc(dayLbl) + '</td><td><span style="display:inline-flex;align-items:center;gap:6px"><i style="width:8px;height:8px;border-radius:50%;background:' + s.c + ';display:inline-block;flex:none"></i>' + esc(soc) + '</span></td><td class="nm">' + esc(course) + '</td><td class="mono">' + esc(hhmm(ev.departureTime) || '—') + '</td><td class="mono">' + esc(hhmm(ev.startTime) || '—') + '</td><td>' + tr + '</td><td class="mono" style="color:#425148">' + esc(cnt) + '</td><td>' + st + '</td></tr>';
+        return '<tr class="' + (ds === todayStr ? 'on' : '') + '" onclick="GolferEventsSystem.openEventDetail(\'' + esc(ev.id) + '\')"><td class="day" style="font-weight:700;border-left-color:' + s.c + '">' + esc(dayLbl) + '</td><td><span style="display:inline-flex;align-items:center;gap:6px"><i style="width:8px;height:8px;border-radius:50%;background:' + s.c + ';display:inline-block;flex:none"></i>' + esc(soc) + '</span></td><td class="nm" title="' + esc(course) + '">' + esc(course) + '</td><td class="mono">' + esc(hhmm(ev.departureTime) || '—') + '</td><td class="mono">' + esc(hhmm(ev.startTime) || '—') + '</td><td>' + tr + '</td><td class="mono" style="color:#425148">' + esc(cnt) + '</td><td>' + st + '</td></tr>';
       }).join('');
       body.innerHTML = '<table class="g3-tbl"><thead><tr><th>' + esc(T('g3.day', 'Day')) + '</th><th>' + esc(T('g3.society', 'Society')) + '</th><th>' + esc(T('g3.course', 'Course')) + '</th><th class="mono">' + esc(T('g3.leave', 'Leave')) + '</th><th class="mono">' + esc(T('g3.tee', 'Tee')) + '</th><th>' + esc(T('g3.transport', 'Transport')) + '</th><th class="mono">' + esc(T('g3.players', 'players')) + '</th><th>' + esc(T('g3.status', 'Status')) + '</th></tr></thead><tbody>' + rows + '</tbody></table>';
     },

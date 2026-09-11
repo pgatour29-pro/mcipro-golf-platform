@@ -11462,6 +11462,7 @@
                 'scorecard.sun.pill': 'SUN',
                 'scorecard.sun.on': 'Sunlight mode on',
                 'scorecard.sun.off': 'Sunlight mode off',
+                'scorecard.sun.auto': 'Sunlight mode on for this round — tap WHITE on the theme rail for the normal look',
                 'scorecard.demo.nosave': 'Demo round — nothing was saved',
                 'scorecard.demo.finishing': 'Demo Complete',
                 'scorecard.demo.livefirst': 'You have a round in progress — finish or end it first, then try the demo',
@@ -13920,6 +13921,7 @@
                 'scorecard.sun.pill': 'แดด',
                 'scorecard.sun.on': 'เปิดโหมดกลางแดด',
                 'scorecard.sun.off': 'ปิดโหมดกลางแดด',
+                'scorecard.sun.auto': 'เปิดโหมดกลางแดดสำหรับรอบนี้ — แตะ ขาว ที่แถบธีม เพื่อกลับสู่แบบปกติ',
                 'scorecard.demo.nosave': 'รอบทดลอง — ไม่มีการบันทึกข้อมูล',
                 'scorecard.demo.finishing': 'จบรอบทดลอง',
                 'scorecard.demo.livefirst': 'คุณมีรอบที่กำลังเล่นอยู่ — กรุณาจบหรือปิดรอบนั้นก่อน แล้วจึงลองรอบทดลอง',
@@ -16605,6 +16607,7 @@
                 'scorecard.sun.pill': '햇빛',
                 'scorecard.sun.on': '햇빛 모드 켬',
                 'scorecard.sun.off': '햇빛 모드 끔',
+                'scorecard.sun.auto': '이번 라운드는 햇빛 모드입니다 — 일반 화면은 테마 바의 화이트를 탭하세요',
                 'scorecard.demo.nosave': '체험 라운드 — 아무것도 저장되지 않았습니다',
                 'scorecard.demo.finishing': '체험 완료',
                 'scorecard.demo.livefirst': '진행 중인 라운드가 있습니다 — 먼저 종료한 뒤 체험을 시작하세요',
@@ -18876,6 +18879,7 @@
                 'scorecard.sun.pill': '屋外',
                 'scorecard.sun.on': '屋外モード オン',
                 'scorecard.sun.off': '屋外モード オフ',
+                'scorecard.sun.auto': 'このラウンドは屋外モードです — 通常の表示に戻すにはテーマバーの「ホワイト」をタップ',
                 'scorecard.demo.nosave': '体験ラウンド — 何も保存されていません',
                 'scorecard.demo.finishing': '体験終了',
                 'scorecard.demo.livefirst': '進行中のラウンドがあります — 先に終了してから体験してください',
@@ -148482,11 +148486,51 @@ window.ThemeMode = {
         } catch (e) { return false; }
     },
 
+    // v1160: a mode nobody switches on is a mode nobody has. Sun shipped OFF by
+    // default (v1132) and v1147 put it one tap away on #thmStation -- but the player
+    // who most needs it is standing in 40,000 lux squinting at a screen he cannot
+    // read well enough to FIND the control on. So an untouched preference now
+    // follows the round: sun while .round-active, white the rest of the time.
+    // SUNKEY is written only by setSun(), so the moment a player touches the rail --
+    // sun or any base -- that choice is explicit and wins from then on.
+    _roundDefault() {
+        try {
+            var gd = document.getElementById('golferDashboard');
+            return !!(gd && gd.classList.contains('round-active'));
+        } catch (e) { return false; }
+    },
+
+    // absent = never chosen. Only 'on'/'off' count as a decision.
+    sunChosen() {
+        var v = null;
+        try { v = localStorage.getItem(this.SUNKEY); } catch (e) {}
+        return v === 'on' || v === 'off';
+    },
+
     sunOn() {
         if (this._sun === null) {
+            // Unchosen: answer from the round and DO NOT cache. Caching here would
+            // latch the first read and stop it tracking the round starting/ending.
+            if (!this.sunChosen()) return this._roundDefault();
             try { this._sun = (localStorage.getItem(this.SUNKEY) === 'on'); } catch (e) { this._sun = false; }
         }
         return !!this._sun;
+    },
+
+    // Say it ONCE, the first time sun lets itself in. A deliberate pick needs no
+    // toast -- the rail is its own feedback (v1147) -- but a mode that turns ITSELF
+    // on has to explain why and name the way out, or it reads as a bug.
+    HINTKEY: 'mcipro_sunHintSeen',
+    _hint() {
+        try {
+            if (localStorage.getItem(this.HINTKEY) === '1') return;
+            localStorage.setItem(this.HINTKEY, '1');
+        } catch (e) { return; }   // no storage = no way to stop it repeating, so never start
+        try {
+            var m = 'Sunlight mode on for this round \u2014 tap WHITE on the theme rail for the normal look';
+            try { m = _lvT('scorecard.sun.auto', m); } catch (e2) {}
+            if (window.NotificationManager) window.NotificationManager.show(m, 'success', 4500);
+        } catch (e) {}
     },
 
     setSun(on, quiet) {
@@ -148546,6 +148590,8 @@ window.ThemeMode = {
         document.body.classList.toggle('theme-glass', glass);
         if (dash) dash.classList.toggle('theme-glass', glass);
         try { if (window.GlassGround) window.GlassGround.sync(glass); } catch (e) {}
+        // v1160: sun let itself in (never-chosen preference + live round) -- explain once.
+        if (sun && !this.sunChosen()) this._hint();
         // Update every theme toggle button (icon + label show what you switch TO)
         var nxt = this._next();
         var nIcon = (nxt === 'dark') ? 'dark_mode' : (nxt === 'glass') ? 'blur_on' : 'light_mode';

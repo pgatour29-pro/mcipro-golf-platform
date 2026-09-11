@@ -115977,28 +115977,31 @@ window.SocietyOrganizerSystem = new SocietyOrganizerManager();
 
 // Society Default Fees — load/save per-society transport + competition defaults
 async function loadSocietyDefaultFees() {
+    // v1163c: cache the society's transport default so EventCourseSelect.transportFeeFor can use
+    // it as the baseline. Without it the course picker overwrote JOA's ฿400 with TRGG's ฿300.
+    const _cache = (f) => { window._societyDefaultTransportFee = f.transport; return f; };
     try {
         const societyId = AppState.selectedSociety?.id;
-        if (!societyId || !window.SupabaseDB?.client) return { transport: 300, competition: 250 };
+        if (!societyId || !window.SupabaseDB?.client) return _cache({ transport: 300, competition: 250 });
         const { data } = await window.SupabaseDB.client
             .from('society_profiles')
             .select('default_transport_fee, default_competition_fee')
             .eq('id', societyId)
             .single();
         if (data) {
-            return {
+            return _cache({
                 transport: data.default_transport_fee ?? 300,
                 competition: data.default_competition_fee ?? 250
-            };
+            });
         }
     } catch (e) { console.warn('[Fees] Load defaults error:', e); }
-    return { transport: 300, competition: 250 };
+    return _cache({ transport: 300, competition: 250 });
 }
 
 async function saveSocietyDefaultFees() {
     try {
         const societyId = AppState.selectedSociety?.id;
-        if (!societyId) { NotificationManager.show('No society selected', 'error'); return; }
+        if (!societyId) { window.NotificationManager.show('No society selected', 'error'); return; }
         const transport = parseFloat(document.getElementById('eventTransportFee').value) || 0;
         const competition = parseFloat(document.getElementById('eventCompetitionFee').value) || 0;
         const { error } = await window.SupabaseDB.client
@@ -116009,11 +116012,12 @@ async function saveSocietyDefaultFees() {
             })
             .eq('id', societyId);
         if (error) throw error;
-        NotificationManager.show(`Default fees saved: Transport ฿${transport}, Competition ฿${competition}`, 'success');
+        window._societyDefaultTransportFee = transport;   // keep the course-picker baseline in step
+        window.NotificationManager.show(`Default fees saved: Transport ฿${transport}, Competition ฿${competition}`, 'success');
         console.log('[Fees] Society defaults saved:', { societyId, transport, competition });
     } catch (e) {
         console.error('[Fees] Save defaults error:', e);
-        NotificationManager.show('Failed to save default fees: ' + e.message, 'error');
+        window.NotificationManager.show('Failed to save default fees: ' + e.message, 'error');
     }
 }
 window.loadSocietyDefaultFees = loadSocietyDefaultFees;
@@ -116155,13 +116159,26 @@ window.EventCourseSelect = {
         sel.innerHTML = html;
         this.fillDatalist(courses);
     },
-    // Transport-fee default per course: the FAR courses (extra fuel + tolls) = ฿400, everything else = ฿300.
+    // Transport-fee default per course. The SOCIETY's own default (society_profiles
+    // .default_transport_fee) is the baseline: JOA charges ฿400 at every course (Pete,
+    // 2026-09-11), so a society already at the far rate has no local/far split and its default
+    // stands everywhere. Only a society on the ฿300 local baseline (TRGG, JGTS) pays the +฿100
+    // fuel-and-tolls uplift at the FAR courses below. Before v1163c this returned a flat
+    // TRGG 300/400 for everyone, so picking a course WIPED JOA's ฿400 back to ฿300 on their four
+    // most-used venues (Eastern Star, Burapha, Phoenix, Hermes).
     // Matched by keyword so venue-name variants ("Khao Kheow Country Club" etc.) all resolve.
+    // Laem Chabang is LOCAL for TRGG (Pete, 2026-09-11) — do not add it.
+    // Mirrored in supabase/functions/sync-trgg-schedule/index.ts — keep the two lists in sync.
     _farCourse: ['khao k', 'mountain shadow', 'bangpra', 'bangpakong', 'royal lakeside', 'pleasant valley', 'greenwood', 'pattavia', 'pattana', 'treasure hill'],
-    transportFeeFor(courseName) {
+    isFarCourse(courseName) {
         const n = String(courseName || '').toLowerCase();
-        for (let i = 0; i < this._farCourse.length; i++) { if (n.indexOf(this._farCourse[i]) >= 0) return 400; }
-        return 300;
+        for (let i = 0; i < this._farCourse.length; i++) { if (n.indexOf(this._farCourse[i]) >= 0) return true; }
+        return false;
+    },
+    transportFeeFor(courseName) {
+        const base = Number(window._societyDefaultTransportFee) > 0 ? Number(window._societyDefaultTransportFee) : 300;
+        if (base >= 400) return base;   // flat-rate society — every course rides the same fee
+        return this.isFarCourse(courseName) ? 400 : base;
     },
     onChange(sel) {
         if (sel.value === '__addnew__') {

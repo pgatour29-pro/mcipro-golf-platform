@@ -78562,6 +78562,21 @@ window.AdminSystem = AdminSystem;
 // SOCIETY GOLF SYSTEM - Supabase Integration
 // ============================================
 
+// v1163: ONE rule for the transport/competition add-on prices, used by the registration
+// WRITE path and the member's live receipt so the two can never disagree again.
+// The ฿300/฿250 fallbacks exist for events whose organizer never filled the fee boxes — but
+// they must only apply to an event that is actually PRICED in the app. entry_fee 0 means a
+// package round (the King of the Mountain / Chiang Mai Classic tour rounds, where the trip
+// price already covers golf, bus and comp) or an unpriced placeholder; inventing ฿250 + ฿300
+// there bills a member for something they have already paid for. No green fee ⇒ no add-ons.
+window.eventAddOnFees = function (ev) {
+    const base = parseFloat(ev && (ev.memberFee ?? ev.member_fee)) || parseFloat(ev && (ev.baseFee ?? ev.entry_fee)) || 0;
+    const tf = parseFloat(ev && (ev.transportFee ?? ev.transport_fee)) || 0;
+    const cf = parseFloat(ev && (ev.competitionFee ?? ev.competition_fee)) || 0;
+    if (base <= 0) return { transportFee: tf, competitionFee: cf, priced: false };
+    return { transportFee: tf || 300, competitionFee: cf || 250, priced: true };
+};
+
 class SocietyGolfSupabase {
     constructor() {
         this.subscriptions = [];
@@ -79253,9 +79268,11 @@ class SocietyGolfSupabase {
         // Calculate total_fee for logging/display (not stored in DB yet)
         const memberFee = parseFloat(event.memberFee) || parseFloat(event.baseFee) || 0;
         const nonMemberFee = parseFloat(event.nonMemberFee) || 0;
-        // Fall back to society defaults (300/250) if event doesn't have fees set
-        const transportFee = parseFloat(event.transportFee) || 300;
-        const competitionFee = parseFloat(event.competitionFee) || 250;
+        // Fall back to society defaults (300/250) only when the event is actually priced —
+        // see window.eventAddOnFees.
+        const _addOn = window.eventAddOnFees(event);
+        const transportFee = _addOn.transportFee;
+        const competitionFee = _addOn.competitionFee;
         // TRGG auto-adds the competition fee to EVERY registrant (mandatory, not a per-player
         // opt-in). Force it on for TRGG so it lands in the stored total + flag; the organizer can
         // still waive an individual at the payment slip.
@@ -134477,15 +134494,19 @@ class GolferEventsManager {
         const L = this._regL || GolferEventsManager.REG_FORM_L10N.en;
 
         const baseFee = (this.currentEvent.baseFee || 0) + (this.currentEvent.cartFee || 0) + (this.currentEvent.caddyFee || 0);
-        // Default Pattaya society fees: transport 300, competition 250
-        const transportFee = parseFloat(this.currentEvent.transportFee) || 300;
-        const competitionFee = parseFloat(this.currentEvent.competitionFee) || 250;
+        // Default Pattaya society fees: transport 300, competition 250 — but only on a PRICED
+        // event. Same rule as the registration write path (window.eventAddOnFees) so the
+        // receipt the member reads and the total_fee that gets stored always agree.
+        const _addOn = window.eventAddOnFees(this.currentEvent);
+        const transportFee = _addOn.transportFee;
+        const competitionFee = _addOn.competitionFee;
 
         // Fee labels on the toggle tiles
         const transportLabel = document.getElementById('regTransportFeeLabel');
         const compLabel = document.getElementById('regCompetitionFeeLabel');
-        if (transportLabel) transportLabel.textContent = `+฿${transportFee.toLocaleString()}`;
-        if (compLabel) compLabel.textContent = `+฿${competitionFee.toLocaleString()}`;
+        // A package round prices its add-ons at 0 — show a bare toggle, never "+฿0".
+        if (transportLabel) transportLabel.textContent = transportFee > 0 ? `+฿${transportFee.toLocaleString()}` : '';
+        if (compLabel) compLabel.textContent = competitionFee > 0 ? `+฿${competitionFee.toLocaleString()}` : '';
 
         const wantTransport = document.getElementById('regWantTransport')?.checked || false;
         const wantCompetition = document.getElementById('regWantCompetition')?.checked || false;

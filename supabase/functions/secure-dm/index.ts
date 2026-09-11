@@ -24,7 +24,8 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
 
   try {
-    const { action, user_id, recipient_id, message_text, message_id, limit } = await req.json();
+    const { action, user_id, recipient_id, message_text, message_id, limit,
+            scope, reply_to_id, reply_to_text, reply_to_name } = await req.json();
 
     if (!user_id) return json({ error: "Missing user_id" }, 400, origin);
 
@@ -80,13 +81,23 @@ Deno.serve(async (req: Request) => {
         return json({ error: "Missing recipient_id or message_text" }, 400, origin);
       }
 
+      // Quote-reply: a pointer to the quoted message plus a SNAPSHOT of it, so the
+      // quote still renders when the original falls outside the thread window or is
+      // deleted. Clamped here, not trusted from the client.
+      const row: Record<string, unknown> = {
+        sender_line_id: user_id,  // Enforced to be the authenticated user
+        recipient_line_id: recipient_id,
+        message_text: message_text,
+      };
+      if (reply_to_id) {
+        row.reply_to_id = reply_to_id;
+        row.reply_to_text = String(reply_to_text || "").slice(0, 160);
+        row.reply_to_name = String(reply_to_name || "").slice(0, 60);
+      }
+
       const { data, error } = await supabase
         .from("direct_messages")
-        .insert({
-          sender_line_id: user_id,  // Enforced to be the authenticated user
-          recipient_line_id: recipient_id,
-          message_text: message_text,
-        })
+        .insert(row)
         .select()
         .single();
 
@@ -123,23 +134,56 @@ Deno.serve(async (req: Request) => {
       return json({ data }, 200, origin);
 
     } else if (action === "delete") {
-      // Delete — only allow deleting own messages. (message_id comes from the ONE
-      // req.json() parse above — the body can't be read twice.)
+      // Delete one message — own messages ONLY, and ONLY while the other side has not
+      // read it (Pete 2026-09-11: "delete a message as long as the other person has not
+      // read it yet, but if read can not delete it"). Enforced HERE, not in the client:
+      // the client's grey-out is a courtesy, this is the rule.
+      // (message_id comes from the ONE req.json() parse above — the body can't be read twice.)
       if (!message_id) return json({ error: "Missing message_id" }, 400, origin);
 
-      // Verify ownership
+      const sc = scope || "dm";
+      const TABLE: Record<string, string> = {
+        dm: "direct_messages",
+        group: "group_chat_messages",
+        event: "event_group_messages",
+      };
+      const table = TABLE[sc];
+      if (!table) return json({ error: "Unknown scope" }, 400, origin);
+
+      const cols = sc === "dm" ? "sender_line_id, is_read"
+                 : sc === "group" ? "sender_line_id, created_at, group_id"
+                 : "sender_line_id, created_at, event_id";
+
       const { data: msg } = await supabase
-        .from("direct_messages")
-        .select("sender_line_id")
+        .from(table)
+        .select(cols)
         .eq("id", message_id)
         .single();
 
-      if (!msg || msg.sender_line_id !== user_id) {
+      if (!msg || (msg as any).sender_line_id !== user_id) {
         return json({ error: "Not your message" }, 403, origin);
       }
 
+      if (sc === "dm") {
+        if ((msg as any).is_read) return json({ error: "already_read" }, 409, origin);
+      } else {
+        // Group/event threads have no per-message read flag — a reader's row in the
+        // *_reads table carries last_read_at. Anyone (other than me) whose last read is
+        // at or after this message's timestamp has seen it, so it stays.
+        const readTable = sc === "group" ? "group_chat_reads" : "event_message_reads";
+        const keyCol = sc === "group" ? "group_id" : "event_id";
+        const { data: reads } = await supabase
+          .from(readTable)
+          .select("reader_line_id")
+          .eq(keyCol, (msg as any)[keyCol])
+          .neq("reader_line_id", user_id)
+          .gte("last_read_at", (msg as any).created_at)
+          .limit(1);
+        if (reads && reads.length) return json({ error: "already_read" }, 409, origin);
+      }
+
       const { error } = await supabase
-        .from("direct_messages")
+        .from(table)
         .delete()
         .eq("id", message_id);
 

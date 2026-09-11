@@ -6394,6 +6394,59 @@
         #conversation-view .scv3msg-send .material-symbols-outlined { font-size:19px; }
 
         /* ================================================================
+           MSGREPLY (v1159) — quote-reply + unread-only delete.
+           Tap a bubble → action sheet (Reply / Delete-while-unread). Both the
+           reply bar and the sheet live INSIDE #conversation-view, which init()
+           already moves to <body>, so the .screen transform trap can't reach
+           them. Sheet sits above the thread's own z-index 11000.
+           ================================================================ */
+        #conversation-view .scv3msg-msg[data-mid] { cursor:pointer; }
+        #conversation-view .scv3msg-msg.flash { box-shadow:0 0 0 2px rgba(74,222,128,.8); transition:box-shadow .45s ease-out; }
+        #conversation-view .scv3msg-quote { border-left:3px solid #4ade80; border-radius:6px; padding:5px 8px; margin:0 0 7px;
+            background:rgba(255,255,255,.07); }
+        #conversation-view .scv3msg-msg.me .scv3msg-quote { background:rgba(0,0,0,.18); border-left-color:rgba(255,255,255,.85); }
+        body.theme-light #conversation-view .scv3msg-msg.them .scv3msg-quote { background:rgba(15,23,42,.05); }
+        #conversation-view .scv3msg-quote .qn { display:block; font:600 9px/1.2 'JetBrains Mono',monospace; letter-spacing:.1em;
+            text-transform:uppercase; color:#4ade80; }
+        #conversation-view .scv3msg-msg.me .scv3msg-quote .qn { color:rgba(255,255,255,.93); }
+        #conversation-view .scv3msg-quote .qt { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+            font:400 12px/1.35 'Instrument Sans',sans-serif; opacity:.85; margin-top:2px; }
+        #msgReplyBar { display:flex; align-items:center; gap:10px; padding:8px 10px; margin-top:10px; border-radius:12px;
+            background:rgba(74,222,128,.10); border:1px solid rgba(74,222,128,.30); }
+        #msgReplyBar.hidden { display:none; }
+        #msgReplyBar .rb-l { flex:1; min-width:0; }
+        #msgReplyBar .rb-n { font:600 9px/1 'JetBrains Mono',monospace; letter-spacing:.12em; text-transform:uppercase; color:#4ade80; }
+        #msgReplyBar .rb-t { font:400 12px/1.35 'Instrument Sans',sans-serif; color:#B2BCC6; margin-top:3px;
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        body.theme-light #msgReplyBar .rb-t { color:#3E4956; }
+        #msgReplyBar button { background:none; border:none; color:#8C96A1; cursor:pointer; display:flex; padding:0; }
+        #msgActSheet { position:fixed; inset:0; z-index:11600; display:flex; align-items:flex-end; justify-content:center; }
+        #msgActSheet.hidden { display:none; }
+        #msgActSheet .mas-dim { position:absolute; inset:0; background:rgba(0,0,0,.55); }
+        #msgActSheet .mas-card { position:relative; width:100%; max-width:460px; margin:0 10px 10px; border-radius:18px; overflow:hidden;
+            background:#12171C; border:1px solid rgba(255,255,255,.10); }
+        body.theme-light #msgActSheet .mas-card { background:#fff; border-color:rgba(15,23,42,.10); }
+        #msgActSheet .mas-q { padding:12px 16px; font:400 12px/1.4 'Instrument Sans',sans-serif; color:#8C96A1;
+            border-bottom:1px solid rgba(255,255,255,.08); display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+        body.theme-light #msgActSheet .mas-q { color:#5B6672; border-bottom-color:rgba(15,23,42,.08); }
+        #msgActSheet .mas-row { width:100%; display:flex; align-items:center; gap:12px; padding:15px 16px; background:none; border:none;
+            font:600 15px/1 'Instrument Sans',sans-serif; color:#F2F5F7; cursor:pointer; text-align:left; }
+        body.theme-light #msgActSheet .mas-row { color:#10151B; }
+        #msgActSheet .mas-row + .mas-row { border-top:1px solid rgba(255,255,255,.07); }
+        body.theme-light #msgActSheet .mas-row + .mas-row { border-top-color:rgba(15,23,42,.07); }
+        /* Cancel follows the note div, so the sibling rule above never reaches it — and the
+           note is display:none most of the time, which does NOT break DOM adjacency. */
+        #msgActSheet .mas-note + .mas-row { border-top:1px solid rgba(255,255,255,.07); }
+        body.theme-light #msgActSheet .mas-note + .mas-row { border-top-color:rgba(15,23,42,.07); }
+        #msgActSheet .mas-row.danger { color:#fb7185; }
+        body.theme-light #msgActSheet .mas-row.danger { color:#e11d48; }
+        #msgActSheet .mas-row[disabled] { opacity:.42; cursor:default; }
+        #msgActSheet .mas-row .material-symbols-outlined { font-size:20px; }
+        #msgActSheet .mas-note { padding:12px 16px 14px; font:400 12px/1.4 'Instrument Sans',sans-serif; color:#8C96A1;
+            border-top:1px solid rgba(255,255,255,.07); }
+        body.theme-light #msgActSheet .mas-note { color:#5B6672; border-top-color:rgba(15,23,42,.07); }
+
+        /* ================================================================
            FGV1 — Food & Drinks, the Grab way (2026-08-02).
            Storefront + menu + item sheet + basket + tracking (#golfer-food,
            #golfer-status) and the 3-tab kitchen dashboard (#kitchenQueueOverlay).
@@ -32896,12 +32949,24 @@ Sent from Login Page`;
                 return this._call({ action: 'read_conversation', user_id: userId, recipient_id: recipientId, limit });
             },
 
-            async send(userId, recipientId, messageText) {
-                return this._call({ action: 'send', user_id: userId, recipient_id: recipientId, message_text: messageText });
+            // replyTo (optional) = { id, text, name } of the quoted message. The edge fn
+            // clamps the snapshot lengths; it is stored on the row so the quote survives
+            // both the 200-message thread window and deletion of the original.
+            async send(userId, recipientId, messageText, replyTo) {
+                const body = { action: 'send', user_id: userId, recipient_id: recipientId, message_text: messageText };
+                if (replyTo && replyTo.id) {
+                    body.reply_to_id = replyTo.id;
+                    body.reply_to_text = replyTo.text || '';
+                    body.reply_to_name = replyTo.name || '';
+                }
+                return this._call(body);
             },
 
-            async deleteMessage(userId, messageId) {
-                return this._call({ action: 'delete', user_id: userId, message_id: messageId });
+            // scope: 'dm' | 'group' | 'event'. The edge fn refuses anything the other side
+            // has already read — group/event tables have no anon DELETE policy at all, so
+            // this is the ONLY delete path for them.
+            async deleteMessage(userId, messageId, scope) {
+                return this._call({ action: 'delete', user_id: userId, message_id: messageId, scope: scope || 'dm' });
             },
 
             async markRead(userId, senderId) {
@@ -59089,6 +59154,18 @@ document.addEventListener('DOMContentLoaded', function() {
                         <!-- Messages will be rendered here -->
                     </div>
 
+                    <!-- MSGREPLY: shows what you're replying to; filled by _renderReplyBar() -->
+                    <div id="msgReplyBar" class="hidden">
+                        <span class="material-symbols-outlined" style="font-size:18px;color:#4ade80;">reply</span>
+                        <div class="rb-l">
+                            <div class="rb-n" id="msgReplyName"></div>
+                            <div class="rb-t" id="msgReplyText"></div>
+                        </div>
+                        <button onclick="MessagesSystem.cancelReply()" title="Cancel reply">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+
                     <div class="scv3msg-inputbar">
                         <input type="text" id="message-input" data-i18n-placeholder="messages.input.placeholder" placeholder="Type a message..."
                                class="scv3msg-field" autocomplete="off"
@@ -59096,6 +59173,24 @@ document.addEventListener('DOMContentLoaded', function() {
                         <button onclick="MessagesSystem.sendMessage()" class="scv3msg-send">
                             <span class="material-symbols-outlined">send</span>
                         </button>
+                    </div>
+
+                    <!-- MSGREPLY: per-message action sheet (Reply / Delete-while-unread) -->
+                    <div id="msgActSheet" class="hidden">
+                        <div class="mas-dim" onclick="MessagesSystem.closeMsgActions()"></div>
+                        <div class="mas-card">
+                            <div class="mas-q" id="masQuote"></div>
+                            <button class="mas-row" id="masReply" onclick="MessagesSystem.replyToSelected()">
+                                <span class="material-symbols-outlined">reply</span><span>Reply</span>
+                            </button>
+                            <button class="mas-row danger" id="masDelete" onclick="MessagesSystem.deleteSelected()">
+                                <span class="material-symbols-outlined">delete</span><span id="masDeleteLabel">Delete</span>
+                            </button>
+                            <div class="mas-note hidden" id="masNote"></div>
+                            <button class="mas-row" onclick="MessagesSystem.closeMsgActions()">
+                                <span class="material-symbols-outlined">close</span><span>Cancel</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -122252,6 +122347,8 @@ const MessagesSystem = {
 
     async openDirectConversation(partnerId) {
         this.currentConversation = { type: 'dm', id: partnerId };
+        this.cancelReply();
+        this.closeMsgActions();
 
         // Hide list, show conversation view
         document.getElementById('msg-content-direct').classList.add('hidden');
@@ -122372,6 +122469,16 @@ const MessagesSystem = {
                 if (diff === 1) return 'YESTERDAY';
                 return dt.toLocaleDateString(_lvLocale(), { month: 'short', day: 'numeric' }).toUpperCase();
             };
+            // MSGREPLY: the thread's rows + sender names, kept for the action sheet
+            // (reply snapshot, delete eligibility) so tapping a bubble needs no refetch.
+            this._threadMsgs = messages;
+            this._threadNames = {};
+            Object.keys(profileMap).forEach(k => { this._threadNames[k] = profileMap[k].name || ''; });
+            if (this.currentConversation.type === 'dm') {
+                this._threadNames[this.currentConversation.id] =
+                    document.getElementById('conv-name')?.textContent || '';
+            }
+
             container.innerHTML = messages.map((m) => {
                 const isMine = m.sender_line_id === this.userLineId;
                 const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -122389,14 +122496,14 @@ const MessagesSystem = {
                         readReceipt = `<span id="group-read-${m.id}" data-created="${m.created_at}"></span>`;
                     }
                     return `${divider}
-                        <div class="scv3msg-msg me">${this.escapeHtml(m.message_text)}</div>
+                        <div class="scv3msg-msg me" data-mid="${m.id}">${this._quoteHtml(m)}${this.escapeHtml(m.message_text)}</div>
                         <div class="scv3msg-meta me">${time} ${readReceipt}</div>`;
                 } else {
                     const senderProfile = profileMap[m.sender_line_id] || {};
                     const showSender = this.currentConversation.type === 'event' || this.currentConversation.type === 'group';
                     return `${divider}
                         ${showSender ? `<div class="scv3msg-sender">${this.escapeHtml(senderProfile.name || 'Unknown')}</div>` : ''}
-                        <div class="scv3msg-msg them">${this.escapeHtml(m.message_text)}</div>
+                        <div class="scv3msg-msg them" data-mid="${m.id}">${this._quoteHtml(m)}${this.escapeHtml(m.message_text)}</div>
                         <div class="scv3msg-meta them">${time}
                             <button onclick="ContentModeration.showReportModal('message', '${m.id}', '${m.sender_line_id}')" title="Report">
                                 <span class="material-symbols-outlined">flag</span>
@@ -122404,6 +122511,8 @@ const MessagesSystem = {
                         </div>`;
                 }
             }).join('');
+
+            this._wireBubbleTaps();
 
             // Scroll to bottom
             container.scrollTop = container.scrollHeight;
@@ -122503,6 +122612,219 @@ const MessagesSystem = {
         });
     },
 
+    // ================== MSGREPLY (v1159) ==================
+    // Pete 2026-09-11: "select a message from the chat and reply directly to that chat or
+    // question from the conversation threads. Also the ability to delete a message as long
+    // as the other person has not read it yet, but if read can not delete it."
+    // Tap any bubble → action sheet. Reply quotes it; Delete only offers itself while the
+    // message is still unread — and the edge fn enforces that again server-side, because a
+    // greyed-out button is a courtesy, not a rule.
+
+    _replyTo: null,          // { id, text, name } while a reply is being composed
+    _actMid: null,           // message id the action sheet is currently open on
+    _bubbleTapWired: false,
+    _deleting: false,
+
+    // Stamp the quote snapshot onto a group/event insert (DMs go through the edge fn,
+    // which stamps its own clamped copy).
+    _withReply(row, replyTo) {
+        if (replyTo && replyTo.id) {
+            row.reply_to_id = replyTo.id;
+            row.reply_to_text = String(replyTo.text || '').slice(0, 160);
+            row.reply_to_name = String(replyTo.name || '').slice(0, 60);
+        }
+        return row;
+    },
+
+    _msgById(mid) {
+        return (this._threadMsgs || []).find(m => String(m.id) === String(mid)) || null;
+    },
+
+    // The quote block painted INSIDE a bubble. It reads the snapshot columns, never the
+    // original row — the original may sit outside the 200-message window or be deleted.
+    // data-jump (and with it the tap-to-scroll) is only emitted when the original IS in
+    // the loaded thread, so a quote never advertises a jump that goes nowhere.
+    _quoteHtml(m) {
+        if (!m || (!m.reply_to_id && !m.reply_to_text)) return '';
+        const name = m.reply_to_name || _lvT('messages.reply.message', 'Message');
+        const jumpable = m.reply_to_id && (this._threadMsgs || []).some(x => String(x.id) === String(m.reply_to_id));
+        const jump = jumpable ? ` data-jump="${String(m.reply_to_id).replace(/[^A-Za-z0-9-]/g, '')}"` : '';
+        return `<div class="scv3msg-quote"${jump}>` +
+               `<span class="qn">${this.escapeHtml(name)}</span>` +
+               `<span class="qt">${this.escapeHtml(m.reply_to_text || '')}</span></div>`;
+    },
+
+    // ONE delegated listener on the stream. Per-bubble handlers would be re-bound on every
+    // poll/realtime repaint (the container's innerHTML is replaced wholesale).
+    _wireBubbleTaps() {
+        if (this._bubbleTapWired) return;
+        const c = document.getElementById('messages-container');
+        if (!c) return;
+        this._bubbleTapWired = true;
+        c.addEventListener('click', (e) => {
+            const q = e.target.closest('.scv3msg-quote[data-jump]');
+            if (q) { this._jumpToMessage(q.dataset.jump); return; }
+            const b = e.target.closest('.scv3msg-msg[data-mid]');
+            if (b) this.openMsgActions(b.dataset.mid);
+        });
+    },
+
+    _jumpToMessage(mid) {
+        const el = document.querySelector(`#messages-container .scv3msg-msg[data-mid="${String(mid).replace(/[^A-Za-z0-9-]/g, '')}"]`);
+        if (!el) return;
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        el.classList.add('flash');
+        setTimeout(() => el.classList.remove('flash'), 900);
+    },
+
+    async openMsgActions(mid) {
+        const m = this._msgById(mid);
+        if (!m) return;
+        this._actMid = mid;
+
+        const sheet = document.getElementById('msgActSheet');
+        const del = document.getElementById('masDelete');
+        const label = document.getElementById('masDeleteLabel');
+        const note = document.getElementById('masNote');
+        if (!sheet || !del) return;
+
+        document.getElementById('masQuote').textContent = m.message_text || '';
+        note.classList.add('hidden');
+        note.textContent = '';
+        del.dataset.armed = '';
+        label.textContent = _lvT('messages.delete.label', 'Delete');
+
+        // Show/hide via style, NOT a .hidden class: `#msgActSheet .mas-row` sets display
+        // with an id in the selector, which outranks Tailwind's .hidden — the row would
+        // stay visible. Inline style beats both.
+        const isMine = m.sender_line_id === this.userLineId;
+        if (!isMine) {
+            del.style.display = 'none';
+        } else {
+            del.style.display = '';
+            del.disabled = true;                       // stays off until the read-check answers
+            label.textContent = _lvT('messages.delete.checking', 'Checking…');
+        }
+        sheet.classList.remove('hidden');
+        if (!isMine) return;
+
+        const read = await this._readByOthers(m);
+        if (this._actMid !== mid) return;              // sheet already moved on
+        label.textContent = _lvT('messages.delete.label', 'Delete');
+        del.disabled = read;
+        if (read) {
+            note.textContent = _lvT('messages.delete.read', 'Already read — this one stays.');
+            note.classList.remove('hidden');
+        }
+    },
+
+    // Has anyone other than me seen this message yet? DMs carry the flag on the row; group
+    // and event threads only track a per-reader last_read_at, so anyone whose last read is
+    // at or after this message has seen it. Same rule the edge fn re-checks on delete.
+    async _readByOthers(m) {
+        const type = this.currentConversation?.type;
+        if (type === 'dm') return !!m.is_read;
+        try {
+            const table = type === 'group' ? 'group_chat_reads' : 'event_message_reads';
+            const keyCol = type === 'group' ? 'group_id' : 'event_id';
+            const { data } = await window.SupabaseDB.client
+                .from(table)
+                .select('reader_line_id')
+                .eq(keyCol, this.currentConversation.id)
+                .neq('reader_line_id', this.userLineId)
+                .gte('last_read_at', m.created_at)
+                .limit(1);
+            return !!(data && data.length);
+        } catch (e) {
+            console.warn('[MessagesSystem] read-check failed', e);
+            return true;                               // unknown = assume read, never offer a false delete
+        }
+    },
+
+    closeMsgActions() {
+        this._actMid = null;
+        document.getElementById('msgActSheet')?.classList.add('hidden');
+    },
+
+    replyToSelected() {
+        const m = this._msgById(this._actMid);
+        this.closeMsgActions();
+        if (!m) return;
+        const mine = m.sender_line_id === this.userLineId;
+        const name = mine
+            ? _lvT('messages.reply.you', 'You')
+            : ((this._threadNames || {})[m.sender_line_id] || _lvT('messages.reply.message', 'Message'));
+        this._replyTo = { id: m.id, text: String(m.message_text || '').slice(0, 160), name };
+        this._renderReplyBar();
+        document.getElementById('message-input')?.focus();
+    },
+
+    cancelReply() {
+        this._replyTo = null;
+        this._renderReplyBar();
+    },
+
+    _renderReplyBar() {
+        const bar = document.getElementById('msgReplyBar');
+        if (!bar) return;
+        if (!this._replyTo) { bar.classList.add('hidden'); return; }
+        document.getElementById('msgReplyName').textContent =
+            _lvT('messages.reply.to', 'Replying to') + ' ' + this._replyTo.name;
+        document.getElementById('msgReplyText').textContent = this._replyTo.text;
+        bar.classList.remove('hidden');
+    },
+
+    // Two-tap delete: the first tap arms, the second commits. No native confirm() — it is
+    // blocked outright in the LINE in-app browser (the same trap that killed the staff PIN).
+    async deleteSelected() {
+        const mid = this._actMid;
+        const m = this._msgById(mid);
+        if (!m || this._deleting) return;
+        const del = document.getElementById('masDelete');
+        const label = document.getElementById('masDeleteLabel');
+        const note = document.getElementById('masNote');
+
+        if (del.dataset.armed !== String(mid)) {
+            del.dataset.armed = String(mid);
+            label.textContent = _lvT('messages.delete.confirm', 'Tap again to delete');
+            return;
+        }
+
+        let lock = false;
+        this._deleting = true;
+        del.disabled = true;
+        label.textContent = _lvT('messages.delete.deleting', 'Deleting…');
+        try {
+            const scope = this.currentConversation?.type || 'dm';
+            const res = await window.SecureDM.deleteMessage(this.userLineId, mid, scope);
+            if (res && res.error) {
+                if (res.error === 'already_read') {
+                    // They read it between opening the sheet and the second tap.
+                    lock = true;
+                    label.textContent = _lvT('messages.delete.label', 'Delete');
+                    note.textContent = _lvT('messages.delete.read', 'Already read — this one stays.');
+                    note.classList.remove('hidden');
+                    await this.loadMessages(false);
+                    return;
+                }
+                throw new Error(res.error);
+            }
+            this.closeMsgActions();
+            if (this._replyTo && String(this._replyTo.id) === String(mid)) this.cancelReply();
+            await this.loadMessages(false);
+            this.loadConversationList();               // the list's last-message line may have changed
+        } catch (err) {
+            console.error('[MessagesSystem] delete message failed:', err);
+            label.textContent = _lvT('messages.delete.label', 'Delete');
+            note.textContent = _lvT('messages.delete.failed', "Couldn't delete — try again.");
+            note.classList.remove('hidden');
+        } finally {
+            this._deleting = false;
+            del.disabled = lock;
+            del.dataset.armed = '';
+        }
+    },
+
     _sending: false,
     async sendMessage() {
         // In-flight guard: a second tap (or Enter repeat) while the edge fn round-trip is
@@ -122527,6 +122849,12 @@ const MessagesSystem = {
 
         input.value = '';
 
+        // MSGREPLY: take the quote off the composer NOW so a second message isn't
+        // silently sent as another reply; restored with the text if the send fails.
+        const replyTo = this._replyTo;
+        this._replyTo = null;
+        this._renderReplyBar();
+
         // Optimistic UI: show the message the moment send is tapped; the reload
         // after the write replaces it with server truth (and its real tick).
         const container = document.getElementById('messages-container');
@@ -122536,7 +122864,9 @@ const MessagesSystem = {
             if (loading) loading.remove();
             pendingEl = document.createElement('div');
             pendingEl.className = 'scv3msg-msg me pending';
-            pendingEl.textContent = text;
+            pendingEl.innerHTML = (replyTo
+                ? this._quoteHtml({ reply_to_id: replyTo.id, reply_to_text: replyTo.text, reply_to_name: replyTo.name })
+                : '') + this.escapeHtml(text);
             pendingMeta = document.createElement('div');
             pendingMeta.className = 'scv3msg-meta me';
             pendingMeta.innerHTML = '<span class="material-symbols-outlined tick-sent">schedule</span>';
@@ -122551,7 +122881,7 @@ const MessagesSystem = {
             if (this.currentConversation.type === 'dm') {
                 // Send DM via secure Edge Function (includes LINE push)
                 console.log('[MessagesSystem] Sending DM via SecureDM...');
-                const dmResult = await window.SecureDM.send(this.userLineId, this.currentConversation.id, text);
+                const dmResult = await window.SecureDM.send(this.userLineId, this.currentConversation.id, text, replyTo);
                 result = { data: dmResult.data ? [dmResult.data] : null, error: dmResult.error ? { message: dmResult.error } : null };
                 console.log('[MessagesSystem] SecureDM result:', result);
                 if (result.data?.[0]) {
@@ -122567,21 +122897,21 @@ const MessagesSystem = {
             } else if (this.currentConversation.type === 'event') {
                 result = await window.SupabaseDB.client
                     .from('event_group_messages')
-                    .insert({
+                    .insert(this._withReply({
                         event_id: this.currentConversation.id,
                         sender_line_id: this.userLineId,
                         message_text: text
-                    })
+                    }, replyTo))
                     .select();
                 console.log('[MessagesSystem] Event message insert result:', result);
             } else if (this.currentConversation.type === 'group') {
                 result = await window.SupabaseDB.client
                     .from('group_chat_messages')
-                    .insert({
+                    .insert(this._withReply({
                         group_id: this.currentConversation.id,
                         sender_line_id: this.userLineId,
                         message_text: text
-                    })
+                    }, replyTo))
                     .select();
                 console.log('[MessagesSystem] Group message insert result:', result);
 
@@ -122603,6 +122933,7 @@ const MessagesSystem = {
             if (pendingEl) pendingEl.remove();
             if (pendingMeta) pendingMeta.remove();
             input.value = text;
+            if (replyTo) { this._replyTo = replyTo; this._renderReplyBar(); }
             // The moderation dedupe recorded this text at validate time — forget it so
             // the retry isn't blocked as a "duplicate" of a message that never sent.
             try { if (window.ContentModeration?.clearLastMessage) ContentModeration.clearLastMessage(); } catch (e) {}
@@ -122616,6 +122947,8 @@ const MessagesSystem = {
     closeConversation() {
         this.currentConversation = null;
         this._unsubscribeThread();
+        this.cancelReply();
+        this.closeMsgActions();
         document.getElementById('conversation-view').classList.add('hidden');
         document.getElementById(`msg-content-${this.currentSubTab}`).classList.remove('hidden');
         this.loadSubTabContent(this.currentSubTab);
@@ -122797,6 +123130,8 @@ const MessagesSystem = {
 
     async openEventConversation(eventId, eventTitle) {
         this.currentConversation = { type: 'event', id: eventId };
+        this.cancelReply();
+        this.closeMsgActions();
 
         // Hide list, show conversation view
         document.getElementById('msg-content-events').classList.add('hidden');
@@ -123524,6 +123859,8 @@ const MessagesSystem = {
 
     async openGroupConversation(groupId, groupName) {
         this.currentConversation = { type: 'group', id: groupId, name: groupName };
+        this.cancelReply();
+        this.closeMsgActions();
 
         // Hide sub-content, show conversation
         document.querySelectorAll('.msg-subcontent').forEach(el => el.classList.add('hidden'));

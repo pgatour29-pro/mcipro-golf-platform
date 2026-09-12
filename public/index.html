@@ -65437,6 +65437,59 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
 
                 <!-- Point Allocation Settings (SCR2: points tiles + Par-3 2s pot band) -->
+                <!-- ON COURSE — where every group is, and when the last one is due in.
+                     Lives above the scoring cards because it is the thing an organizer checks
+                     while the event is still running, to time food and the presentation. -->
+                <div class="metric-card mb-6" id="onCoursePanel" style="display:none;">
+                    <style>
+                    #onCoursePanel .oc-hd{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+                    #onCoursePanel .oc-hd h3{font:700 15px/1.2 system-ui,sans-serif;color:#0f172a;margin:0;}
+                    #onCoursePanel .oc-hd .material-symbols-outlined{color:#0284c7;font-size:20px;}
+                    #onCoursePanel .oc-live{margin-left:auto;font:600 10px/1 ui-monospace,monospace;color:#64748b;letter-spacing:.06em;}
+                    #onCoursePanel .oc-empty{padding:22px 0;text-align:center;font:500 12.5px/1.5 system-ui,sans-serif;color:#64748b;}
+                    #onCoursePanel .oc-sum{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;margin-bottom:12px;}
+                    #onCoursePanel .oc-big{font:800 26px/1 system-ui,sans-serif;color:#0f172a;}
+                    #onCoursePanel .oc-big.done{color:#16a34a;}
+                    #onCoursePanel .oc-big.warn{color:#d97706;}
+                    #onCoursePanel .oc-lbl{font:600 11px/1 system-ui,sans-serif;color:#64748b;text-transform:uppercase;letter-spacing:.06em;}
+                    #onCoursePanel .oc-sep{width:1px;height:18px;background:#e2e8f0;margin:0 5px;align-self:center;}
+                    #onCoursePanel .oc-spacer{flex:1 1 auto;}
+                    #onCoursePanel .oc-last{font:600 12.5px/1.3 system-ui,sans-serif;color:#0f172a;}
+                    #onCoursePanel .oc-last b{font-weight:800;color:#0284c7;}
+                    /* the track scrolls rather than squeezing 18 cells into 360px */
+                    #onCoursePanel .oc-track{display:flex;gap:3px;overflow-x:auto;padding-bottom:6px;margin-bottom:12px;-webkit-overflow-scrolling:touch;}
+                    #onCoursePanel .oc-hole{flex:0 0 auto;width:34px;min-height:52px;border:1px solid #e2e8f0;border-radius:8px;
+                        background:#f8fafc;display:flex;flex-direction:column;align-items:center;padding:4px 2px 5px;}
+                    #onCoursePanel .oc-hole.turn{margin-right:9px;border-right-color:#cbd5e1;}
+                    #onCoursePanel .oc-hole.has{background:#e0f2fe;border-color:#7dd3fc;}
+                    #onCoursePanel .oc-hnum{font:700 10px/1 ui-monospace,monospace;color:#94a3b8;margin-bottom:4px;}
+                    #onCoursePanel .oc-hole.has .oc-hnum{color:#0369a1;}
+                    #onCoursePanel .oc-pins{display:flex;flex-wrap:wrap;gap:2px;justify-content:center;}
+                    #onCoursePanel .oc-pin{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;
+                        border-radius:9px;background:#0284c7;color:#fff;font:800 10px/1 ui-monospace,monospace;padding:0 4px;}
+                    #onCoursePanel .oc-tbl{width:100%;border-collapse:collapse;}
+                    #onCoursePanel .oc-tbl th{text-align:left;font:700 9.5px/1 ui-monospace,monospace;color:#94a3b8;
+                        text-transform:uppercase;letter-spacing:.08em;padding:0 8px 6px 0;white-space:nowrap;}
+                    #onCoursePanel .oc-tbl td{padding:7px 8px 7px 0;border-top:1px solid #f1f5f9;font:500 12.5px/1.3 system-ui,sans-serif;color:#0f172a;vertical-align:middle;}
+                    #onCoursePanel .oc-tbl tr.done td{color:#64748b;}
+                    #onCoursePanel .oc-tbl tr.stall td{background:#fffbeb;}
+                    #onCoursePanel .oc-w{font-weight:700;white-space:nowrap;}
+                    #onCoursePanel .oc-b10{display:inline-block;margin-left:5px;font:700 9px/1 ui-monospace,monospace;color:#7c3aed;
+                        background:#f5f3ff;border-radius:4px;padding:2px 4px;vertical-align:middle;}
+                    #onCoursePanel .oc-p,#onCoursePanel .oc-pace,#onCoursePanel .oc-eta{font-family:ui-monospace,monospace;font-size:11.5px;white-space:nowrap;}
+                    #onCoursePanel .oc-eta{font-weight:700;}
+                    #onCoursePanel .oc-pl{color:#475569;font-size:11.5px;}
+                    #onCoursePanel .oc-stall{color:#b45309;font-weight:700;white-space:nowrap;}
+                    @media (max-width:520px){ #onCoursePanel .oc-pl,#onCoursePanel th.oc-plh{display:none;} }
+                    </style>
+                    <div class="oc-hd">
+                        <span class="material-symbols-outlined">golf_course</span>
+                        <h3>On the course</h3>
+                        <span class="oc-live">AUTO-REFRESH 60s</span>
+                    </div>
+                    <div id="onCourseBody"><div class="oc-empty">Loading…</div></div>
+                </div>
+
                 <div class="metric-card mb-6" id="pointAllocationSettings" style="display: none;">
                     <style>
                     /* SCR2 — points tiles, 2s pot band, leaderboard 2s panel, hole-by-hole 2 cell */
@@ -149967,6 +150020,14 @@ function showOrganizerTab(tabName) {
     // Show selected tab
     document.getElementById(`organizerTab-${tabName}`).style.display = 'block';
 
+    // (v1172) the on-course board polls every 60s — only while its tab is actually open
+    try {
+        if (window.OnCourse) {
+            if (tabName === 'scoring') { if (OnCourse._eventId) OnCourse.show(OnCourse._eventId); }
+            else OnCourse.stop();
+        }
+    } catch (e) {}
+
     // LITE: track whether we're on the cube home (controls the back-to-menu button) + refresh cubes
     const _orgDash = document.getElementById('societyOrganizerDashboard');
     if (_orgDash) _orgDash.classList.toggle('org-on-home', tabName === 'home');
@@ -156357,6 +156418,7 @@ class OrganizerScoringSystem {
 
     async loadEventScores(eventId) {
         if (!eventId) {
+            try { if (window.OnCourse) window.OnCourse.show(null); } catch (e) {}
             document.getElementById('noEventSelected').style.display = 'block';
             document.getElementById('pointAllocationSettings').style.display = 'none';
             document.getElementById('scoringDivisionsCard').style.display = 'none';
@@ -156365,6 +156427,8 @@ class OrganizerScoringSystem {
         }
 
         this.currentEventId = eventId;
+        // On-course board follows the same event selection (v1172)
+        try { if (window.OnCourse) window.OnCourse.show(eventId); } catch (e) {}
         // Switching events must NOT carry the prior event's board. Clear it immediately so an
         // empty / slow / failed load never shows the previous event's players (Bangpakong was
         // showing yesterday's Pattaya CC list). refreshScores() repopulates for THIS event.
@@ -161424,6 +161488,242 @@ class OrganizerScoringSystem {
 }
 
 // Create global instance
+
+// ===================== ON-COURSE BOARD — where every group is =====================
+// ONCOURSE:BEGIN  (tools/on-course.test.js extracts THIS block — keep it the ONE copy)
+// Organizer view: every group's position on holes 1-18, how many are still out, and when the
+// last one is due in — so presentation and food can be timed instead of guessed.
+//
+// Position is derived from the SCORES, not from any separate tracking: a group that has N holes
+// written is standing on the (N+1)th hole of ITS OWN hole order. That order is not always 1..18 —
+// a back-nine start plays 10..18 then 1..9, so a group "on hole 13" four holes in is a back
+// starter, and treating 13 as 13/18 progress would tell the organizer they are nearly done when
+// they have 14 to play (see scorecards.starting_nine, v1118).
+const OnCourse = {
+    _eventId: null,
+    _timer: null,
+    STALL_MIN: 25,          // no write for this long, and not finished = worth the organizer's eye
+
+    // ---- pure computation (unit-tested; no DOM, no network) ----
+    computeGroups(cards, scores, nowMs) {
+        const now = nowMs || Date.now();
+        const byCard = {};
+        (scores || []).forEach(s => {
+            if (s.hole_number == null) return;
+            const c = (byCard[s.scorecard_id] = byCard[s.scorecard_id] || { holes: new Set(), first: null, last: null });
+            c.holes.add(Number(s.hole_number));
+            const t = s.updated_at ? Date.parse(s.updated_at.replace(' ', 'T') + (/[Zz+]/.test(s.updated_at) ? '' : 'Z')) : null;
+            if (t && !isNaN(t)) {
+                if (c.first === null || t < c.first) c.first = t;
+                if (c.last === null || t > c.last) c.last = t;
+            }
+        });
+
+        const groups = {};
+        (cards || []).forEach(cd => {
+            const gid = cd.group_id || ('solo_' + cd.id);
+            const g = (groups[gid] = groups[gid] || {
+                groupId: gid, players: [], startingNine: cd.starting_nine || 'front',
+                holesDone: 0, first: null, last: null, allDone: true, anyLive: false
+            });
+            g.players.push(cd.player_name || '—');
+            if (cd.starting_nine === 'back') g.startingNine = 'back';
+            if (cd.status === 'in_progress') { g.anyLive = true; g.allDone = false; }
+            else if (cd.status !== 'completed') g.allDone = false;
+            const c = byCard[cd.id];
+            if (c) {
+                // the group's progress is the FURTHEST card — one device usually scores them all,
+                // so a card that lags is a not-yet-written card, not a group standing still
+                if (c.holes.size > g.holesDone) g.holesDone = c.holes.size;
+                if (c.first !== null && (g.first === null || c.first < g.first)) g.first = c.first;
+                if (c.last !== null && (g.last === null || c.last > g.last)) g.last = c.last;
+            }
+        });
+
+        return Object.values(groups).map(g => {
+            const order = g.startingNine === 'back'
+                ? [10,11,12,13,14,15,16,17,18,1,2,3,4,5,6,7,8,9]
+                : [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
+            const done = Math.min(g.holesDone, 18);
+            const finished = done >= 18 || (g.allDone && done > 0);
+            const currentHole = finished ? null : order[done];
+            // pace needs at least two writes to mean anything; a 1-hole group has no rate yet
+            const spanMin = (g.first !== null && g.last !== null && done > 1)
+                ? (g.last - g.first) / 60000 : null;
+            const paceMin = (spanMin !== null && done > 1) ? spanMin / (done - 1) : null;
+            const remaining = 18 - done;
+            const etaMs = (!finished && paceMin && g.last) ? g.last + remaining * paceMin * 60000 : null;
+            const idleMin = (!finished && g.last) ? (now - g.last) / 60000 : null;
+            return {
+                groupId: g.groupId, players: g.players, startingNine: g.startingNine,
+                holesDone: done, currentHole, finished,
+                // ZERO scores does NOT mean "not teed off". The board can only see a group
+                // that is entering scores, so an unscored group is UNLOCATABLE — say that
+                // rather than pinning it on hole 1, or an organizer serves food too early.
+                noScores: done === 0 && !finished,
+                paceMin: paceMin ? Math.round(paceMin * 10) / 10 : null,
+                etaMs, idleMin: idleMin ? Math.round(idleMin) : null,
+                stalled: !!(idleMin !== null && idleMin >= this.STALL_MIN && done > 0),
+                lastWrite: g.last
+            };
+        }).sort((a, b) => (b.holesDone - a.holesDone) || String(a.groupId).localeCompare(String(b.groupId)));
+    },
+
+    summarise(groups) {
+        const out = groups.filter(g => !g.finished && !g.noScores);
+        const etas = out.map(g => g.etaMs).filter(Boolean);
+        return {
+            total: groups.length,
+            out: out.length,
+            finished: groups.filter(g => g.finished).length,
+            noScores: groups.filter(g => g.noScores).length,
+            stalled: groups.filter(g => g.stalled).length,
+            lastInMs: etas.length ? Math.max.apply(null, etas) : null
+        };
+    },
+    // ---- end of the pure section ----
+
+    esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); },
+    hhmm(ms) {
+        if (!ms) return '—';
+        try { return new Date(ms).toLocaleTimeString(_lvLocale(), { hour: '2-digit', minute: '2-digit' }); }
+        catch (e) { return '—'; }
+    },
+    // A COMMA PINS THE ORDER: names are stored either "Last, First" or "First Last" (same rule
+    // the golfer matcher relies on). Ignoring the comma turned "Andersson, Niklas" into
+    // "A Niklas" — an initial taken off his surname and his forename shown as the surname.
+    shortName(n) {
+        const raw = String(n || '').trim();
+        if (raw.indexOf(',') !== -1) {
+            const [last, first] = raw.split(',');
+            const l = String(last || '').trim(), f = String(first || '').trim();
+            if (l && f) return f.charAt(0).toUpperCase() + ' ' + l;
+            return l || f || '—';
+        }
+        const t = raw.split(/\s+/).filter(Boolean);
+        return t.length > 1 ? (t[0].charAt(0).toUpperCase() + ' ' + t[t.length - 1]) : (t[0] || '—');
+    },
+
+    async show(eventId) {
+        this._eventId = eventId || null;
+        const host = document.getElementById('onCoursePanel');
+        if (!host) return;
+        if (!this._eventId) { host.style.display = 'none'; this.stop(); return; }
+        host.style.display = 'block';
+        await this.refresh();
+        this.start();
+    },
+    start() { this.stop(); this._timer = setInterval(() => this.refresh(), 60000); },
+    stop() { if (this._timer) { clearInterval(this._timer); this._timer = null; } },
+
+    async refresh() {
+        const host = document.getElementById('onCoursePanel');
+        if (!host || host.style.display === 'none' || !this._eventId) return;
+        const sb = window.SupabaseDB?.client;
+        if (!sb) return;
+        try {
+            const { data: cards, error } = await sb.from('scorecards')
+                .select('id, group_id, player_name, status, starting_nine')
+                .eq('event_id', this._eventId)
+                .neq('status', 'abandoned');   // every board filters these; a dead card must not place a group
+            if (error) throw error;
+            let scores = [];
+            const ids = (cards || []).map(c => c.id);
+            if (ids.length) {
+                const { data: sc } = await sb.from('scores')
+                    .select('scorecard_id, hole_number, updated_at').in('scorecard_id', ids);
+                scores = sc || [];
+            }
+            this.render(this.computeGroups(cards || [], scores));
+        } catch (err) {
+            console.warn('[OnCourse] refresh failed:', err?.message || err);
+            const b = document.getElementById('onCourseBody');
+            if (b) b.innerHTML = '<div class="oc-empty">Could not load positions: ' + this.esc(err?.message || 'unknown error') + '</div>';
+        }
+    },
+
+    render(groups) {
+        const body = document.getElementById('onCourseBody');
+        if (!body) return;
+        if (!groups.length) {
+            body.innerHTML = '<div class="oc-empty">No cards started for this event yet</div>';
+            return;
+        }
+        const s = this.summarise(groups);
+
+        // groups sitting on each hole (a group is ON the hole after its last written one)
+        const onHole = {};
+        groups.forEach((g, i) => {
+            if (g.currentHole && !g.noScores) (onHole[g.currentHole] = onHole[g.currentHole] || []).push(i + 1);
+        });
+
+        let track = '';
+        for (let h = 1; h <= 18; h++) {
+            const here = onHole[h] || [];
+            track += `<div class="oc-hole${here.length ? ' has' : ''}${h === 9 ? ' turn' : ''}">
+                <div class="oc-hnum">${h}</div>
+                <div class="oc-pins">${here.map(n => `<span class="oc-pin">${n}</span>`).join('')}</div>
+            </div>`;
+        }
+
+        const rows = groups.map((g, i) => {
+            const where = g.finished ? 'IN'
+                : g.noScores ? 'no scores yet'
+                : 'hole ' + g.currentHole;
+            const prog = g.finished ? '18/18' : g.holesDone + '/18';
+            return `<tr class="${g.finished ? 'done' : ''}${g.stalled ? ' stall' : ''}">
+                <td class="oc-g"><span class="oc-pin">${i + 1}</span></td>
+                <td class="oc-w">${this.esc(where)}${g.startingNine === 'back' ? '<span class="oc-b10">from 10</span>' : ''}</td>
+                <td class="oc-p">${prog}</td>
+                <td class="oc-pace">${g.paceMin ? g.paceMin + '&thinsp;m/hole' : '—'}</td>
+                <td class="oc-eta">${g.finished ? '—' : this.hhmm(g.etaMs)}</td>
+                <td class="oc-pl">${g.players.map(n => this.esc(this.shortName(n))).join(', ')}${g.stalled ? ` <span class="oc-stall">no score ${g.idleMin}m</span>` : ''}</td>
+            </tr>`;
+        }).join('');
+
+        body.innerHTML = `
+            <div class="oc-sum">
+                <span class="oc-big">${s.out}</span><span class="oc-lbl">still out</span>
+                <span class="oc-sep"></span>
+                <span class="oc-big done">${s.finished}</span><span class="oc-lbl">in</span>
+                ${s.noScores ? `<span class="oc-sep"></span><span class="oc-big warn">${s.noScores}</span><span class="oc-lbl">not scoring</span>` : ''}
+                <span class="oc-spacer"></span>
+                <span class="oc-last">${s.out ? 'last group in ~<b>' + this.hhmm(s.lastInMs) + '</b>' : 'all groups in'}</span>
+            </div>
+            <div class="oc-track" id="onCourseTrack">${track}</div>
+            <table class="oc-tbl"><thead><tr>
+                <th></th><th>where</th><th>holes</th><th>pace</th><th>in by</th><th class="oc-plh">players</th>
+            </tr></thead><tbody>${rows}</tbody></table>`;
+
+        // At 360px only ~7 of the 18 cells are visible, so a field spread over holes 4-17 shows
+        // an EMPTY track and the organizer has to go looking. Scroll to the group that is
+        // furthest back — the one that decides when the last card comes in, which is the whole
+        // reason this board exists.
+        try {
+            // Scroll to the group the HEADLINE is about — the latest projected finish. Not the
+            // lowest hole number (a back-nine starter two holes in stands on hole 12) and not
+            // even the fewest holes played: a group 7 holes in at 12 m/hole finishes BEFORE one
+            // 9 holes in at 16 m/hole, so "fewest holes" pointed at the wrong group while the
+            // summary quoted the other one. Fewest-holes is only the fallback when no group has
+            // a pace yet.
+            const located = groups.filter(g => g.currentHole && !g.noScores);
+            const withEta = located.filter(g => g.etaMs);
+            const laggard = withEta.length
+                ? withEta.slice().sort((a, b) => b.etaMs - a.etaMs)[0]
+                : located.slice().sort((a, b) => a.holesDone - b.holesDone)[0];
+            if (laggard) {
+                const trackEl = document.getElementById('onCourseTrack');
+                const cell = trackEl && trackEl.children[laggard.currentHole - 1];
+                if (trackEl && cell && trackEl.scrollWidth > trackEl.clientWidth) {
+                    trackEl.scrollLeft = Math.max(0, cell.offsetLeft - trackEl.offsetLeft - 6);
+                }
+            }
+        } catch (e) { /* cosmetic only */ }
+    }
+};
+window.OnCourse = OnCourse;
+// ONCOURSE:END
+
 window.OrganizerScoringSystem = new OrganizerScoringSystem();
 
 // ===== PAPER CARD ENTRY (PCE, v825 — Pete 2026-08-06): score-FIRST manual entry for physical

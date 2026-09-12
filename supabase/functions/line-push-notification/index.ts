@@ -22,7 +22,7 @@ interface LineMessage {
 }
 
 interface NotificationPayload {
-  type: "new_event" | "event_update" | "new_message" | "announcement" | "platform_announcement" | "emergency_alert" | "late_registration";
+  type: "new_event" | "event_update" | "new_message" | "announcement" | "platform_announcement" | "emergency_alert" | "late_registration" | "course_offer";
   record: any;
   old_record?: any;
 }
@@ -254,6 +254,9 @@ serve(async (req) => {
         break;
       case "emergency_alert":
         result = await handleEmergencyAlert(supabase, payload.record);
+        break;
+      case "course_offer":
+        result = await handleCourseOffer(supabase, payload.record);
         break;
       default:
         return new Response(JSON.stringify({ error: "Unknown notification type" }), {
@@ -1825,6 +1828,122 @@ function buildEventFlexMessage(event: {
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
+// ============================================================================
+// COURSE OFFER  (2026-09-12)
+// ============================================================================
+// Called with just { offer_id }. Everything else happens HERE, on the service role,
+// because that is what keeps Pete's rule true: a course builds a SEGMENT and sees a
+// COUNT, the platform delivers, and the course never holds a list of golfers.
+//   1. read the offer + its stored segment
+//   2. resolve_offer_segment -> recipient ids   (service role ONLY; anon gets 401)
+//   3. deliver_course_offer  -> writes one inbox row each, and decides who has EARNED a
+//      push: follows this course AND notify_offers on AND under the daily cap AND outside
+//      their quiet hours. Everyone else still gets the inbox item — nothing is dropped.
+//   4. push only to that list
+// A golfer who is not following gets a badge, never a notification. LINE is the most
+// valuable asset in the platform and an offer engine is exactly what burns it: mute the
+// official account over marketing and you lose scoring, event and DM alerts too.
+async function handleCourseOffer(supabase: any, record: any) {
+  const offerId = record?.offer_id || record?.id;
+  if (!offerId) return { success: false, notified: 0, reason: "no offer_id" };
+
+  const { data: offer, error: offerErr } = await supabase
+    .from("course_offers")
+    .select("*")
+    .eq("id", offerId)
+    .single();
+  if (offerErr || !offer) {
+    console.error("[LINE Push] course_offer not found:", offerId, offerErr?.message);
+    return { success: false, notified: 0, reason: "offer not found" };
+  }
+  if (offer.status !== "active") {
+    return { success: true, notified: 0, reason: `offer is ${offer.status}` };
+  }
+  if (offer.valid_to && new Date(offer.valid_to).getTime() < Date.now()) {
+    return { success: true, notified: 0, reason: "offer expired" };
+  }
+
+  // 2. who is in the segment (service role only)
+  const seg = offer.segment || {};
+  const { data: segRows, error: segErr } = await supabase.rpc("resolve_offer_segment", {
+    p_hcp_min: seg.hcp_min ?? null,
+    p_hcp_max: seg.hcp_max ?? null,
+    p_course_names: seg.course_names ?? null,
+    p_lang: seg.lang ?? null,
+    p_played_since: seg.played_since ?? null,
+  });
+  if (segErr) {
+    console.error("[LINE Push] segment resolve failed:", segErr.message);
+    return { success: false, notified: 0, reason: segErr.message };
+  }
+  const recipients: string[] = (segRows || [])
+    .map((r: any) => (typeof r === "string" ? r : r?.resolve_offer_segment))
+    .filter(Boolean);
+  if (!recipients.length) {
+    return { success: true, notified: 0, reason: "segment matched nobody" };
+  }
+
+  // 3. deliver to every inbox; the RPC decides who has earned a push
+  const { data: delivery, error: delErr } = await supabase.rpc("deliver_course_offer", {
+    p_offer_id: offerId,
+    p_recipients: recipients,
+  });
+  if (delErr) {
+    console.error("[LINE Push] delivery failed:", delErr.message);
+    return { success: false, notified: 0, reason: delErr.message };
+  }
+  const pushIds: string[] = delivery?.push || [];
+  console.log(
+    `[LINE Push] offer ${offerId}: ${recipients.length} targeted, ` +
+    `${pushIds.length} push, ${(delivery?.inbox_only || []).length} inbox-only, ` +
+    `${(delivery?.suppressed_cap || []).length} capped, ` +
+    `${(delivery?.suppressed_quiet_hours || []).length} quiet-hours`
+  );
+  if (!pushIds.length) {
+    return { success: true, notified: 0, delivered: recipients.length, reason: "nobody earned a push" };
+  }
+
+  // 4. push. messaging_user_id wins over line_user_id, same as every other handler.
+  const { data: profiles } = await supabase
+    .from("user_profiles")
+    .select("line_user_id, messaging_user_id, language")
+    .in("line_user_id", pushIds);
+
+  const langByTarget = new Map<string, string>();
+  const targets = (profiles || [])
+    .map((p: any) => {
+      const target = p.messaging_user_id || p.line_user_id;
+      if (target?.startsWith("U")) langByTarget.set(target, p.language || "en");
+      return target;
+    })
+    .filter((id: string) => id?.startsWith("U"));
+  if (!targets.length) return { success: true, notified: 0, delivered: recipients.length };
+
+  // The COURSE writes the copy, so localisation comes from the offer's own lang map
+  // ({th:{title,body}, ko:{...}}) rather than the app's translation keys.
+  const copyFor = (lang: string) => {
+    const t = offer.lang && offer.lang[lang];
+    return {
+      title: (t && t.title) || offer.title,
+      body: (t && t.body) || offer.body,
+    };
+  };
+
+  const byLang = groupByLang(targets, langByTarget);
+  let totalSent = 0;
+  for (const [lang, ids] of byLang) {
+    const c = copyFor(lang);
+    const venue = offer.course_name || offer.course_id;
+    const text = `\u26F3 ${venue}\n\n${c.title}\n${c.body}`;
+    for (const batch of chunkArray(ids, 500)) {
+      totalSent += await sendMulticast(batch, [{ type: "text", text }]);
+    }
+  }
+
+  console.log(`[LINE Push] course offer sent to ${totalSent} of ${pushIds.length} eligible`);
+  return { success: true, notified: totalSent, delivered: recipients.length };
+}
+
 function chunkArray<T>(array: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < array.length; i += size) {

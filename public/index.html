@@ -83498,7 +83498,7 @@ class LiveScorecardSystem {
             if (!groupId) return null;
 
             const { data: cards } = await sb.from('scorecards')
-                .select('id, player_id, player_name, handicap, playing_handicap, group_id, course_id, course_name, tee_marker, scoring_format, event_id, game_code, controlled_by, starting_nine')
+                .select('id, player_id, player_name, handicap, playing_handicap, group_id, course_id, course_name, tee_marker, scoring_format, event_id, game_code, controlled_by, starting_nine, course_holes')
                 // ORDER MATTERS: without it Postgres returns rows in whatever order it likes,
                 // so a joining device built players[] in a different order from the host's —
                 // Joe's players[0] was Gilbert, and anything keyed off position (rotation, the
@@ -83508,12 +83508,54 @@ class LiveScorecardSystem {
                 .order('created_at', { ascending: true });
             if (!cards || !cards.length) return null;
 
-            const head = cards.find(c => c.course_id) || cards[0];
+            // Prefer a card that actually carries the stitched table (v1171) — any card in the
+            // group has it, but a reused/older card may not.
+            const head = cards.find(c => c.course_holes && c.course_id) || cards.find(c => c.course_id) || cards[0];
             const teeMarker = head.tee_marker || 'white';
             // courseData carries the holes (par/SI/yardage) — without it every hole defaults to par 4.
+            //
+            // (v1171) THE CARRIED TABLE WINS. For a COMBO, head.course_id is the BASE slug
+            // ('greenwood') and has NO course_holes rows — the holes live in greenwood_a/_b — so
+            // loadCourseData returned nothing, this fell through to `holes: []`, and an empty
+            // table silently becomes par 4 / SI = hole number on every hole the joiner enters.
+            // That is what put Alondo's hole 4 in as par 4 SI 4 instead of par 5 SI 5 at
+            // Greenwood on 2026-09-12, the moment he took his own card.
             let courseData = null;
-            try { courseData = await this.loadCourseData(head.course_id, teeMarker); } catch (e) {}
-            courseData = courseData || this.courseData || { id: head.course_id, name: head.course_name, holes: [] };
+            let carried = null;
+            try {
+                const raw = (cards.find(c => c.course_holes) || {}).course_holes;
+                const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                if (Array.isArray(parsed) && parsed.length) carried = parsed;
+            } catch (e) { /* malformed table → fall through to the loaders below */ }
+            if (carried) {
+                courseData = { id: head.course_id, name: head.course_name, holes: carried };
+            } else {
+                try { courseData = await this.loadCourseData(head.course_id, teeMarker); } catch (e) {}
+                // Rounds started before v1171 carry no table. Seed par/SI from the score rows the
+                // host already wrote — authoritative, venue-agnostic — so at minimum every hole
+                // the group has PLAYED is correct. Holes still ahead stay absent on purpose:
+                // _holeTableMissing() blocks the save rather than inventing par 4.
+                if (!courseData?.holes?.length) {
+                    try {
+                        const ids = cards.map(c => c.id);
+                        const { data: pr } = await sb.from('scores')
+                            .select('hole_number, par, stroke_index')
+                            .in('scorecard_id', ids).not('par', 'is', null);
+                        const byHole = {};
+                        (pr || []).forEach(r => { if (!byHole[r.hole_number]) byHole[r.hole_number] = r; });
+                        const seeded = Object.values(byHole)
+                            .map(r => ({ hole_number: r.hole_number, hole: r.hole_number,
+                                         par: r.par, stroke_index: r.stroke_index, strokeIndex: r.stroke_index }))
+                            .sort((a, b) => a.hole_number - b.hole_number);
+                        if (seeded.length) {
+                            courseData = { id: head.course_id, name: head.course_name, holes: seeded, _seededFromScores: true };
+                            console.warn('[LiveScorecard] no course table for', head.course_id,
+                                '— seeded', seeded.length, 'holes from the group\'s scores');
+                        }
+                    } catch (e) { /* leave courseData empty; the save guard catches it */ }
+                }
+                courseData = courseData || this.courseData || { id: head.course_id, name: head.course_name, holes: [] };
+            }
 
             let scoringFormats = ['stableford'];
             try { const f = JSON.parse(head.scoring_format || '[]'); if (Array.isArray(f) && f.length) scoringFormats = f; } catch (e) {}
@@ -92892,6 +92934,15 @@ class LiveScorecardSystem {
                     match_play_config: Object.keys(matchPlayConfig).length > 0 ? JSON.stringify(matchPlayConfig) : null,
                     is_live_spectatable: isLiveSpectatable,  // NEW: Enable live spectating for public viewing
                     starting_nine: this.startingNine,       // (v1118) 'front' | 'back' — every device walks the same holes
+                    // (v1171) Carry the stitched 18-hole par/SI table ON the card. A joining
+                    // device cannot re-derive a COMBO: course_id is the BASE slug ('greenwood')
+                    // and the holes live in greenwood_a/greenwood_b, so the join loaded nothing,
+                    // fell back to an empty table, and every hole silently became par 4 with
+                    // SI = hole number (Greenwood 2026-09-12, Alondo's hole 4). The nine->id
+                    // mapping differs per venue and laem_chabang_* has no hole rows at all, so
+                    // re-deriving is not fixable — the host just hands over what it is using.
+                    course_holes: Array.isArray(this.courseData?.holes) && this.courseData.holes.length
+                        ? this.courseData.holes : null,
                     // OWNERSHIP (2026-08-12): the device starting the round owns every card
                     // until it hands one over. Without this stamp controlled_by stays NULL and
                     // every device would show green — the accidental-entry hole we're closing.
@@ -97270,7 +97321,32 @@ class LiveScorecardSystem {
     _scoreQueue = [];
     _queueProcessing = false;
 
+    // Does THIS device hold real par data for this hole? Callers default par to 4 and SI to the
+    // hole number in ~15 places; that is harmless for display but corrupting for a write.
+    _hasRealHole(hole) {
+        const hd = this.getHoleData(hole);
+        return !!(hd && hd.par);
+    }
+
     queueScoreSave(scorecardId, hole, score, par, strokeIndex, handicap, playerName) {
+        // (v1171) NEVER write a fabricated par. Every caller above defaults par to 4 and SI to
+        // the hole number when the hole table is missing, so by the time a bad value arrives here
+        // it is indistinguishable from a real par 4. Check the table itself instead.
+        // Greenwood 2026-09-12: a phone taking over a card on a COMBO course loaded the BASE slug
+        // ('greenwood'), which has no course_holes rows, got an empty table, and wrote Alondo's
+        // hole 4 as par 4 / SI 4 instead of par 5 / SI 5 — silently, into a live round.
+        // Refusing is recoverable; a wrong par quietly rewrites someone's stableford.
+        if (!this._hasRealHole(hole)) {
+            console.error('[LiveScorecard] ⛔ refusing to save H' + hole + ' for ' + playerName +
+                ' — this device has no par/SI for that hole (course table missing). Score kept locally.');
+            if (!this._noHoleTableNoted) {
+                this._noHoleTableNoted = true;
+                NotificationManager?.show?.(
+                    'This phone does not have the course data for this round — scores are not being saved. ' +
+                    'Close and reopen the app, or let the person who started the round score.', 'error', 9000);
+            }
+            return;
+        }
         const strokes = this._engineStrokesFor(hole, handicap);
         this._scoreQueue.push({ scorecardId, hole, score, par, strokeIndex, handicap, playerName, strokes, retries: 0 });
         if (!this._queueProcessing) this._processScoreQueue();
@@ -97335,8 +97411,14 @@ class LiveScorecardSystem {
             for (const hole of localHoles) {
                 if (have.has(hole)) continue;
                 const holeData = this.getHoleData(hole);
-                const par = holeData?.par || 4;
-                const strokeIndex = holeData?.stroke_index || holeData?.strokeIndex || hole;
+                // (v1171) no real table for this hole → leave it in the cache for a device that
+                // HAS the table. Re-uploading par 4 / SI=hole is how placeholder data spreads.
+                if (!holeData?.par) {
+                    console.warn('[LiveScorecard] ♻️ skipping re-upload of H' + hole + ' — no par/SI on this device');
+                    continue;
+                }
+                const par = holeData.par;
+                const strokeIndex = holeData.stroke_index || holeData.strokeIndex || hole;
                 const playerHandicap = this.getGameHandicap
                     ? (this.getGameHandicap('stableford', player.id) ?? player.handicap)
                     : player.handicap;
@@ -98302,8 +98384,17 @@ class LiveScorecardSystem {
                     // Backfill missing scores to DB and include in totals
                     for (const missing of missingFromDb) {
                         const holeData = this.getHoleData(missing.hole);
-                        const par = holeData?.par || 4;
-                        const strokeIndex = holeData?.stroke_index || missing.hole;
+                        // (v1171) don't backfill a fabricated par — skip and let a device with
+                        // the real table do it. This path wrote the par 4 / SI=hole signature.
+                        if (!holeData?.par) {
+                            console.warn('[LiveScorecard] ⚠️ RECONCILIATION: skipping H' + missing.hole +
+                                ' — no par/SI on this device');
+                            totalGross += missing.score;
+                            scoresArray.push({ hole_number: missing.hole, gross_score: missing.score });
+                            continue;
+                        }
+                        const par = holeData.par;
+                        const strokeIndex = holeData.stroke_index || missing.hole;
                         try {
                             await window.SocietyGolfDB.saveScore(
                                 scorecardId, missing.hole, missing.score, par, strokeIndex, player.handicap,

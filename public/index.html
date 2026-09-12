@@ -9295,6 +9295,13 @@
         #golfer-caddies .nb-star { font-size:17px; line-height:1; }
         #golfer-caddies .mcv1-save { width:100%; display:inline-flex; align-items:center; justify-content:center; gap:6px; background:var(--on); border:1px solid var(--on); color:#fff; font:700 13px/1 'Instrument Sans',sans-serif; border-radius:10px; padding:12px; cursor:pointer; }
         #golfer-caddies .mcv1-save .material-symbols-outlined { font-size:16px; }
+        /* Saving a caddy runs ~5s with a photo (shrink -> server screen -> upload -> insert -> re-render).
+           The button goes busy for the whole run so it never reads as a frozen app (Pete, 2026-09-12).
+           The spinner needs inline-block: a bare inline span ignores transform (v795 trap family). */
+        #golfer-caddies .mcv1-save .material-symbols-outlined.animate-spin { display:inline-block; }
+        #golfer-caddies .mcv1-form.mcv1-busy .mcv1-in,
+        #golfer-caddies .mcv1-form.mcv1-busy .mcv1-rate,
+        #golfer-caddies .mcv1-form.mcv1-busy #notebookCancelEdit { opacity:.45; pointer-events:none; }
 
         /* desktop 3-panel cockpit */
         #golfer-caddies .mcv1-panel { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:10px; height:100%; display:flex; flex-direction:column; transition:border-color .15s, background .15s; }
@@ -48875,6 +48882,25 @@ document.addEventListener('DOMContentLoaded', function() {
             _photoFile: null,
             _editingId: null,
             _editingPhotoUrl: '',
+            _saving: false,
+
+            // Busy state for the Save/Update button. A save with a photo takes ~5s (shrink ->
+            // server screen -> upload -> insert -> re-render) and with no moving indicator the
+            // app looked frozen. Called with a stage label as the save progresses; _setBusy(false)
+            // restores the button by re-running _setEditMode for whichever mode we are in.
+            _setBusy(on, label) {
+                this._saving = !!on;
+                const btn = document.getElementById('notebookSaveBtn');
+                if (btn) {
+                    btn.disabled = !!on;
+                    btn.style.opacity = on ? '0.6' : '';
+                    btn.style.cursor = on ? 'progress' : '';
+                    if (on) btn.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span>' + (label || 'Saving...');
+                }
+                const form = document.querySelector('#caddyNotebookSection .mcv1-form');
+                if (form) form.classList.toggle('mcv1-busy', !!on);
+                if (!on) this._setEditMode(!!this._editingId);
+            },
 
             // Load an existing entry into the Add Caddy form for editing (incl. photo add/change)
             editEntry(id) {
@@ -48990,13 +49016,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 inp.click();
             },
 
-            async _uploadPhotoFile(file, userId) {
+            // onStage(label) is optional — the Add form uses it to name each slow step on the
+            // Save button (the server screen alone is 2-3s).
+            async _uploadPhotoFile(file, userId, onStage) {
+                if (onStage) onStage('Preparing photo...');
                 const blob = await this._shrinkPhoto(file);
                 /* 2026-09-06: notebook photos are shown to other golfers (roster, Next Round) — screen server-side */
                 if (window.ContentModeration && ContentModeration.screenImage) {
+                    if (onStage) onStage('Checking photo...');
                     const s = await ContentModeration.screenImage(blob, 'caddy');
                     if (!s.safe) throw new Error(s.reason);
                 }
+                if (onStage) onStage('Uploading photo...');
                 const path = `notebook/${userId}_${Date.now()}.jpg`;
                 const { error } = await window.SupabaseDB.client.storage
                     .from('caddy_photos').upload(path, blob, { cacheControl: '3600', upsert: false, contentType: 'image/jpeg' });
@@ -49051,6 +49082,8 @@ document.addEventListener('DOMContentLoaded', function() {
             },
 
             async addEntry() {
+                // The save runs for seconds — a second tap would insert the caddy twice.
+                if (this._saving) return;
                 const userId = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
                 if (!userId) { NotificationManager.show('Please log in first', 'warning'); return; }
                 const number = document.getElementById('notebookCaddyNumber')?.value?.trim() || '';
@@ -49067,52 +49100,61 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 if (courseSel) courseSel.style.borderColor = '';
 
-                // Upload the picked photo (if any) first — failure never blocks the save
-                let photoUrl = '';
-                if (this._photoFile) {
-                    try {
-                        photoUrl = await this._uploadPhotoFile(this._photoFile, userId);
-                    } catch(e) {
-                        console.error('[CaddyNotebook] Photo upload failed:', e);
-                        NotificationManager.show(((e && e.message) || 'Photo upload failed') + ' — saving caddy without photo', 'warning');
-                    }
-                }
-
-                const entry = {
-                    golfer_id: userId,
-                    caddy_number: number, caddy_name: name,
-                    course_name: document.getElementById('notebookCaddyCourse')?.value?.trim() || '',
-                    notes: document.getElementById('notebookCaddyNotes')?.value?.trim() || '',
-                    rating: this._rating || null,
-                    tip_amount: parseInt(document.getElementById('notebookCaddyTip')?.value) || null,
-                    language: document.getElementById('notebookCaddyLanguage')?.value?.trim() || '',
-                    recommended_by: document.getElementById('notebookCaddyRecommendedBy')?.value?.trim() || '',
-                };
-                if (photoUrl) entry.photo_url = photoUrl;
-                else if (this._editingId) entry.photo_url = this._editingPhotoUrl || null;
-                const wasEdit = !!this._editingId;
+                // Everything past here is slow (photo screen + upload + write + re-render): hold the
+                // button in its busy state until the LAST step lands, and clear it in finally so no
+                // throw can strand the form disabled.
+                this._setBusy(true, 'Saving...');
                 try {
-                    if (wasEdit) {
-                        const { error } = await window.SupabaseDB.client.from('caddy_notebook')
-                            .update(entry).eq('id', this._editingId).eq('golfer_id', userId);
-                        if (error) throw error;
-                    } else {
-                        const { error } = await window.SupabaseDB.client.from('caddy_notebook').insert([entry]);
-                        if (error) throw error;
+                    // Upload the picked photo (if any) first — failure never blocks the save
+                    let photoUrl = '';
+                    if (this._photoFile) {
+                        try {
+                            photoUrl = await this._uploadPhotoFile(this._photoFile, userId, (m) => this._setBusy(true, m));
+                        } catch(e) {
+                            console.error('[CaddyNotebook] Photo upload failed:', e);
+                            NotificationManager.show(((e && e.message) || 'Photo upload failed') + ' — saving caddy without photo', 'warning');
+                        }
                     }
-                    this._entries = null;
-                    try { CaddyOrganizerSystem._historyDirty = true; } catch(e) {}
-                    this._editingId = null;
-                    this._editingPhotoUrl = '';
-                    ['notebookCaddyNumber','notebookCaddyName','notebookCaddyCourse','notebookCaddyNotes','notebookCaddyTip','notebookCaddyLanguage','notebookCaddyRecommendedBy'].forEach(id => {
-                        const el = document.getElementById(id); if (el) el.value = '';
-                    });
-                    this._rating = 0; this.setRating(0);
-                    this.clearPhoto();
-                    this._setEditMode(false);
-                    NotificationManager.show(wasEdit ? 'Caddy updated!' : 'Caddy saved to notebook!', 'success');
-                    await this.render();
-                } catch(e) { NotificationManager.show('Error saving: ' + e.message, 'error'); }
+
+                    this._setBusy(true, 'Saving...');
+                    const entry = {
+                        golfer_id: userId,
+                        caddy_number: number, caddy_name: name,
+                        course_name: document.getElementById('notebookCaddyCourse')?.value?.trim() || '',
+                        notes: document.getElementById('notebookCaddyNotes')?.value?.trim() || '',
+                        rating: this._rating || null,
+                        tip_amount: parseInt(document.getElementById('notebookCaddyTip')?.value) || null,
+                        language: document.getElementById('notebookCaddyLanguage')?.value?.trim() || '',
+                        recommended_by: document.getElementById('notebookCaddyRecommendedBy')?.value?.trim() || '',
+                    };
+                    if (photoUrl) entry.photo_url = photoUrl;
+                    else if (this._editingId) entry.photo_url = this._editingPhotoUrl || null;
+                    const wasEdit = !!this._editingId;
+                    try {
+                        if (wasEdit) {
+                            const { error } = await window.SupabaseDB.client.from('caddy_notebook')
+                                .update(entry).eq('id', this._editingId).eq('golfer_id', userId);
+                            if (error) throw error;
+                        } else {
+                            const { error } = await window.SupabaseDB.client.from('caddy_notebook').insert([entry]);
+                            if (error) throw error;
+                        }
+                        this._entries = null;
+                        try { CaddyOrganizerSystem._historyDirty = true; } catch(e) {}
+                        this._editingId = null;
+                        this._editingPhotoUrl = '';
+                        ['notebookCaddyNumber','notebookCaddyName','notebookCaddyCourse','notebookCaddyNotes','notebookCaddyTip','notebookCaddyLanguage','notebookCaddyRecommendedBy'].forEach(id => {
+                            const el = document.getElementById(id); if (el) el.value = '';
+                        });
+                        this._rating = 0; this.setRating(0);
+                        this.clearPhoto();
+                        NotificationManager.show(wasEdit ? 'Caddy updated!' : 'Caddy saved to notebook!', 'success');
+                        this._setBusy(true, 'Updating list...');
+                        await this.render();
+                    } catch(e) { NotificationManager.show('Error saving: ' + e.message, 'error'); }
+                } finally {
+                    this._setBusy(false);
+                }
             },
 
             async deleteEntry(id) {
@@ -58098,14 +58140,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
 
-                <!-- View chips (mobile only) -->
+                <!-- View chips (mobile only). "Add Caddies" (data-cfilter stays "notebook" — the
+                     filter key is wired through setFilter/openHistoryNote) sits right after All:
+                     it is the door to the Add form, so it must be the first thing after the default view. -->
                 <div id="caddyFilterChips" class="mcv1-chips md:hidden">
                     <button data-cfilter="all" onclick="CaddyOrganizerSystem.setFilter('all')" class="mcv1-chip on"><span class="material-symbols-outlined">groups</span>All</button>
+                    <button data-cfilter="notebook" onclick="CaddyOrganizerSystem.setFilter('notebook')" class="mcv1-chip"><span class="material-symbols-outlined">person_add</span>Add Caddies</button>
                     <button data-cfilter="favorites" onclick="CaddyOrganizerSystem.setFilter('favorites')" class="mcv1-chip"><span class="material-symbols-outlined">star</span>Favorites</button>
                     <button data-cfilter="regulars" onclick="CaddyOrganizerSystem.setFilter('regulars')" class="mcv1-chip"><span class="material-symbols-outlined">sync</span>Regulars</button>
                     <button data-cfilter="history" onclick="CaddyOrganizerSystem.setFilter('history')" class="mcv1-chip"><span class="material-symbols-outlined">history</span>History</button>
                     <button data-cfilter="mylist" onclick="CaddyOrganizerSystem.setFilter('mylist')" class="mcv1-chip"><span class="material-symbols-outlined">format_list_bulleted</span>My List</button>
-                    <button data-cfilter="notebook" onclick="CaddyOrganizerSystem.setFilter('notebook')" class="mcv1-chip"><span class="material-symbols-outlined">edit_note</span>Notebook</button>
                 </div>
 
                 <!-- Manual Caddy Notebook (hidden by default, shown when notebook filter selected) -->

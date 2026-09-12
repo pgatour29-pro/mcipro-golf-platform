@@ -95543,7 +95543,19 @@ class LiveScorecardSystem {
             return changed;
         } catch (e) { return false; }
     }
-    // Tapping Start Play on your own phone claims YOUR card — nothing else moves.
+    // Joining a live round claims YOUR card — but ONLY if nobody else is holding it.
+    //
+    // v1170: this used to claim UNCONDITIONALLY, so merely OPENING the app took your card off
+    // whoever was scoring for you. It is called from the restore/DB-join paths, not from a tap,
+    // so no one ever chose it. Greenwood 2026-09-12: Pete started all four cards at 05:21 and
+    // was scoring the group; Alondo joined 05:33, Niklas 05:34, Patrik 05:44:38 — each join
+    // silently stole its own card back, and Pete's last score write was 05:44:37, ONE SECOND
+    // before the last one went, so it read as "the app kicked my whole group out" mid-round.
+    //
+    // A held card now stays with its holder. The joiner sees a RED cube and must TAP it to take
+    // it (takeBackCard) — that is the documented tap model and it is deliberate. The legitimate
+    // case still works: join a round nobody is scoring for you and the card is unheld, so you
+    // claim it and can type immediately.
     async _claimOwnCard() {
         // DEMO: this device already owns every demo card — there is nothing in the DB to claim.
         if (this.demoMode) return;
@@ -95553,6 +95565,32 @@ class LiveScorecardSystem {
             const mine = (this.players || []).find(p => String(p.id) === String(me));
             if (!mine) return;                                   // not a player in this round
             if (String(this.cardOwner?.[mine.id] || '') === String(me)) return;  // already mine
+
+            const scId = this.scorecards?.[mine.id];
+            const sb = window.SupabaseDB?.client;
+            if (scId && !String(scId).startsWith('local_') && sb) {
+                // Ask the DB who holds it — the local cardOwner map can be a stale snapshot, and
+                // this is the one decision that must not be wrong. Deliberately NOT a PostgREST
+                // .or() filter: a comma inside .or() has silently returned 0 rows here before.
+                const { data: row, error } = await sb.from('scorecards')
+                    .select('controlled_by').eq('id', scId).maybeSingle();
+                if (error) throw error;
+                const holder = String(row?.controlled_by || '');
+                if (holder && holder !== String(me)) {
+                    // Someone is actively scoring for me. Stay read-only and say why, once —
+                    // otherwise the keypad is just mysteriously dead.
+                    if (!this._claimBlockedNoted) {
+                        this._claimBlockedNoted = true;
+                        const hName = (this.players || []).find(p => String(p.id) === holder)?.name || 'Someone else';
+                        NotificationManager?.show?.(`${hName} is scoring your card — tap your own name to take it over`, 'info');
+                    }
+                    // keep the local map honest so the cube paints RED rather than green
+                    this.cardOwner = this.cardOwner || {};
+                    this.cardOwner[mine.id] = holder;
+                    this._syncSelfScoringFromOwnership();
+                    return;
+                }
+            }
             await this._setCardOwner(mine.id, me);
             this.currentPlayerId = mine.id;
             this.currentScore = '';

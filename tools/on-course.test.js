@@ -139,8 +139,21 @@ console.log('\n=== 9. render ===');
   if (!/not scoring/.test(h)) bad('unlocatable group not surfaced'); else console.log('  OK "not scoring" surfaced');
   if (!/last group in ~/.test(h)) bad('no ETA line'); else console.log('  OK ETA line present');
 
-  const holes = (h.match(/class="oc-hole/g) || []).length;
-  if (holes !== 18) bad('track has ' + holes + ' cells, want 18'); else console.log('  OK 18 hole cells');
+  const holes = (h.match(/class="oc-hole(?! oc-in)/g) || []).length;
+  if (holes !== 18) bad('track has ' + holes + ' hole cells, want 18'); else console.log('  OK 18 hole cells');
+  // a finished group must stay VISIBLE on the tracker, in the IN bucket at the end
+  const inBucket = h.match(/<div class="oc-hole oc-in[^"]*">[\s\S]*?<\/div>\s*<\/div>/);
+  if (!inBucket) bad('no IN bucket on the track');
+  else if (!/oc-pin done">1</.test(inBucket[0])) bad('finished group 1 not shown in the IN bucket: ' + inBucket[0].replace(/\s+/g,' '));
+  else console.log('  OK finished group shown in the IN bucket (not dropped off the track)');
+  // and its clock is stopped: an actual finish time, and how long it took
+  const doneRow = (h.match(/<tr class="done[^"]*">[\s\S]*?<\/tr>/) || [])[0] || '';
+  if (/oc-eta[^>]*>—</.test(doneRow)) bad('finished group shows a dash instead of when it came in');
+  else if (!/oc-eta in"/.test(doneRow)) bad('finished in-at not styled as in');
+  else console.log('  OK finished group shows when it came in');
+  if (!/oc-pace">\d+h\d\d</.test(doneRow) && !/oc-pace">\d+m</.test(doneRow))
+    bad('finished group does not show how long it took: ' + doneRow.replace(/\s+/g,' ').slice(0,200));
+  else console.log('  OK finished group shows its round duration');
   const pins = (h.match(/class="oc-pin"/g) || []).length;
   // 2 located groups -> 1 pin each on the track, plus one pin per row in the table (4 rows)
   if (pins < 2) bad('no pins placed'); else console.log('  OK pins placed on the track');
@@ -165,6 +178,29 @@ console.log('\n=== 9. render ===');
   else console.log('  OK empty state');
 }
 
+console.log('\n=== 9b. stopped clock ===');
+{
+  const els2 = {}; const doc2 = { getElementById: id => (els2[id] = els2[id] || { id, innerHTML: '', style: {} }) };
+  const OC3 = new Function('window', '_lvLocale', 'document', m[0] + '\nreturn OnCourse;')({}, () => 'en-US', doc2);
+  const cards = [{ id: 'f', group_id: 'gf', player_name: 'F F', status: 'completed', starting_nine: 'front' }];
+  const g = OC3.computeGroups(cards, play('f', FRONT, 18, 14), T0 + 600 * 60000)[0];
+  if (!g.finished) bad('completed card not marked finished');
+  else console.log('  OK finished');
+  if (g.etaMs !== null) bad('a finished group still has a projection ticking');
+  else console.log('  OK no ETA once finished — the timer stopped');
+  if (!g.finishedAtMs) bad('no finish time recorded'); else console.log('  OK finish time frozen at the last write');
+  // 18 holes at 14 min apart = 17 gaps = 238 min = 3h58
+  if (g.durationMin !== 238) bad('durationMin ' + g.durationMin + ', want 238');
+  else console.log('  OK took ' + OC3.hhmmDur(g.durationMin));
+  if (OC3.hhmmDur(238) !== '3h58') bad('hhmmDur(238) = ' + OC3.hhmmDur(238));
+  if (OC3.hhmmDur(45) !== '45m') bad('hhmmDur(45) = ' + OC3.hhmmDur(45));
+  else console.log('  OK duration formatting (3h58 / 45m)');
+  // a finished group must not be counted as still out
+  const s2 = OC3.summarise([g]);
+  if (s2.out !== 0 || s2.finished !== 1) bad('summary ' + JSON.stringify(s2));
+  else console.log('  OK counted as in, not out');
+}
+
 // ---------- 10. the panel is wired into the page ----------
 console.log('\n=== 10. wiring ===');
 [['panel markup', /id="onCoursePanel"/],
@@ -172,7 +208,11 @@ console.log('\n=== 10. wiring ===');
  ['follows the scoring event', /window\.OnCourse\.show\(eventId\)/],
  ['hides when no event', /window\.OnCourse\.show\(null\)/],
  ['stops polling off-tab', /else OnCourse\.stop\(\);/],
- ['track scrolls at 360px', /\.oc-track\{[^}]*overflow-x:auto/]].forEach(([label, re]) => {
+ ['track scrolls at 360px', /\.oc-track\{[^}]*overflow-x:auto/],
+ // the 6-column table once pushed the PAGE to 378px at a 360px viewport — wide content must
+ // scroll inside its own container, never the body
+ ['table scrolls in its own box', /\.oc-tblwrap\{[^}]*overflow-x:auto/],
+ ['table is actually wrapped', /<div class="oc-tblwrap"><table class="oc-tbl">/]].forEach(([label, re]) => {
   if (!re.test(html)) bad(label + ' MISSING'); else console.log('  OK ' + label);
 });
 

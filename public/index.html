@@ -65465,8 +65465,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     #onCoursePanel .oc-hnum{font:700 10px/1 ui-monospace,monospace;color:#94a3b8;margin-bottom:4px;}
                     #onCoursePanel .oc-hole.has .oc-hnum{color:#0369a1;}
                     #onCoursePanel .oc-pins{display:flex;flex-wrap:wrap;gap:2px;justify-content:center;}
+                    #onCoursePanel .oc-hole.oc-in{width:42px;margin-left:9px;border-style:dashed;}
+                    #onCoursePanel .oc-hole.oc-in.has{background:#dcfce7;border-color:#86efac;border-style:solid;}
+                    #onCoursePanel .oc-hole.oc-in .oc-hnum{color:#16a34a;font-weight:800;}
+                    #onCoursePanel .oc-pin.done{background:#16a34a;}
+                    #onCoursePanel .oc-eta.in{color:#16a34a;}
                     #onCoursePanel .oc-pin{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;
                         border-radius:9px;background:#0284c7;color:#fff;font:800 10px/1 ui-monospace,monospace;padding:0 4px;}
+                    /* the 6-column table must scroll in ITS OWN box — the page never scrolls
+                       sideways (verified at 360px; longer headers once pushed it to 378px) */
+                    #onCoursePanel .oc-tblwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
                     #onCoursePanel .oc-tbl{width:100%;border-collapse:collapse;}
                     #onCoursePanel .oc-tbl th{text-align:left;font:700 9.5px/1 ui-monospace,monospace;color:#94a3b8;
                         text-transform:uppercase;letter-spacing:.08em;padding:0 8px 6px 0;white-space:nowrap;}
@@ -161554,9 +161562,15 @@ const OnCourse = {
             const remaining = 18 - done;
             const etaMs = (!finished && paceMin && g.last) ? g.last + remaining * paceMin * 60000 : null;
             const idleMin = (!finished && g.last) ? (now - g.last) / 60000 : null;
+            // Pete: "finish round stops the timer ... must show on the tracker they are
+            // finished". A finished group's clock is frozen at its last write — that IS the
+            // time it came in — and its round duration stops moving.
+            const finishedAtMs = finished ? g.last : null;
+            const durationMin = (finished && g.first !== null && g.last !== null)
+                ? Math.round((g.last - g.first) / 60000) : null;
             return {
                 groupId: g.groupId, players: g.players, startingNine: g.startingNine,
-                holesDone: done, currentHole, finished,
+                holesDone: done, currentHole, finished, finishedAtMs, durationMin,
                 // ZERO scores does NOT mean "not teed off". The board can only see a group
                 // that is entering scores, so an unscored group is UNLOCATABLE — say that
                 // rather than pinning it on hole 1, or an organizer serves food too early.
@@ -161592,6 +161606,10 @@ const OnCourse = {
     // A COMMA PINS THE ORDER: names are stored either "Last, First" or "First Last" (same rule
     // the golfer matcher relies on). Ignoring the comma turned "Andersson, Niklas" into
     // "A Niklas" — an initial taken off his surname and his forename shown as the surname.
+    hhmmDur(min) {
+        const h = Math.floor(min / 60), m = min % 60;
+        return h ? (h + 'h' + String(m).padStart(2, '0')) : (m + 'm');
+    },
     shortName(n) {
         const raw = String(n || '').trim();
         if (raw.indexOf(',') !== -1) {
@@ -161665,6 +161683,14 @@ const OnCourse = {
                 <div class="oc-pins">${here.map(n => `<span class="oc-pin">${n}</span>`).join('')}</div>
             </div>`;
         }
+        // A finished group must still be VISIBLE on the tracker (Pete) — it used to vanish from
+        // the strip the moment it came in, so the organizer could not see at a glance who was
+        // already back. They land in an IN bucket at the end of the course.
+        const inPins = groups.map((g, i) => g.finished ? (i + 1) : null).filter(Boolean);
+        track += `<div class="oc-hole oc-in${inPins.length ? ' has' : ''}">
+            <div class="oc-hnum">IN</div>
+            <div class="oc-pins">${inPins.map(n => `<span class="oc-pin done">${n}</span>`).join('')}</div>
+        </div>`;
 
         const rows = groups.map((g, i) => {
             const where = g.finished ? 'IN'
@@ -161675,8 +161701,8 @@ const OnCourse = {
                 <td class="oc-g"><span class="oc-pin">${i + 1}</span></td>
                 <td class="oc-w">${this.esc(where)}${g.startingNine === 'back' ? '<span class="oc-b10">from 10</span>' : ''}</td>
                 <td class="oc-p">${prog}</td>
-                <td class="oc-pace">${g.paceMin ? g.paceMin + '&thinsp;m/hole' : '—'}</td>
-                <td class="oc-eta">${g.finished ? '—' : this.hhmm(g.etaMs)}</td>
+                <td class="oc-pace">${g.finished && g.durationMin ? this.hhmmDur(g.durationMin) : (g.paceMin ? g.paceMin + '&thinsp;m/hole' : '—')}</td>
+                <td class="oc-eta${g.finished ? ' in' : ''}">${g.finished ? this.hhmm(g.finishedAtMs) : this.hhmm(g.etaMs)}</td>
                 <td class="oc-pl">${g.players.map(n => this.esc(this.shortName(n))).join(', ')}${g.stalled ? ` <span class="oc-stall">no score ${g.idleMin}m</span>` : ''}</td>
             </tr>`;
         }).join('');
@@ -161691,9 +161717,9 @@ const OnCourse = {
                 <span class="oc-last">${s.out ? 'last group in ~<b>' + this.hhmm(s.lastInMs) + '</b>' : 'all groups in'}</span>
             </div>
             <div class="oc-track" id="onCourseTrack">${track}</div>
-            <table class="oc-tbl"><thead><tr>
+            <div class="oc-tblwrap"><table class="oc-tbl"><thead><tr>
                 <th></th><th>where</th><th>holes</th><th>pace</th><th>in by</th><th class="oc-plh">players</th>
-            </tr></thead><tbody>${rows}</tbody></table>`;
+            </tr></thead><tbody>${rows}</tbody></table></div>`;
 
         // At 360px only ~7 of the 18 cells are visible, so a field spread over holes 4-17 shows
         // an EMPTY track and the organizer has to go looking. Scroll to the group that is

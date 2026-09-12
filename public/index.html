@@ -20360,6 +20360,8 @@
             // Column is `name` (NOT course_name — sql/COURSE_RATING_INTEGRATION.sql does not
             // match the live table) and `id` is a TEXT slug, not a uuid.
             var CANON_CACHE_KEY = 'mcipro_course_canon';
+            var ROWS = [];                                  // [{id, name}] from the courses table
+            function setRows(rows){ ROWS = rows || []; return ROWS; }
             function coreLen(n){ return courseCore(n).length; }
             function bySpecificity(a,b){ return (coreLen(a)-coreLen(b)) || (a<b?-1:a>b?1:0); }
 
@@ -20381,28 +20383,73 @@
             // Paint-first: seed from cache synchronously, then refresh from the network.
             try {
                 var cached = JSON.parse(localStorage.getItem(CANON_CACHE_KEY) || 'null');
-                if (Array.isArray(cached) && cached.length) setTimeout(function(){ applyCanon(cached); }, 0);
+                if (Array.isArray(cached) && cached.length) {
+                    // v1167 widened the cache from names to {id,name} rows; tolerate both so an
+                    // existing cache does not have to be cleared.
+                    var rows = typeof cached[0] === 'string'
+                        ? cached.map(function(n){ return { id:null, name:n }; }) : cached;
+                    setRows(rows);
+                    setTimeout(function(){ applyCanon(rows.map(function(r){ return r.name; })); }, 0);
+                }
             } catch (e) {}
 
             function loadFromDB(){
                 try {
                     var sb = window.SupabaseDB && window.SupabaseDB.client;
                     if (!sb) return Promise.resolve(0);
-                    return sb.from('courses').select('name').then(function(res){
+                    return sb.from('courses').select('id, name').then(function(res){
                         if (res.error || !res.data || !res.data.length) {
                             console.warn('[CourseMatch] courses load skipped:', res.error && res.error.message);
                             return CANON.length;   // keep the seeded list, never fail open
                         }
-                        var names = res.data.map(function(r){ return r.name; }).filter(Boolean);
-                        try { localStorage.setItem(CANON_CACHE_KEY, JSON.stringify(names)); } catch (e) {}
-                        var n = applyCanon(names);
-                        console.log('[CourseMatch] canonical courses:', n, '(from', names.length, 'rows)');
+                        setRows(res.data.filter(function(r){ return r && r.name; }));
+                        try { localStorage.setItem(CANON_CACHE_KEY, JSON.stringify(ROWS)); } catch (e) {}
+                        var n = applyCanon(ROWS.map(function(r){ return r.name; }));
+                        console.log('[CourseMatch] canonical courses:', n, '(from', ROWS.length, 'rows)');
                         return n;
                     }).catch(function(err){
                         console.warn('[CourseMatch] courses load failed:', err && err.message);
                         return CANON.length;
                     });
                 } catch (e) { return Promise.resolve(CANON.length); }
+            }
+
+            // ---- id resolution: free-text course name -> a real courses.id ------------------
+            // Offers, follows and any CRM row must key on an id, never on a name string. The
+            // VENUE row is the one to key on: `courses` also holds each nine/loop separately
+            // (phoenix_lake/mountain/ocean), and a follow belongs to Phoenix Gold, not to one
+            // nine. The 4 venues that had only nine rows (greenwood, khao_kheow, phoenix_gold,
+            // laem_chabang) were added as parent rows 2026-09-12, so every canonical venue now
+            // resolves. Parent rows carry NO course_holes on purpose — the hole stitcher skips
+            // a 0-hole candidate and falls through to the real nines.
+            // A parenthesis holding a "+" or "/" (or "with") is a NINE COMBO — "Laem Chabang
+            // (Lake+Valley)", "Khao Kheow - Course B (with A)". A parenthesis holding a place
+            // is a region marker and the row is still the venue — "Lake View … (Hua Hin)".
+            // Without this, Laem Chabang's three combo rows all look like venue rows and the
+            // alphabetically-first one ('(' sorts before 'I') stole the venue id.
+            var COMBO_PAREN_RE = /\(([^)]*)\)/;
+            function isComboName(n){
+                var m = COMBO_PAREN_RE.exec(String(n || ''));
+                return !!m && (/[+\/]/.test(m[1]) || /^\s*with\b/i.test(m[1]));
+            }
+            function isVenueRow(r){ return cutSubvenueTail(r.name) === r.name && !isComboName(r.name); }
+            function resolveId(name){
+                var venue = normalizeCourseName(name);
+                if (!venue) return { status:'unmatched', venueId:null, venueName:'', nineIds:[] };
+                var family = ROWS.filter(function(r){ return normalizeCourseName(r.name) === venue; });
+                if (!family.length) return { status:'unmatched', venueId:null, venueName:venue, nineIds:[] };
+                // least-specific venue row wins (the venue, not one of its nines/combos)
+                var venues = family.filter(isVenueRow).sort(function(a,b){
+                    return (coreLen(a.name)-coreLen(b.name)) || (a.name<b.name?-1:a.name>b.name?1:0);
+                });
+                var pick = venues[0] || null;
+                return {
+                    status: pick ? 'matched' : 'nines_only',
+                    venueId: pick ? pick.id : null,
+                    venueName: venue,
+                    nineIds: family.filter(function(r){ return !pick || r.id !== pick.id; })
+                                   .map(function(r){ return r.id; })
+                };
             }
 
             window.CourseMatch = {
@@ -20417,7 +20464,10 @@
                 },
                 cutSubvenueTail: cutSubvenueTail,
                 venueNames: venueNames,
-                loadFromDB: loadFromDB
+                loadFromDB: loadFromDB,
+                resolveId: resolveId,
+                rows: function(){ return ROWS.slice(); },
+                _setRows: setRows
             };
             window.normalizeCourseName = normalizeCourseName;
         })();
@@ -107009,48 +107059,66 @@ layout: "text_based"
             // Save to database
             const courseId = `course_${Date.now()}`;
 
-            // Insert course
-            await window.SupabaseDB.client
+            // Insert course. THREE bugs fixed here (v1167) — this whole scan-a-scorecard flow
+            // could never save: (1) it wrote `tee_marker` to `courses`, which has no such
+            // column (Postgres 42703, the insert always failed); (2) the hole records read
+            // h.hole_number / h.stroke_index while the array above builds h.number /
+            // h.strokeIndex, so both went in NULL; (3) neither insert's .error was checked, so
+            // it reported success, told the user to "manually add this course to the dropdown"
+            // and auto-selected a course id that did not exist. tee_marker belongs on
+            // course_holes (it is per-tee there), never on courses.
+            const cRes = await window.SupabaseDB.client
                 .from('courses')
                 .insert([{
                     id: courseId,
                     name: courseName,
-                    tee_marker: teeMarker
+                    total_holes: holes.length,
+                    par: holes.reduce((sum, h) => sum + (h.par || 0), 0),
+                    country: 'Thailand'
                 }]);
+            if (cRes.error) throw cRes.error;
 
             // Insert holes
             const holeRecords = holes.map(h => ({
                 course_id: courseId,
-                hole_number: h.hole_number,
+                hole_number: h.number,
                 par: h.par,
-                stroke_index: h.stroke_index,
+                stroke_index: h.strokeIndex,
                 yardage: h.yardage,
                 tee_marker: teeMarker
             }));
 
-            await window.SupabaseDB.client
+            const hRes = await window.SupabaseDB.client
                 .from('course_holes')
                 .insert(holeRecords);
+            if (hRes.error) {
+                // Don't leave a course row with no holes behind — it would show up in every
+                // course picker as a selectable venue that scores as all-par-4.
+                await window.SupabaseDB.client.from('courses').delete().eq('id', courseId);
+                throw hRes.error;
+            }
 
             // Clear course data cache for this course
             localStorage.removeItem(`mcipro_course_${courseId}`);
 
+            // The new course must be known to the ONE course resolver straight away.
+            try { if (window.CourseMatch) await window.CourseMatch.loadFromDB(); } catch (e) {}
+
             // Auto-select the newly added course
             document.getElementById('scorecardCourseSelect').value = courseId;
-
-            NotificationManager.show('Note: You may need to manually add this course to the dropdown in settings', 'info');
 
             // Update tee marker
             const teeRadio = document.querySelector(`input[name="teeMarker"][value="${teeMarker}"]`);
             if (teeRadio) teeRadio.checked = true;
 
-            NotificationManager.show(micon('task_alt') + ' Course saved! Select it to start your round.', 'success');
+            NotificationManager.show(micon('task_alt') + ` Saved ${courseName} (${holes.length} holes). Select it to start your round.`, 'success');
             this.closeCourseReview();
             this.closeCourseLibrary();
 
         } catch (error) {
+            // Say WHAT failed — this path silently "succeeded" for its whole life.
             console.error('[Scanner] Save error:', error);
-            NotificationManager.show('Failed to save course data', 'error');
+            NotificationManager.show('Failed to save course: ' + (error?.message || error || 'unknown error'), 'error');
         }
     }
 

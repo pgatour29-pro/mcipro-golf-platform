@@ -185,6 +185,49 @@ CM.loadFromDB().then(total => {
      else console.log(`  OK "${a}" stays distinct from "${b}"`);
    });
 
+  // ---------- 8. resolveId(): free-text name -> a real courses.id ----------
+  console.log('\n=== resolveId(): every canonical venue must resolve to a venue row ===');
+  let noId = 0;
+  CM.CANON.forEach(v => { const r = CM.resolveId(v);
+    if (r.status !== 'matched' || !r.venueId) { bad(`"${v}" -> ${r.status} (venueId ${r.venueId})`); noId++; } });
+  if (!noId) console.log(`  OK all ${CM.CANON.length} venues resolve to a courses.id`);
+
+  // the four venues that had ONLY nine rows before 2026-09-12
+  [['Phoenix Gold Golf & Country Club', 'phoenix_gold', 3],
+   ['Khao Kheow Country Club',          'khao_kheow',   4],
+   ['Greenwood Golf & Resort',          'greenwood',    3],
+   ['Laem Chabang International Country Club', 'laem_chabang', 3]].forEach(([raw, id, nines]) => {
+    const r = CM.resolveId(raw);
+    if (r.venueId !== id) bad(`resolveId("${raw}").venueId = ${r.venueId}, want ${id}`);
+    else if (r.nineIds.length !== nines) bad(`resolveId("${raw}") found ${r.nineIds.length} nines, want ${nines}`);
+    else console.log(`  OK ${raw} -> ${id} (+${r.nineIds.length} nines)`);
+  });
+
+  // a nine/combo name must resolve to its VENUE id, never to itself
+  [['Phoenix Gold - Ocean Nine', 'phoenix_gold'], ['Khao Kheow - Course B (with A)', 'khao_kheow'],
+   ['Laem Chabang (Mountain+Lake)', 'laem_chabang'], ['Burapha Golf Club - West Course', 'burapha'],
+   ['Majestic \u2014 Lake nine (Hua Hin)', 'majestic_hh']].forEach(([nine, id]) => {
+    const r = CM.resolveId(nine);
+    if (r.venueId !== id) bad(`resolveId("${nine}").venueId = ${r.venueId}, want ${id}`);
+    else console.log(`  OK ${nine} -> ${id}`);
+  });
+
+  // the strings bookings actually carry
+  [['BRC', 'bangpakong'], ['Khao Kiew Country Club A+B', 'khao_kheow'],
+   ['Pattaya Country Club', 'pattaya_county'], ['Saint Andrews 2000', 'st-andrews-2000'],
+   ['Bangphra Golf Club', 'bangpra']].forEach(([raw, id]) => {
+    const r = CM.resolveId(raw);
+    if (r.venueId !== id) bad(`resolveId("${raw}").venueId = ${r.venueId}, want ${id}`);
+    else console.log(`  OK ${raw} -> ${id}`);
+  });
+
+  // an unknown course must yield no id rather than a neighbour's
+  ['Emerald Golf Club', 'Sriracha Golf Club', ''].forEach(q => {
+    const r = CM.resolveId(q);
+    if (r.venueId) bad(`resolveId("${q}") invented an id: ${r.venueId}`);
+    else console.log(`  OK "${q}" -> ${r.status}, no id`);
+  });
+
   console.log(fails ? `\nFAILED: ${fails} problem(s)` : '\nALL TESTS PASSED');
   process.exit(fails ? 1 : 0);
 });

@@ -20203,6 +20203,226 @@
             return true;                                                        // no handicap to check → name identity
         };
 
+        // ===================== COURSE IDENTITY — window.CourseMatch =====================
+        // COURSEMATCH:BEGIN  (tools/course-match.test.js extracts THIS block — keep it the ONE copy)
+        // The course-name sibling of the golfer stack above:
+        //   _nameNorm/_nameTokens   -> courseNorm/courseCore  (generic facility words stripped)
+        //   _NICK_GROUPS/_nickEquiv -> COURSE_ALIASES         (transliteration variants)
+        //   samePersonName          -> sameCourse             (length-aware edit budget)
+        //
+        // A FLAT PERCENTAGE MATCH CANNOT WORK HERE (measured 2026-09-12): "Pattana" vs
+        // "Pattaya CC" is 86% Levenshtein / 100% token yet they are DIFFERENT courses, and the
+        // whole Pattana/Pattavia/Pattaya CC cluster sits 75-86% apart — any 80-90% threshold
+        // merges them. Budget = floor(len/8) edits instead: a 7-char core must be EXACT while
+        // "bangpakong riverside" (20) tolerates 2 typos. Short names strict, long names forgiving.
+        (function(){
+            var GENERIC = new Set(['golf','golfing','course','courses','club','clubs','country',
+                'cc','gc','gcc','resort','resorts','spa','hotel','hotels','international','intl',
+                'links','facility','facilities','complex','the','and','a','of','public',
+                'championship','co','sports']);
+
+            // Transliteration / spelling variants of the SAME word (the _NICK_GROUPS analogue).
+            var COURSE_ALIASES = [
+                ['kheow','khiew','kiew','keow','kiaw','khiaw'],
+                ['bangpakong','bangpakhong','bangpragong'],
+                ['bangpra','bangphra'],
+                ['plutaluang','phlutaluang','plutaluan'],
+                ['st','saint'],
+                ['andrews','andrew'],
+                ['chee','chi'],
+                ['chan','chang']
+            ];
+            var ALIAS = new Map();
+            COURSE_ALIASES.forEach(function(g){ g.forEach(function(w){
+                var s = ALIAS.get(w) || new Set(); g.forEach(function(x){ s.add(x); }); ALIAS.set(w, s);
+            }); });
+            function aliasEq(a,b){ var s; return a===b || !!((s=ALIAS.get(a)) && s.has(b)); }
+
+            // combo nines collapse to the BASE course: "(A/B)", "A+B", "C/D", trailing letter
+            var COMBO_RE = [/\(([^)]*)\)/g, /\b[a-d]\s*[+/&-]\s*[a-d]\b/gi, /\bnines?\b/gi,
+                            /\b(front|back)\s*(nine|9)\b/gi, /\bloops?\b/gi];
+
+            // Individual nines/loops are rows in the `courses` table alongside their venue
+            // ("Majestic — Lake nine (Hua Hin)" next to "Majestic Creek Golf Club (Hua Hin)").
+            // Everything after a SPACED dash whose tail is only sub-venue words is venue detail,
+            // not identity — cut it, or "Majestic Lake" reads as a venue of its own. A hyphen
+            // without spaces ("St-Andrews") is part of the name and is never cut.
+            var SUBVENUE = new Set(['lake','lakes','mountain','mountains','ocean','sea','east',
+                'west','north','south','valley','desert','creek','waterfall','highlands','island',
+                'river','garden','old','new','championship']);
+            var SEP_RE = /\s+[\u2014\u2013-]\s+/;
+            function cutSubvenueTail(s){
+                var parts = String(s).split(SEP_RE);
+                if (parts.length < 2) return String(s);
+                var head = parts[0];
+                var tail = parts.slice(1).join(' ');
+                var t = tail;
+                COMBO_RE.forEach(function(re){ t = t.replace(re,' '); });
+                var toks = courseNorm(t).split(' ').filter(Boolean)
+                            .filter(function(w){ return !GENERIC.has(w); });
+                // tail is pure venue detail -> drop it. An empty tail counts as detail too.
+                var detail = toks.every(function(w){ return SUBVENUE.has(w) || /^[a-d]$/.test(w); });
+                return (detail && head.trim()) ? head : String(s);
+            }
+
+            function courseNorm(s){
+                return String(s==null?'':s).toLowerCase().normalize('NFD')
+                    .replace(/[̀-ͯ]/g,'').replace(/&/g,' and ')
+                    .replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+            }
+            function courseCore(s){
+                var t = cutSubvenueTail(String(s==null?'':s));
+                COMBO_RE.forEach(function(re){ t = t.replace(re,' '); });
+                var toks = courseNorm(t).split(' ').filter(Boolean)
+                            .filter(function(w){ return !GENERIC.has(w); });
+                while (toks.length > 1 && /^[a-d]$/.test(toks[toks.length-1])) toks.pop();
+                return toks;
+            }
+            function coreStr(s){ return courseCore(s).join(' '); }
+            function coreCat(s){ return courseCore(s).join(''); }   // "laem chabang" -> "laemchabang"
+
+            function budget(len){ return Math.floor(len/8); }
+            function lev(a,b){
+                var m=a.length, n=b.length; if(!m) return n; if(!n) return m;
+                var prev=[], cur=[], i, j, tmp;
+                for(j=0;j<=n;j++) prev[j]=j;
+                for(i=1;i<=m;i++){ cur[0]=i;
+                    for(j=1;j<=n;j++) cur[j]=Math.min(prev[j]+1, cur[j-1]+1, prev[j-1]+(a.charAt(i-1)===b.charAt(j-1)?0:1));
+                    tmp=prev; prev=cur; cur=tmp; }
+                return prev[n];
+            }
+            function withinBudget(x,y){ var b=budget(Math.min(x.length,y.length)); return x===y || (b>0 && lev(x,y)<=b); }
+            function tokEq(x,y){ return aliasEq(x,y) || withinBudget(x,y); }
+
+            function sameCourse(a,b){
+                var A=courseCore(a), B=courseCore(b);
+                if(!A.length||!B.length) return { same:false, why:'empty core' };
+                if (withinBudget(coreCat(a), coreCat(b))) return { same:true, why:'concatenated core' };
+                var S = A.length<=B.length ? A : B, L = A.length<=B.length ? B : A;
+                var used = new Array(L.length), hits = 0;
+                S.forEach(function(s){ for(var i=0;i<L.length;i++){ if(used[i]) continue;
+                    if(tokEq(L[i],s)){ used[i]=true; hits++; return; } } });
+                if (hits < S.length) return { same:false, why:'only '+hits+'/'+S.length+' core tokens matched' };
+                // the shorter core is the LEADING part of the longer ("Plutaluang" in
+                // "Plutaluang Royal Thai Navy"). Genuinely ambiguous leaders (bare "Siam") are
+                // caught by resolve()'s ambiguity guard, never guessed here.
+                var prefix = S.every(function(s,i){ return i<L.length && tokEq(L[i],s); });
+                if (prefix) return { same:true, why:'leading-token match ('+S.length+'/'+L.length+')' };
+                // Same token COUNT and all matched -> same course. A partial match that is NOT a
+                // prefix is NOT the same venue: "Summit Green Valley" (Chiang Mai) matched 2 of
+                // "green valley"'s tokens and would otherwise have collapsed into Green Valley
+                // (Rayong). Everything else falls through to unmatched.
+                if (S.length === L.length) return { same:true, why:'all '+hits+' tokens match' };
+                return { same:false, why:'partial, non-leading ('+S.length+'/'+L.length+' tokens)' };
+            }
+
+            // THE resolver. AMBIGUOUS NEVER GUESSES — that is the FUCKUPS #23 / v472
+            // "Smith, Mike" lesson: a fuzzy match must never silently pick a winner.
+            function resolve(input, candidates, key){
+                var hits = (candidates||[]).filter(function(c){
+                    return sameCourse(input, key ? c[key] : c).same;
+                });
+                if (hits.length === 1) return { status:'matched', course:hits[0] };
+                if (hits.length === 0) return { status:'unmatched' };
+                return { status:'ambiguous', candidates:hits };
+            }
+
+            // Canonical display names. Seeded with the Pattaya set; extend from the `courses`
+            // table via CourseMatch.addCanon() — never hardcode a new list somewhere else.
+            var CANON = ['Bangpakong Riverside','Bangpra International','Burapha','Chee Chan',
+                'Crystal Bay','Eastern Star','Grand Prix','Green Valley','Greenwood','Hermes Links',
+                'Khao Kheow','Laem Chabang','Mountain Shadow','Pattana','Pattavia','Pattaya CC',
+                'Pleasant Valley','Plutaluang','Phoenix Gold','Royal Lakeside','Siam CC Old Course',
+                'Siam Plantation','St Andrews 2000','Treasure Hill'];
+
+            // Raw-string shortcuts that carry no usable core ("BRC") or are pure misspellings.
+            var RAW_ALIAS = { 'brc':'Bangpakong Riverside', 'thermes':'Hermes Links' };
+
+            function titleCase(s){ return s.replace(/\b[a-z]/g, function(c){ return c.toUpperCase(); }); }
+
+            // THE one normalizer. Contract (unchanged from the two forks it replaces): returns a
+            // canonical DISPLAY name, '' for empty input, and a deterministic stripped core for
+            // anything unknown or ambiguous — never a guessed course.
+            function normalizeCourseName(name){
+                if (!name) return '';
+                var raw = String(name).toLowerCase().trim();
+                for (var k in RAW_ALIAS) if (raw === k || raw.indexOf(k) !== -1) return RAW_ALIAS[k];
+                var r = resolve(name, CANON);
+                if (r.status === 'matched') return r.course;
+                return titleCase(coreStr(name)) || String(name).trim();
+            }
+
+            // ---- live canonical list from the `courses` table ----------------------------
+            // `courses` is a MIXED table (75 rows live): venue rows sit alongside their
+            // individual nines/loops ("Majestic Creek Golf Club (Hua Hin)" next to
+            // "Majestic - Lake nine (Hua Hin)"). Feeding it raw would make "Phoenix Gold"
+            // AMBIGUOUS across three nine rows, so nines are collapsed to their venue first.
+            // Column is `name` (NOT course_name — sql/COURSE_RATING_INTEGRATION.sql does not
+            // match the live table) and `id` is a TEXT slug, not a uuid.
+            var CANON_CACHE_KEY = 'mcipro_course_canon';
+            function coreLen(n){ return courseCore(n).length; }
+            function bySpecificity(a,b){ return (coreLen(a)-coreLen(b)) || (a<b?-1:a>b?1:0); }
+
+            // Venue rows before derived ones, least-specific first, so the most general real
+            // name claims the canonical slot instead of whichever row sorted first.
+            function venueNames(names){
+                var whole = [], derived = {};
+                (names||[]).forEach(function(n){
+                    if (!n) return;
+                    var cut = cutSubvenueTail(n);
+                    if (cut === n) whole.push(n); else derived[cut.trim()] = 1;
+                });
+                return whole.sort(bySpecificity)
+                            .concat(Object.keys(derived).sort(bySpecificity));
+            }
+
+            function applyCanon(names){ return window.CourseMatch.addCanon(venueNames(names)); }
+
+            // Paint-first: seed from cache synchronously, then refresh from the network.
+            try {
+                var cached = JSON.parse(localStorage.getItem(CANON_CACHE_KEY) || 'null');
+                if (Array.isArray(cached) && cached.length) setTimeout(function(){ applyCanon(cached); }, 0);
+            } catch (e) {}
+
+            function loadFromDB(){
+                try {
+                    var sb = window.SupabaseDB && window.SupabaseDB.client;
+                    if (!sb) return Promise.resolve(0);
+                    return sb.from('courses').select('name').then(function(res){
+                        if (res.error || !res.data || !res.data.length) {
+                            console.warn('[CourseMatch] courses load skipped:', res.error && res.error.message);
+                            return CANON.length;   // keep the seeded list, never fail open
+                        }
+                        var names = res.data.map(function(r){ return r.name; }).filter(Boolean);
+                        try { localStorage.setItem(CANON_CACHE_KEY, JSON.stringify(names)); } catch (e) {}
+                        var n = applyCanon(names);
+                        console.log('[CourseMatch] canonical courses:', n, '(from', names.length, 'rows)');
+                        return n;
+                    }).catch(function(err){
+                        console.warn('[CourseMatch] courses load failed:', err && err.message);
+                        return CANON.length;
+                    });
+                } catch (e) { return Promise.resolve(CANON.length); }
+            }
+
+            window.CourseMatch = {
+                courseNorm: courseNorm, courseCore: courseCore, coreStr: coreStr,
+                sameCourse: sameCourse, resolve: resolve, normalizeCourseName: normalizeCourseName,
+                GENERIC: GENERIC, COURSE_ALIASES: COURSE_ALIASES, CANON: CANON,
+                addCanon: function(names){
+                    (names||[]).forEach(function(n){
+                        if (n && CANON.indexOf(n) === -1 && resolve(n, CANON).status === 'unmatched') CANON.push(n);
+                    });
+                    return CANON.length;
+                },
+                cutSubvenueTail: cutSubvenueTail,
+                venueNames: venueNames,
+                loadFromDB: loadFromDB
+            };
+            window.normalizeCourseName = normalizeCourseName;
+        })();
+        // COURSEMATCH:END
+
         // Notification Manager - shows toast notifications
         console.log('[SCRIPT-DEBUG] About to define NotificationManager...');
         window.NotificationManager = {
@@ -30129,6 +30349,10 @@
                 // Initialize production cloud synchronization system
                 SimpleCloudSync.initialize();
 
+                // Canonical course list from the `courses` table (non-blocking; the seeded
+                // Pattaya list stands if this never lands). See COURSEMATCH block.
+                try { if (window.CourseMatch) window.CourseMatch.loadFromDB(); } catch (e) {}
+
                 // Initialize booking system and load saved data
                 BookingManager.initialize();
 
@@ -35075,34 +35299,14 @@ Sent from Login Page`;
                 return !norm || this.normalizeCourse(course || '') === norm;
             },
 
+            // ONE course normalizer for the whole app — window.CourseMatch (see COURSEMATCH
+            // block near samePersonName). This used to be a 26-line lower.includes() allowlist,
+            // forked a second time in the caddy dashboard with only 17 rules; the two disagreed
+            // on 8 of 67 tested inputs (Bangpra/Siam/Laemchabang/Pattana/Crystal Bay combos).
+            // Contract is identical — canonical display name, '' for empty, stripped core for
+            // unknown. Verified 0 regressions vs this allowlist + 5 fixes (transliterations).
             normalizeCourse(name) {
-                if (!name) return '';
-                const lower = name.toLowerCase().trim();
-                if (lower.includes('bangpakong') || lower === 'brc') return 'Bangpakong Riverside';
-                if (lower.includes('bangpra')) return 'Bangpra International';
-                if (lower.includes('burapha')) return 'Burapha';
-                if (lower.includes('chee chan')) return 'Chee Chan';
-                if (lower.includes('crystal bay')) return 'Crystal Bay';
-                if (lower.includes('eastern star')) return 'Eastern Star';
-                if (lower.includes('grand prix')) return 'Grand Prix';
-                if (lower.includes('green valley')) return 'Green Valley';
-                if (lower.includes('greenwood')) return 'Greenwood';
-                if (lower.includes('hermes') || lower.includes('thermes')) return 'Hermes Links';
-                if (lower.includes('khao kheow')) return 'Khao Kheow';
-                if (lower.includes('laem chabang') || lower.includes('laemchabang')) return 'Laem Chabang';
-                if (lower.includes('mountain shadow')) return 'Mountain Shadow';
-                if (lower.includes('pattana')) return 'Pattana';
-                if (lower.includes('pattavia')) return 'Pattavia';
-                if (lower.includes('pattaya')) return 'Pattaya CC';
-                if (lower.includes('pleasant valley')) return 'Pleasant Valley';
-                if (lower.includes('plutaluang')) return 'Plutaluang';
-                if (lower.includes('phoenix')) return 'Phoenix Gold';
-                if (lower.includes('royal lakeside')) return 'Royal Lakeside';
-                if (lower.includes('siam') && lower.includes('old')) return 'Siam CC Old Course';
-                if (lower.includes('siam') && lower.includes('plantation')) return 'Siam Plantation';
-                if (lower.includes('st') && lower.includes('andrew')) return 'St Andrews 2000';
-                if (lower.includes('treasure hill')) return 'Treasure Hill';
-                return name.replace(/golf|club|country|course|international|resort|& /gi, '').trim() || name;
+                return (window.normalizeCourseName ? window.normalizeCourseName(name) : (name || ''));
             },
 
             async loadCourseFilter() {
@@ -35110,16 +35314,10 @@ Sent from Login Page`;
                     const courseFilter = document.getElementById('caddyCourseFilter');
                     if (!courseFilter) return;
 
-                    // All courses in the system (canonical names)
-                    const systemCourses = [
-                        'Bangpakong Riverside', 'Bangpra International', 'Burapha',
-                        'Chee Chan', 'Crystal Bay', 'Eastern Star', 'Grand Prix',
-                        'Green Valley', 'Greenwood', 'Hermes Links', 'Khao Kheow',
-                        'Laem Chabang', 'Mountain Shadow', 'Pattana', 'Pattavia',
-                        'Pattaya CC', 'Pleasant Valley', 'Plutaluang', 'Phoenix Gold',
-                        'Royal Lakeside', 'Siam CC Old Course', 'Siam Plantation',
-                        'St Andrews 2000', 'Treasure Hill'
-                    ];
+                    // FIFTH hardcoded course list, deleted — the canonical names now come from
+                    // window.CourseMatch.CANON (seeded Pattaya set, extended from the `courses`
+                    // table at boot by CourseMatch.loadFromDB).
+                    const systemCourses = (window.CourseMatch && window.CourseMatch.CANON) || [];
 
                     // Also add courses from DB sources (normalized)
                     const sb = window.SupabaseDB.client;
@@ -48270,28 +48468,8 @@ document.addEventListener('DOMContentLoaded', function() {
             async buildCaddyPool(userId, allRegs) {
                 try {
                 console.log('[CaddyPool] Building from', (allRegs||[]).length, 'registrations');
-                const normalize = (name) => {
-                    const lower = (name || '').replace(/golf|club|country|course|international|resort|& /gi, '').trim().toLowerCase();
-                    if (lower.includes('bangpakong') || lower === 'brc') return 'Bangpakong Riverside';
-                    if (lower.includes('eastern star')) return 'Eastern Star';
-                    if (lower.includes('pleasant valley')) return 'Pleasant Valley';
-                    if (lower.includes('green valley')) return 'Green Valley';
-                    if (lower.includes('pattaya')) return 'Pattaya CC';
-                    if (lower.includes('pattavia')) return 'Pattavia';
-                    if (lower.includes('st andrew') || lower.includes('st.')) return 'St Andrews 2000';
-                    if (lower.includes('greenwood')) return 'Greenwood';
-                    if (lower.includes('burapha')) return 'Burapha';
-                    if (lower.includes('phoenix')) return 'Phoenix Gold';
-                    if (lower.includes('plutaluang')) return 'Plutaluang';
-                    if (lower.includes('khao kheow')) return 'Khao Kheow';
-                    if (lower.includes('treasure hill')) return 'Treasure Hill';
-                    if (lower.includes('royal lakeside')) return 'Royal Lakeside';
-                    if (lower.includes('mountain shadow')) return 'Mountain Shadow';
-                    if (lower.includes('chee chan')) return 'Chee Chan';
-                    if (lower.includes('thermes') || lower.includes('hermes')) return 'Hermes Links';
-                    if (lower.includes('laem chabang') || lower.includes('laemchabang')) return 'Laem Chabang';
-                    return (name || '').replace(/golf|club|country|course|international|resort|& /gi, '').trim() || 'Other';
-                };
+                // FOURTH copy of the course allowlist, deleted — one normalizer for the app.
+                const normalize = (name) => (window.normalizeCourseName ? window.normalizeCourseName(name) : (name || '')) || 'Other';
 
                 const entries = await CaddyNotebook.getEntries();
                 const favNums = new Set(entries.filter(e => e.rating === 5).map(e => e.caddy_number ? String(parseInt(e.caddy_number)) : '').filter(Boolean));
@@ -58450,28 +58628,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     NotificationManager.show(shouldFav ? `Caddy #${num} favorited ${micon('star')}` : `Caddy #${num} removed from favorites`, 'success');
                 },
 
+                // Was a SECOND, weaker copy of the allowlist (17 rules vs 26) that disagreed
+                // with CaddyOrganizerSystem's on 8 tested inputs. Both now route through the
+                // single window.CourseMatch normalizer. 'Other' fallback preserved for grouping.
                 normalizeCourse(name) {
-                    let n = name.replace(/golf|club|country|course|international|resort|& /gi, '').trim();
-                    // Merge known variants
-                    const lower = n.toLowerCase();
-                    if (lower.includes('bangpakong') || lower === 'brc') return 'Bangpakong Riverside';
-                    if (lower.includes('eastern star')) return 'Eastern Star';
-                    if (lower.includes('pleasant valley')) return 'Pleasant Valley';
-                    if (lower.includes('green valley')) return 'Green Valley';
-                    if (lower.includes('pattaya')) return 'Pattaya CC';
-                    if (lower.includes('pattavia')) return 'Pattavia';
-                    if (lower.includes('st andrew') || lower.includes('st-andrew') || lower.includes('st.')) return 'St Andrews 2000';
-                    if (lower.includes('greenwood')) return 'Greenwood';
-                    if (lower.includes('burapha')) return 'Burapha';
-                    if (lower.includes('plutaluang')) return 'Plutaluang';
-                    if (lower.includes('phoenix')) return 'Phoenix Gold';
-                    if (lower.includes('khao kheow')) return 'Khao Kheow';
-                    if (lower.includes('treasure hill')) return 'Treasure Hill';
-                    if (lower.includes('royal lakeside')) return 'Royal Lakeside';
-                    if (lower.includes('mountain shadow')) return 'Mountain Shadow';
-                    if (lower.includes('chee chan')) return 'Chee Chan';
-                    if (lower.includes('thermes') || lower.includes('hermes')) return 'Hermes Links';
-                    return n || 'Other';
+                    return (window.normalizeCourseName ? window.normalizeCourseName(name) : (name || '')) || 'Other';
                 },
 
                 async quickAdd() {
@@ -142169,7 +142330,8 @@ window.maybeAutoRouteOrganizer = function() {
 function _lvT(k, fb){ try{ if(typeof t==='function'){ var v=t(k); if(v && v!==k) return v; } }catch(e){} return (fb!==undefined?fb:k); }
 function _lvLocale(){ var m={en:'en-US',th:'th-TH',ko:'ko-KR',ja:'ja-JP'}; var l='en'; try{ l=localStorage.getItem('mci-pro-language')||'en'; }catch(e){} return m[l]||'en-US'; }
 function _normCourse(x){
-  if(window.CaddyOrganizerSystem && typeof window.CaddyOrganizerSystem.normalizeCourse==='function'){ try{ return window.CaddyOrganizerSystem.normalizeCourse(x||''); }catch(e){} }
+  // Third copy of the strip rules, deleted: route to the ONE normalizer (window.CourseMatch).
+  if(window.normalizeCourseName){ try{ return window.normalizeCourseName(x||''); }catch(e){} }
   return (x||'').toLowerCase().replace(/golf|club|country|course|international|resort|&|the/g,'').replace(/[^a-z0-9]/g,'');
 }
 function _courseMatch(a,b){ a=_normCourse(a).toLowerCase().trim(); b=_normCourse(b).toLowerCase().trim(); return !!a && !!b && a===b; }

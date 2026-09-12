@@ -28499,16 +28499,32 @@
                 const db = window.SupabaseDB?.client;
                 if (!db || !golferId) return null;
                 try {
-                    const { data: mems } = await db
-                        .from('society_members')
-                        .select('society_id')
-                        .eq('golfer_id', golferId)
-                        .eq('status', 'active');
+                    // is_primary_society decides WHICH society's number the header shows for a
+                    // golfer who belongs to several. Verified live 2026-09-12: 20 golfers hold
+                    // membership in 2+ societies, and 8 of 8 divergent cases differ by up to
+                    // 12.8 strokes (one golfer: TRGG 5.6 / JGTS 16.5 / JOA 18.4). Ordering by
+                    // updated_at alone made that pick ARBITRARY — TRGG only wins today because
+                    // its ~1225 rows get bulk-touched by every masterscore pull, so the header
+                    // would flip the moment another society ran an update. Primary is currently
+                    // set on just 8 of 1314 membership rows, so the newest-updated fallback
+                    // below keeps today's behaviour EXACTLY until a primary is actually set.
+                    let mems = null;
+                    const memSel = cols => db.from('society_members').select(cols)
+                        .eq('golfer_id', golferId).eq('status', 'active');
+                    let memRes = await memSel('society_id, is_primary_society');
+                    // retry without the column rather than failing the whole lookup silently
+                    if (memRes.error) memRes = await memSel('society_id');
+                    mems = memRes.data;
                     let ids = [...new Set((mems || []).map(m => m.society_id).filter(Boolean))];
                     // TRGG exists under two society ids — membership under either must match both
                     const TRGG_IDS = ['7c0e4b72-d925-44bc-afda-38259a7ba346', '17451cf3-8b57-4166-af0a-dd902b7fb1af'];
                     if (ids.some(id => TRGG_IDS.includes(id))) {
                         ids = [...new Set([...ids, ...TRGG_IDS])];
+                    }
+                    let primaryIds = (mems || []).filter(m => m.is_primary_society && m.society_id)
+                                                 .map(m => m.society_id);
+                    if (primaryIds.some(id => TRGG_IDS.includes(id))) {
+                        primaryIds = [...new Set([...primaryIds, ...TRGG_IDS])];
                     }
                     if (ids.length) {
                         const { data: rows } = await db
@@ -28517,7 +28533,9 @@
                             .eq('golfer_id', golferId)
                             .in('society_id', ids)
                             .order('updated_at', { ascending: false, nullsFirst: false });
-                        const hit = (rows || []).find(r => r.handicap_index != null);
+                        const usable = (rows || []).filter(r => r.handicap_index != null);
+                        // the golfer's PRIMARY society wins; otherwise newest-updated as before
+                        const hit = usable.find(r => primaryIds.includes(r.society_id)) || usable[0];
                         if (hit) return Number(hit.handicap_index);
                     }
                 } catch (err) {

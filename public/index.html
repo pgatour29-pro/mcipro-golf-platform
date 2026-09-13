@@ -7017,6 +7017,15 @@
             .kdrawer{ width:100%; }
         }
 
+        /* 1on1 is INVITE-ONLY (v1101): every entry point — caddie tab, cube, More sheet,
+           drawer — stays hidden until oo_me confirms this caddie is a partner
+           (oo-1on1.js adds body.oo-partner-caddie). The identical rule also lives at the
+           end of oo-1on1.js, but that script is the LAST tag in the body: the caddie
+           dashboard paints ~106K lines earlier, so on a phone the 1on1 tile FLASHED on
+           screen for every caddie until the script landed. Head CSS closes the gate from
+           first paint. Keep the two rules in sync. */
+        body:not(.oo-partner-caddie) [onclick*="OneOnOne.enter('partner')"] { display: none !important; }
+
         /* ================================================================
            SCV3C — Caddie dashboard overview (real wiring + realtime).
            Dark sheet scoped to #caddie-overview.
@@ -61337,7 +61346,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     </div>
                     <div class="flex items-center space-x-2">
-                        <button onclick="RoleSwitcher.switchToGolfer()" class="flex items-center gap-1 px-2.5 py-2 rounded-lg text-sm font-medium transition-colors" style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.35); color: #4ade80;" title="Switch to my Golfer dashboard">
+                        <button onclick="RoleSwitcher.switchToGolfer('play')" class="flex items-center gap-1 px-2.5 py-2 rounded-lg text-sm font-medium transition-colors" style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.35); color: #4ade80;" title="Play Golf — Start Round">
                             <span class="material-symbols-outlined text-sm">sports_golf</span>
                             <span class="hidden sm:inline">Play Golf</span>
                         </button>
@@ -143162,8 +143171,8 @@ const RoleSwitcher = {
     /**
      * Switch from Society Organizer → Golfer Profile
      */
-    switchToGolfer() {
-        console.log('[RoleSwitcher] Switching to Golfer profile...');
+    switchToGolfer(target) {
+        console.log('[RoleSwitcher] Switching to Golfer profile...', target || '');
 
         if (!AppState.currentUser) {
             console.error('[RoleSwitcher] No current user');
@@ -143183,6 +143192,17 @@ const RoleSwitcher = {
 
         // Navigate to golfer dashboard
         ScreenManager.showScreen('golferDashboard');
+
+        // v1183: "Play Golf" on the caddie dashboard means she wants to PLAY — land her on
+        // the Play Golf tab in Live mode (Start Round), exactly where the golfer's own Play
+        // Golf cube goes, not the generic overview. Organizer surfaces pass no target and
+        // keep landing on the overview.
+        if (target === 'play') {
+            try {
+                window.showGolferTab('scorecard', null);
+                if (window.PostScoreManager) PostScoreManager.setMode('live');
+            } catch (e) { console.warn('[RoleSwitcher] Play Golf landing failed:', e); }
+        }
 
         // Reinitialize role switcher to show "Switch to Organizer" button
         setTimeout(() => {
@@ -164587,7 +164607,7 @@ showOrganizerTab = function(tabName) {
                 <button class="drawer-link" onclick="showCaddyTab('profile', event); closeMobileDrawer();"><span class="material-symbols-outlined">person</span><span data-i18n="golfer.profile">Profile</span></button>
                 <button class="drawer-link" onclick="closeMobileDrawer(); OneOnOne.enter('partner');"><span class="material-symbols-outlined">handshake</span><span data-i18n="oo.title">1on1</span></button>
 
-                <button class="drawer-link" onclick="closeMobileDrawer(); RoleSwitcher.switchToGolfer();" style="background: linear-gradient(135deg, #16a34a, #15803d); color: white; border-radius: 8px; margin-top: 8px; font-weight: 600;"><span class="material-symbols-outlined">sports_golf</span><span>Play Golf — Golfer Mode</span></button>
+                <button class="drawer-link" onclick="closeMobileDrawer(); RoleSwitcher.switchToGolfer('play');" style="background: linear-gradient(135deg, #16a34a, #15803d); color: white; border-radius: 8px; margin-top: 8px; font-weight: 600;"><span class="material-symbols-outlined">sports_golf</span><span>Play Golf — Start Round</span></button>
 
             </div>
 

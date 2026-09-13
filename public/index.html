@@ -39443,18 +39443,20 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Subscribe to real-time handicap changes so header updates globally.
                     // Handlers re-resolve via the society-first rule instead of trusting the
                     // payload (a universal update must not overwrite a society hcp display).
+                    // ONE BINDING ONLY. `user_profiles` is NOT in the supabase_realtime
+                    // publication, and a postgres_changes binding on a non-replicated table
+                    // POISONS THE WHOLE CHANNEL: the join still reports SUBSCRIBED and then
+                    // EVERY binding on it goes silent. Probed live 2026-09-13 against prod —
+                    // same channel WITH the user_profiles binding = 0 events, WITHOUT it = the
+                    // event lands; order makes no difference. That dead binding is why a TRGG
+                    // handicap pull never reached the header, while the HCP ledger modal (which
+                    // re-fetches on open) showed the new number. NEVER re-add a user_profiles
+                    // binding to this channel.
                     if (window.SupabaseDB?.client && !window._hcpSubActive) {
-                        window._hcpSubActive = true;
                         const subUid = AppState.currentUser?.lineUserId || localStorage.getItem('line_user_id');
                         if (subUid) {
+                            window._hcpSubActive = true;   // latch only once we actually subscribe
                             window.SupabaseDB.client.channel('hcp-sync-' + subUid)
-                                .on('postgres_changes', {
-                                    event: 'UPDATE', schema: 'public', table: 'user_profiles',
-                                    filter: `line_user_id=eq.${subUid}`
-                                }, () => {
-                                    console.log('[HCP Sync] user_profiles change → re-resolve header hcp');
-                                    window.HandicapManager?.refreshHeaderHandicap?.(subUid);
-                                })
                                 .on('postgres_changes', {
                                     event: '*', schema: 'public', table: 'society_handicaps',
                                     filter: `golfer_id=eq.${subUid}`

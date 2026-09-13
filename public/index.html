@@ -93653,7 +93653,12 @@ class LiveScorecardSystem {
         // without this, their device auto-selected a teammate's cube (Greenwood 2026-07-18).
         const _selDeviceOwner = this._deviceUser();
         const _ownCard = this.players.find(p => String(p.id) === String(_selDeviceOwner) && this._ownsCard(p.id));
-        this.selectPlayer((_ownCard || this.players.find(p => this._ownsCard(p.id)) || this.players[0]).id);
+        // (v1178) ...and if this device owns NOTHING it is following: land on the golfer's own
+        // card, not players[0] (= whoever the host added first — Alan Thomas on Joe's phone).
+        this.selectPlayer((_ownCard
+            || this.players.find(p => this._ownsCard(p.id))
+            || this.players.find(p => String(p.id) === String(_selDeviceOwner))
+            || this.players[0]).id);
 
         // Render first hole and leaderboard
         this.refreshLeaderboard();
@@ -95945,7 +95950,14 @@ class LiveScorecardSystem {
     // he could type. Falls back to players[0] so a host who owns nothing still has a target.
     _firstOwnedPlayerId() {
         const owned = (this.players || []).find(p => this._ownsCard(p.id));
-        return (owned || (this.players || [])[0] || {}).id || null;
+        if (owned) return owned.id;
+        // (v1178) This device owns nothing — it is FOLLOWING the group. Show the golfer their
+        // OWN card, never players[0]: players[] is ordered by card creation, so on a joined
+        // phone position 0 is simply whoever the host happened to add first. Burapha
+        // 2026-09-13, two-phone test — Joe's phone opened on ALAN THOMAS's card.
+        const _me = (typeof this._deviceUser === 'function') ? this._deviceUser() : null;
+        const mine = _me && (this.players || []).find(p => String(p.id) === String(_me));
+        return (mine || (this.players || [])[0] || {}).id || null;
     }
     // Snap to THIS DEVICE's live hole = the first hole one of its own cards still needs.
     // Only ever called when a round is (re)opened — never mid-round, or it would fight a

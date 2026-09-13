@@ -105,5 +105,27 @@ console.log('\n=== 6. back-nine start follows holeOrder, not hole number ===');
   else ok('10th-tee start advances 11 -> 12, not to hole 3');
 }
 
+console.log('\n=== 7. a follower opens on its OWN card, not players[0] ===');
+{
+  const firstOwned = grab(/ {4}_firstOwnedPlayerId\(\) \{[\s\S]*?\n {4}\}/, '_firstOwnedPlayerId');
+  const mk = (owned, me) => {
+    const o = new Function('return ({ ' + firstOwned.trim() + ',\n' +
+      '_ownsCard(pid){ return this._owned.includes(pid); },\n' +
+      '_deviceUser(){ return this._me; } })')();
+    // card creation order — Alan was added first, exactly as at Burapha
+    o.players = P('alan', 'joe', 'pete', 'tristan'); o._owned = owned; o._me = me;
+    return o;
+  };
+  const follower = mk([], 'joe');
+  if (follower._firstOwnedPlayerId() !== 'joe') bad('follower landed on ' + follower._firstOwnedPlayerId() + ', expected joe');
+  else ok('owning nothing -> opens on the golfer\'s own card (joe), not alan');
+  const scorer = mk(['alan','joe','pete','tristan'], 'pete');
+  if (scorer._firstOwnedPlayerId() !== 'alan') bad('a scoring device should still take its first owned card');
+  else ok('a scoring device is unchanged (first owned card)');
+  const stranger = mk([], 'nobody');
+  if (stranger._firstOwnedPlayerId() !== 'alan') bad('no own card and none owned should still fall back to players[0]');
+  else ok('not a player in the round -> still falls back to players[0]');
+}
+
 console.log(fails ? '\n' + fails + ' CHECK(S) FAILED' : '\nFollower mode holds ✅');
 process.exit(fails ? 1 : 0);

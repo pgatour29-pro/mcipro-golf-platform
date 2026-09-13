@@ -7494,7 +7494,9 @@
             background:#000000 !important; color:#FFFFFF !important; box-shadow:none !important; font-weight:800 !important; border-radius:4px !important;
         }
         body.theme-sun #golferDashboard.theme-sun.round-active #golfer-scorecard #scorecardActiveSection .scv3-pc-tag.locked { background:#B3402F !important; color:#FFFFFF !important; }
-        body.theme-sun #golferDashboard.theme-sun.round-active #golfer-scorecard #scorecardActiveSection .scv3-pc-pos > span { border:1.5px solid #111827 !important; box-shadow:none !important; }
+        /* (v1180) sun used to force this border BLACK — but the border is now what tells the
+           positions apart, so only the weight is sun's business, never the colour. */
+        body.theme-sun #golferDashboard.theme-sun.round-active #golfer-scorecard #scorecardActiveSection .scv3-pc-pos > span { border-width:2px !important; border-style:solid !important; box-shadow:none !important; }
         body.theme-sun #golferDashboard.theme-sun.round-active #golfer-scorecard #scorecardActiveSection .sc-group-label,
         body.theme-sun #golferDashboard.theme-sun.round-active #golfer-scorecard #scorecardActiveSection .sc-group-meta,
         body.theme-sun #golferDashboard.theme-sun.round-active #golfer-scorecard #scorecardActiveSection #holeProgress {
@@ -9466,6 +9468,30 @@
         #scorecardActiveSection #roundTimerBar { margin-bottom:0 !important; }
         /* The position badge moves inside, bottom-right: its old spot is the switch's now. */
         #scorecardActiveSection .scv3-pc-pos { top:auto !important; bottom:2px !important; right:2px !important; }
+
+        /* ---- POSITION PILL (v1180) ----------------------------------------------------
+           Pete on the course: "other than 1st and 3rd you can't tell which is what ...
+           especially 4th because its black text with dark grey or black background".
+           The fills were solid and the TEXT colour was inline — and the light/sun themes
+           carpet-bomb every descendant of #golfer-scorecard with !important colours, so the
+           4th-place pill's inline color:#ffffff lost and it painted near-black on #3f4c5c:
+           about 1.4:1, unreadable. Exactly the trap the .scv3-sunpill note warns about.
+           The pill is now WHITE INSIDE and the position is carried by the BORDER, with the
+           text a dark tint of the same colour. Every value is stated at the themes' own ID
+           depth, so light, dark, glass and sun all keep it. Verified at 360px in all four. */
+        #scorecardActiveSection .scv3-pc-pos > .scv3-posb,
+        #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-pc-pos > .scv3-posb {
+            display:inline-flex; align-items:center; justify-content:center; height:16px; padding:0 5px;
+            border-radius:9px; font:800 9px/1 'JetBrains Mono',monospace; letter-spacing:.04em;
+            flex-shrink:0; background:#ffffff !important; border:2px solid #475569 !important;
+            color:#1e293b !important; box-shadow:0 1px 3px rgba(0,0,0,0.30) !important;
+        }
+        #scorecardActiveSection .scv3-pc-pos > .scv3-posb.pos1,
+        #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-pc-pos > .scv3-posb.pos1 { border-color:#eab308 !important; color:#713f12 !important; }
+        #scorecardActiveSection .scv3-pc-pos > .scv3-posb.pos2,
+        #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-pc-pos > .scv3-posb.pos2 { border-color:#94a3b8 !important; color:#334155 !important; }
+        #scorecardActiveSection .scv3-pc-pos > .scv3-posb.pos3,
+        #golferDashboard #golfer-scorecard #scorecardActiveSection .scv3-pc-pos > .scv3-posb.pos3 { border-color:#ea580c !important; color:#9a3412 !important; }
 
     </style>
 
@@ -94023,9 +94049,9 @@ class LiveScorecardSystem {
                 // sunlight and 1st/3rd oranges were indistinguishable (Pete 2026-07-09)
                 const ordinals = { 1: '1ST', 2: '2ND', 3: '3RD' };
                 const posLabel = typeof pos === 'number' ? (ordinals[pos] || pos + 'TH') : pos;
-                const badgeColors = { 1: 'background:#facc15;color:#1c1400;', 2: 'background:#e5e7eb;color:#111827;', 3: 'background:#fb923c;color:#301000;' };
-                const badgeStyle = badgeColors[pos] || 'background:#3f4c5c;color:#ffffff;';
-                const posBadge = `<span style="display:inline-flex;align-items:center;justify-content:center;height:16px;padding:0 6px;border-radius:9px;font-size:9px;font-weight:800;letter-spacing:0.04em;line-height:1;flex-shrink:0;border:1px solid rgba(0,0,0,0.3);box-shadow:0 1px 3px rgba(0,0,0,0.45);${badgeStyle}">${posLabel}</span>`;
+                // (v1180) white inside, position in the BORDER — see the .scv3-posb block in the
+                // stylesheet. Inline colours were the bug: a theme's !important beats them.
+                const posBadge = `<span class="scv3-posb pos${typeof pos === 'number' ? pos : 0}">${posLabel}</span>`;
 
                 // No '+' prefix: at 4-across "HCP 18" + "+24 PTS" overflows the ~78px card and
                 // bleeds into the neighbour. Stableford totals are never negative anyway.
@@ -95234,9 +95260,9 @@ class LiveScorecardSystem {
             if (posEl) {
                 var ordinals = { 1: '1ST', 2: '2ND', 3: '3RD' };
                 var posLabel = typeof pos === 'number' ? (ordinals[pos] || pos + 'TH') : pos;
-                var solidBadgeColors = { 1: 'background:#facc15;color:#1c1400;', 2: 'background:#e5e7eb;color:#111827;', 3: 'background:#fb923c;color:#301000;' };
-                var badgeStyle = solidBadgeColors[pos] || 'background:#3f4c5c;color:#ffffff;';
-                posEl.innerHTML = '<span style="display:inline-flex;align-items:center;justify-content:center;height:16px;padding:0 6px;border-radius:9px;font-size:9px;font-weight:800;letter-spacing:0.04em;line-height:1;flex-shrink:0;border:1px solid rgba(0,0,0,0.3);box-shadow:0 1px 3px rgba(0,0,0,0.45);' + badgeStyle + '">' + posLabel + '</span>';
+                // (v1180) MUST match renderHole exactly — this mirror repaints the pill on every
+                // save, so any drift here shows up as the badge changing style mid-round.
+                posEl.innerHTML = '<span class="scv3-posb pos' + (typeof pos === 'number' ? pos : 0) + '">' + posLabel + '</span>';
             }
         }
 

@@ -95955,7 +95955,9 @@ class LiveScorecardSystem {
     _snapToLiveHole() {
         try {
             if (!this.players?.length || !this.holeOrder?.length) return false;
-            if (!this.players.some(p => this._ownsCard(p.id))) return false;   // owns nothing — leave it alone
+            // (v1177) owns nothing = FOLLOWING the group. Land on the group's live hole instead
+            // of whatever hole this device happened to be left on.
+            if (!this.players.some(p => this._ownsCard(p.id))) return this._followGroupHole();
             let idx = 0;
             while (idx < this.holeOrder.length - 1 && this._holeDoneForThisDevice(this.holeOrder[idx])) idx++;
             if (idx === this.currentHoleIndex) return false;
@@ -95963,6 +95965,43 @@ class LiveScorecardSystem {
             this.currentHoleIndex = idx;
             this.currentHole = this.holeOrder[idx];
             this.currentScore = '';
+            return true;
+        } catch (e) { return false; }
+    }
+    // (v1177) FOLLOWER MODE. A device that owns NO cards never auto-advances by design: the
+    // predicate below is scoped to the cards this device owns, and owning nothing must never
+    // read as "everything is done" (that vacuous .every() is what marched a phone to hole 18 at
+    // Bangpra 2026-08-12). But a follower still has to walk with its group — before this it sat
+    // on the hole it joined at while the others played on. Burapha 2026-09-13, two-phone test:
+    // Joe's phone stuck on hole 2 while the group was on 3, with no "Current" button to escape
+    // by (latestHoleIndex only ever moved on THIS device's own advance).
+    // Track the GROUP's live hole instead. Bounded by holes that actually carry scores, so it
+    // cannot run away the way the old vacuous predicate did.
+    _followGroupHole() {
+        try {
+            if (!this.holeOrder?.length || !this.players?.length) return false;
+            if (this.players.some(p => this._ownsCard(p.id))) return false;   // scoring, not following
+            if (this._saving || this.currentScore !== '') return false;       // never mid-entry
+            let best = -1;
+            this.holeOrder.forEach((h, i) => {
+                if (this.players.some(p => (this.scoresCache?.[p.id] || {})[h] != null)) best = i;
+            });
+            if (best < 0) return false;
+            const hole = this.holeOrder[best];
+            const allIn = this.players.every(p => (this.scoresCache?.[p.id] || {})[hole] != null);
+            const idx = Math.min(allIn ? best + 1 : best, this.holeOrder.length - 1);
+            if (idx > (this.latestHoleIndex || 0)) this.latestHoleIndex = idx;
+            if (idx === this.currentHoleIndex) return false;
+            // Never drag a follower BACKWARDS — they may be looking at an earlier hole on
+            // purpose. Just light the "Current" button so they can jump forward when ready.
+            if (idx < this.currentHoleIndex) { try { this.updateGoToCurrentButton(); } catch (e) {} return false; }
+            console.log('[LiveScorecard] 👣 following the group → hole ' + this.holeOrder[idx]);
+            this.currentHoleIndex = idx;
+            this.currentHole = this.holeOrder[idx];
+            this.currentScore = '';
+            try { this.renderHole(); } catch (e) {}
+            try { this.updateGoToCurrentButton(); } catch (e) {}
+            try { this.saveRoundState(); } catch (e) {}
             return true;
         } catch (e) { return false; }
     }
@@ -107043,6 +107082,9 @@ class LiveScorecardSystem {
                     }
                 }
                 throttledRender();
+                // (v1177) a phone that owns no cards follows the group's hole; it can never
+                // satisfy the owner predicate below, so without this it never moves at all.
+                if (this._followGroupHole()) return;
                 // SYNC HOLE ACROSS DEVICES: if the CURRENT hole is now complete for every player in
                 // this group (counting the remote self-scorer's entry that just arrived), advance to
                 // the next hole — so this phone follows along instead of getting stuck a hole behind.

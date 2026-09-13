@@ -5392,7 +5392,13 @@
         #scorecardActiveSection .scv3-meta-row { display:flex; align-items:center; gap:8px; min-width:0; }
         #golferDashboard.round-active #golfer-scorecard span#currentHoleInfo.scv3-meta,
         #scorecardActiveSection span#currentHoleInfo.scv3-meta { font:500 11px/1.3 'JetBrains Mono',monospace !important; letter-spacing:0 !important; color:#A6AFB8 !important; white-space:nowrap; min-width:0; overflow:hidden; text-overflow:ellipsis; }
-        #scorecardActiveSection .scv3-meta-row { flex-wrap:nowrap; }
+        /* (v1181) WRAP IS A BLEED GUARD, same rule as the TRADV strip. With nowrap this row
+           overflowed its own column and END slid UNDER the next-hole chevron — 26px of overlap
+           in sun, so reaching for the next hole could end the round. Anything that no longer
+           fits now drops to a second line; it can never leave the column. 6px gaps, and END is
+           pushed right by margin, not by a spacer element that cost a whole gap of its own. */
+        #scorecardActiveSection .scv3-meta-row { flex-wrap:wrap; gap:6px; row-gap:4px; }
+        #scorecardActiveSection .scv3-meta-row > .scv3-end { margin-left:auto; }
         /* (v1179) PAR + SI never shrink. The nines chip (v1009) was added to this row later and
            took the width the meta used to have, so on a 360px phone the span ellipsized mid-value
            and "SI 18" read as "SI 1" — a wrong stroke index is worse than no yardage. The yardage
@@ -5408,7 +5414,10 @@
         .cn-nine.on { background:#22c55e !important; color:#ffffff !important; }
         .cn-sep { padding:0 1px; opacity:.55; font-weight:700; }
         body.theme-light .cn-nine, body.theme-sun .cn-nine { background:#e2e8f0; color:#475569; }
-        body.theme-sun .cn-nine { border:1.5px solid #111827; font-weight:800; }
+        /* (v1181) sun's 1.5px borders make each chip 4px wider, and this row has ONE pixel of
+           slack at 360px — trim the padding back so sun stays on a single line like every
+           other mode instead of wrapping END onto its own row. */
+        body.theme-sun .cn-nine { border:1.5px solid #111827; font-weight:800; padding:1px 4px; }
         body.theme-sun .cn-nine.on { background:#15803d !important; color:#ffffff !important; }
         /* THE 3-ID TRAP: the light and sun themes force text colour through
            `#golferDashboard #golfer-scorecard …`, so a plain class loses and the DIM side came
@@ -7438,8 +7447,13 @@
         body.theme-sun #golferDashboard #golfer-scorecard span#currentHoleNumber.scv3-gauge-n {
             font-family:'Instrument Sans',sans-serif !important; font-weight:800 !important; color:#000000 !important;
         }
+        /* (v1181) NO font-size here. This is the row the WIDTH DOCTRINE above is about: sun grew
+           it 11px -> 13px, which is +15px on a column with nothing to spare, and that is what
+           pushed END out from under its own column and on top of the next-hole chevron. Mono is
+           monospaced, so 800 weight buys the legibility for zero width — exactly as the doctrine
+           says. Leave the size alone. */
         body.theme-sun #golferDashboard #golfer-scorecard span#currentHoleInfo.scv3-meta {
-            font-weight:700 !important; font-size:13px !important; color:#111827 !important;
+            font-weight:800 !important; color:#111827 !important;
         }
         body.theme-sun #golferDashboard.theme-sun.round-active #golfer-scorecard #scorecardActiveSection .scv3-gauge-k { color:#374151 !important; font-weight:800 !important; }
         body.theme-sun #golferDashboard.theme-sun.round-active #golfer-scorecard #scorecardActiveSection .scv3-gauge::before {
@@ -57971,8 +57985,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <div class="scv3-meta-row">
                                     <span id="currentHoleInfo" class="scv3-meta">Par 4 · SI 10</span>
                                     <span id="currentHoleYards" class="scv3-meta"> · 385y</span>
-                                    <span id="scv3PlayingNines" class="cn-nines" style="display:none;flex:none;margin-left:6px;font:800 10px/1.5 'JetBrains Mono',monospace;white-space:nowrap;"></span>
-                                    <span style="flex:1;"></span>
+                                    <span id="scv3PlayingNines" class="cn-nines" style="display:none;flex:none;font:800 10px/1.5 'JetBrains Mono',monospace;white-space:nowrap;"></span>
                                     <button onclick="LiveScorecardManager.completeRound('end')" class="scv3-end" style="flex:none;">END</button>
                                 </div>
                                 <div class="scv3-hole-actions">

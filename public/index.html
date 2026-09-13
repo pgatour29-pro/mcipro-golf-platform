@@ -5393,6 +5393,37 @@
         #golferDashboard.round-active #golfer-scorecard span#currentHoleInfo.scv3-meta,
         #scorecardActiveSection span#currentHoleInfo.scv3-meta { font:500 11px/1.3 'JetBrains Mono',monospace !important; letter-spacing:0 !important; color:#A6AFB8 !important; white-space:nowrap; min-width:0; overflow:hidden; text-overflow:ellipsis; }
         #scorecardActiveSection .scv3-meta-row { flex-wrap:nowrap; }
+        /* (v1179) PAR + SI never shrink. The nines chip (v1009) was added to this row later and
+           took the width the meta used to have, so on a 360px phone the span ellipsized mid-value
+           and "SI 18" read as "SI 1" — a wrong stroke index is worse than no yardage. The yardage
+           is the part that gives way now, and below 390px it steps out of the row entirely. */
+        #golferDashboard.round-active #golfer-scorecard span#currentHoleInfo.scv3-meta,
+        #scorecardActiveSection span#currentHoleInfo.scv3-meta { flex:none !important; overflow:visible !important; text-overflow:clip !important; }
+        #scorecardActiveSection span#currentHoleYards.scv3-meta { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:clip; }
+        @media (max-width: 390px) { #scorecardActiveSection span#currentHoleYards.scv3-meta { display:none; } }
+        /* (v1179) THE NINES CHIP, everywhere it appears. Green = the nine being played right now. */
+        .cn-nines { display:inline-flex; align-items:center; gap:2px; vertical-align:middle; }
+        .cn-nine { padding:1px 6px; border-radius:999px; font-weight:800; background:rgba(148,163,184,0.22);
+            color:rgba(148,163,184,0.95); letter-spacing:.02em; }
+        .cn-nine.on { background:#22c55e !important; color:#ffffff !important; }
+        .cn-sep { padding:0 1px; opacity:.55; font-weight:700; }
+        body.theme-light .cn-nine, body.theme-sun .cn-nine { background:#e2e8f0; color:#475569; }
+        body.theme-sun .cn-nine { border:1.5px solid #111827; font-weight:800; }
+        body.theme-sun .cn-nine.on { background:#15803d !important; color:#ffffff !important; }
+        /* THE 3-ID TRAP: the light and sun themes force text colour through
+           `#golferDashboard #golfer-scorecard …`, so a plain class loses and the DIM side came
+           out white-on-#e2e8f0 — an invisible nine, which is worse than the bug being fixed.
+           Restate at the same ID depth. Verified at 360px in all four themes. */
+        body.theme-light #golferDashboard #golfer-scorecard .cn-nine,
+        body.theme-sun #golferDashboard #golfer-scorecard .cn-nine { background:#e2e8f0 !important; color:#334155 !important; }
+        body.theme-light #golferDashboard #golfer-scorecard .cn-nine.on { background:#22c55e !important; color:#ffffff !important; }
+        body.theme-sun #golferDashboard #golfer-scorecard .cn-nine.on { background:#15803d !important; color:#ffffff !important; }
+        body.theme-light #golferDashboard #golfer-scorecard .cn-sep,
+        body.theme-sun #golferDashboard #golfer-scorecard .cn-sep { color:#111827 !important; opacity:.7; }
+        body.theme-dark #golferDashboard #golfer-scorecard .cn-nine,
+        body.theme-glass #golferDashboard #golfer-scorecard .cn-nine { background:rgba(148,163,184,0.22) !important; color:rgba(226,232,240,0.85) !important; }
+        body.theme-dark #golferDashboard #golfer-scorecard .cn-nine.on,
+        body.theme-glass #golferDashboard #golfer-scorecard .cn-nine.on { background:#22c55e !important; color:#ffffff !important; }
         #scorecardActiveSection .scv3-hole-actions { flex-wrap:wrap; }
         #scorecardActiveSection #roundTimerBar { margin:2px 0 6px !important; border-radius:14px !important; }
         #scorecardActiveSection .scv3-hole-actions { display:flex; align-items:center; gap:7px; }
@@ -7141,9 +7172,15 @@
            translated label) must drop to a second line, never off the right edge. */
         #tradCardView .tradv-strip { display:flex; flex-wrap:wrap; align-items:center; gap:5px; margin-bottom:7px; }
         /* sits inside the chip's <b>, whose colour the theme forces with !important — restate both */
+        /* (v1179) the wrapper is now just a holder — the two .cn-nine children carry the pill, so
+           only the nine being played is green. Its colour is still restated because the theme
+           forces the parent <b> with !important. */
         #tradCardView .tradv-holechip b .tradv-nines { font:700 8.5px/1 'JetBrains Mono',monospace; font-style:normal;
-            letter-spacing:0.04em; background:#16a34a !important; color:#ffffff !important; border-radius:999px;
-            padding:2px 5px; margin-left:5px; vertical-align:middle; }
+            letter-spacing:0.04em; background:transparent !important; padding:0; margin-left:5px; vertical-align:middle; }
+        #tradCardView .tradv-holechip b .tradv-nines .cn-nine { padding:2px 5px; border-radius:999px;
+            background:rgba(246,243,231,0.20) !important; color:rgba(246,243,231,0.75) !important; }
+        #tradCardView .tradv-holechip b .tradv-nines .cn-nine.on { background:#16a34a !important; color:#ffffff !important; }
+        #tradCardView .tradv-holechip b .tradv-nines .cn-sep { color:rgba(246,243,231,0.6) !important; }
         #tradCardView .tradv-chev { width:30px; height:40px; flex:none; border-radius:10px; background:var(--tcv-key);
             border:1.5px solid var(--tcv-line); color:var(--tcv-ink); font:300 19px/1 'Outfit',sans-serif; cursor:pointer; }
         #tradCardView .tradv-holechip { flex:none; display:flex; flex-direction:column; align-items:flex-start; gap:3px;
@@ -7182,7 +7219,8 @@
             #tradCardView .tradv-holechip { flex:1 1 auto; min-width:0; padding:6px 10px; gap:2px; }
             #tradCardView .tradv-keyswap { margin-left:0; }
             #tradCardView .tradv-holechip b { font-size:13px; }
-            #tradCardView .tradv-holechip b .tradv-nines { margin-left:4px; padding:2px 4px; font-size:8px; }
+            #tradCardView .tradv-holechip b .tradv-nines { margin-left:4px; padding:0; font-size:8px; }
+            #tradCardView .tradv-holechip b .tradv-nines .cn-nine { padding:2px 4px; }
             #tradCardView .tradv-ninetog button { padding:12px 6px; }
             #tradCardView .tradv-end { padding:12px 11px; }
         }
@@ -7527,7 +7565,10 @@
         body.theme-sun #golferDashboard #golfer-scorecard #scorecardActiveSection #tradCardView .tradv-holechip b { color:#FFFFFF !important; }
         body.theme-sun #golferDashboard #golfer-scorecard #scorecardActiveSection #tradCardView .tradv-holechip s { color:#FFFFFF !important; font-weight:700 !important; }
         body.theme-sun #golferDashboard #golfer-scorecard #scorecardActiveSection #tradCardView .tradv-holechip b { font:800 13px/1 'Instrument Sans',sans-serif !important; }
-        body.theme-sun #golferDashboard #golfer-scorecard #scorecardActiveSection #tradCardView .tradv-holechip b .tradv-nines { background:#FFFFFF !important; color:#14532D !important; font-weight:800 !important; border-radius:4px !important; }
+        body.theme-sun #golferDashboard #golfer-scorecard #scorecardActiveSection #tradCardView .tradv-holechip b .tradv-nines { background:transparent !important; font-weight:800 !important; }
+        body.theme-sun #golferDashboard #golfer-scorecard #scorecardActiveSection #tradCardView .tradv-holechip b .tradv-nines .cn-nine { background:#FFFFFF !important; color:#4B5563 !important; border-radius:4px !important; }
+        body.theme-sun #golferDashboard #golfer-scorecard #scorecardActiveSection #tradCardView .tradv-holechip b .tradv-nines .cn-nine.on { background:#14532D !important; color:#FFFFFF !important; }
+        body.theme-sun #golferDashboard #golfer-scorecard #scorecardActiveSection #tradCardView .tradv-holechip b .tradv-nines .cn-sep { color:#FFFFFF !important; }
         /* STRIP: weight only, sizes untouched -- 333 of 336px is already spent at 360px */
         body.theme-sun #golferDashboard #golfer-scorecard #scorecardActiveSection #tradCardView .tradv-ninetog button { font-weight:800 !important; }
         body.theme-sun #golferDashboard #golfer-scorecard #scorecardActiveSection #tradCardView .tradv-ninetog button.on { background:#15803d !important; }
@@ -21942,6 +21983,23 @@
                     nines: m[1].trim() + '+' + m[2].trim()
                 };
             },
+            // WHICH SIDE ARE WE ON? (v1179) Holes 1-9 are the FRONT nine of the combination,
+            // 10-18 the BACK. Painting the whole chip green said "you are playing C and D" —
+            // true, and useless to a golfer standing on a tee who needs to know which of the
+            // two he is on RIGHT NOW. One rule everywhere: GREEN MEANS YOU ARE HERE. With no
+            // hole in context (a finished round, an organizer board) neither side is green.
+            chipHtml(name, hole) {
+                const esc = v => String(v == null ? '' : v)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                const n = this.split(name).nines;
+                if (!n) return '';
+                const parts = n.split('+');
+                if (parts.length !== 2) return '<span class="cn-nine">' + esc(n) + '</span>';
+                const h = Number(hole);
+                const side = (h >= 1 && h <= 9) ? 0 : (h >= 10 && h <= 18) ? 1 : -1;
+                return parts.map((t, i) => '<span class="cn-nine' + (i === side ? ' on' : '') + '">' +
+                                           esc(t.trim()) + '</span>').join('<span class="cn-sep">+</span>');
+            },
             // Latest combo-stamped card wins — mid-round nine changes restamp on the next save
             fromCards(cards) {
                 const named = (cards || []).filter(c => c && c.course_name)
@@ -21964,7 +22022,7 @@
                             <div style="display:flex;align-items:center;gap:8px;min-width:0;">
                                 <span style="font-size:18px;"><span class="material-symbols-outlined" style="font-size:inherit;vertical-align:middle;line-height:1;">emoji_events</span></span>
                                 <span style="font-weight:700;font-size:15px;color:#0f172a;white-space:nowrap;">Live Leaderboard</span>
-                                <span id="liveLbNines" style="display:none;flex:none;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:800;background:#22c55e;color:#fff;white-space:nowrap;"></span>
+                                <span id="liveLbNines" class="cn-nines" style="display:none;flex:none;font-size:11px;font-weight:800;white-space:nowrap;"></span>
                                 <span id="liveLbCourse" style="font-size:11px;font-weight:600;color:#64748b;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
                             </div>
                             <button onclick="toggleLiveLeaderboard()" style="background:none;border:none;cursor:pointer;padding:4px;">
@@ -22114,7 +22172,12 @@
                 const _lbNinesEl = document.getElementById('liveLbNines');
                 const _lbCourseEl = document.getElementById('liveLbCourse');
                 if (_lbNinesEl) {
-                    _lbNinesEl.textContent = _lbPlayed.nines ? 'Nines: ' + _lbPlayed.nines : '';
+                    // (v1179) green = the nine THIS golfer is on right now, dim = the other side.
+                    _lbNinesEl.innerHTML = _lbPlayed.nines
+                        ? window.CourseNines.chipHtml(
+                              window.CourseNines.fromCards(scorecards) || mgr?.courseData?.name || '',
+                              mgr?.currentHole)
+                        : '';
                     _lbNinesEl.style.display = _lbPlayed.nines ? '' : 'none';
                 }
                 if (_lbCourseEl) _lbCourseEl.textContent = _lbPlayed.base || '';
@@ -57880,8 +57943,9 @@ document.addEventListener('DOMContentLoaded', function() {
                             </div>
                             <div class="scv3-holeinfo">
                                 <div class="scv3-meta-row">
-                                    <span id="currentHoleInfo" class="scv3-meta">Par 4 · 385y · SI 10</span>
-                                    <span id="scv3PlayingNines" style="display:none;flex:none;margin-left:6px;padding:1px 7px;border-radius:999px;font:800 10px/1.5 'JetBrains Mono',monospace;background:#22c55e;color:#fff;white-space:nowrap;"></span>
+                                    <span id="currentHoleInfo" class="scv3-meta">Par 4 · SI 10</span>
+                                    <span id="currentHoleYards" class="scv3-meta"> · 385y</span>
+                                    <span id="scv3PlayingNines" class="cn-nines" style="display:none;flex:none;margin-left:6px;font:800 10px/1.5 'JetBrains Mono',monospace;white-space:nowrap;"></span>
                                     <span style="flex:1;"></span>
                                     <button onclick="LiveScorecardManager.completeRound('end')" class="scv3-end" style="flex:none;">END</button>
                                 </div>
@@ -93766,13 +93830,16 @@ class LiveScorecardSystem {
 
         // Update hole header with yardage
         document.getElementById('currentHoleNumber').textContent = this.currentHole;
-        const yardageText = yardage > 0 ? ` · ${yardage}y` : '';
-        // SI before yardage: the meta span ellipsizes on narrow phones, and SI must
-        // never be the part that gets cut (Pete 2026-07-09)
-        document.getElementById('currentHoleInfo').textContent = `Par ${par} · SI ${strokeIndex}${yardageText}`;
+        // (v1179) Par + SI live in their OWN span, which never shrinks; the yardage is a second
+        // span that gives way first and drops out below 390px. Reordering alone (2026-07-09)
+        // stopped working the moment the nines chip joined this row — "SI 18" read as "SI 1".
         // 🗺️ MAP-AS-YOU-PLAY: never show the par-4 default as fact while the hole is unmapped
-        if (this.mapMode && !holeData?.par) {
-            document.getElementById('currentHoleInfo').textContent = `Par — · SI ${strokeIndex}${yardageText}`;
+        const _parTxt = (this.mapMode && !holeData?.par) ? '—' : par;
+        document.getElementById('currentHoleInfo').textContent = `Par ${_parTxt} · SI ${strokeIndex}`;
+        const _ydEl = document.getElementById('currentHoleYards');
+        if (_ydEl) {
+            _ydEl.textContent = yardage > 0 ? ` · ${yardage}y` : '';
+            _ydEl.style.display = yardage > 0 ? '' : 'none';
         }
 
         // Which nines this round is on — the player picked them (and can change them mid-round),
@@ -93782,7 +93849,9 @@ class LiveScorecardSystem {
         const _pn = window.CourseNines.split(this.courseData?.name || '');
         const _pnEl = document.getElementById('scv3PlayingNines');
         if (_pnEl) {
-            _pnEl.textContent = _pn.nines || '';
+            // (v1179) the side in play is green, the other is dim — so the tee you are standing
+            // on is unmistakable. Repainted on every renderHole, so it flips at the turn.
+            _pnEl.innerHTML = window.CourseNines.chipHtml(this.courseData?.name || '', this.currentHole);
             _pnEl.style.display = _pn.nines ? '' : 'none';
         }
 
@@ -97285,8 +97354,10 @@ class LiveScorecardSystem {
             // of the two lines, and the title line is the short one — this shows the combination
             // without widening the strip (which has no spare width at 360px).
             const _tn = window.CourseNines.split(this.courseData?.name || '').nines;
+            // (v1179) only the nine being played is green — same rule as the SCV3 chip.
+            const _tnHtml = window.CourseNines.chipHtml(this.courseData?.name || '', this.currentHole);
             chip.innerHTML = '<b>' + _lvT('scorecard.hole', 'Hole').toUpperCase() + ' ' + this.currentHole +
-                (_tn ? '<i class="tradv-nines">' + _tn + '</i>' : '') + '</b>' +
+                (_tn ? '<i class="tradv-nines cn-nines">' + _tnHtml + '</i>' : '') + '</b>' +
                 '<s>PAR ' + (hd?.par || 4) + ' · SI ' + (hd?.stroke_index || hd?.strokeIndex || this.currentHole) + '</s>';
         }
         const nf = document.getElementById('tradNineF'), nb = document.getElementById('tradNineB');

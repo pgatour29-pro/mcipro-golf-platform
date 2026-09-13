@@ -11586,6 +11586,8 @@
                 'scorecard.startnine.locked': 'Scores are already entered — the starting tee is locked',
                 'scorecard.startnine.remote1': 'Your group switched to a 1st-tee start',
                 'scorecard.startnine.remote10': 'Your group switched to a 10th-tee start',
+                'scorecard.nines.remote': 'Your group changed the nines — now playing {n}',
+                'scorecard.nines.mismatch': "This phone had the wrong hole data for this round — using your group's card instead",
                 'scorecard.front9first': 'Front 9 First',
                 'scorecard.back9first': 'Back 9 First',
                 'scorecard.games': 'Games',
@@ -14052,6 +14054,8 @@
                 'scorecard.startnine.locked': 'มีการบันทึกสกอร์แล้ว — ล็อกหลุมเริ่มต้น',
                 'scorecard.startnine.remote1': 'กลุ่มของคุณเปลี่ยนไปเริ่มที่หลุม 1',
                 'scorecard.startnine.remote10': 'กลุ่มของคุณเปลี่ยนไปเริ่มที่หลุม 10',
+                'scorecard.nines.remote': 'กลุ่มของคุณเปลี่ยนชุด 9 หลุม — ตอนนี้เล่น {n}',
+                'scorecard.nines.mismatch': 'เครื่องนี้มีข้อมูลหลุมผิดสำหรับรอบนี้ — ใช้ข้อมูลจากการ์ดของกลุ่มแทน',
                 'scorecard.front9first': 'หลุม 1-9 ก่อน',
                 'scorecard.back9first': 'หลุม 10-18 ก่อน',
                 'scorecard.games': 'เกม',
@@ -16745,6 +16749,8 @@
                 'scorecard.startnine.locked': '이미 스코어가 입력되어 시작 티를 변경할 수 없습니다',
                 'scorecard.startnine.remote1': '같은 조가 1번 홀 시작으로 변경했습니다',
                 'scorecard.startnine.remote10': '같은 조가 10번 홀 시작으로 변경했습니다',
+                'scorecard.nines.remote': '같은 조가 코스를 변경했습니다 — 현재 {n} 플레이 중',
+                'scorecard.nines.mismatch': '이 기기의 홀 정보가 잘못되어 같은 조의 카드 정보를 사용합니다',
                 'scorecard.front9first': '프론트 9 먼저',
                 'scorecard.back9first': '백 9 먼저',
                 'scorecard.games': '게임',
@@ -19024,6 +19030,8 @@
                 'scorecard.startnine.locked': 'スコア入力済みのため、スタートホールは変更できません',
                 'scorecard.startnine.remote1': 'グループが1番ホールスタートに変更しました',
                 'scorecard.startnine.remote10': 'グループが10番ホールスタートに変更しました',
+                'scorecard.nines.remote': 'グループがコースを変更しました — 現在 {n} をプレー中',
+                'scorecard.nines.mismatch': 'この端末のホール情報が違っていたため、グループのカードの情報を使用します',
                 'scorecard.front9first': 'フロント9から',
                 'scorecard.back9first': 'バック9から',
                 'scorecard.games': 'ゲーム',
@@ -76384,8 +76392,23 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (snap && snap[0]) return snap[0];
                     }
                 }
-                // 2) course_holes lookup
-                if (this.sc.course_id) {
+                // 2) (v1176) the stitched table the golfer's device carries on the card (v1171) —
+                // the only venue-agnostic answer for a combo, and it covers holes nobody has
+                // played yet.
+                try {
+                    const raw = this.sc.course_holes;
+                    const tbl = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                    if (Array.isArray(tbl)) {
+                        const h = tbl.find(x => Number(x.hole_number || x.hole || x.number) === Number(hole));
+                        if (h && h.par) return { par: h.par, stroke_index: h.stroke_index != null ? h.stroke_index : h.strokeIndex };
+                    }
+                } catch (e) { /* malformed table — fall through */ }
+                // 3) course_holes lookup. NEVER for a multi-nine venue: course_id is the BASE slug
+                // there and three of them ('burapha' = East A+B, 'plutaluang', 'siam_plantation')
+                // hold one arbitrary 18, so this returned a real-looking par off the wrong nine.
+                // Refusing is fine — writeScore tells the caddy to wait for the golfer.
+                const _comboVenue = !!(window.LiveScorecardManager?._comboConfig?.() || {})[this.sc.course_id];
+                if (this.sc.course_id && !_comboVenue) {
                     const { data: ch } = await sb.from('course_holes').select('par, stroke_index')
                         .eq('course_id', this.sc.course_id).eq('hole_number', hole).limit(1);
                     if (ch && ch[0]) return ch[0];
@@ -82607,10 +82630,19 @@ class LiveScorecardSystem {
     getHoleData(holeNumber) {
         if (!this.courseData?.holes) return null;
         const num = Number(holeNumber);
-        return this.courseData.holes.find(h => {
+        const hit = this.courseData.holes.find(h => {
             const hNum = Number(h.hole_number || h.hole || h.number);
             return hNum === num;
-        }) || this.courseData.holes[num - 1] || null;
+        });
+        if (hit) return hit;
+        // (v1176) The positional fallback exists for legacy tables that carry no hole numbers
+        // at all. A table SEEDED from the group's score rows is sparse — and on a 10th-tee
+        // start it begins at hole 10 — so holes[num-1] there hands back a DIFFERENT hole's
+        // par. That is a fabricated par, and it walks straight past the v1171 write guard.
+        const pos = this.courseData.holes[num - 1];
+        if (!pos) return null;
+        const posNum = Number(pos.hole_number || pos.hole || pos.number);
+        return (!posNum || posNum === num) ? pos : null;
     }
 
     // ============================================================================
@@ -83219,9 +83251,15 @@ class LiveScorecardSystem {
         // resumed round kept computing with the stale table. Re-pull fresh course data after a restore,
         // THEN re-apply the fresh SI/par to already-saved holes + recompute points so the stored scores
         // self-heal too (not just the live display).
-        this.refreshCourseDataFromDB().then(() => {
-            if (typeof this.recomputeScoresForCourseChange === 'function') return this.recomputeScoresForCourseChange();
-        }).then(() => this.refreshHandicapsFromDB()).catch(() => {});
+        // (v1176) ADOPT THE GROUP'S CARD FIRST. A phone that was closed when the group changed
+        // the back nine restores a STALE comboNines, and refreshCourseDataFromDB would faithfully
+        // rebuild the wrong nine from it — then push that through the recompute into every card's
+        // score rows. The card is the group's shared truth; read it before rebuilding anything.
+        Promise.resolve(this._adoptCourseTableFromMyCard())
+            .then(() => this.refreshCourseDataFromDB())
+            .then(() => {
+                if (typeof this.recomputeScoresForCourseChange === 'function') return this.recomputeScoresForCourseChange();
+            }).then(() => this.refreshHandicapsFromDB()).catch(() => {});
 
         // Restore the match-play type checkboxes — every leaderboard render reads them LIVE,
         // and they reset to unchecked on an app reload (Pete's "no match play type selected").
@@ -83360,6 +83398,19 @@ class LiveScorecardSystem {
             // because it's special-cased above via its own loader).
             const dbCourseId = this.courseData?.id || this.courseId;
             if (!dbCourseId) return;
+            // (v1176) THE WRONG-NINES BUG. dbCourseId here is a multi-nine VENUE's base slug and
+            // this device does NOT know which two nines the round is on (a DB-joined phone never
+            // had comboNines). Three venues carry a full, arbitrary 18 under the base id —
+            // 'burapha' IS East A+B, 'plutaluang' is one of twelve possible pairs, and
+            // 'siam_plantation' is Pineapple+Sugarcane with per-nine SIs 1-9 duplicated. Patching
+            // from it silently rewrites a Burapha C+D round to the A+B card, and restoreRoundState
+            // then pushes that through recomputeScoresForCourseChange into EVERY card's score rows.
+            // The carried table (v1171) is already the right 18 — leave it alone.
+            if (this._comboConfig()[dbCourseId]) {
+                console.warn('[LiveScorecard] ⛔ not patching', dbCourseId,
+                    '— multi-nine venue and this device does not know which nines are in play');
+                return;
+            }
             const tee = (this.selectedTeeMarker || 'white').toLowerCase();
             const { data } = await window.SupabaseDB.client
                 .from('course_holes')
@@ -83687,8 +83738,42 @@ class LiveScorecardSystem {
             // table silently becomes par 4 / SI = hole number on every hole the joiner enters.
             // That is what put Alondo's hole 4 in as par 4 SI 4 instead of par 5 SI 5 at
             // Greenwood on 2026-09-12, the moment he took his own card.
+            // (v1176) The group's SCORE ROWS are the one authority every device shares — the host
+            // wrote them off the card it is actually playing. Pull par/SI once: it seeds a table
+            // when nothing better exists, AND it cross-checks whatever table we do end up with.
+            const played = {};
+            try {
+                const sids = cards.map(c => c.id);
+                const { data: pr } = await sb.from('scores')
+                    .select('hole_number, par, stroke_index')
+                    .in('scorecard_id', sids).not('par', 'is', null);
+                (pr || []).forEach(r => { if (r.par && !played[r.hole_number]) played[r.hole_number] = r; });
+            } catch (e) { /* offline — no cross-check available, the write guard still holds */ }
+            const playedCount = Object.keys(played).length;
+            const agreement = (holes) => {
+                let ok = 0, bad = 0;
+                (holes || []).forEach(h => {
+                    const num = Number(h.hole_number || h.hole || h.number);
+                    const r = played[num];
+                    if (!r) return;
+                    const si = Number(h.stroke_index != null ? h.stroke_index : h.strokeIndex);
+                    if (Number(h.par) === Number(r.par) &&
+                        (r.stroke_index == null || si === Number(r.stroke_index))) ok++;
+                    else bad++;
+                });
+                return { ok, bad };
+            };
+            const seedFromScores = () => Object.values(played)
+                .map(r => ({ hole_number: r.hole_number, hole: r.hole_number,
+                             par: r.par, stroke_index: r.stroke_index, strokeIndex: r.stroke_index }))
+                .sort((a, b) => a.hole_number - b.hole_number);
+            // Which multi-nine VENUE is this? head.course_id is the base slug for a combo.
+            const comboKey = Object.keys(this._comboConfig()).find(b =>
+                String(head.course_id) === b || String(head.course_id).startsWith(b + '_')) || null;
+
             let courseData = null;
             let carried = null;
+            let comboNines = null;
             try {
                 const raw = (cards.find(c => c.course_holes) || {}).course_holes;
                 const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
@@ -83696,33 +83781,72 @@ class LiveScorecardSystem {
             } catch (e) { /* malformed table → fall through to the loaders below */ }
             if (carried) {
                 courseData = { id: head.course_id, name: head.course_name, holes: carried };
+            } else if (comboKey) {
+                // (v1176) A pre-v1171 combo round carries no table. NEVER loadCourseData() the base
+                // slug here: 'burapha' IS East A+B, 'plutaluang' and 'siam_plantation' likewise hold
+                // one arbitrary 18 — on a C+D round that is the wrong card, and unlike a missing
+                // table a wrong one writes real-looking pars. Instead rebuild from the nines the
+                // host stamped on the card name, then PROVE the result against the score rows the
+                // group has already written. Disagree on even one hole and it is thrown away.
+                const cfg = this._comboConfig()[comboKey];
+                const nines = this._ninesFromCourseName(comboKey, head.course_name);
+                const f = nines && document.getElementById(cfg.front);
+                const b = nines && document.getElementById(cfg.back);
+                if (f && b && typeof this[cfg.loader] === 'function') {
+                    const prevCD = this.courseData;
+                    try {
+                        f.value = nines.front; b.value = nines.back;
+                        this.courseData = null;
+                        await this[cfg.loader](teeMarker);
+                        const built = (this.courseData?.holes?.length >= 18) ? this.courseData : null;
+                        const a = built ? agreement(built.holes) : { ok: 0, bad: 1 };
+                        if (built && !a.bad && (a.ok > 0 || !playedCount)) {
+                            courseData = { id: head.course_id, name: head.course_name, holes: built.holes,
+                                           front9Name: nines.front, back9Name: nines.back };
+                            comboNines = nines;
+                            console.log('[LiveScorecard] 🔁 rebuilt', comboKey, nines.front + '+' + nines.back,
+                                '— agrees with the group on', a.ok, 'played hole(s)');
+                        } else {
+                            console.warn('[LiveScorecard] rebuilt', comboKey, 'REJECTED —',
+                                a.bad, 'played hole(s) disagree with the group');
+                        }
+                    } catch (e) { /* fall through to the seed below */ }
+                    this.courseData = prevCD;
+                }
             } else {
                 try { courseData = await this.loadCourseData(head.course_id, teeMarker); } catch (e) {}
-                // Rounds started before v1171 carry no table. Seed par/SI from the score rows the
-                // host already wrote — authoritative, venue-agnostic — so at minimum every hole
-                // the group has PLAYED is correct. Holes still ahead stay absent on purpose:
-                // _holeTableMissing() blocks the save rather than inventing par 4.
-                if (!courseData?.holes?.length) {
-                    try {
-                        const ids = cards.map(c => c.id);
-                        const { data: pr } = await sb.from('scores')
-                            .select('hole_number, par, stroke_index')
-                            .in('scorecard_id', ids).not('par', 'is', null);
-                        const byHole = {};
-                        (pr || []).forEach(r => { if (!byHole[r.hole_number]) byHole[r.hole_number] = r; });
-                        const seeded = Object.values(byHole)
-                            .map(r => ({ hole_number: r.hole_number, hole: r.hole_number,
-                                         par: r.par, stroke_index: r.stroke_index, strokeIndex: r.stroke_index }))
-                            .sort((a, b) => a.hole_number - b.hole_number);
-                        if (seeded.length) {
-                            courseData = { id: head.course_id, name: head.course_name, holes: seeded, _seededFromScores: true };
-                            console.warn('[LiveScorecard] no course table for', head.course_id,
-                                '— seeded', seeded.length, 'holes from the group\'s scores');
-                        }
-                    } catch (e) { /* leave courseData empty; the save guard catches it */ }
-                }
-                courseData = courseData || this.courseData || { id: head.course_id, name: head.course_name, holes: [] };
             }
+            // Nothing trustworthy yet: seed par/SI from the score rows the host already wrote —
+            // authoritative and venue-agnostic — so at minimum every hole the group has PLAYED is
+            // correct. Holes still ahead stay absent on purpose: the v1171 write guard blocks the
+            // save rather than inventing par 4.
+            if (!courseData?.holes?.length) {
+                const seeded = seedFromScores();
+                if (seeded.length) {
+                    courseData = { id: head.course_id, name: head.course_name, holes: seeded, _seededFromScores: true };
+                    console.warn('[LiveScorecard] no usable course table for', head.course_id,
+                        '— seeded', seeded.length, 'holes from the group\'s scores');
+                }
+            }
+            courseData = courseData || this.courseData || { id: head.course_id, name: head.course_name, holes: [] };
+
+            // FINAL CROSS-CHECK (v1176) — the backstop for causes nobody has thought of yet. If the
+            // table this device ended up with contradicts what the group has actually played, the
+            // table is wrong, full stop. Throw it away and keep only the holes the group can vouch
+            // for; the rest are refused at the write guard with a message, which is recoverable,
+            // where a wrong par silently rewrites someone's stableford.
+            try {
+                const chk = agreement(courseData.holes);
+                if (chk.bad) {
+                    console.error('[LiveScorecard] ⛔ hole table disagrees with the group on ' + chk.bad +
+                        ' played hole(s) — discarding it and using the group\'s own scores');
+                    courseData = { id: head.course_id, name: head.course_name,
+                                   holes: seedFromScores(), _seededFromScores: true };
+                    comboNines = null;
+                    window.NotificationManager?.show?.(_lvT('scorecard.nines.mismatch',
+                        'This phone had the wrong hole data for this round — using your group\'s card instead'), 'warning');
+                }
+            } catch (e) { /* never block a join on the cross-check */ }
 
             let scoringFormats = ['stableford'];
             try { const f = JSON.parse(head.scoring_format || '[]'); if (Array.isArray(f) && f.length) scoringFormats = f; } catch (e) {}
@@ -83769,6 +83893,10 @@ class LiveScorecardSystem {
             const idx = Math.min(Math.max(holeOrder.indexOf(maxHole || holeOrder[0]), 0), 17);
             return {
                 players, scorecards, cardOwner, courseData, scoringFormats, scoresCache,
+                // (v1176) only ever set when the rebuild above PROVED itself against the group's
+                // scores — restoreRoundState feeds it to refreshCourseDataFromDB, which rebuilds
+                // from it. Left null, that refresh now refuses to touch a combo table at all.
+                comboNines,
                 groupId, eventId: head.event_id || null, courseId: head.course_id,
                 gameCode: head.game_code || null, selectedTeeMarker: teeMarker,
                 startingNine: backNineStart ? 'back' : 'front',
@@ -89705,6 +89833,113 @@ class LiveScorecardSystem {
         };
     }
 
+    // ── WHICH TWO NINES IS THIS ROUND ON? (v1176) ────────────────────────────────────────
+    // The card's course_name always carries the host's stamp, e.g. "Burapha Golf Club (C+D)".
+    // Resolve those tokens back to the venue picker's real option VALUES — labels and values
+    // are NOT the same everywhere (Siam Plantation's card says "Sugar Cane" while the option
+    // value is "sugarcane"), so match tolerantly and return null rather than guess.
+    _ninesFromCourseName(courseKey, courseName) {
+        try {
+            const cfg = this._comboConfig()[courseKey];
+            if (!cfg || !courseName) return null;
+            const m = String(courseName).match(/\(([^()+]+)\+([^()+]+)\)\s*$/);
+            if (!m) return null;
+            const norm = v => String(v == null ? '' : v).toLowerCase().replace(/[^a-z0-9]/g, '');
+            const pick = (selId, token) => {
+                const t = norm(token);
+                if (!t) return null;
+                const opts = Array.from(document.getElementById(selId)?.options || []).filter(o => o.value);
+                const hit = opts.find(o => norm(o.value) === t)
+                         || opts.find(o => norm(o.textContent) === t)
+                         || opts.find(o => norm(o.textContent).startsWith(t))
+                         || opts.find(o => t.startsWith(norm(o.value)));
+                return hit ? hit.value : null;
+            };
+            const front = pick(cfg.front, m[1]), back = pick(cfg.back, m[2]);
+            return (front && back) ? { course: courseKey, front, back } : null;
+        } catch (e) { return null; }
+    }
+
+    // A comparable fingerprint of a hole table — hole/par/SI only, so yardage or tee noise
+    // never reads as "the nines changed".
+    _holeTableSig(holes) {
+        if (!Array.isArray(holes) || !holes.length) return '';
+        return holes.map(h => (h.hole_number || h.hole || h.number || 0) + ':' + (h.par || 0) + ':' +
+                              (h.stroke_index || h.strokeIndex || 0)).join('|');
+    }
+
+    // PUBLISH THE 18 THIS DEVICE IS PLAYING TO EVERY CARD IN THE GROUP (v1176).
+    // startRound stamps the table at creation (v1171); this is how a MID-ROUND nine change
+    // reaches the phones that are already in the round and the ones that join afterwards.
+    // Refuses anything short of a full 18 so a table seeded from scores can never be published.
+    async _publishCourseTableToCards() {
+        try {
+            const sb = window.SupabaseDB?.client;
+            const ids = Object.values(this.scorecards || {}).filter(id => id && !String(id).startsWith('local_'));
+            const holes = this.courseData?.holes;
+            if (!sb || !ids.length || !Array.isArray(holes) || holes.length < 18) return false;
+            const payload = { course_holes: holes, updated_at: new Date().toISOString() };
+            if (this.courseData?.name) payload.course_name = this.courseData.name;
+            const { error } = await sb.from('scorecards').update(payload).in('id', ids);
+            if (error) throw error;
+            console.log('[LiveScorecard] 📤 published the hole table to', ids.length, 'cards');
+            return true;
+        } catch (e) {
+            console.warn('[LiveScorecard] course table publish failed (non-fatal):', e);
+            return false;
+        }
+    }
+
+    // On reopen: the group's CARD is the authority on which nines are in play, not this
+    // device's saved snapshot. Cheap (one row) and it runs before any rebuild.
+    async _adoptCourseTableFromMyCard() {
+        try {
+            const sb = window.SupabaseDB?.client;
+            const ids = Object.values(this.scorecards || {}).filter(id => id && !String(id).startsWith('local_'));
+            if (!sb || !ids.length) return false;
+            const { data } = await sb.from('scorecards')
+                .select('course_holes, course_name')
+                .in('id', ids).not('course_holes', 'is', null).limit(1);
+            const row = data && data[0];
+            if (!row) return false;
+            return this._applyCourseTableFromRow(row);
+        } catch (e) { return false; }
+    }
+
+    // Realtime: someone in this group changed the nines. Adopt their table — the alternative is
+    // this phone quietly keeping the old back nine's par/SI and writing it into the round.
+    _applyCourseTableFromRow(row) {
+        try {
+            const raw = row && row.course_holes;
+            if (!raw) return false;
+            const holes = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (!Array.isArray(holes) || holes.length < 18) return false;
+            const sig = this._holeTableSig(holes);
+            if (!sig || sig === this._holeTableSig(this.courseData?.holes)) return false;
+            if (this._saving) return false;
+            const next = Object.assign({}, this.courseData || {}, { holes });
+            delete next._seededFromScores;
+            if (row.course_name) next.name = row.course_name;
+            this.courseData = next;
+            const nines = this._ninesFromCourseName(this.courseId, next.name);
+            if (nines) {
+                this.comboNines = nines;
+                next.front9Name = nines.front;
+                next.back9Name = nines.back;
+            }
+            console.log('[LiveScorecard] ⇄ hole table changed elsewhere → adopted', next.name);
+            this.saveRoundState();
+            try { this.renderHole(); } catch (e) {}
+            try { this.renderLiveScorecard(); } catch (e) {}
+            try { this.debouncedRefreshLeaderboard(); } catch (e) {}
+            const label = (next.name?.match(/\(([^()]+)\)\s*$/) || [])[1];
+            window.NotificationManager?.show?.(
+                _lvT('scorecard.nines.remote', 'Your group changed the nines — now playing {n}')
+                    .replace('{n}', label || next.name || ''), 'info');
+            return true;
+        } catch (e) { return false; }
+    }
+
     // Change the back nine MID-ROUND for ANY multi-nine course. Rebuilds holes 10-18 with the
     // new nine via that course's tested loader, re-interleaves the full 18-hole stroke index
     // (can shift the front-9 SI), rewrites + recomputes saved scores, persists, re-renders.
@@ -89717,9 +89952,16 @@ class LiveScorecardSystem {
         }
         const fEl = document.getElementById(cfg.front);
         const bEl = document.getElementById(cfg.back);
-        const front9 = (fEl?.value) || this.courseData?.front9Name
-            || (this.courseData?.name?.match(/\(([^+]+)\+/) || [])[1];
-        const curBack9 = (bEl?.value) || this.courseData?.back9Name;
+        // (v1176) THE ROUND decides which nine the front is — never this device's leftover
+        // dropdown. On a phone that JOINED the round those selects hold whatever was last
+        // picked on it, so reading them first rebuilt the round on a nine the group is not
+        // playing. The card's own "(F+B)" stamp is the fallback, resolved back to real option
+        // values by _ninesFromCourseName (labels and values differ at some venues).
+        const stamped = this._ninesFromCourseName(courseKey, this.courseData?.name);
+        const front9 = this.comboNines?.front || this.courseData?.front9Name
+            || stamped?.front || (fEl?.value) || null;
+        const curBack9 = this.comboNines?.back || this.courseData?.back9Name
+            || stamped?.back || (bEl?.value) || null;
         if (!front9) { NotificationManager.show('Could not determine the front nine', 'error'); return false; }
         if (!newBack9 || newBack9 === front9) { NotificationManager.show('Pick a different nine for the back 9', 'error'); return false; }
         if (newBack9 === curBack9) { NotificationManager.show('Back 9 is already ' + newBack9, 'info'); return false; }
@@ -89731,8 +89973,15 @@ class LiveScorecardSystem {
         if (fEl) fEl.value = front9;
         if (bEl) bEl.value = newBack9;
         if (typeof this[cfg.loader] !== 'function') { NotificationManager.show('No loader for this course', 'error'); return false; }
+        // (v1176) the loaders set courseData = null when they fail. Losing the table mid-round
+        // is worse than not changing the nine: every score write is then refused (v1171 guard).
+        const prevCourseData = this.courseData, prevCombo = this.comboNines;
         await this[cfg.loader](teeMarker);
         if (!this.courseData) {
+            this.courseData = prevCourseData;
+            this.comboNines = prevCombo;
+            if (fEl) fEl.value = prevCombo?.front || front9 || '';
+            if (bEl) bEl.value = prevCombo?.back || curBack9 || '';
             NotificationManager.show('Failed to load the new back 9 — check connection and retry', 'error');
             return false;
         }
@@ -89746,6 +89995,10 @@ class LiveScorecardSystem {
         catch (e) { console.error('[LiveScorecard] recompute after back-9 change failed', e); }
 
         this.saveRoundState();
+        // (v1176) Every other phone in the group is still on the OLD back nine's par/SI, and any
+        // phone that joins later reads the table off the card. Republish it — the group's
+        // realtime sub carries it to them (_applyCourseTableFromRow).
+        try { await this._publishCourseTableToCards(); } catch (e) {}
         try { this.renderHole(); } catch (e) {}
         try { if (typeof this.renderLeaderboard === 'function') this.renderLeaderboard(); } catch (e) {}
         NotificationManager.show(`Back 9 changed to ${newBack9} — stroke index & scores recalculated`, 'success');
@@ -89757,6 +90010,13 @@ class LiveScorecardSystem {
     async recomputeScoresForCourseChange() {
         const sb = window.SupabaseDB?.client;
         if (!sb || !this.courseData) return;
+        // (v1176) This rewrites par/SI on EVERY card in the group. A table seeded from the
+        // group's own score rows has nothing to teach them, and a partial table is not a card —
+        // either way this device must not push its idea of the course onto everyone else.
+        if (this.courseData._seededFromScores || !(this.courseData.holes?.length >= 18)) {
+            console.warn('[LiveScorecard] skipping group-wide par/SI recompute — no full course table on this device');
+            return;
+        }
         const siByHole = {}, parByHole = {};
         for (const h of this.courseData.holes) { siByHole[h.hole_number] = h.stroke_index; parByHole[h.hole_number] = h.par; }
 
@@ -106818,6 +107078,10 @@ class LiveScorecardSystem {
                 // Whoever flips it writes starting_nine to every card in the group — this is how
                 // the other devices learn to walk the same holes.
                 try { this._applyStartNineFromRow(payload && payload.new); } catch (e) {}
+                // (v1176) the nines themselves can change mid-round (⛳ B9 at the turn). Whoever
+                // changes them republishes the stitched table to every card — this is how the
+                // rest of the group stops scoring against the old back nine's par/SI.
+                try { this._applyCourseTableFromRow(payload && payload.new); } catch (e) {}
                 // Live rules/status sync (Pete: no close-and-reopen for fixes):
                 // match config or card status changed elsewhere — re-pull the
                 // shared config and refresh the boards in place.

@@ -262,6 +262,10 @@
     { grp: 'g3.mygame', fb: 'My game' },
     { tab: 'rounds', icon: 'history', k: 'g3.roundhistory', fb: 'Round history' },
     { tab: 'golfanalytics', icon: 'monitoring', k: 'g3.analytics', fb: 'Analytics' },
+    /* v1198: Chips lived ONLY in the phone drawer and the More dropdown — and the rail hides
+       #ghd2Tabs, so the dropdown is dead on desktop. The dashboard banner was the only way in
+       here, which is exactly why it could not be dismissed. Now it has a home. */
+    { act: 'chips', icon: 'poker_chip', k: 'g3.chips', fb: 'Chips' },
     { grp: 'g3.around', fb: 'Around the course' },
     { tab: 'schedule', icon: 'calendar_month', k: 'g3.schedule', fb: 'Schedule' },
     { act: 'teesheet', icon: 'view_list', k: 'g3.teesheet', fb: 'Tee sheet' },
@@ -402,6 +406,7 @@
         if (act === 'results') { if (window.SocietyResultsHub) SocietyResultsHub.open(); return; }
         if (act === 'teesheet') { if (window.GolferCubeInfo) GolferCubeInfo.openTeeSheetCube(); return; }
         if (act === 'oo') { if (window.OneOnOne) OneOnOne.open(); return; } /* 1on1 (v1091): its own screen, not a golfer tab */
+        if (act === 'chips') { if (window.WinningsWallet) WinningsWallet.open(); return; }
         /* v1137 Pete-only admin group — every one of these calls the SAME function the phone drawer calls */
         /* ScreenManager is a bare `class` — it lives in the global LEXICAL scope and is NEVER put on
            window, so `window.ScreenManager` is undefined and the guard swallowed the click (v1138).

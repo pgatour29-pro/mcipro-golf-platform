@@ -27552,6 +27552,10 @@
                     console.error('LINE logout error:', error);
                 }
 
+                // v1184: strip every per-identity unlock still painted on the dashboard DOM —
+                // logout does not reload, so without this the next identity inherits them.
+                try { if (window.lockPrivilegedUI) window.lockPrivilegedUI(); } catch (e) {}
+
                 // Reset application state
                 AppState.currentUser = {
                     role: 'guest',
@@ -27581,6 +27585,19 @@
                 AppState.session.authMethod = null;
                 AppState.session.loginTime = null;
 
+                // v1184: THE Supabase Auth session carries the `line_id` claim that every RLS
+                // policy and SECURITY DEFINER rpc reads (public.line_id() = auth.jwt()->>'line_id').
+                // logout() never ended it, so after "logging out" and entering with the staff PIN
+                // the browser kept making DB calls AS THE PREVIOUS USER — which is how oo_me()
+                // still returned Pete's 1on1 membership inside a caddie session.
+                try {
+                    const _sb = window.SupabaseDB && window.SupabaseDB.client;
+                    if (_sb && _sb.auth) _sb.auth.signOut().then(function (r) {
+                        if (r && r.error) console.warn('[LineAuth] signOut:', r.error.message);
+                        else console.log('[LineAuth] Supabase Auth session ended');
+                    }).catch(function (e) { console.warn('[LineAuth] signOut failed:', e); });
+                } catch (e) { console.warn('[LineAuth] signOut threw:', e); }
+
                 // Clear user-specific localStorage items
                 localStorage.removeItem('line_user_id');
 
@@ -27594,6 +27611,34 @@
 
         // Expose LineAuthentication to window for onclick handlers
         window.LineAuthentication = LineAuthentication;
+
+        // ===== PRIVILEGE RE-LOCK (v1184) =====
+        // Pete 2026-09-14: "i logged out and entered through the caddy section using the PIN, so
+        // why the fuck is it showing ADMIN panel controls along with the 1on1".
+        // logout() does NOT reload the page — it resets AppState, drops line_user_id and shows
+        // #loginScreen, but the dashboard DOM survives untouched. Every per-identity unlock in
+        // this app is ONE-WAY: switched on for the right user, never switched back off. So the
+        // NEXT identity on that tab (a staff PIN demo, a different LINE login) inherited the
+        // previous user's admin rail, admin drawer links and 1on1 cube.
+        // This is the re-lock, and it runs on logout AND on every demo/PIN sign-in.
+        // EVERY new identity-gated surface MUST be added here.
+        window.lockPrivilegedUI = function () {
+            try {
+                // All of these ship display:none in the markup — restoring that IS the locked state.
+                ['drawerAdmin', 'drawerTrggSync', 'drawerTrggHandicapPaste', 'drawerTrggPOYUpdate',
+                 'drawerAlertHistory', 'desktopTrggButtons', 'switchToOrganizerBtn',
+                 'drawerBecomeCaddie', 'drawerMyCaddie', 'drawerBecomeStaff', 'drawerStaffPending'
+                ].forEach(function (id) {
+                    var el = document.getElementById(id);
+                    if (el) el.style.display = 'none';
+                });
+                var gd = document.getElementById('golferDashboard');
+                // g3-adm = the desktop rail's ADMIN block (Pete only). oo-on = the 1on1 cube +
+                // rail item (invite-only). Neither is ever removed by the code that adds it.
+                if (gd) gd.classList.remove('g3-adm', 'oo-on');
+                document.body.classList.remove('oo-partner-caddie');   // caddie-dashboard 1on1 entries
+            } catch (e) { console.warn('[lockPrivilegedUI]', e); }
+        };
 
         // ===== COURSE REQUEST SYSTEM =====
         // Allows users to submit requests for new courses with scorecard photos
@@ -49607,6 +49652,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Expose login function globally for inline onclick handlers
         window.login = async function (role) {
             console.log('[window.login] Called with role:', role);
+            // v1184: a staff PIN sign-in is an IDENTITY CHANGE on a tab that was never reloaded.
+            // Re-lock before the new role paints, or Pete's admin rail / 1on1 cube ride along.
+            try { if (window.lockPrivilegedUI) window.lockPrivilegedUI(); } catch (e) {}
             if (window.FallbackAuthentication?.login) {
                 console.log('[window.login] Using FallbackAuthentication');
                 return FallbackAuthentication.login(role);
@@ -118582,7 +118630,17 @@ const TRGGScheduleSync = {
     init() {
         const userId = window.AppState?.currentUser?.lineUserId;
         console.log('[TRGG Init] userId:', userId, 'isPete:', userId === this.PETE_LINE_ID);
-        if (userId !== this.PETE_LINE_ID) return;
+        if (userId !== this.PETE_LINE_ID) {
+            // v1184: this unlock used to be one-way — anyone who followed Pete on the same tab
+            // kept his admin rail. Re-lock explicitly instead of just bailing out.
+            ['drawerAdmin', 'drawerTrggSync', 'drawerTrggHandicapPaste', 'drawerTrggPOYUpdate',
+             'drawerAlertHistory', 'desktopTrggButtons'].forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+            try { const gdx = document.getElementById('golferDashboard'); if (gdx) gdx.classList.remove('g3-adm'); } catch (e) {}
+            return;
+        }
         // Show Pete-only buttons
         const drawerBtn = document.getElementById('drawerTrggSync');
         const drawerPaste = document.getElementById('drawerTrggHandicapPaste');
@@ -143164,6 +143222,9 @@ const RoleSwitcher = {
             const alertHistBtn = document.getElementById('drawerAlertHistory');
             if (alertHistBtn) alertHistBtn.style.display = '';
         } else {
+            // v1184: this branch only LOGGED "hiding" — it never hid anything, so the button
+            // survived an identity change on an un-reloaded tab.
+            if (switchBtn) switchBtn.style.display = 'none';
             console.log('[RoleSwitcher] User is not an organizer - hiding role switcher');
         }
     },
@@ -167766,7 +167827,7 @@ showOrganizerTab = function(tabName) {
         } catch (e) {}
     })();
     </script>
-    <script src="oo-1on1.js?v=1143"></script>
+    <script src="oo-1on1.js?v=1184"></script>
     <script src="g3-desk.js?v=1162"></script>
     <script src="g3-org.js?v=1108"></script>
 </body>

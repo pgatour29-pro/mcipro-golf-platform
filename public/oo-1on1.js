@@ -648,8 +648,18 @@
       var me = await this.refreshMe(true);
       if (seq !== this._initSeq) return;
       var dash = document.getElementById('golferDashboard');
-      var on = !!(me && me.signed_in && ((me.member && me.member.status !== 'removed') || me.admin));   /* v1099: removed = no member */
-      if (!on && !(me && me.signed_in)) {
+      /* v1184 (Pete: "i logged out and entered through the caddy section using the PIN, so why
+         is it showing ADMIN panel controls along with the 1on1"): the member side of 1on1 is for
+         GOLFERS. A staff/caddie session must NEVER light the cube or the rail item — a partner
+         reaches 1on1 from the caddie dashboard, gated separately on me.partner. This also stops a
+         stale Supabase JWT (previous LINE user, tab never reloaded) from unlocking it. */
+      var _role = ''; try { _role = String((window.AppState && window.AppState.currentUser && window.AppState.currentUser.role) || ''); } catch (e) {}
+      /* the SESSION's role, not the account: me.is_caddie stays true forever once anyone opens
+         the caddie dashboard (resolveProfile self-provisions a row), and would strip the cube
+         from a golfer/admin who merely looked at it once. */
+      var staffSide = ['caddie', 'caddy', 'caddymaster', 'manager', 'proshop', 'maintenance', 'golf_course_manager', 'staff'].indexOf(_role) >= 0;
+      var on = !staffSide && !!(me && me.signed_in && ((me.member && me.member.status !== 'removed') || me.admin));   /* v1099: removed = no member */
+      if (!on && !staffSide && !(me && me.signed_in)) {
         /* no JWT (yet): still show the cube to admins/members so they can log out + in; the gate explains */
         try { var vis = await rpc('oo_cube_visible', { p_uid: uid() }); if (vis === true) { on = true; this._needsRelogin = true; } } catch (e) {}
       } else { this._needsRelogin = false; }

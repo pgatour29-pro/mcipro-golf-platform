@@ -6344,6 +6344,9 @@
             font:600 12.5px/1 'Instrument Sans',sans-serif; }
         body.theme-light .rpt-acts button { background:#fff; border-color:rgba(15,23,42,.1); color:#3C4653; }
         .rpt-acts button.on { background:#16a34a; border-color:#16a34a; color:#fff; font-weight:700; }
+        /* the light-theme button rule above is (0,3,1) and out-ranks .rpt-acts button.on (0,2,1) —
+           without this the current status never paints green in light mode */
+        body.theme-light .rpt-acts button.on { background:#16a34a; border-color:#16a34a; color:#fff; }
         .rpt-sheet textarea { width:100%; min-height:74px; border-radius:12px; padding:10px 12px; resize:vertical;
             background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); color:#F2F5F7;
             font:400 13.5px/1.5 'Instrument Sans',sans-serif; }
@@ -129871,6 +129874,12 @@ const ReportsInbox = {
         if (days < 7) return days + 'd';
         return d.toLocaleDateString(window._lvLocale ? _lvLocale() : undefined, { day: 'numeric', month: 'short' });
     },
+    // "Smith, Neil" -> Neil; "김경태 (Kyungtae Kim)" -> 김경태; "Paul Anderson" -> Paul
+    _firstName(n) {
+        const s = String(n || '').trim();
+        if (s.includes(',')) return s.split(',')[1].trim().split(/\s+/)[0] || s;
+        return s.split(/[ (]/)[0] || s;
+    },
     _catLabel(c) {
         return { tee_sheet: 'TEE SHEET', registration: 'REGISTRATION', society: 'SOCIETY', scoring: 'SCORING', account: 'ACCOUNT' }[c] || 'OTHER';
     },
@@ -129937,7 +129946,7 @@ const ReportsInbox = {
             '<textarea id="rptNote" placeholder="What was done about it">' + esc(r.admin_note || '') + '</textarea>' +
             '<div class="rpt-acts" style="margin-top:9px;">' +
               '<button onclick="ReportsInbox.saveNote()">Save note</button>' +
-              '<button onclick="ReportsInbox.messageReporter()">Message ' + esc(String(r.reporter_name).split(/[ (]/)[0]) + '</button>' +
+              '<button onclick="ReportsInbox.messageReporter()">Message ' + esc(this._firstName(r.reporter_name)) + '</button>' +
             '</div>' +
             '<button class="rpt-close" onclick="ReportsInbox.close()">Close</button>' +
           '</div>';

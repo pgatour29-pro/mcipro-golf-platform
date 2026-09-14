@@ -27537,6 +27537,7 @@
             }
 
             static logout() {
+                let _signOut = null;
                 try {
                     if (typeof liff !== 'undefined' && liff.isLoggedIn()) {
                         // CRITICAL: Only call liff.logout() in LIFF client (LINE app browser)
@@ -27595,7 +27596,7 @@
                     // scope:'local' — end the session on THIS device only. The default is
                     // 'global', which revokes every refresh token for the account: logging out
                     // on the laptop would silently sign the same person out on their phone.
-                    if (_sb && _sb.auth) _sb.auth.signOut({ scope: 'local' }).then(function (r) {
+                    if (_sb && _sb.auth) _signOut = _sb.auth.signOut({ scope: 'local' }).then(function (r) {
                         if (r && r.error) console.warn('[LineAuth] signOut:', r.error.message);
                         else console.log('[LineAuth] Supabase Auth session ended');
                     }).catch(function (e) { console.warn('[LineAuth] signOut failed:', e); });
@@ -27608,7 +27609,16 @@
                 sessionStorage.setItem('__user_logged_out', 'true');
 
                 ScreenManager.showScreen('loginScreen');
-                NotificationManager.show('Logged out successfully', 'info');
+
+                // v1186: ...and then RELOAD. Everything above resets the flags we know about, but
+                // the dashboard DOM is still the PREVIOUS user's — their buddy count, their event
+                // registrations, their badges, and any future privilege flag nobody remembered to
+                // add to lockPrivilegedUI(). A reload is the only complete answer, and the boot
+                // path already expects one: `__user_logged_out` (set just above, and sessionStorage
+                // survives a reload) is exactly what stops LIFF re-logging them straight back in.
+                // Chained off signOut so the auth token is really gone before the page comes back.
+                var _reload = function () { try { location.reload(); } catch (e) {} };
+                if (_signOut && _signOut.then) _signOut.then(_reload, _reload); else _reload();
             }
         }
 

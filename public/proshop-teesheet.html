@@ -3881,6 +3881,34 @@
           return existing.id;
         }
 
+        // v1187 THE 4:15 GATE. This page ALREADY refuses a caddy double-booking inside
+        // ROUND_DURATION_MINUTES (270) — but only against ITS OWN tee sheet (getDay(date)).
+        // It cannot see caddy_bookings rows a golfer created in the app, and those are real
+        // jobs for the same caddy. This is the check against the table itself.
+        // Fails OPEN on a query error (a lookup hiccup must never stop the pro shop working).
+        try {
+          const FLOOR = 255;
+          const toMins = (v) => { const m = String(v || '').match(/^\s*(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+          const hhmm = (v) => String(Math.floor(v / 60)).padStart(2, '0') + ':' + String(v % 60).padStart(2, '0');
+          const want = toMins(time);
+          if (want != null) {
+            const prof = await supabaseClient.from('caddy_profiles').select('block_minutes').eq('id', golfer.caddyId).maybeSingle();
+            const block = Math.max(FLOOR, (prof.data && +prof.data.block_minutes) || FLOOR);
+            const day = await supabaseClient.from('caddy_bookings')
+              .select('id, tee_time, start_time, golfer_name')
+              .eq('caddy_id', golfer.caddyId).eq('booking_date', date).neq('status', 'cancelled').limit(200);
+            if (day.error) throw new Error(day.error.message);
+            const clash = (day.data || []).find(b => { const bt = toMins(b.tee_time || b.start_time); return bt != null && Math.abs(bt - want) < block; });
+            if (clash) {
+              const msg = 'Caddy already out at ' + hhmm(toMins(clash.tee_time || clash.start_time))
+                + ' — blocked until ' + hhmm(toMins(clash.tee_time || clash.start_time) + block) + '. Pick another caddy or another time.';
+              console.warn('[TeeSheet] 4:15 clash:', msg);
+              alert(msg);   // this page talks to the pro shop with alert() everywhere else
+              return null;
+            }
+          }
+        } catch (e) { console.warn('[TeeSheet] 4:15 check skipped:', e.message); }
+
         // Create new caddy booking with user_id for dashboard visibility
         const insertData = {
           caddy_id: golfer.caddyId,

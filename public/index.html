@@ -134867,21 +134867,25 @@ class GolferEventsManager {
             this.editingRegistrationId = null;      // fresh sign-up, not an edit
             await this.openEventDetail(eventId);
         } catch (e) { console.warn('[SCV3G] registerWithGuests', e); this._guestVeil(false); }
-        let ticks = 0, landed = false;
+        let ticks = 0, myInput = null;
         const ensure = () => {
             const gc = document.getElementById('guestPlayersContainer');
             if (gc) {
                 const rows = gc.querySelectorAll('.guest-player-row');
                 const typed = Array.from(rows).some(r => (r.querySelector('.guest-name') || {}).value);
                 if (!rows.length && !typed) { try { this.addGuestPlayer(); } catch (e) {} }
-                // Land as SOON as the field exists instead of burning a fixed 2.4s first.
+                // Land as SOON as the field exists instead of burning a fixed 2.4s first — and
+                // land AGAIN if a later showRegistrationForm re-init threw that row away, which is
+                // exactly why the old code waited for the churn to stop before touching anything.
+                // Re-landing is gated on the old field being GONE (myInput.isConnected === false),
+                // so a golfer who has simply tapped elsewhere never gets focus yanked back.
                 const input = gc.querySelector('.guest-player-row .guest-name');
-                if (input && !landed && !typed) {
-                    landed = true;
+                if (input && !typed && input !== myInput && (!myInput || !myInput.isConnected)) {
+                    myInput = input;
                     this._guestVeil(false);
                     const row = input.closest('.guest-player-row') || gc;
                     try { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
-                    setTimeout(() => { try { input.focus({ preventScroll: true }); } catch (e) {} }, 120);
+                    setTimeout(() => { try { if (input.isConnected) input.focus({ preventScroll: true }); } catch (e) {} }, 120);
                 }
             }
             // Keep re-asserting for the full window either way: showRegistrationForm runs more

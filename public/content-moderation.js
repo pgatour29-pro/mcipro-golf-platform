@@ -340,8 +340,19 @@ window.ContentModeration = (function() {
                 r.readAsDataURL(small);
             });
             if (!b64) return { safe: false, reason: 'Photo check failed. Please try again.' };
+            // v1195: send the publishable key EXPLICITLY.
+            // image-screen only requires a non-empty Authorization header (it reads no user and
+            // exposes no data — see its own header comment). But functions.invoke sends NO
+            // Authorization at all when there is no Supabase Auth session, so the function
+            // answered 401 {"error":"not_signed_in"}, screenImage failed CLOSED, and nobody
+            // without a live session could save ANY photo — a caddy photo, a profile photo, a
+            // society logo, a 19th Hole listing. A session is not required to screen an image.
+            let _key = '';
+            try { _key = (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.anonKey)
+                || (typeof SUPABASE_CONFIG !== 'undefined' && SUPABASE_CONFIG.anonKey) || ''; } catch (e) {}
             const res = await client.functions.invoke('image-screen', {
-                body: { image_b64: b64, mime: 'image/jpeg', context: context || 'general' }
+                body: { image_b64: b64, mime: 'image/jpeg', context: context || 'general' },
+                headers: _key ? { Authorization: 'Bearer ' + _key, apikey: _key } : undefined
             });
             if (res.error || !res.data) {
                 console.warn('[ContentModeration] image-screen unavailable', res.error);

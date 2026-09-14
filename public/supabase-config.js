@@ -8,6 +8,11 @@ const SUPABASE_CONFIG = {
     // Use Edge Functions or server-side code for operations requiring service_role
 };
 
+// v1195: expose the config. content-moderation.js needs the publishable key to send an
+// explicit Authorization header to image-screen — functions.invoke omits the header entirely
+// when there is no Supabase Auth session, and the function then refuses the request.
+try { window.SUPABASE_CONFIG = SUPABASE_CONFIG; } catch (e) {}
+
 // Initialize Supabase Client
 class SupabaseClient {
     constructor() {

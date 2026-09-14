@@ -7166,6 +7166,18 @@
             #caddie-assignments .cts-day .d { font-size:13px; }
         }
 
+        /* GUEST SIGN-UP VEIL (v1192) — Pete: tapping "+Guests" took so long to land on the
+           name-search line that people interrupted it and got confused. The veil goes up on
+           the TAP, before any await, and comes down the moment the guest name field exists.
+           Body-mounted: .screen transforms trap position:fixed. */
+        #gstOpenVeil { position:fixed; inset:0; z-index:11800; display:flex; flex-direction:column;
+            align-items:center; justify-content:center; gap:14px; background:rgba(6,12,10,.82);
+            -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); }
+        #gstOpenVeil .ring { width:46px; height:46px; border-radius:50%; border:4px solid rgba(255,255,255,.22);
+            border-top-color:#4ade80; }
+        #gstOpenVeil .t { font:600 15px/1.3 'Instrument Sans',sans-serif; color:#fff; }
+        #gstOpenVeil .s { font:500 12px/1.4 'Instrument Sans',sans-serif; color:rgba(255,255,255,.66); }
+
         /* ================================================================
            SCV3C — Caddie dashboard overview (real wiring + realtime).
            Dark sheet scoped to #caddie-overview.
@@ -10485,6 +10497,8 @@
                 'booking.status.in_progress': 'IN PROGRESS',
                 'caddie.dash.overline': 'CADDIE · LIVE',
                 'caddie.dash.today': 'Today',
+                'registration.guest.opening': 'Opening guest sign-up…',
+                'registration.guest.openingsub': 'Getting the name search ready',
                 'caddie.ts.week': 'MY WEEK',
                 'caddie.ts.sheet': 'TEE SHEET',
                 'caddie.ts.from': 'From',
@@ -12987,6 +13001,8 @@
                 'booking.status.in_progress': 'กำลังเล่น',
                 'caddie.dash.overline': 'แคดดี้ · สด',
                 'caddie.dash.today': 'วันนี้',
+                'registration.guest.opening': 'กำลังเปิดหน้าเพิ่มผู้เล่นรับเชิญ…',
+                'registration.guest.openingsub': 'กำลังเตรียมช่องค้นหาชื่อ',
                 'caddie.ts.week': 'สัปดาห์ของฉัน',
                 'caddie.ts.sheet': 'ตารางออกรอบ',
                 'caddie.ts.from': 'จาก',
@@ -15480,6 +15496,8 @@
                 'booking.status.in_progress': '진행 중',
                 'caddie.dash.overline': '캐디 · 라이브',
                 'caddie.dash.today': '오늘',
+                'registration.guest.opening': '동반자 등록을 여는 중…',
+                'registration.guest.openingsub': '이름 검색을 준비하고 있습니다',
                 'caddie.ts.week': '이번 주',
                 'caddie.ts.sheet': '티 시트',
                 'caddie.ts.from': '시작',
@@ -18031,6 +18049,8 @@
                 'booking.status.in_progress': '進行中',
                 'caddie.dash.overline': 'キャディ · ライブ',
                 'caddie.dash.today': '今日',
+                'registration.guest.opening': 'ゲスト登録を開いています…',
+                'registration.guest.openingsub': '名前検索を準備しています',
                 'caddie.ts.week': '今週',
                 'caddie.ts.sheet': 'ティーシート',
                 'caddie.ts.from': '開始',
@@ -134819,30 +134839,57 @@ class GolferEventsManager {
     // So we can't add the row just once (a later reset wipes it). Instead re-assert an empty guest row
     // for a short window until the form's async init settles, then scroll to it + focus. The guard stops
     // re-adding the moment the golfer starts typing a name.
+    // v1192: the veil. Up on the TAP (before any await), down the moment the guest name
+    // field is really there. _guestVeil(false) is safe to call twice and a hard 7s failsafe
+    // means a slow event can never trap anyone behind it.
+    _guestVeil(show) {
+        try {
+            const old = document.getElementById('gstOpenVeil');
+            if (!show) { if (old) old.remove(); clearTimeout(this._gstVeilT); return; }
+            if (old) return;
+            const v = document.createElement('div');
+            v.id = 'gstOpenVeil';
+            // .animate-spin is the ONE carve-out that survives the mobile animation flattening
+            // at the top of this file — a bare keyframe spinner is frozen solid on a phone.
+            v.innerHTML = '<div class="ring animate-spin"></div>'
+                + '<div class="t">' + _lvT('registration.guest.opening', 'Opening guest sign-up…') + '</div>'
+                + '<div class="s">' + _lvT('registration.guest.openingsub', 'Getting the name search ready') + '</div>';
+            v.onclick = () => this._guestVeil(false);     // never trap a tap
+            document.body.appendChild(v);                 // .screen transforms trap position:fixed
+            clearTimeout(this._gstVeilT);
+            this._gstVeilT = setTimeout(() => this._guestVeil(false), 7000);
+        } catch (e) { console.warn('[SCV3G] guest veil', e); }
+    }
+
     async registerWithGuests(eventId) {
+        this._guestVeil(true);                      // FIRST, before the await — this is the whole point
         try {
             this.editingRegistrationId = null;      // fresh sign-up, not an edit
             await this.openEventDetail(eventId);
-        } catch (e) { console.warn('[SCV3G] registerWithGuests', e); }
-        let ticks = 0;
+        } catch (e) { console.warn('[SCV3G] registerWithGuests', e); this._guestVeil(false); }
+        let ticks = 0, landed = false;
         const ensure = () => {
             const gc = document.getElementById('guestPlayersContainer');
             if (gc) {
                 const rows = gc.querySelectorAll('.guest-player-row');
                 const typed = Array.from(rows).some(r => (r.querySelector('.guest-name') || {}).value);
                 if (!rows.length && !typed) { try { this.addGuestPlayer(); } catch (e) {} }
+                // Land as SOON as the field exists instead of burning a fixed 2.4s first.
+                const input = gc.querySelector('.guest-player-row .guest-name');
+                if (input && !landed && !typed) {
+                    landed = true;
+                    this._guestVeil(false);
+                    const row = input.closest('.guest-player-row') || gc;
+                    try { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+                    setTimeout(() => { try { input.focus({ preventScroll: true }); } catch (e) {} }, 120);
+                }
             }
-            if (++ticks < 12) return setTimeout(ensure, 200);   // ~2.4s: survives the form's re-inits
-            // Settled → bring the empty guest row itself into view and focus its name field.
-            const c = document.getElementById('guestPlayersContainer');
-            if (c) {
-                const row = c.querySelector('.guest-player-row') || c;
-                try { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
-                const input = c.querySelector('.guest-player-row .guest-name');
-                if (input) setTimeout(() => { try { input.focus({ preventScroll: true }); } catch (e) {} }, 200);
-            }
+            // Keep re-asserting for the full window either way: showRegistrationForm runs more
+            // than once and each run clears guest rows, so landing early must not stop the guard.
+            if (++ticks < 12) return setTimeout(ensure, 200);
+            this._guestVeil(false);                 // failsafe: the veil never outlives the loop
         };
-        setTimeout(ensure, 150);
+        setTimeout(ensure, 60);
     }
 
     // Direct-vs-Transport chooser shown before a one-tap register completes (Pete: this is a MUST).

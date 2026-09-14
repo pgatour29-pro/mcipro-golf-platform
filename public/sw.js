@@ -1,7 +1,7 @@
 // SERVICE WORKER - Performance Caching Version
 // Caches static assets for dramatically faster repeat visits
 
-const SW_VERSION = 'mcipro-cache-v1190';
+const SW_VERSION = 'mcipro-cache-v1191';
 const CACHE_NAME = `mcipro-static-${SW_VERSION}`;
 const RUNTIME_CACHE = `mcipro-runtime-${SW_VERSION}`;
 
@@ -158,26 +158,49 @@ self.addEventListener('fetch', event => {
         return;
     }
 
-    // HTML requests: Network-first with cache fallback
+    // HTML requests: network-first, but with a DEADLINE (v1191).
+    //
+    // index.html is 10.4 MB raw / 2.1 MB brotli and `no-store` means the browser may not
+    // keep it, so every single app open re-downloads the page. The old handler waited on
+    // the network forever and only fell back to cache when the fetch REJECTED. On a slow
+    // Thai mobile connection the fetch never rejects — it just crawls — so users sat on a
+    // blank screen for 30-90s with a perfectly good cached copy sitting unused. That is
+    // what "can't open the app" was.
+    //
+    // Now: if the network hasn't answered in NAV_TIMEOUT_MS and we HAVE a cached page,
+    // serve the cache immediately and let the network keep going to refresh it in the
+    // background (stale-while-revalidate). No cached copy = wait for the network, exactly
+    // as before, because a slow page still beats no page.
     if (isHTMLRequest(event.request)) {
-        event.respondWith(
-            fetch(event.request)
-                .then(response => {
-                    // Clone and cache the response
-                    if (response.ok) {
-                        const clone = response.clone();
-                        caches.open(RUNTIME_CACHE).then(cache => {
-                            cache.put(event.request, clone);
-                        });
-                    }
-                    return response;
-                })
-                .catch(() => {
-                    // Fallback to cache if network fails
-                    return caches.match(event.request)
-                        .then(cached => cached || caches.match('/index.html'));
-                })
-        );
+        const NAV_TIMEOUT_MS = 3500;
+        event.respondWith((async () => {
+            const cachedPromise = caches.match(event.request)
+                .then(hit => hit || caches.match('/index.html'))
+                .catch(() => null);
+
+            const network = fetch(event.request).then(response => {
+                if (response && response.ok) {
+                    const clone = response.clone();
+                    caches.open(RUNTIME_CACHE).then(cache => cache.put(event.request, clone)).catch(() => {});
+                }
+                return response;
+            });
+            // Never let an unhandled network rejection escape — it is raced below.
+            network.catch(() => {});
+
+            const cached = await cachedPromise;
+            if (!cached) {
+                try { return await network; }
+                catch (e) { return new Response('offline', { status: 503, statusText: 'offline' }); }
+            }
+
+            let timer;
+            const deadline = new Promise(resolve => { timer = setTimeout(() => resolve('SLOW'), NAV_TIMEOUT_MS); });
+            const winner = await Promise.race([network.catch(() => 'FAILED'), deadline]);
+            clearTimeout(timer);
+            if (winner === 'SLOW' || winner === 'FAILED') return cached;
+            return winner;
+        })());
         return;
     }
 

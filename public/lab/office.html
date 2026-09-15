@@ -191,6 +191,10 @@
 
     #strip{display:none;bottom:66px}
     body[data-tab="floor"] #strip{display:flex}
+    body.embed[data-tab="floor"] #strip{display:none}
+    /* embedded on a phone the host app parks its own back FAB bottom-left and a
+       scroll-top arrow bottom-right, right on top of these tabs — give them room */
+    body.embed .tabs{padding-left:54px;padding-right:46px}
     /* controls hug the empty left gutter so they never sit on a department */
     .btns{display:none;left:8px;right:auto;top:56px;bottom:auto;flex-direction:column;gap:7px}
     body[data-tab="floor"] .btns{display:flex}
@@ -244,7 +248,7 @@
 </div>
 
 <div class="hint" id="hint" style="display:none">
-  drag · pan &nbsp; scroll · zoom &nbsp; tap a desk or a department<br>
+  <span id="hintNav">drag · pan &nbsp; scroll · zoom</span> &nbsp; tap a desk or a department<br>
   <b id="hintStat"></b>
 </div>
 
@@ -278,6 +282,10 @@
    this screen is decorative and no number is invented — an idle
    desk means that queue is genuinely empty.
    ============================================================ */
+
+/* embedded in the admin dashboard (?embed=1) the page is a panel inside a scrolling
+   document, so it must not swallow the wheel — see the wheel handler below */
+const EMBED = new URLSearchParams(location.search).get('embed') === '1';
 
 const SB_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
 const SB_KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
@@ -1298,11 +1306,13 @@ function fit(){
   layout();
   const wide = innerWidth > 860, railW = wide ? 326 : 0;
   const spanU = wide ? 84 : 46, spanV = wide ? 96 : 198;
+  /* chrome to keep clear: top bar + tab bar + rail, plus the card strip when it is shown */
+  const chrome = wide ? 108 : (EMBED ? 168 : 270);
   const zx = (W - railW) / (spanU * TW * 0.5) * (wide ? 0.95 : 0.97);
-  const zy = (Hh - (wide ? 108 : 270)) / (spanV * TH * 0.5) * 0.95;
+  const zy = (Hh - chrome) / (spanV * TH * 0.5) * 0.95;
   zoom = Math.max(0.2, Math.min(1.6, Math.min(zx, zy)));
   panX = -(railW / 2 + (wide ? 8 : 0));
-  panY = wide ? 20 : -92;
+  panY = wide ? 20 : (EMBED ? -58 : -92);
   placeCard();
 }
 
@@ -1620,6 +1630,9 @@ cv.addEventListener('pointerup', e => {
   if(d) openDept(d); else { panel.classList.remove('open'); }
 });
 cv.addEventListener('wheel', e => {
+  /* inside the dashboard the wheel belongs to the page, not to the floor —
+     otherwise the cursor crossing this panel traps the admin page's scroll */
+  if(EMBED) return;
   e.preventDefault();
   const f = e.deltaY < 0 ? 1.11 : 0.9;
   const nzm = Math.max(0.2, Math.min(2.6, zoom*f));
@@ -1655,7 +1668,12 @@ function updateTop(){
 
 /* ---------- boot ---------- */
 async function boot(){
-  setTab(isPhone() ? 'floor' : 'floor');
+  if(EMBED){
+    document.body.classList.add('embed');
+    const hn = document.getElementById('hintNav');
+    if(hn) hn.textContent = 'drag · pan   + − · zoom';
+  }
+  setTab('floor');
   resize(); fit();
   if(!rafId) requestAnimationFrame(frame);
   await loadAll();

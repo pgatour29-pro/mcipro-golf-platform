@@ -230,6 +230,11 @@
         }
 
         /* Smooth scrolling - only on scrollable containers */
+        /* Agents Office embed: a fixed-size panel, never an auto-growing one.
+           Phones have no admin tab bar above it, so the frame takes that room back. */
+        #officeEmbedFrame { height: calc(100vh - 210px); min-height: 540px; }
+        @media (max-width: 767px) { #officeEmbedFrame { height: calc(100vh - 152px); min-height: 520px; } }
+
         .tab-content, .organizer-tab-content, .admin-tab-content {
             -webkit-overflow-scrolling: touch;
         }
@@ -64411,6 +64416,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         <span class="material-symbols-outlined text-sm mr-0.5">analytics</span>
                         Analytics
                     </button>
+                    <button onclick="showAdminTab('office')" id="admin-office-tab" class="admin-tab-button px-3 py-2.5 text-xs font-medium text-gray-600 hover:text-gray-900">
+                        <span class="material-symbols-outlined text-sm mr-0.5">hub</span>
+                        Office
+                    </button>
                     <!-- More dropdown for overflow tabs -->
                     <div class="relative ml-auto" id="admin-more-dropdown">
                         <button onclick="document.getElementById('admin-more-menu').classList.toggle('hidden')" class="px-3 py-2.5 text-xs font-medium text-gray-600 hover:text-gray-900 flex items-center gap-0.5">
@@ -64757,6 +64766,27 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
 
             <!-- Admin Moderation Tab -->
+            <!-- Agents Office — in-app section (NOT a page leap), embedding /lab/office.html?embed=1
+                 so the standalone lab page and this tab stay ONE codebase. Unlike the results /
+                 POY embeds this frame does NOT auto-grow to its content: the office is a fixed
+                 full-viewport canvas with its own internal scrollers, so it gets a sized box and
+                 keeps its scrolling inside. It stays dark on the light admin canvas on purpose —
+                 it reads as an instrument panel, and forcing it light would destroy the floor. -->
+            <div id="admin-office" class="admin-tab-content">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+                    <span class="material-symbols-outlined" style="font-size:22px;color:#dc2626;">hub</span>
+                    <h2 style="font-size:16px;font-weight:800;color:#0f172a;margin:0;">Agents Office</h2>
+                    <span style="font-size:11px;color:#64748b;">Live operations floor · 13 departments</span>
+                    <a href="/lab/office.html" target="_blank" rel="noopener"
+                       style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:10px;padding:5px 10px;font-size:11px;font-weight:600;text-decoration:none;">
+                        <span class="material-symbols-outlined" style="font-size:15px;">open_in_new</span>
+                        Full screen
+                    </a>
+                </div>
+                <iframe id="officeEmbedFrame" title="Agents Office"
+                        style="width:100%;border:1px solid #1f2b24;display:block;border-radius:16px;background:#04070a;"></iframe>
+            </div>
+
             <div id="admin-moderation" class="admin-tab-content"></div>
             <div id="admin-errorlog" class="admin-tab-content"></div>
 
@@ -79597,6 +79627,15 @@ function showAdminTab(tabName) {
         case 'errorlog':
             if (window.ErrorLogViewer) ErrorLogViewer.render();
             break;
+        case 'office': {
+            // load once and stay warm across re-opens — the office refreshes itself
+            const of = document.getElementById('officeEmbedFrame');
+            if (of && !of.getAttribute('data-src')) {
+                of.setAttribute('data-src', '/lab/office.html?embed=1');
+                of.src = '/lab/office.html?embed=1';
+            }
+            break;
+        }
     }
 }
 
@@ -166038,6 +166077,8 @@ showOrganizerTab = function(tabName) {
                 <button class="drawer-link" onclick="showAdminTab('courses'); closeMobileDrawer();"><span class="material-symbols-outlined">golf_course</span><span>Golf Courses</span></button>
 
                 <button class="drawer-link" onclick="showAdminTab('analytics'); closeMobileDrawer();"><span class="material-symbols-outlined">analytics</span><span>Analytics</span></button>
+
+                <button class="drawer-link" onclick="showAdminTab('office'); closeMobileDrawer();"><span class="material-symbols-outlined">hub</span><span>Agents Office</span></button>
 
                 <button class="drawer-link" onclick="showAdminTab('moderation'); closeMobileDrawer();"><span class="material-symbols-outlined">shield</span><span>Moderation</span></button>
 

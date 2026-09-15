@@ -298,6 +298,10 @@
   }
   (function () { if (installDirectoryGuard()) return; var n = 0; var t = setInterval(function () { if (installDirectoryGuard() || ++n > 240) clearInterval(t); }, 500); })();
   var uid = function () { try { return (window.AppState && AppState.currentUser && (AppState.currentUser.lineUserId || AppState.currentUser.userId)) || localStorage.getItem('line_user_id'); } catch (e) { return null; } };
+  /* v1202: the DEVICE'S OWN login identity, for the anon cube check only. uid() falls through to
+     AppState.userId, which on a demo/PIN session is a synthetic id belonging to nobody — asking
+     oo_cube_visible about THAT is how the gate answered "no" for a golfer who is on the list. */
+  var cubeUid = function () { try { return (window.AppState && AppState.currentUser && AppState.currentUser.lineUserId) || localStorage.getItem('line_user_id') || null; } catch (e) { return null; } };
   var pad = function (n) { return String(n).padStart(2, '0'); };
   var ymd = function (d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
   var today = function () { return ymd(new Date()); };                       // device-local = Bangkok for our users
@@ -624,9 +628,25 @@
     },
 
     /* ---------- GOLFER dashboard hooks (entry cube + realtime); the 1on1 screen itself is further down ---------- */
-    _authHooked: false, _initSeq: 0,
+    _authHooked: false, _initBusy: false, _reinit: false,
+    /* SINGLE FLIGHT (v1202) — Pete 2026-09-15: "where is the 1on1 cube".
+       The gate used to cancel ITSELF. Every run took a `_initSeq` ticket and abandoned its own
+       decision the moment another run started — and supabase-js fires INITIAL_SESSION the instant
+       the listener below is registered, so the FIRST run always threw its work away 300ms in. Any
+       SIGNED_IN / TOKEN_REFRESHED landing during the session wait did the same and restarted the
+       wait from zero. On a boot that emits three auth events (normal) the decision kept being
+       deferred and the cube never lit at all. A run in flight is never cancelled now: a trigger
+       that arrives mid-run sets _reinit and the gate re-runs ONCE when the current pass ends. */
     async initGolfer() {
-      var seq = ++this._initSeq; var self = this;
+      var self = this;
+      if (this._initBusy) { this._reinit = true; return; }
+      this._initBusy = true;
+      try { await this._initGolferRun(); } catch (e) { console.warn('[1on1] gate', e); }
+      this._initBusy = false;
+      if (this._reinit) { this._reinit = false; setTimeout(function () { self.initGolfer(); }, 50); }
+    },
+    async _initGolferRun() {
+      var self = this;
       this.captureInvite();
       /* v1096: the login session is minted AFTER the dashboard can already be on screen (fail-safe login) — an early
          oo_me call ran as anon, said "not signed in" and the cube stayed hidden for the whole visit (Pete: "there is no
@@ -637,16 +657,6 @@
           sb().auth.onAuthStateChange(function (ev) { if (ev === 'SIGNED_IN' || ev === 'TOKEN_REFRESHED' || ev === 'INITIAL_SESSION') setTimeout(function () { self.initGolfer(); }, 300); });
         }
       } catch (e) {}
-      var session = null;
-      for (var i = 0; i < 6; i++) {
-        try { var r = await sb().auth.getSession(); session = r && r.data && r.data.session; } catch (e) {}
-        if (session) break;
-        await new Promise(function (res) { setTimeout(res, 700); });
-      }
-      if (seq !== this._initSeq) return;
-      await this.redeemPending();
-      var me = await this.refreshMe(true);
-      if (seq !== this._initSeq) return;
       var dash = document.getElementById('golferDashboard');
       /* v1184 (Pete: "i logged out and entered through the caddy section using the PIN, so why
          is it showing ADMIN panel controls along with the 1on1"): the member side of 1on1 is for
@@ -658,10 +668,30 @@
          the caddie dashboard (resolveProfile self-provisions a row), and would strip the cube
          from a golfer/admin who merely looked at it once. */
       var staffSide = ['caddie', 'caddy', 'caddymaster', 'manager', 'proshop', 'maintenance', 'golf_course_manager', 'staff'].indexOf(_role) >= 0;
-      var on = !staffSide && !!(me && me.signed_in && ((me.member && me.member.status !== 'removed') || me.admin));   /* v1099: removed = no member */
-      if (!on && !staffSide && !(me && me.signed_in)) {
+      if (staffSide) { if (dash) dash.classList.remove('oo-on'); this._needsRelogin = false; return; }
+      /* EARLY PAINT (v1202): oo_cube_visible is anon-callable and answers in ONE round trip — it is the
+         same admin-granted list oo_me reads (an oo_admins row, or an oo_members row that is not
+         'removed'), it just does not need the JWT to exist yet. Light the cube now instead of after the
+         session wait, so it is there on the first paint of the dashboard; the pass below still has the
+         last word and retracts it if oo_me disagrees. */
+      if (dash && !dash.classList.contains('oo-on')) {
+        try { if (await rpc('oo_cube_visible', { p_uid: cubeUid() }) === true) { this._needsRelogin = true; dash.classList.add('oo-on'); this.paintCube(); } } catch (e) {}
+      }
+      var session = null;
+      /* getSession() resolves from local storage immediately when there IS a session, so poll fast and
+         short: the old 6 x 700ms only ever burned its full 4.2s in the no-session case — the exact case
+         that needs the fallback below to run, not to be starved. */
+      for (var i = 0; i < 20; i++) {
+        try { var r = await sb().auth.getSession(); session = r && r.data && r.data.session; } catch (e) {}
+        if (session) break;
+        await new Promise(function (res) { setTimeout(res, 150); });
+      }
+      await this.redeemPending();
+      var me = await this.refreshMe(true);
+      var on = !!(me && me.signed_in && ((me.member && me.member.status !== 'removed') || me.admin));   /* v1099: removed = no member */
+      if (!on && !(me && me.signed_in)) {
         /* no JWT (yet): still show the cube to admins/members so they can log out + in; the gate explains */
-        try { var vis = await rpc('oo_cube_visible', { p_uid: uid() }); if (vis === true) { on = true; this._needsRelogin = true; } } catch (e) {}
+        try { var vis = await rpc('oo_cube_visible', { p_uid: cubeUid() }); if (vis === true) { on = true; this._needsRelogin = true; } } catch (e) {}
       } else { this._needsRelogin = false; }
       if (dash) dash.classList.toggle('oo-on', on);
       if (!on) return;

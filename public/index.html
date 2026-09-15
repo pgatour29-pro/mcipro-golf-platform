@@ -114928,9 +114928,17 @@ This action cannot be undone.`);
     }
 
     async removeRegistration(regId) {
-        if (!await window.askConfirm({ title: 'Remove from event', message: 'Remove this player? They will be moved to waitlist if enabled.', confirmText: 'Remove', danger: true })) return;
+        const _all = (this.allConfirmedPlayers || []);
+        const _me = _all.find(r => String(r.id) === String(regId));
+        const _guests = _me ? _all.filter(r => r.id !== _me.id && String((r.specialRequests || {}).hostId || '') === String(_me.playerId || '')) : [];
+        const _names = _me ? [_me.playerName || 'this player'].concat(_guests.map(g => g.playerName || 'guest')) : [];
+        if (!await window.askConfirm({
+                title: _names.length ? _names.join(' + ') : 'Remove from event',
+                message: 'Remove this player? They will be moved to waitlist if enabled.',
+                confirmText: 'Remove', danger: true })) return;
 
         try {
+            for (const g of _guests) { try { await SocietyGolfDB.deleteRegistration(g.id); } catch (ge) { console.warn('[SocietyOrganizer] guest remove failed', ge); } }
             await SocietyGolfDB.deleteRegistration(regId);
             NotificationManager.show('Player removed', 'success');
             await this.loadRosterData(this.currentRosterEvent.id);
@@ -116331,6 +116339,7 @@ This action cannot be undone.`);
                                     <span class="text-xs font-medium text-gray-900 truncate" data-golfer-av="${player.playerId || player.id || ''}" data-golfer-av-nm="${String(player.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${player.playerName}</span>${_divBadgeHtml(player)}${_newChipHtml(player)}
                                     <span class="text-[10px] text-gray-600 ml-1 shrink-0">${window.formatHandicapDisplay(player.handicap)}</span>
                                     ${isSelected ? '<span class="material-symbols-outlined text-green-600 text-xs ml-1">check_circle</span>' : ''}
+                                    <button onclick="event.stopPropagation();SocietyOrganizerSystem.removeRegistration('${player.id}')" title="Delete from event" aria-label="Delete ${String(player.playerName || '').replace(/"/g, '&quot;')} from event" class="ml-1 shrink-0 text-red-500 hover:text-red-700 leading-none"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">delete</span></button>
                                 </div>
                             `;
                         }).join('')}

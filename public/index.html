@@ -149282,6 +149282,7 @@ window.TeeSheet = {
             '#teeSheetOverlay .ts2-pchip select{border:none;background:var(--t-grnD);color:#fff;border-radius:7px;font:700 10px/1 \'JetBrains Mono\',monospace;padding:3px 5px;cursor:pointer;-webkit-appearance:none;appearance:none;}'+
             '#teeSheetOverlay .ts2-pchip select option{background:var(--t-solid);color:var(--t-ink);}'+
             '#teeSheetOverlay .ts2-pchip .mx{border:none;background:none;color:var(--t-amb);cursor:pointer;padding:0 2px;line-height:1;font-size:14px;font-weight:700;}'+
+            '#teeSheetOverlay .ts2-pchip .mxd,#teeSheetOverlay .ts2-teamchip .mxd,#teeSheetOverlay .ts2-unitchip .mxd,#teeSheetOverlay .ts2-bookunit .mxd{color:#ef4444;font-size:13px;}'+
             /* 2-Man Scramble locked-pair chip — blue (Team-A palette) so it never reads as a loose single */
             '#teeSheetOverlay .ts2-teamchip{border-color:rgba(59,130,246,.5);background:rgba(59,130,246,.08);cursor:grab;gap:5px;}'+
             '#teeSheetOverlay .ts2-teamchip .tm{display:inline-flex;align-items:center;gap:5px;color:var(--t-ink);}'+
@@ -149755,6 +149756,7 @@ window.TeeSheet = {
             '<span class="tb">TEAM</span>'+
             (self.groups.length ? '<select onchange="TeeSheet.addPlayer(this.value,\''+a.playerId+'\')" title="Add team to a group" aria-label="'+t('a11y.move_player')+': '+self._esc(a.playerName)+' + '+self._esc(b.playerName)+'"><option value="">＋</option>'+self.groups.map(function(g,i){ return '<option value="'+i+'">'+t('a11y.group')+' '+(i+1)+'</option>'; }).join('')+'</select>' : '')+
             '<button onclick="TeeSheet.unlinkTeam(\''+a.playerId+'\',\''+b.playerId+'\')" title="Break this pair back into singles" class="mx">✕</button>'+
+            '<button onclick="TeeSheet.deleteUnitFromEvent(\''+a.playerId+','+b.playerId+'\')" title="'+t('ts2.delevent')+'" aria-label="'+t('ts2.delevent')+'" class="mx mxd"><span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;">delete</span></button>'+
         '</span>';
     },
     // Break a 2-man team back into two singles: clear special_requests.hostId on whichever member holds it
@@ -149820,6 +149822,7 @@ window.TeeSheet = {
             '<span class="tb">×'+members.length+'</span>'+
             (self.groups.length ? '<select onchange="TeeSheet.addPlayer(this.value,\''+a.playerId+'\')" title="'+t('ts2.unittip')+'"><option value="">＋</option>'+self.groups.map(function(g,i){ return '<option value="'+i+'">G'+(i+1)+'</option>'; }).join('')+'</select>' : '')+
             '<button onclick="TeeSheet.breakUnitOf(\''+a.playerId+'\')" title="'+t('ts2.unitbreak')+'" class="mx">✕</button>'+
+            '<button onclick="TeeSheet.deleteUnitFromEvent(\''+members.map(function(m){ return m.playerId; }).join(',')+'\')" title="'+t('ts2.delevent')+'" aria-label="'+t('ts2.delevent')+'" class="mx mxd"><span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;">delete</span></button>'+
         '</span>';
     },
     // "Added" (non-registered) player = typed manually OR picked from the directory search. They ride in
@@ -150673,6 +150676,34 @@ window.TeeSheet = {
             console.error('[TeeSheet] removeFromEvent', e);
             if(window.NotificationManager && NotificationManager.show) NotificationManager.show('Could not remove player: '+((e&&e.message)||e), 'error');
             else alert('Could not remove player: '+((e&&e.message)||e));
+        }
+    },
+    // Delete EVERY member of a pool unit/team from the event in one go (plus any hostId-linked guest
+    // of theirs). The ✕ on those chips only breaks the grouping — this is the real "get them off the
+    // event" action, and without it a host who signed in a guest could not be deleted from the tray at all.
+    deleteUnitFromEvent: async function(pidsCsv){
+        var self=this, pids=String(pidsCsv||'').split(',').filter(Boolean);
+        var regs=(this.regs||[]).filter(function(r){ return r.id && pids.indexOf(String(r.playerId))>=0; });
+        (this.regs||[]).forEach(function(r){                       // sweep in their guests too
+            var h=String((r.specialRequests||{}).hostId||'');
+            if(r.id && h && pids.indexOf(h)>=0 && !regs.some(function(x){ return x.id===r.id; })) regs.push(r);
+        });
+        if(!regs.length){ pids.forEach(function(p){ self.deleteManual(p); }); return; }
+        var names=regs.map(function(r){ return r.playerName||'player'; });
+        var ok=await window.askConfirm({ title:names.join(' + '), message:t('ts2.delmsg'), confirmText:t('common.delete'), danger:true });
+        if(!ok) return;
+        try{
+            for(var i=0;i<regs.length;i++){ await SocietyGolfDB.deleteRegistration(regs[i].id); }
+            var gone={}; regs.forEach(function(r){ gone[String(r.playerId)]=1; });
+            this.regs=(this.regs||[]).filter(function(r){ return !gone[String(r.playerId)]; });
+            this.groups.forEach(function(g){ g.players=(g.players||[]).filter(function(p){ return !gone[String(p.playerId)]; }); });
+            this.manualPool=(this.manualPool||[]).filter(function(m){ return !gone[String(m.playerId)]; });
+            this._saveGroups();
+            this.render();
+            if(window.NotificationManager && NotificationManager.show) NotificationManager.show(names.join(', ')+' removed from the event', 'success');
+        }catch(e){
+            console.error('[TeeSheet] deleteUnitFromEvent', e);
+            if(window.NotificationManager && NotificationManager.show) NotificationManager.show('Could not remove: '+((e&&e.message)||e), 'error');
         }
     },
     // Typeahead — search the player directory (TRGG etc.) as you type; pick → adds with their real handicap.

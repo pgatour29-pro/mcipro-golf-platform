@@ -90,7 +90,10 @@
   .chip.wait.on{color:var(--amber);border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.1)}
   .chip.done.on,.chip.all.on{color:var(--ink);border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.08)}
   .feed{flex:1;overflow-y:auto;padding:6px 0 18px}
-  .fi{display:flex;gap:9px;padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.045);align-items:flex-start}
+  .fi{display:flex;gap:9px;padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.045);align-items:flex-start;
+    animation:fin .32s cubic-bezier(.2,.8,.2,1) both}
+  @keyframes fin{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){ .fi{animation:none} }
   .fi:hover{background:rgba(255,255,255,.028)}
   .fs{font-family:"JetBrains Mono",monospace;font-size:8px;letter-spacing:.09em;text-transform:uppercase;font-weight:700;
     border-radius:4px;padding:3px 5px;flex:none;margin-top:1px;min-width:56px;text-align:center}
@@ -129,6 +132,36 @@
   .ag li s{text-decoration:none;flex:none}
   .ag .idle{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding-top:6px;border-top:1px solid var(--line)}
 
+  /* ---------- mobile shell: tab bar + department list ---------- */
+  .tabs{position:fixed;left:0;right:0;bottom:0;z-index:9;display:none;height:58px;
+    background:rgba(5,11,8,.97);border-top:1px solid var(--line);backdrop-filter:blur(12px);
+    padding-bottom:env(safe-area-inset-bottom)}
+  .tabs button{flex:1;background:none;border:0;color:var(--muted);cursor:pointer;
+    font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+  .tabs button b{font-size:12px;font-weight:700;color:var(--muted2);letter-spacing:0}
+  .tabs button.on{color:var(--green-bright)}
+  .tabs button.on b{color:var(--green-bright)}
+
+  .dlist{position:fixed;left:0;right:0;top:44px;bottom:58px;z-index:6;display:none;overflow-y:auto;
+    background:#04070a;padding:4px 0 24px;-webkit-overflow-scrolling:touch}
+  .drow{display:flex;align-items:center;gap:11px;padding:13px 14px;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer}
+  .drow:active{background:rgba(255,255,255,.05)}
+  .drow>i{width:9px;height:9px;border-radius:50%;flex:none;box-shadow:0 0 8px currentColor}
+  .drow .nm{flex:1;min-width:0}
+  .drow .nm b{display:block;font-size:14.5px;font-weight:600;color:var(--ink);line-height:1.3}
+  .drow .nm span{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .drow .nums{display:flex;gap:8px;font-family:"JetBrains Mono",monospace;font-size:12px;font-weight:700;flex:none}
+  .drow .nums .d{color:var(--green-bright)}
+  .drow .nums .w{color:var(--amber)}
+  .drow .nums .o{color:#54635b}
+  .drow .go{color:#46554c;font-size:17px;flex:none;margin-left:2px}
+
+  /* panel back bar — mobile only */
+  .pback{display:none;position:sticky;top:-18px;margin:-18px -18px 12px;padding:13px 14px;z-index:2;
+    background:rgba(6,12,9,.98);border-bottom:1px solid var(--line);align-items:center;gap:9px;cursor:pointer}
+  .pback span{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--green-bright)}
+
   /* ---------- chrome ---------- */
   .hint{position:fixed;left:14px;bottom:13px;z-index:4;font-family:"JetBrains Mono",monospace;font-size:9px;
     letter-spacing:.16em;text-transform:uppercase;color:var(--muted);line-height:1.8;pointer-events:none}
@@ -141,19 +174,30 @@
   @keyframes sp{to{transform:rotate(360deg)}}
 
   @media (max-width:860px){
-    .rail{top:auto;bottom:0;right:0;left:0;width:100%;height:56px;border-left:none;border-top:1px solid var(--line);
-      padding-top:0;transition:height .3s cubic-bezier(.2,.8,.2,1);overflow:hidden}
-    .rail.open{height:74vh}
-    .rh{cursor:pointer;padding:12px 14px 10px}
-    .rail:not(.open) .chips{margin-top:7px}
-    .rail:not(.open) .feed{display:none}
-    #strip{display:flex}
+    .tabs{display:flex}
     #cards{display:none}
-    .btns{right:12px;bottom:auto;top:52px;flex-direction:row}
     .hint{display:none}
     .top{padding:8px 11px;gap:8px}
     .conn .lbl,.conn .pill.hideS{display:none}
     .brand b{display:none}
+
+    /* each tab owns the screen — no stacked sheets fighting for room */
+    .rail{position:fixed;top:44px;bottom:58px;left:0;right:0;width:100%;height:auto;
+      border-left:none;border-top:none;padding-top:0;display:none}
+    body[data-tab="tasks"] .rail{display:flex}
+    .rh{padding:11px 14px 10px;cursor:default}
+
+    body[data-tab="depts"] .dlist{display:block}
+
+    #strip{display:none;bottom:66px}
+    body[data-tab="floor"] #strip{display:flex}
+    /* controls hug the empty left gutter so they never sit on a department */
+    .btns{display:none;left:8px;right:auto;top:56px;bottom:auto;flex-direction:column;gap:7px}
+    body[data-tab="floor"] .btns{display:flex}
+    .sqr{width:36px;height:36px;font-size:15px}
+
+    .panel{width:100%;max-width:none;height:100%;padding:18px 18px 76px}
+    .pback{display:flex}
   }
   @media (max-width:400px){
     .brand{font-size:10.5px;letter-spacing:.08em}
@@ -212,10 +256,19 @@
   <div class="feed" id="feed"></div>
 </div>
 
+<div class="dlist" id="dlist"></div>
+
 <div class="panel" id="panel">
   <span class="x" id="panelX">×</span>
+  <div class="pback" id="pback"><span>‹ &nbsp;All departments</span></div>
   <div id="panelBody"></div>
 </div>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="floor"><b>▦</b>Floor</button>
+  <button data-tab="depts"><b>☰</b>Departments</button>
+  <button data-tab="tasks"><b>◉</b>Tasks</button>
+</nav>
 
 <script>
 /* ============================================================
@@ -1016,12 +1069,17 @@ async function loadAll(){
 
   D = { ...R, events, upcoming, regs:[...rm.values()], evName, evDate, socName, profName, n };
 
+  const now = performance.now();
   AGENTS.forEach(a => {
+    const prev = a.r;
     let r;
     try{ r = a.run(D) || {}; }
     catch(e){ r = { error:String((e && e.message) || e) }; }
     r.doing = r.doing||0; r.next = r.next||0; r.done = r.done||0; r.wait = r.wait||0;
     r.tasks = r.tasks||[]; r.stat = r.stat||[];
+    /* only flare a desk whose numbers actually moved — never on the first load */
+    if(prev && (prev.doing !== r.doing || prev.wait !== r.wait ||
+                prev.next !== r.next || prev.done !== r.done)) a.flash = now;
     a.r = r;
     a.state = r.doing > 0 ? 'doing' : (r.wait > 0 || r.next > 0 ? 'wait' : 'idle');
   });
@@ -1032,8 +1090,10 @@ async function loadAll(){
   });
 
   lastLoad = new Date(); loading = false; setBusy(false);
+  rippleAt = performance.now();
   buildFeed(); renderStrip(); updateTop();
-  if(selDept) openDept(selDept, true);
+  if(isPhone()) renderDeptList();
+  if(selDept && panel.classList.contains('open')) openDept(selDept, true);
 }
 
 /* ---------- task feed ---------- */
@@ -1063,10 +1123,11 @@ function renderFeed(){
   if(cs) cs.onclick = e => { e.stopPropagation(); scope = null; selDept = null; railScope.textContent = 'whole office'; renderFeed(); };
 
   const rows = filter === 'all' ? all : all.filter(f => f.state === filter);
-  feed.innerHTML = rows.length ? rows.slice(0,160).map(f => {
+  feed.innerHTML = rows.length ? rows.slice(0,160).map((f,i) => {
     const lbl = { doing:'In progress', wait:'Waiting', done:'Done' }[f.state] || f.state;
     const when = f.stamp || timeStr(f.when);
-    return '<div class="fi"><div class="fs ' + f.state + '">' + lbl + '</div><div class="ft">' +
+    return '<div class="fi"' + (i < 12 ? ' style="animation-delay:' + (i*26) + 'ms"' : '') +
+      '><div class="fs ' + f.state + '">' + lbl + '</div><div class="ft">' +
       '<div class="a">' + esc(f.text) + '</div><div class="b"><i style="background:' + f.agent.dept.color + '"></i>' +
       esc(f.agent.dept.name) + ' · ' + esc(f.agent.name) + (when ? ' · ' + esc(when) : '') + '</div></div></div>';
   }).join('') : '<div class="empty">nothing in this lane</div>';
@@ -1087,6 +1148,25 @@ function cardHTML(d){
     '<span class="dn">' + esc(d.name) + '</span><span class="da">' + d.agents.length + ' desks</span></div>' + rows +
     '<div class="dfoot"><span class="d">doing <b>' + d.doing + '</b></span>' +
     '<span class="w">waiting <b>' + d.wait + '</b></span><span>done <b>' + d.done + '</b></span></div>';
+}
+const isPhone = () => innerWidth <= 860;
+let mobileTab = 'floor';
+function setTab(t){
+  mobileTab = t;
+  document.body.dataset.tab = t;
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  if(t !== 'depts' && t !== 'floor') panel.classList.remove('open');
+  if(t === 'depts') renderDeptList();
+  if(t === 'floor') fit();
+}
+function renderDeptList(){
+  if(!D) return;
+  dlist.innerHTML = DEPTS.map((d,i) =>
+    '<div class="drow" data-i="' + i + '"><i style="background:' + d.color + ';color:' + d.color + '"></i>' +
+    '<div class="nm"><b>' + esc(d.name) + '</b><span>' + d.agents.length + ' desks</span></div>' +
+    '<div class="nums"><span class="d">' + d.doing + '</span><span class="w">' + d.wait + '</span>' +
+    '<span class="o">' + d.done + '</span></div><span class="go">›</span></div>').join('');
+  dlist.querySelectorAll('.drow').forEach(el => el.onclick = () => openDept(DEPTS[+el.dataset.i]));
 }
 let hoverCard = null;
 function showCard(d){
@@ -1119,13 +1199,14 @@ function openDept(d, keepScroll){
   const sc = keepScroll ? panel.scrollTop : 0;
   selDept = d; scope = d.key; if(!keepScroll) filter = 'all';
   railScope.textContent = d.name; renderFeed();
-  if(innerWidth <= 860) rail.classList.add('open');
+  if(isPhone() && mobileTab === 'tasks') setTab('depts');
   panelBody.innerHTML =
     '<h2><span style="width:9px;height:9px;border-radius:50%;background:' + d.color + ';display:inline-block"></span>' +
     esc(d.name) + '</h2><div class="psub">' + d.agents.length + ' desks · ' + d.doing + ' working · ' +
     d.wait + ' waiting · ' + d.done + ' done</div>' + d.agents.map(a => agentHTML(a)).join('');
   panel.classList.add('open');
   panel.scrollTop = sc;
+  wirePanel();
 }
 function openAgent(a){
   selDept = a.dept; scope = a.d; filter = 'all';
@@ -1135,8 +1216,17 @@ function openAgent(a){
     esc(a.dept.name) + '</h2><div class="psub">desk detail</div>' + agentHTML(a, true) +
     '<div class="psub" style="margin-top:14px;cursor:pointer;color:#8c9d92" id="allDesks">▸ all ' + a.dept.agents.length + ' desks in this department</div>';
   panel.classList.add('open'); panel.scrollTop = 0;
+  wirePanel();
   const ad = document.getElementById('allDesks');
   if(ad) ad.onclick = () => openDept(a.dept);
+}
+/* every desk card in the panel opens its own full list on tap */
+function wirePanel(){
+  panelBody.querySelectorAll('.ag').forEach(el => {
+    const a = AGENTS[+el.dataset.ai];
+    if(!a) return;
+    el.querySelector('.ah').onclick = () => openAgent(a);
+  });
 }
 function agentHTML(a, solo){
   const r = a.r;
@@ -1146,17 +1236,18 @@ function agentHTML(a, solo){
   const stats = r.stat.length
     ? '<div class="anum">' + r.stat.map(s => '<span>' + esc(s[0]) + ' <b>' + esc(s[1]) + '</b></span>').join('') + '</div>' : '';
   const list = r.tasks.length
-    ? '<ul>' + r.tasks.slice(0, solo ? 20 : 6).map(t =>
+    ? '<ul>' + r.tasks.slice(0, solo ? 20 : (isPhone() ? 8 : 6)).map(t =>
         '<li><s style="color:' + (t.state==='doing'?'#4ade80':t.state==='wait'?'#f59e0b':'#69786f') + '">●</s>' +
         '<span>' + esc(t.text) + (t.sub ? '<br><span style="color:#69786f;font-size:11px">' + esc(t.sub) + '</span>' : '') +
         '</span><em>' + esc(t.stamp || timeStr(t.when)) + '</em></li>').join('') + '</ul>'
     : '<div class="idle">' + (r.error ? 'could not read this desk' : 'nothing queued — desk is clear') + '</div>';
-  return '<div class="ag"><div class="ah"><span class="an">' + esc(a.name) + '</span><span class="ast ' + st + '">' +
+  return '<div class="ag" data-ai="' + AGENTS.indexOf(a) + '"><div class="ah" style="cursor:pointer"><span class="an">' + esc(a.name) + '</span><span class="ast ' + st + '">' +
     (a.state==='idle' ? 'idle' : a.state==='doing' ? 'working' : 'waiting') + '</span></div>' +
     '<div class="aj">' + esc(a.job) + '</div><div class="src">' + esc(a.src) + '</div>' +
     stats + '<div class="anum">' + nums + '</div>' + list + '</div>';
 }
 panelX.onclick = () => { panel.classList.remove('open'); };
+pback.onclick = () => { panel.classList.remove('open'); if(isPhone()) setTab('depts'); };
 
 /* ============================================================
    isometric renderer
@@ -1197,7 +1288,11 @@ function resize(){
   cx.setTransform(DPR, 0, 0, DPR, 0, 0);
   placeCard();
 }
-addEventListener('resize', () => { resize(); fit(); });
+addEventListener('resize', () => {
+  resize(); fit();
+  if(!isPhone()) panel.classList.remove('open');
+  else renderDeptList();
+});
 
 function fit(){
   layout();
@@ -1224,62 +1319,159 @@ function diamond(x, y, w, d, z){
 function hex(c, a){ const v = parseInt(c.slice(1),16); return 'rgba('+(v>>16&255)+','+(v>>8&255)+','+(v&255)+','+a+')'; }
 
 function drawPlatform(d, on){
-  const th = 1.0;
-  const bl = project(d.x, d.y+PD, 0), blz = project(d.x, d.y+PD, -th);
-  const br = project(d.x+PW, d.y+PD, 0), brz = project(d.x+PW, d.y+PD, -th);
-  const rr = project(d.x+PW, d.y, 0), rrz = project(d.x+PW, d.y, -th);
+  const th = 1.0, z0 = d.lz || 0;
+  const bl = project(d.x, d.y+PD, z0), blz = project(d.x, d.y+PD, z0-th);
+  const br = project(d.x+PW, d.y+PD, z0), brz = project(d.x+PW, d.y+PD, z0-th);
+  const rr = project(d.x+PW, d.y, z0), rrz = project(d.x+PW, d.y, z0-th);
   cx.fillStyle = hex(d.color, .13);
   cx.beginPath(); cx.moveTo(bl[0],bl[1]); cx.lineTo(br[0],br[1]); cx.lineTo(brz[0],brz[1]); cx.lineTo(blz[0],blz[1]); cx.closePath(); cx.fill();
   cx.fillStyle = hex(d.color, .09);
   cx.beginPath(); cx.moveTo(br[0],br[1]); cx.lineTo(rr[0],rr[1]); cx.lineTo(rrz[0],rrz[1]); cx.lineTo(brz[0],brz[1]); cx.closePath(); cx.fill();
-  diamond(d.x, d.y, PW, PD, 0);
-  const g = cx.createLinearGradient(...project(d.x,d.y,0), ...project(d.x+PW,d.y+PD,0));
+  diamond(d.x, d.y, PW, PD, z0);
+  const g = cx.createLinearGradient(...project(d.x,d.y,z0), ...project(d.x+PW,d.y+PD,z0));
   g.addColorStop(0, hex(d.color, on ? .42 : .28)); g.addColorStop(1, hex(d.color, on ? .20 : .12));
   cx.fillStyle = g; cx.fill();
   cx.strokeStyle = hex(d.color, on ? .95 : .55); cx.lineWidth = on ? 1.6 : 1; cx.stroke();
   cx.strokeStyle = hex(d.color, .12); cx.lineWidth = 1;
-  for(let i = 2; i < PW; i += 2){ const a = project(d.x+i,d.y,.01), b = project(d.x+i,d.y+PD,.01);
+  for(let i = 2; i < PW; i += 2){ const a = project(d.x+i,d.y,z0+.01), b = project(d.x+i,d.y+PD,z0+.01);
     cx.beginPath(); cx.moveTo(a[0],a[1]); cx.lineTo(b[0],b[1]); cx.stroke(); }
-  for(let j = 2; j < PD; j += 2){ const a = project(d.x,d.y+j,.01), b = project(d.x+PW,d.y+j,.01);
+  for(let j = 2; j < PD; j += 2){ const a = project(d.x,d.y+j,z0+.01), b = project(d.x+PW,d.y+j,z0+.01);
     cx.beginPath(); cx.moveTo(a[0],a[1]); cx.lineTo(b[0],b[1]); cx.stroke(); }
 }
 
 const HITS = [], PLATES = [];
 let hoverAgent = null, hoverDept = null;
 
+/* ---- motion ---------------------------------------------------------------
+   Every moving thing here is driven by data. Beads breathe at a rate set by
+   their state, packets ride the real dependency lines between departments at
+   a rate set by how busy the source is, and a ripple crosses the floor each
+   time a refresh lands. Anything that would be motion for its own sake is a
+   candidate for deletion, not addition.                                     */
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const GLOW = {};
+function glowFor(col){
+  if(GLOW[col]) return GLOW[col];
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(32,32,0,32,32,32);
+  grd.addColorStop(0, hex(col,.95)); grd.addColorStop(.22, hex(col,.5));
+  grd.addColorStop(.55, hex(col,.14)); grd.addColorStop(1, hex(col,0));
+  g.fillStyle = grd; g.fillRect(0,0,64,64);
+  return (GLOW[col] = c);
+}
+function beadPulse(state, t, phase){
+  if(REDUCED) return state === 'idle' ? .45 : 1;
+  if(state === 'doing') return .55 + .45 * (0.5 + 0.5*Math.sin(t/420 + phase));
+  if(state === 'wait'){                       /* slow double blink, like a held call */
+    const w = ((t/1800) + phase*0.11) % 1;
+    return w < .07 ? 1 : w < .13 ? .34 : w < .20 ? 1 : .34;
+  }
+  return .5;
+}
+
+/* real dependencies, not decoration: work really does move along these */
+const LINKS = [
+  ['admin','events'], ['player','events'], ['events','tee'], ['events','pay'],
+  ['caddie','tee'], ['tee','scoring'], ['course','scoring'], ['events','scoring'],
+  ['scoring','hcp'], ['scoring','comp'], ['comp','pay'], ['hcp','player'],
+  ['comms','player'], ['support','comms'], ['shop','pay']
+];
+let LINKED = null;
+function linkPairs(){
+  if(LINKED) return LINKED;
+  const by = {}; DEPTS.forEach(d => by[d.key] = d);
+  LINKED = LINKS.map(l => ({ a:by[l[0]], b:by[l[1]] })).filter(l => l.a && l.b);
+  return LINKED;
+}
+let rippleAt = 0;
+/* links arc OVER the floor — routed under the platforms they are invisible
+   for most of their length, and the whole point is watching work move */
+function drawLinks(t){
+  const phone = layoutMode === 'narrow';
+  const lift = phone ? 3.4 : 4.2;
+  linkPairs().forEach((l, i) => {
+    const a = project(l.a.x + PW/2, l.a.y + PD/2, lift + (l.a.lz||0));
+    const b = project(l.b.x + PW/2, l.b.y + PD/2, lift + (l.b.lz||0));
+    const mx = (a[0]+b[0])/2, my = (a[1]+b[1])/2 - 34*zoom;
+    cx.strokeStyle = hex(l.a.color, phone ? .16 : .24); cx.lineWidth = 1;
+    cx.setLineDash([3,7]); cx.lineDashOffset = REDUCED ? 0 : -(t/55 + i*4) % 10;
+    cx.beginPath(); cx.moveTo(a[0],a[1]); cx.quadraticCurveTo(mx,my,b[0],b[1]); cx.stroke();
+    cx.setLineDash([]);
+    if(REDUCED) return;
+    /* a busier department sends more packets down its lines */
+    const busy = Math.max(1, Math.min(phone ? 2 : 3, Math.ceil((l.a.doing || 0) / 14)));
+    const gl = glowFor(l.a.color);
+    for(let k = 0; k < busy; k++){
+      const u = ((t/4200) + k/busy + i*0.13) % 1;
+      const iv = 1-u;
+      const px = iv*iv*a[0] + 2*iv*u*mx + u*u*b[0];
+      const py = iv*iv*a[1] + 2*iv*u*my + u*u*b[1];
+      const fade = Math.sin(u*Math.PI);
+      cx.globalAlpha = .9 * fade;
+      cx.drawImage(gl, px-9, py-9, 18, 18);
+      cx.globalAlpha = 1;
+      cx.fillStyle = l.a.color;
+      cx.beginPath(); cx.arc(px, py, 2.1*fade + 0.6, 0, 7); cx.fill();
+    }
+  });
+}
+/* a refresh landing crosses the floor as one ring per department */
+function drawRipple(d, t, i){
+  if(REDUCED || !rippleAt) return;
+  const age = t - rippleAt - i*55;
+  if(age < 0 || age > 1100) return;
+  const k = age/1100, c0 = project(d.x + PW/2, d.y + PD/2, 0.1);
+  cx.save();
+  cx.translate(c0[0], c0[1]); cx.scale(1, TH/TW);
+  cx.strokeStyle = hex(d.color, .5*(1-k)); cx.lineWidth = 2*(1-k)+0.5;
+  cx.beginPath(); cx.arc(0, 0, (0.15 + k) * PW * TW * 0.62 * zoom, 0, 7); cx.stroke();
+  cx.restore();
+}
+
 function drawDesk(a, t){
-  const d = a.dept, slot = deskSlot(d.agents.indexOf(a), d.agents.length);
-  const x = d.x + slot[0], y = d.y + slot[1], w = 1.35, dp = 1.0, h = 0.5;
+  const d = a.dept, idx = d.agents.indexOf(a), slot = deskSlot(idx, d.agents.length);
+  const z0 = d.lz || 0;
+  const x = d.x + slot[0], y = d.y + slot[1], w = 1.35, dp = 1.0, h = 0.5 + z0;
   const on = a.state !== 'idle';
   const col = a.state === 'doing' ? '#4ade80' : a.state === 'wait' ? '#f59e0b' : '#54635b';
+  /* a desk whose numbers moved on the last refresh flares for a moment */
+  const flash = a.flash ? Math.max(0, 1 - (t - a.flash)/1400) : 0;
 
-  const bl = project(x,y+dp,h), blz = project(x,y+dp,0);
-  const br = project(x+w,y+dp,h), brz = project(x+w,y+dp,0);
-  const rr = project(x+w,y,h), rrz = project(x+w,y,0);
+  const bl = project(x,y+dp,h), blz = project(x,y+dp,z0);
+  const br = project(x+w,y+dp,h), brz = project(x+w,y+dp,z0);
+  const rr = project(x+w,y,h), rrz = project(x+w,y,z0);
   cx.fillStyle = 'rgba(10,20,15,.85)';
   cx.beginPath(); cx.moveTo(bl[0],bl[1]); cx.lineTo(br[0],br[1]); cx.lineTo(brz[0],brz[1]); cx.lineTo(blz[0],blz[1]); cx.closePath(); cx.fill();
   cx.fillStyle = 'rgba(16,30,23,.85)';
   cx.beginPath(); cx.moveTo(br[0],br[1]); cx.lineTo(rr[0],rr[1]); cx.lineTo(rrz[0],rrz[1]); cx.lineTo(brz[0],brz[1]); cx.closePath(); cx.fill();
   diamond(x, y, w, dp, h);
-  cx.fillStyle = hex(d.color, on ? .42 : .17); cx.fill();
-  cx.strokeStyle = hex(d.color, on ? .8 : .32); cx.lineWidth = 1; cx.stroke();
+  cx.fillStyle = hex(d.color, (on ? .42 : .17) + flash*.35); cx.fill();
+  cx.strokeStyle = hex(d.color, (on ? .8 : .32) + flash*.2); cx.lineWidth = 1 + flash; cx.stroke();
 
   const mx = x + w*0.52, my = y + dp*0.3;
-  const p0 = project(mx,my,h), p1 = project(mx,my,h+0.66);
-  const pulse = on ? 0.62 + 0.38*Math.sin(t/430 + d.agents.indexOf(a)) : 1;
+  const pulse = beadPulse(a.state, t, idx * 1.9 + d.x * 0.07);
+  const p0 = project(mx,my,h), p1 = project(mx,my,h + 0.5 + 0.22*pulse);
   cx.strokeStyle = col; cx.lineWidth = 2.8 * Math.min(zoom,1.25);
-  cx.globalAlpha = on ? pulse : .5;
+  cx.globalAlpha = on ? .35 + .65*pulse : .5;
   cx.beginPath(); cx.moveTo(p0[0],p0[1]); cx.lineTo(p1[0],p1[1]); cx.stroke();
   cx.globalAlpha = 1;
-  const bead = project(mx,my,h+0.72);
-  cx.fillStyle = col; cx.shadowColor = col; cx.shadowBlur = on ? 12*pulse : 3;
-  cx.beginPath(); cx.arc(bead[0], bead[1], Math.max(1.8, 2.4*Math.min(zoom,1.3)), 0, 7); cx.fill();
-  cx.shadowBlur = 0;
 
-  HITS.push({ a:a, x:bead[0], y:bead[1]+7, r:Math.max(13, 20*zoom) });
+  const bead = [p1[0], p1[1]];
+  const gl = glowFor(col);
+  const gr = (on ? 10 : 5) * Math.max(.55, Math.min(zoom,1.4)) * (0.7 + 0.3*pulse) + flash*10;
+  cx.globalAlpha = (on ? .5 + .4*pulse : .16) + flash*.5;
+  cx.drawImage(gl, bead[0]-gr, bead[1]-gr, gr*2, gr*2);
+  cx.globalAlpha = 1;
+  cx.fillStyle = col;
+  cx.beginPath(); cx.arc(bead[0], bead[1], Math.max(1.8, 2.4*Math.min(zoom,1.3)), 0, 7); cx.fill();
+
+  HITS.push({ a:a, x:bead[0], y:bead[1]+7, r:isPhone() ? Math.max(20, 26*zoom) : Math.max(13, 20*zoom) });
 
   if(zoom > 1.0 || a === hoverAgent){
     const l = project(x + w*0.5, y + dp + 0.3, h);
+    void l;
     const fs = Math.max(9, Math.round(9*Math.min(zoom,1.25))), txt = a.name.toUpperCase();
     cx.font = '600 ' + fs + 'px "JetBrains Mono", monospace';
     const tw = cx.measureText(txt).width;
@@ -1296,7 +1488,7 @@ function drawPlate(d){
   /* phones have no room for a plaque above every platform — the strip of
      department cards at the bottom carries the numbers, so draw a name only */
   if(layoutMode === 'narrow'){
-    const c0 = project(d.x + PW/2, d.y + PD/2, 0.9);
+    const c0 = project(d.x + PW/2, d.y + PD/2, 0.9 + (d.lz||0));
     const txt = d.name.toUpperCase();
     cx.font = '700 8.5px "JetBrains Mono", monospace';
     const tw = cx.measureText(txt).width;
@@ -1308,7 +1500,7 @@ function drawPlate(d){
     cx.textAlign = 'left'; cx.textBaseline = 'alphabetic';
     return;
   }
-  const p = project(d.x + PW/2, d.y + PD/2, 2.9);
+  const p = project(d.x + PW/2, d.y + PD/2, 2.9 + (d.lz||0));
   const name = d.name.toUpperCase(), sub = d.agents.length + ' DESKS';
   cx.font = '700 10px "JetBrains Mono", monospace';
   const w1 = cx.measureText(name).width;
@@ -1338,7 +1530,7 @@ function drawPlate(d){
   });
 
   PLATES.push({ d:d, x:x, y:y, w:w, h:h });
-  const a0 = project(d.x + PW/2, d.y + PD/2, 0.4);
+  const a0 = project(d.x + PW/2, d.y + PD/2, 0.4 + (d.lz||0));
   cx.strokeStyle = hex(d.color, .28); cx.setLineDash([2,3]);
   cx.beginPath(); cx.moveTo(p[0], y + h); cx.lineTo(a0[0], a0[1]); cx.stroke(); cx.setLineDash([]);
 }
@@ -1360,17 +1552,36 @@ function frame(t){
   HITS.length = 0; PLATES.length = 0;
   drawFloorGrid();
   if(!D) return;
+
+  /* ease each platform toward its target height: raised when you are on it,
+     otherwise a slow bob so the floor never looks frozen */
+  DEPTS.forEach((d,i) => {
+    const target = (d === hoverDept || d === selDept) ? 1.15
+      : (REDUCED ? 0 : Math.sin(t/2900 + i*0.72) * 0.10);
+    d.lz = (d.lz || 0) + (target - (d.lz || 0)) * 0.12;
+  });
+
   const order = DEPTS.slice().sort((p,q2) => (p.x+p.y) - (q2.x+q2.y));
   order.forEach(d => {
     const on = (d === hoverDept || d === selDept);
     drawPlatform(d, on);
     d.agents.forEach(a => drawDesk(a, t));
   });
+  order.forEach(d => drawRipple(d, t, DEPTS.indexOf(d)));
+  drawLinks(t);
   order.forEach(d => drawPlate(d));
 }
 
 /* ---------- interaction ---------- */
 let dragging = false, moved = false, lastX = 0, lastY = 0, pinch = 0;
+function nearestHit(px, py){
+  let best = null, bd = Infinity;
+  for(const h of HITS){
+    const d2 = Math.hypot(h.x - px, h.y - py);
+    if(d2 < h.r && d2 < bd){ bd = d2; best = h; }
+  }
+  return best;
+}
 function deptAt(px, py){
   const pl = PLATES.find(p => px >= p.x && px <= p.x+p.w && py >= p.y && py <= p.y+p.h);
   if(pl) return pl.d;
@@ -1384,7 +1595,7 @@ cv.addEventListener('pointerdown', e => {
 });
 cv.addEventListener('pointermove', e => {
   if(!dragging){
-    const h = HITS.find(k => Math.hypot(k.x-e.clientX, k.y-e.clientY) < k.r);
+    const h = nearestHit(e.clientX, e.clientY);
     const a = h ? h.a : null;
     const dd = a ? a.dept : deptAt(e.clientX, e.clientY);
     if(a !== hoverAgent || dd !== hoverDept){
@@ -1403,7 +1614,7 @@ cv.addEventListener('pointerleave', () => { hoverAgent = null; hoverDept = null;
 cv.addEventListener('pointerup', e => {
   dragging = false; cv.classList.remove('drag');
   if(moved) return;
-  const hit = HITS.find(h => Math.hypot(h.x-e.clientX, h.y-e.clientY) < h.r);
+  const hit = nearestHit(e.clientX, e.clientY);
   if(hit){ openAgent(hit.a); return; }
   const d = deptAt(e.clientX, e.clientY);
   if(d) openDept(d); else { panel.classList.remove('open'); }
@@ -1431,7 +1642,7 @@ bZoomIn.onclick  = () => { zoom = Math.min(2.6, zoom*1.2); placeCard(); };
 bZoomOut.onclick = () => { zoom = Math.max(0.2, zoom/1.2); placeCard(); };
 bFit.onclick     = () => fit();
 bRefresh.onclick = () => { if(!loading) loadAll(); };
-railHead.onclick = () => { if(innerWidth <= 860) rail.classList.toggle('open'); };
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => setTab(b.dataset.tab));
 
 function setBusy(b){ bRefresh.classList.toggle('spin', b); }
 function updateTop(){
@@ -1444,6 +1655,7 @@ function updateTop(){
 
 /* ---------- boot ---------- */
 async function boot(){
+  setTab(isPhone() ? 'floor' : 'floor');
   resize(); fit();
   if(!rafId) requestAnimationFrame(frame);
   await loadAll();

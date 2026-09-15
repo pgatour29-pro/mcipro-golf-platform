@@ -146215,8 +146215,40 @@ window.OrgLiteRegistrations = {
                     '<span class="material-symbols-outlined" style="font-size:20px;">'+(isPaid?'check_circle':(isPartial?'pending':'radio_button_unchecked'))+'</span>'+
                     (isPaid?_lvT('orgreg.paidbtn','PAID'):(isPartial?_lvT('orgreg.partialbtn','PARTIAL'):_lvT('orgreg.unpaidbtn','UNPAID')))+
                 '</button>'+
+                '<button onclick="OrgLiteRegistrations.removePlayer(\''+r.id+'\')" title="'+_lvT('orgreg.remove','Delete from event')+'" aria-label="'+_lvT('orgreg.remove','Delete from event')+'" style="flex-shrink:0;align-self:center;border:none;background:#fee2e2;color:#dc2626;cursor:pointer;border-radius:10px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;"><span class="material-symbols-outlined" style="font-size:18px;">delete</span></button>'+
             '</div>'+
         '</div>';
+    },
+
+    // Delete a player from the event outright (roster + tee sheet + scoring), taking any guest they
+    // signed in with them. The light dashboard is where organizers land, and it had no delete at all.
+    async removePlayer(regId) {
+        var reg = (this.regs || []).find(function(r){ return String(r.id) === String(regId); });
+        if (!reg) return;
+        var guests = (this.regs || []).filter(function(r){
+            return r.id !== reg.id && String((r.specialRequests || {}).hostId || '') === String(reg.playerId || '');
+        });
+        var names = [reg.playerName || 'this player'].concat(guests.map(function(g){ return g.playerName || 'guest'; }));
+        var ok = await window.askConfirm({
+            title: names.join(' + '),
+            message: _lvT('orgreg.removemsg', 'Removes their registration, their place on the tee sheet and any guests they signed in. This cannot be undone.'),
+            confirmText: _lvT('common.delete', 'Delete'), danger: true
+        });
+        if (!ok) return;
+        try {
+            for (var i = 0; i < guests.length; i++) {
+                try { await SocietyGolfDB.deleteRegistration(guests[i].id); } catch (ge) { console.warn('[OrgLiteReg] guest remove failed', ge); }
+            }
+            await SocietyGolfDB.deleteRegistration(reg.id);
+            var gone = {}; gone[String(reg.id)] = 1; guests.forEach(function(g){ gone[String(g.id)] = 1; });
+            this.regs = (this.regs || []).filter(function(r){ return !gone[String(r.id)]; });
+            this.renderRoster();
+            if (window.NotificationManager && NotificationManager.show) NotificationManager.show(names.join(', ') + ' removed from the event', 'success');
+            try { if (window.RegistrationsManager && RegistrationsManager.currentEventId === this.currentEventId) RegistrationsManager.loadEventData(this.currentEventId); } catch (e) {}
+        } catch (e) {
+            console.error('[OrgLiteReg] removePlayer', e);
+            if (window.NotificationManager && NotificationManager.show) NotificationManager.show('Could not remove player: ' + ((e && e.message) || e), 'error');
+        }
     },
 
     _badge(on, label, regId, fn) {

@@ -81400,7 +81400,25 @@ class SocietyGolfSupabase {
         for (const w of searchWords) {
             const variants = (window._nickVariants ? window._nickVariants(w) : [w]);
             const clauses = [];
-            for (const v of variants) { clauses.push(`name.ilike.${v}%`, `name.ilike.% ${v}%`); }
+            // APOSTROPHE BLINDNESS (v1210): the same surname is stored BOTH ways in user_profiles —
+            // "O'Meara, Eddie" / "O'Shea, John" keep the apostrophe, "ODonnell, Chris" / "odonnell jason"
+            // dropped it — so an exact-punctuation prefix made half of them unfindable and which half
+            // depended on how the row happened to be saved. Typing "O'Donnell" found 0 of 3 real players.
+            // Per word we now OR three forms: the literal, the apostrophe-STRIPPED form (o'donnell→odonnell),
+            // and first-letter + wildcard + stripped rest (omeara→o%meara%, which reaches "O'Meara").
+            const forms = new Set();
+            for (const v of variants) {
+                if (!v) continue;
+                const bare = v.replace(/['’]/g, '');
+                forms.add(v);
+                if (bare && bare !== v) forms.add(bare);
+                // Only the apostrophe-AFTER-FIRST-LETTER surnames (O'…, D'…) get the wildcard form.
+                // Applying it to every word over-matched badly — "smi" went 18→29 hits ("s%mi%" pulls in
+                // Simon, Sami…), "pete"→38. Gate on a leading o/d and 4+ chars: omeara, oshea, odonnell,
+                // dangelo are covered; smi/pete/bob are untouched.
+                if (bare.length >= 4 && /^[od]/i.test(bare)) forms.add(bare[0] + '%' + bare.slice(1));
+            }
+            for (const f of forms) { clauses.push(`name.ilike.${f}%`, `name.ilike.% ${f}%`); }
             query = query.or(clauses.join(','));
         }
 

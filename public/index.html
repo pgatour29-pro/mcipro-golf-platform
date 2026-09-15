@@ -10280,6 +10280,8 @@
                 'ts2.unittip': 'Requested to play together — moves as one group',
                 'ts2.unitbreak': 'Split into singles (this session only)',
                 'ts2.droptarget': 'DROP ON A GROUP',
+                'ts2.delevent': 'Delete from event',
+                'ts2.delmsg': 'Removes their registration, their place on the tee sheet and any guests they signed in. This cannot be undone.',
                 'ts2.allgrouped': 'Everyone\'s grouped.',
                 'ts2.noplayers': 'No players yet — search above, or they load from registrations.',
                 'ts2.hide': 'HIDE',
@@ -12790,6 +12792,8 @@
                 'ts2.unittip': 'ขอเล่นด้วยกัน — ย้ายพร้อมกันทั้งกลุ่ม',
                 'ts2.unitbreak': 'แยกเป็นรายคน (เฉพาะรอบนี้)',
                 'ts2.droptarget': 'วางลงกลุ่ม',
+                'ts2.delevent': 'ลบออกจากอีเวนต์',
+                'ts2.delmsg': 'ลบการลงทะเบียน ตำแหน่งบนใบเวลาออกรอบ และแขกที่ผู้เล่นคนนี้พามาทั้งหมด การกระทำนี้ย้อนกลับไม่ได้',
                 'ts2.allgrouped': 'จัดกลุ่มครบทุกคนแล้ว',
                 'ts2.noplayers': 'ยังไม่มีผู้เล่น — ค้นหาด้านบน หรือโหลดจากการลงทะเบียน',
                 'ts2.hide': 'ซ่อน',
@@ -15291,6 +15295,8 @@
                 'ts2.unittip': '함께 플레이 요청 — 한 팀으로 이동합니다',
                 'ts2.unitbreak': '개별로 분리 (이번 세션만)',
                 'ts2.droptarget': '그룹에 놓기',
+                'ts2.delevent': '이벤트에서 삭제',
+                'ts2.delmsg': '등록 정보와 티 시트 자리, 이 선수가 등록한 게스트까지 모두 삭제됩니다. 되돌릴 수 없습니다.',
                 'ts2.allgrouped': '모두 배정 완료',
                 'ts2.noplayers': '선수 없음 — 위에서 검색하거나 등록에서 불러옵니다',
                 'ts2.hide': '숨기기',
@@ -17850,6 +17856,8 @@
                 'ts2.unittip': '同組希望 — 全員まとめて移動します',
                 'ts2.unitbreak': '個別に分ける（このセッションのみ）',
                 'ts2.droptarget': 'グループにドロップ',
+                'ts2.delevent': 'イベントから削除',
+                'ts2.delmsg': '登録、ティーシートの枠、この選手が登録したゲストをすべて削除します。元に戻せません。',
                 'ts2.allgrouped': '全員配置済み',
                 'ts2.noplayers': '選手なし — 上で検索するか登録から読み込まれます',
                 'ts2.hide': '隠す',
@@ -20518,6 +20526,43 @@
             // Regular 10.5 → 11 (away from zero = more strokes) ✓
             // Plus -0.5 → 0, -1.5 → -1 (toward zero = fewer strokes given back) ✓
             return Math.round(numValue);
+        };
+
+        // In-app replacement for window.confirm(): the LINE WebView blocks confirm() exactly the
+        // way it blocks prompt() — it returns false immediately, so every `if (!confirm(..)) return;`
+        // was a DEAD TAP in LINE. That silently killed every organizer delete (tee sheet, roster,
+        // scoring): "remove from group" worked (no dialog) but "delete from the event" did nothing.
+        // Resolves true on confirm; false on Cancel / backdrop / Esc. Solid fills (sunlight rule).
+        window.askConfirm = function ({ title, message = '', confirmText = '', cancelText = '', danger = false } = {}) {
+            return new Promise(resolve => {
+                try { document.getElementById('appConfirmOverlay')?.remove(); } catch (e) {}
+                const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+                const tt = (k, fb) => { try { return (typeof t === 'function') ? (t(k) === k ? fb : t(k)) : fb; } catch (e) { return fb; } };
+                const ov = document.createElement('div');
+                ov.id = 'appConfirmOverlay';
+                ov.style.cssText = 'position:fixed;inset:0;z-index:12050;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;';
+                ov.innerHTML = `
+                    <div role="alertdialog" aria-modal="true" aria-labelledby="appConfirmTitle" style="width:100%;max-width:360px;background:#fff;color:#0f172a;border-radius:16px;padding:16px;box-shadow:0 20px 50px rgba(0,0,0,.35);">
+                        <div id="appConfirmTitle" style="font-size:17px;font-weight:800;line-height:1.25;">${esc(title || '')}</div>
+                        ${message ? `<div style="font-size:13px;color:#475569;margin-top:8px;line-height:1.45;white-space:pre-line;">${esc(message)}</div>` : ''}
+                        <div style="display:flex;gap:10px;margin-top:16px;">
+                            <button type="button" id="appConfirmNo" style="flex:1;padding:12px;border-radius:10px;border:1px solid #cbd5e1;background:#f8fafc;color:#0f172a;font-weight:700;font-size:15px;">${esc(cancelText || tt('common.cancel', 'Cancel'))}</button>
+                            <button type="button" id="appConfirmYes" style="flex:1;padding:12px;border-radius:10px;border:0;background:${danger ? '#dc2626' : '#16a34a'};color:#fff;font-weight:800;font-size:15px;">${esc(confirmText || tt('common.ok', 'OK'))}</button>
+                        </div>
+                    </div>`;
+                const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); done(false); } };
+                const done = (val) => {
+                    try { ov.remove(); } catch (e) {}
+                    try { document.removeEventListener('keydown', onKey, true); } catch (e) {}
+                    resolve(val);
+                };
+                ov.addEventListener('click', e => { if (e.target === ov) done(false); });
+                document.body.appendChild(ov);
+                ov.querySelector('#appConfirmNo').onclick = () => done(false);
+                ov.querySelector('#appConfirmYes').onclick = () => done(true);
+                document.addEventListener('keydown', onKey, true);
+                setTimeout(() => { try { ov.querySelector('#appConfirmYes').focus(); } catch (e) {} }, 30);
+            });
         };
 
         // Global helper function to format handicap - preserves "+" sign for plus handicaps
@@ -143694,7 +143739,7 @@ const GolferEventRegManager = {
     },
 
     async removePlayer(regId) {
-        if (!confirm('Remove this player from the event?')) return;
+        if (!await window.askConfirm({ title: 'Remove from event', message: 'Remove this player from the event?', confirmText: 'Remove', danger: true })) return;
         try {
             // deleteRegistration also prunes the player from event_pairings.groups —
             // a raw delete here left ghosts in the saved tee groups (the Jung bug)
@@ -150461,7 +150506,7 @@ window.TeeSheet = {
                             '<span class="ts2-who" onpointerdown="TeeSheet.pdown(event,\''+p.playerId+'\')">'+
                                 '<span class="nm" data-golfer-av="'+self._esc(p.playerId)+'" data-golfer-av-nm="'+self._esc(p.playerName)+'" data-golfer-av-sz="20">'+self._esc(p.playerName)+'</span>'+
                                 '<span style="flex-shrink:0;display:inline-flex;gap:1px;align-items:center;">'+self._divBadge(p.playerId, p.handicap)+(window.TRGGMembership?TRGGMembership.badgeCompact(p.playerId,p.playerName,self._isTRGGEvent()):'')+self._newBadge(p)+'</span>'+
-                                '<select onchange="TeeSheet.kbMove(this.value,\''+p.playerId+'\')" aria-label="'+t('a11y.move_player')+': '+self._esc(p.playerName)+'" class="ts2-van ts2-mv"><option value="">⇄</option><option value="pool">'+t('a11y.pool')+'</option>'+self.groups.map(function(g,gi){ return gi===i?'':'<option value="'+gi+'">'+t('a11y.group')+' '+(gi+1)+'</option>'; }).join('')+'</select>'+
+                                '<select onchange="TeeSheet.kbMove(this.value,\''+p.playerId+'\')" aria-label="'+t('a11y.move_player')+': '+self._esc(p.playerName)+'" class="ts2-van ts2-mv"><option value="">⇄</option><option value="pool">'+t('a11y.pool')+'</option>'+self.groups.map(function(g,gi){ return gi===i?'':'<option value="'+gi+'">'+t('a11y.group')+' '+(gi+1)+'</option>'; }).join('')+'<option value="del">✕ '+t('ts2.delevent')+'</option></select>'+
                             '</span>'+
                             '<span class="ts2-hcpc">'+(hc||'')+'</span>'+
                             '<select onchange="TeeSheet.setVan(\''+p.playerId+'\',this.value)" title="Transport" class="ts2-van'+(cur&&cur!=='own'?' set':'')+'">'+self._vanOptions(cur)+'</select>'+
@@ -150601,17 +150646,34 @@ window.TeeSheet = {
     // Remove a REGISTERED player from the event entirely (deletes their registration) straight from the
     // unassigned pool — no trip to the registrations page. Paper/manual names fall back to deleteManual.
     removeFromEvent: async function(playerId){
+        var self=this;
         var reg=(this.regs||[]).find(function(r){ return String(r.playerId)===String(playerId); });
         if(!reg || !reg.id){ this.deleteManual(playerId); return; }
-        if(!confirm('Remove '+(reg.playerName||'this player')+' from the event completely? This deletes their registration.')) return;
+        // Their hostId-linked guests go with them — same rule as RegistrationsManager.removePlayer.
+        // Deleting only the host stranded the guest rows: still billed, still seated, still on the roster.
+        var guests=(this.regs||[]).filter(function(r){ return r.id!==reg.id && String((r.specialRequests||{}).hostId||'')===String(reg.playerId||''); });
+        var msg=t('ts2.delmsg');
+        if(guests.length) msg += '\n\n+ '+guests.map(function(g){ return g.playerName||'guest'; }).join(', ');
+        var ok=await window.askConfirm({ title:(reg.playerName||'this player'), message:msg, confirmText:t('common.delete'), danger:true });
+        if(!ok) return;
         try {
+            for(var gi=0; gi<guests.length; gi++){
+                try { await SocietyGolfDB.deleteRegistration(guests[gi].id); } catch(ge){ console.warn('[TeeSheet] guest remove failed', ge); }
+            }
             await SocietyGolfDB.deleteRegistration(reg.id);
-            this.regs=(this.regs||[]).filter(function(r){ return String(r.playerId)!==String(playerId); });
-            this.groups.forEach(function(g){ g.players=(g.players||[]).filter(function(p){ return String(p.playerId)!==String(playerId); }); });
-            this.manualPool=(this.manualPool||[]).filter(function(m){ return String(m.playerId)!==String(playerId); });
+            var gone={}; gone[String(playerId)]=1; guests.forEach(function(g){ gone[String(g.playerId)]=1; });
+            this.regs=(this.regs||[]).filter(function(r){ return !gone[String(r.playerId)]; });
+            this.groups.forEach(function(g){ g.players=(g.players||[]).filter(function(p){ return !gone[String(p.playerId)]; }); });
+            this.manualPool=(this.manualPool||[]).filter(function(m){ return !gone[String(m.playerId)]; });
             this._saveGroups();
             this.render();
-        } catch(e){ console.error('[TeeSheet] removeFromEvent', e); alert('Could not remove player: '+((e&&e.message)||e)); }
+            if(window.NotificationManager && NotificationManager.show)
+                NotificationManager.show((reg.playerName||'Player')+' removed from the event', 'success');
+        } catch(e){
+            console.error('[TeeSheet] removeFromEvent', e);
+            if(window.NotificationManager && NotificationManager.show) NotificationManager.show('Could not remove player: '+((e&&e.message)||e), 'error');
+            else alert('Could not remove player: '+((e&&e.message)||e));
+        }
     },
     // Typeahead — search the player directory (TRGG etc.) as you type; pick → adds with their real handicap.
     _initials: function(name){ var p=String(name||'').trim().split(/\s+/).filter(Boolean); if(!p.length) return '?'; return ((p[0][0]||'')+(p.length>1?(p[p.length-1][0]||''):'')).toUpperCase(); },
@@ -151004,7 +151066,8 @@ window.TeeSheet = {
     // exact drop actions (_moveToGroup/_dropToPool), so it can never diverge from drag behavior.
     kbMove: function(val, pid){
         if(val === '' || val == null) return;
-        if(val === 'pool') this._dropToPool(pid);
+        if(val === 'del') this.removeFromEvent(pid);            // full delete straight from a seated row
+        else if(val === 'pool') this._dropToPool(pid);
         else this._moveToGroup(pid, parseInt(val, 10));
     },
     _pd: null,
@@ -155515,7 +155578,7 @@ const RegistrationsManager = {
         // the organizer remove used to strand 1-3 orphan guest rows, still billed, still seated.
         const guests = reg ? (this.registrations || []).filter(r => r.id !== regId && String((r.specialRequests || {}).hostId || '') === String(reg.playerId || '')) : [];
         const msg = guests.length ? `Remove this player AND their ${guests.length} guest${guests.length > 1 ? 's' : ''} from the event?` : 'Remove this player from the event?';
-        if (!confirm(msg)) return;
+        if (!await window.askConfirm({ title: 'Remove from event', message: msg, confirmText: 'Remove', danger: true })) return;
         try {
             for (const g of guests) { try { await SocietyGolfDB.deleteRegistration(g.id); } catch (e) { console.warn('[RegistrationsManager] guest remove failed', e); } }
             await SocietyGolfDB.deleteRegistration(regId);  // Fixed: was removeRegistration (doesn't exist)
@@ -158952,7 +159015,7 @@ class OrganizerScoringSystem {
         if (!this.currentEventId || !golferId) return;
         const row = (this.leaderboardData || []).find(d => String(d.golfer_id || d.player_id) === String(golferId));
         const nm = (row ? this.getPlayerName(golferId, row) : '') || 'this player';
-        if (!confirm('Remove ' + nm + ' from this event?\n\nThis deletes their registration and takes them off the tee sheet and scoring. This cannot be undone.')) return;
+        if (!await window.askConfirm({ title: nm, message: 'This deletes their registration and takes them off the tee sheet and scoring. This cannot be undone.', confirmText: 'Remove', danger: true })) return;
         try {
             const n = await SocietyGolfDB.deletePlayerRegistrations(this.currentEventId, golferId);
             this.leaderboardData = (this.leaderboardData || []).filter(d => String(d.golfer_id || d.player_id) !== String(golferId));

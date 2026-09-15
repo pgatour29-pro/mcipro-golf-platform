@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>MciPro · Agents Office</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,400&family=Hanken+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#04070a;--ink:#eef5f1;--muted:#69786f;--muted2:#8c9d92;
+    --green:#22c55e;--green-bright:#4ade80;--gold:#e3c178;--amber:#f59e0b;--red:#f87171;
+    --sky:#38bdf8;--teal:#5eead4;--cyan:#22d3ee;--orange:#fb923c;
+    --line:rgba(255,255,255,.08);
+    --card:rgba(6,13,10,.82);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overscroll-behavior:none}
+  body{background:radial-gradient(125% 120% at 50% 32%,#06100c 0%,#04070a 58%,#020405 100%);
+       color:var(--ink);font-family:"Hanken Grotesk",sans-serif;overflow:hidden;-webkit-font-smoothing:antialiased}
+  #c{position:fixed;inset:0;z-index:0;touch-action:none;cursor:grab}
+  #c.drag{cursor:grabbing}
+  .grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.04;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+  .mono{font-family:"JetBrains Mono",monospace}
+
+  /* ---------- gate ---------- */
+  .gate{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;
+    background:radial-gradient(120% 120% at 50% 40%,#06100c,#020405)}
+  .gate .box{width:min(340px,86vw);text-align:center}
+  .gate h1{font-family:"Fraunces",serif;font-weight:400;font-size:24px;margin-bottom:4px}
+  .gate h1 em{font-style:italic;color:var(--green-bright)}
+  .gate p{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--muted);margin-bottom:22px}
+  .gate input{width:100%;font-family:"JetBrains Mono",monospace;font-size:14px;text-align:center;letter-spacing:.14em;
+    background:rgba(10,18,14,.8);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:13px;outline:none}
+  .gate input:focus{border-color:rgba(74,222,128,.45)}
+  .gate button{margin-top:11px;width:100%;font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+    background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.34);color:var(--green-bright);border-radius:9px;padding:12px;cursor:pointer}
+  .gate button:active{background:rgba(74,222,128,.2)}
+  #gateErr{display:none;color:var(--red);font-size:11px;margin-top:11px;font-family:"JetBrains Mono",monospace}
+
+  /* ---------- top bar ---------- */
+  .top{position:fixed;top:0;left:0;right:0;z-index:5;display:flex;align-items:center;gap:12px;
+    padding:10px 14px;background:linear-gradient(180deg,rgba(4,7,10,.92),rgba(4,7,10,0));pointer-events:none}
+  .top>*{pointer-events:auto}
+  .brand{font-family:"JetBrains Mono",monospace;font-size:12px;letter-spacing:.14em;font-weight:700;white-space:nowrap}
+  .brand span{color:var(--green-bright)}
+  .brand b{color:var(--muted);font-weight:400;letter-spacing:.2em;font-size:10px;margin-left:7px}
+  .conn{display:flex;align-items:center;gap:5px;margin-left:auto}
+  .conn .lbl{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-right:3px}
+  .pill{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+    border:1px solid var(--line);border-radius:5px;padding:4px 7px;color:var(--muted2);background:rgba(255,255,255,.03);white-space:nowrap}
+  .pill.on{color:var(--green-bright);border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.07)}
+  .pill.off{color:var(--red);border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.06)}
+  .clock{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--ink);letter-spacing:.06em;min-width:96px;text-align:right}
+  .clock i{display:block;font-style:normal;font-size:8px;letter-spacing:.2em;color:var(--muted);text-transform:uppercase}
+
+  /* ---------- department cards (desktop overlay) ---------- */
+  #cards{position:fixed;inset:0;z-index:3;pointer-events:none}
+  .dcard{position:absolute;transform:translate(-50%,-100%);width:188px;background:var(--card);
+    border:1px solid var(--line);border-radius:10px;padding:9px 10px 8px;backdrop-filter:blur(9px);
+    pointer-events:auto;cursor:pointer;transition:border-color .2s,transform .2s}
+  .dcard:hover{border-color:rgba(255,255,255,.22)}
+  .dcard .dh{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+  .dcard .dot{width:7px;height:7px;border-radius:50%;flex:none;box-shadow:0 0 8px currentColor}
+  .dcard .dn{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:700}
+  .dcard .da{font-family:"JetBrains Mono",monospace;font-size:9px;color:var(--muted);margin-left:auto;letter-spacing:.08em}
+  .dcard .big{font-family:"Fraunces",serif;font-size:26px;line-height:1;margin:1px 0 7px}
+  .dcard .big small{font-family:"JetBrains Mono",monospace;font-size:8.5px;letter-spacing:.2em;color:var(--muted);text-transform:uppercase;margin-left:6px}
+  .srow{display:flex;justify-content:space-between;font-size:11px;line-height:1.7;color:#b9c6be}
+  .srow b{font-family:"JetBrains Mono",monospace;font-weight:500;color:var(--ink)}
+  .srow.z b{color:var(--muted)}
+  .dfoot{display:flex;gap:9px;margin-top:7px;padding-top:6px;border-top:1px solid var(--line);
+    font-family:"JetBrains Mono",monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .dfoot b{color:var(--ink);font-weight:700}
+  .dfoot .d b{color:var(--green-bright)}
+  .dfoot .w b{color:var(--amber)}
+
+  /* ---------- mobile department strip ---------- */
+  #strip{position:fixed;left:0;right:0;bottom:62px;z-index:4;display:none;gap:9px;padding:0 12px 4px;
+    overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  #strip::-webkit-scrollbar{display:none}
+  #strip .dcard{position:relative;transform:none;flex:0 0 172px;scroll-snap-align:start}
+
+  /* ---------- task rail ---------- */
+  .rail{position:fixed;top:0;right:0;height:100%;width:326px;z-index:4;background:rgba(5,11,8,.9);
+    border-left:1px solid var(--line);backdrop-filter:blur(13px);display:flex;flex-direction:column;padding-top:44px}
+  .rh{padding:10px 14px 9px;border-bottom:1px solid var(--line)}
+  .rh .t{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between}
+  .rh .t b{color:var(--ink)}
+  .chips{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+  .chip{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+    border:1px solid var(--line);border-radius:100px;padding:4px 9px;color:var(--muted2);cursor:pointer;background:rgba(255,255,255,.02);white-space:nowrap}
+  .chip.on{color:var(--ink);border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.08)}
+  .chip b{font-weight:700;margin-left:4px;color:var(--ink)}
+  .chip.doing.on{color:var(--green-bright);border-color:rgba(74,222,128,.4);background:rgba(74,222,128,.1)}
+  .chip.wait.on{color:var(--amber);border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.1)}
+  .chip.done.on{color:var(--muted2);border-color:rgba(255,255,255,.22);background:rgba(255,255,255,.06)}
+  .feed{flex:1;overflow-y:auto;padding:6px 0 18px}
+  .fi{display:flex;gap:9px;padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.045);align-items:flex-start}
+  .fi:hover{background:rgba(255,255,255,.028)}
+  .fs{font-family:"JetBrains Mono",monospace;font-size:8px;letter-spacing:.09em;text-transform:uppercase;font-weight:700;
+    border-radius:4px;padding:3px 5px;flex:none;margin-top:1px;min-width:56px;text-align:center}
+  .fs.doing{color:#062;background:rgba(74,222,128,.85)}
+  .fs.wait{color:#3a2600;background:rgba(245,158,11,.85)}
+  .fs.done{color:var(--muted2);background:rgba(255,255,255,.08);border:1px solid var(--line)}
+  .ft{flex:1;min-width:0}
+  .ft .a{font-size:12.5px;line-height:1.42;color:#dbe6df;word-break:break-word}
+  .ft .b{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.06em;color:var(--muted);margin-top:3px;
+    display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .ft .b i{font-style:normal;width:6px;height:6px;border-radius:50%;display:inline-block;flex:none}
+  .empty{padding:26px 16px;text-align:center;font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+
+  /* ---------- detail panel ---------- */
+  .panel{position:fixed;top:0;left:0;height:100%;width:min(370px,90vw);background:rgba(6,12,9,.96);
+    border-right:1px solid var(--line);backdrop-filter:blur(13px);transform:translateX(-105%);
+    transition:transform .32s cubic-bezier(.2,.8,.2,1);z-index:8;overflow-y:auto;padding:18px 18px 40px}
+  .panel.open{transform:none}
+  .panel .x{position:absolute;top:11px;right:13px;font-size:22px;line-height:1;color:var(--muted);cursor:pointer}
+  .panel h2{font-family:"JetBrains Mono",monospace;font-size:12px;letter-spacing:.18em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+  .panel .psub{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:5px 0 15px}
+  .ag{border:1px solid var(--line);border-radius:9px;padding:10px 11px;margin-bottom:9px;background:rgba(255,255,255,.022)}
+  .ag .ah{display:flex;align-items:center;gap:7px;margin-bottom:3px}
+  .ag .an{font-size:13px;font-weight:600;color:var(--ink)}
+  .ag .ast{font-family:"JetBrains Mono",monospace;font-size:8px;letter-spacing:.1em;text-transform:uppercase;margin-left:auto;
+    border-radius:4px;padding:2px 6px;border:1px solid var(--line);color:var(--muted)}
+  .ag .ast.doing{color:var(--green-bright);border-color:rgba(74,222,128,.35);background:rgba(74,222,128,.08)}
+  .ag .ast.wait{color:var(--amber);border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.08)}
+  .ag .aj{font-size:11.5px;color:var(--muted2);line-height:1.5;margin-bottom:7px}
+  .ag .anum{display:flex;gap:11px;font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .ag .anum b{color:var(--ink);font-weight:700}
+  .ag ul{list-style:none;border-top:1px solid var(--line);padding-top:6px}
+  .ag li{font-size:12px;line-height:1.55;color:#c7d3cc;padding:2.5px 0;display:flex;gap:7px}
+  .ag li em{font-style:normal;font-family:"JetBrains Mono",monospace;font-size:9px;color:var(--muted);margin-left:auto;flex:none;padding-top:2px}
+  .ag li s{text-decoration:none;color:var(--muted);flex:none}
+  .ag .idle{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding-top:6px;border-top:1px solid var(--line)}
+
+  /* ---------- bottom bar / hint ---------- */
+  .hint{position:fixed;left:14px;bottom:13px;z-index:4;font-family:"JetBrains Mono",monospace;font-size:9px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--muted);line-height:1.8;pointer-events:none}
+  .hint b{color:var(--muted2);font-weight:400}
+  .btns{position:fixed;right:342px;bottom:13px;z-index:5;display:flex;flex-direction:column;gap:6px}
+  .sqr{width:30px;height:30px;border:1px solid var(--line);border-radius:7px;background:rgba(6,13,10,.8);color:var(--muted2);
+    font-family:"JetBrains Mono",monospace;font-size:13px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .sqr:hover{color:var(--ink);border-color:rgba(255,255,255,.22)}
+  .sqr.spin{animation:sp 1s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* ---------- mobile ---------- */
+  @media (max-width:860px){
+    .rail{top:auto;bottom:0;right:0;left:0;width:100%;height:56px;border-left:none;border-top:1px solid var(--line);
+      padding-top:0;transition:height .3s cubic-bezier(.2,.8,.2,1);overflow:hidden}
+    .rail.open{height:74vh}
+    .rh{cursor:pointer;padding:12px 14px 10px}
+    .rail:not(.open) .chips{margin-top:7px}
+    .rail:not(.open) .feed{display:none}
+    #strip{display:flex}
+    #cards{display:none}
+    .btns{right:12px;bottom:auto;top:52px;flex-direction:row}
+    .hint{display:none}
+    .top{padding:8px 11px;gap:8px}
+    .conn .lbl,.conn .pill.hideS{display:none}
+    .brand b{display:none}
+    .panel{width:min(370px,94vw)}
+  }
+  @media (max-width:400px){
+    .brand{font-size:10.5px;letter-spacing:.08em}
+    .clock{font-size:10px;min-width:74px}
+    #strip .dcard{flex:0 0 156px}
+  }
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+<div class="grain"></div>
+
+<div class="gate" id="gate">
+  <div class="box">
+    <h1>MciPro <em>Agents Office</em></h1>
+    <p>Restricted</p>
+    <input id="gateInput" type="password" placeholder="key" autocomplete="off" spellcheck="false">
+    <button id="gateBtn">Unlock</button>
+    <div id="gateErr">Wrong key</div>
+  </div>
+</div>
+
+<div class="top" id="topbar" style="display:none">
+  <div class="brand">MCIPRO <span>OFFICE</span> V1<b>LIVE WORKFORCE</b></div>
+  <div class="conn" id="conn">
+    <span class="lbl">connected to</span>
+    <span class="pill on" id="pSb">supabase</span>
+    <span class="pill on hideS">line</span>
+    <span class="pill on hideS">netlify</span>
+    <span class="pill hideS" id="pRefresh">—</span>
+  </div>
+  <div class="clock" id="clock">--:--:--<i>Asia/Bangkok</i></div>
+</div>
+
+<div id="cards"></div>
+<div id="strip"></div>
+
+<div class="btns" id="btns" style="display:none">
+  <div class="sqr" id="bRefresh" title="Refresh">↻</div>
+  <div class="sqr" id="bZoomIn" title="Zoom in">+</div>
+  <div class="sqr" id="bZoomOut" title="Zoom out">−</div>
+  <div class="sqr" id="bFit" title="Fit">⌂</div>
+</div>
+
+<div class="hint" id="hint" style="display:none">
+  drag · pan &nbsp; scroll · zoom &nbsp; tap a desk · inspect<br>
+  <b id="hintStat"></b>
+</div>
+
+<div class="rail" id="rail" style="display:none">
+  <div class="rh" id="railHead">
+    <div class="t"><span>Task status</span><b id="railScope">whole office</b></div>
+    <div class="chips" id="chips"></div>
+  </div>
+  <div class="feed" id="feed"></div>
+</div>
+
+<div class="panel" id="panel">
+  <span class="x" id="panelX">×</span>
+  <div id="panelBody"></div>
+</div>
+
+<script>
+/* ============================================================
+   MciPro · Agents Office
+   Isometric operations floor over LIVE production data.
+   Departments = real subsystems. Desks = agents, each bound to
+   a real query. Nothing here is decorative or invented.
+   ============================================================ */
+
+const SB_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
+const SB_KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
+const H = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY };
+
+/* ---------- gate (shares the arch-map key) ---------- */
+let _started = false;
+async function unlock(secret){
+  try{
+    const r = await fetch(SB_URL + '/rest/v1/rpc/arch_graph', {
+      method:'POST', headers:{...H,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_secret: secret })
+    });
+    if(!r.ok) return false;
+    const g = await r.json();
+    if(!g || !g.nodes) return false;
+    try{ localStorage.setItem('archKey', secret); }catch(e){}
+    return true;
+  }catch(e){ return false; }
+}
+async function tryUnlock(secret, fromUI){
+  const ok = await unlock(secret);
+  if(ok){
+    gate.style.display = 'none';
+    ['topbar','rail','btns','hint'].forEach(id => document.getElementById(id).style.display = '');
+    if(!_started){ _started = true; boot(); }
+  }else{
+    gate.style.display = 'flex';
+    if(fromUI){ gateErr.style.display='block'; try{ localStorage.removeItem('archKey'); }catch(e){} }
+  }
+}
+addEventListener('DOMContentLoaded', () => {
+  gateBtn.onclick = () => tryUnlock(gateInput.value.trim(), true);
+  gateInput.addEventListener('keydown', e => { if(e.key==='Enter') gateBtn.click(); });
+  let saved=null; try{ saved = localStorage.getItem('archKey'); }catch(e){}
+  if(saved) tryUnlock(saved, false); else gate.style.display='flex';
+});
+
+/* ---------- time (Asia/Bangkok, naive-UTC safe) ---------- */
+const BKK = 7*3600e3;
+function ts(v){                                  // parse naive-UTC OR tz-aware
+  if(!v) return null;
+  let s = String(v);
+  if(!/[Zz]$|[+-]\d\d:?\d\d$/.test(s)) s += 'Z';
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+function bkkNow(){ return new Date(Date.now() + BKK); }         // UTC fields = BKK wall clock
+function bkkDate(off=0){ const d = bkkNow(); d.setUTCDate(d.getUTCDate()+off); return d.toISOString().slice(0,10); }
+function dayStart(off=0){ return new Date(Date.parse(bkkDate(off)+'T00:00:00Z') - BKK); }
+function hoursAgo(h){ return new Date(Date.now() - h*3600e3); }
+function after(v, d){ const t = ts(v); return !!(t && d && t >= d); }
+function clockStr(){
+  const d = bkkNow(), h = d.getUTCHours(), m = d.getUTCMinutes(), s = d.getUTCSeconds();
+  const ap = h < 12 ? 'AM' : 'PM', hh = (h % 12) || 12;
+  return hh + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0') + ' ' + ap;
+}
+function timeStr(v){
+  const t = ts(v); if(!t) return '';
+  const d = new Date(t.getTime() + BKK), h = d.getUTCHours(), m = d.getUTCMinutes();
+  const ap = h < 12 ? 'AM' : 'PM', hh = (h % 12) || 12;
+  const today = t >= dayStart();
+  const stamp = hh + ':' + String(m).padStart(2,'0') + ' ' + ap;
+  if(today) return stamp;
+  const days = Math.floor((dayStart().getTime() - t.getTime()) / 86400e3) + 1;
+  return days <= 1 ? 'yst ' + stamp : days + 'd ago';
+}
+
+/* ---------- fetch ---------- */
+async function q(table, params){
+  try{
+    const r = await fetch(SB_URL + '/rest/v1/' + table + '?' + params, { headers: H });
+    if(!r.ok) return [];
+    const j = await r.json();
+    return Array.isArray(j) ? j : [];
+  }catch(e){ return []; }
+}
+async function qcount(table, params=''){
+  try{
+    const r = await fetch(SB_URL + '/rest/v1/' + table + '?select=*' + (params ? '&'+params : ''),
+      { headers: { ...H, Prefer:'count=exact', Range:'0-0' } });
+    const cr = r.headers.get('content-range') || '';
+    return parseInt(cr.split('/')[1] || '0', 10) || 0;
+  }catch(e){ return 0; }
+}
+const inList = ids => 'in.(' + ids.map(i => '"' + i + '"').join(',') + ')';
+
+/* ---------- the office ---------- */
+const DEPTS = [
+  { key:'scoring', name:'Scoring Floor', color:'#4ade80', u:-37, v:-15 },
+  { key:'events',  name:'Events Desk',   color:'#e3c178', u:  0, v:-36 },
+  { key:'player',  name:'Player Hub',    color:'#5eead4', u: 37, v:-15 },
+  { key:'caddie',  name:'Caddie Ops',    color:'#38bdf8', u: 37, v: 23 },
+  { key:'comms',   name:'Client Desk',   color:'#22d3ee', u:  0, v: 44 },
+  { key:'pay',     name:'Pay & Bill',    color:'#fb923c', u:-37, v: 23 }
+];
+/* wide screens get the hexagon; phones get two columns so the floor fits the width */
+const LAYOUT_WIDE = { scoring:[-37,-15], events:[0,-36], player:[37,-15], caddie:[37,23], comms:[0,44], pay:[-37,23] };
+const LAYOUT_NARROW = { scoring:[-19,-46], events:[19,-46], player:[-19,2], caddie:[19,2], comms:[-19,50], pay:[19,50] };
+let layoutMode = '';
+function layout(){
+  const mode = innerWidth <= 860 ? 'narrow' : 'wide';
+  if(mode === layoutMode) return;
+  layoutMode = mode;
+  const L = mode === 'narrow' ? LAYOUT_NARROW : LAYOUT_WIDE;
+  DEPTS.forEach(d => {
+    d.u = L[d.key][0]; d.v = L[d.key][1];
+    d.x = (d.u + d.v)/2; d.y = (d.v - d.u)/2;
+    d.below = mode === 'wide' && (d.key === 'pay' || d.key === 'caddie');
+  });
+}
+layout();
+
+/* Each agent: id, dept, name, job (what it does), run(D) -> {doing,next,done,tasks[],stat[]} */
+const AGENTS = [
+  /* ---------------- SCORING FLOOR ---------------- */
+  { d:'scoring', name:'Live Cards', job:'watches every scorecard that is open right now',
+    run(D){
+      const open = D.cardsOpen;
+      const doneToday = D.cards.filter(c => c.status==='completed' && after(c.completed_at, dayStart()));
+      return {
+        doing: open.length, next: 0, done: doneToday.length,
+        stat: [['Open now', open.length], ['Closed today', doneToday.length]],
+        tasks: open.length
+          ? open.map(c => ({ state:'doing', text: (c.player_name||'Unnamed') + ' · ' + (c.course_name||'course TBC'),
+                             sub: c.society_name || c.scoring_format || 'round', when: c.started_at }))
+          : doneToday.slice(0,6).map(c => ({ state:'done', text: (c.player_name||'Unnamed') + ' · ' + (c.course_name||''),
+                             sub: 'gross ' + (c.total_gross ?? '—'), when: c.completed_at }))
+      };
+    }},
+  { d:'scoring', name:'Card Closer', job:'closes finished cards and files the gross / net',
+    run(D){
+      const t = D.cards.filter(c => c.status==='completed' && after(c.completed_at, dayStart()));
+      const w = D.cards.filter(c => c.status==='completed' && after(c.completed_at, dayStart(-7)));
+      return { doing:0, next:0, done:t.length,
+        stat: [['Closed today', t.length], ['Last 7 days', w.length]],
+        tasks: t.slice(0,8).map(c => ({ state:'done', text:(c.player_name||'Unnamed')+' signed for '+(c.total_gross ?? '—'),
+          sub:(c.course_name||'')+(c.total_net!=null?' · net '+c.total_net:''), when:c.completed_at })) };
+    }},
+  { d:'scoring', name:'Validator', job:'flags closed cards nobody has confirmed',
+    run(D){
+      const pend = D.cards.filter(c => c.status==='completed' && after(c.completed_at, dayStart(-14))
+        && !c.confirmed_at && c.validation_status !== 'validated');
+      return { doing:0, next:0, done:0, wait:pend.length,
+        stat: [['Unconfirmed 14d', pend.length]],
+        tasks: pend.slice(0,8).map(c => ({ state:'wait', text:(c.player_name||'Unnamed')+' · card not confirmed',
+          sub:(c.course_name||'')+' · '+(c.validation_status||'no status'), when:c.completed_at })) };
+    }},
+  { d:'scoring', name:'Round Poster', job:'files completed rounds into player history',
+    run(D){
+      const t = D.rounds.filter(r => after(r.created_at, dayStart()));
+      const w = D.rounds.filter(r => after(r.created_at, dayStart(-7)));
+      const unposted = D.rounds.filter(r => r.society_event_id && !r.posted_to_organizer && after(r.created_at, dayStart(-7)));
+      return { doing:0, next:unposted.length, done:t.length, wait:0,
+        stat: [['Posted today', t.length], ['Last 7 days', w.length], ['Not with organizer', unposted.length]],
+        tasks: (unposted.length ? unposted : t).slice(0,8).map(r => ({
+          state: unposted.length ? 'wait' : 'done',
+          text:(r.player_name||'Unnamed')+' · '+(r.course_name||''),
+          sub: (r.total_stableford!=null ? r.total_stableford+' pts' : 'gross '+(r.total_gross ?? '—')), when:r.created_at })) };
+    }},
+  { d:'scoring', name:'Pace Watch', job:'spots cards left open longer than five hours',
+    run(D){
+      const stale = D.cardsOpen.filter(c => { const s = ts(c.started_at); return s && s < hoursAgo(5); });
+      return { doing:0, next:0, done:0, wait:stale.length,
+        stat: [['Open now', D.cardsOpen.length], ['Stale > 5h', stale.length]],
+        tasks: stale.map(c => ({ state:'wait', text:(c.player_name||'Unnamed')+' · card open since '+timeStr(c.started_at),
+          sub:c.course_name||'', when:c.started_at })) };
+    }},
+
+  /* ---------------- EVENTS DESK ---------------- */
+  { d:'events', name:'Event Desk', job:'holds every event that has not been played yet',
+    run(D){
+      const today = D.upcoming.filter(e => e.event_date === bkkDate());
+      const fresh = D.events.filter(e => after(e.created_at, dayStart(-7)));
+      return { doing: today.length, next: D.upcoming.length, done: fresh.length,
+        stat: [['Playing today', today.length], ['Upcoming', D.upcoming.length], ['Built this week', fresh.length]],
+        tasks: D.upcoming.slice(0,8).map(e => ({
+          state: e.event_date === bkkDate() ? 'doing' : 'wait',
+          text: e.title || 'Untitled event',
+          sub: (e.course_name || 'course TBC') + ' · ' + e.event_date + (e.start_time ? ' · ' + String(e.start_time).slice(0,5) : ''),
+          when: null, stamp: e.event_date === bkkDate() ? 'today' : e.event_date.slice(5) })) };
+    }},
+  { d:'events', name:'Registrations', job:'takes entries for upcoming events',
+    run(D){
+      const today = D.regs.filter(r => after(r.created_at || r.registered_at, dayStart()));
+      return { doing: D.regsUp.length, next:0, done: today.length,
+        stat: [['On upcoming events', D.regsUp.length], ['Signed up today', today.length]],
+        tasks: (today.length ? today : D.regsUp).slice(0,8).map(r => ({
+          state: today.length ? 'done' : 'doing',
+          text: (r.player_name || 'Unnamed') + ' → ' + (D.evName[r.event_id] || 'event'),
+          sub: (r.handicap != null ? 'hcp ' + r.handicap : 'no hcp') + ' · ' + (r.payment_status || 'pending'),
+          when: r.created_at || r.registered_at })) };
+    }},
+  { d:'events', name:'Waitlist', job:'holds players queued for a full event',
+    run(D){
+      return { doing:0, next:0, done:0, wait: D.waitlist.length,
+        stat: [['Waiting', D.waitlist.length]],
+        tasks: D.waitlist.slice(0,8).map(w => ({ state:'wait',
+          text:(w.player_name||'Unnamed')+' · position '+(w.position ?? '—'),
+          sub: D.evName[w.event_id] || 'event', when:w.created_at })) };
+    }},
+  { d:'events', name:'Pairing Room', job:'builds the groups and locks the tee sheet',
+    run(D){
+      const have = new Set(D.pairings.map(p => p.event_id));
+      const locked = D.pairings.filter(p => p.locked_at).length;
+      const missing = D.upcoming.filter(e => !have.has(e.id));
+      return { doing: D.pairings.length - locked, next: missing.length, done: locked,
+        stat: [['Sheets drafted', D.pairings.length], ['Locked', locked], ['No sheet yet', missing.length]],
+        tasks: missing.slice(0,6).map(e => ({ state:'wait', text:'No tee sheet · ' + (e.title||'event'),
+          sub:(e.course_name||'')+' · '+e.event_date, when:null, stamp:e.event_date.slice(5) })) };
+    }},
+  { d:'events', name:'Results', job:'files finishing positions after an event',
+    run(D){
+      const recent = D.results.filter(r => after(r.created_at, dayStart(-30)));
+      const done = new Set(D.results.map(r => r.event_id));
+      const past = D.events.filter(e => e.event_date < bkkDate() && e.event_date >= bkkDate(-14) && !done.has(e.id));
+      return { doing:0, next:0, done: recent.length, wait: past.length,
+        stat: [['Filed in 30 days', recent.length], ['Played, no results', past.length]],
+        tasks: past.slice(0,6).map(e => ({ state:'wait', text:'No results · ' + (e.title||'event'),
+          sub:(e.course_name||'')+' · '+e.event_date, when:null, stamp:e.event_date.slice(5) })) };
+    }},
+
+  /* ---------------- PLAYER HUB ---------------- */
+  { d:'player', name:'Profiles', job:'every registered golfer, caddie and staff account',
+    run(D){
+      const t = D.profNew.filter(p => after(p.created_at, dayStart()));
+      return { doing: t.length, next:0, done: D.profNew.length,
+        stat: [['Accounts', D.n.prof], ['New this week', D.n.profNew]],
+        tasks: D.profNew.slice(0,8).map(p => ({ state:'done', text:(p.display_name||p.name||'Unnamed')+' joined',
+          sub:(p.role||p.user_role||'golfer')+(p.society_name?' · '+p.society_name:''), when:p.created_at })) };
+    }},
+  { d:'player', name:'Handicap Anchor', job:'keeps one handicap per golfer per society',
+    run(D){
+      const recent = D.hcp.filter(h => after(h.updated_at || h.last_calculated_at, dayStart(-7)));
+      const t = recent.filter(h => after(h.updated_at || h.last_calculated_at, dayStart()));
+      return { doing: t.length, next:0, done: recent.length,
+        stat: [['Recalculated 7d', recent.length], ['Handicap rows', D.n.hcp]],
+        tasks: recent.slice(0,8).map(h => ({ state:'done',
+          text:(D.profName[h.golfer_id] || h.golfer_id || 'golfer').slice(0,34)+' → '+(h.handicap_index ?? '—'),
+          sub:(h.calculation_method||'auto')+' · '+(h.rounds_count ?? 0)+' rounds', when:h.updated_at || h.last_calculated_at })) };
+    }},
+  { d:'player', name:'Membership', job:'who belongs to which society',
+    run(D){
+      const fresh = D.members.filter(m => after(m.joined_at, dayStart(-30)));
+      const t = fresh.filter(m => after(m.joined_at, dayStart()));
+      return { doing: t.length, next:0, done: fresh.length,
+        stat: [['Joined in 30d', fresh.length], ['Memberships', D.n.members]],
+        tasks: fresh.slice(0,8).map(m => ({ state:'done',
+          text:(D.profName[m.golfer_id] || D.profName[m.user_id] || 'Member')+' joined',
+          sub:(D.socName[m.society_id]||'society')+' · '+(m.role||'member'), when:m.joined_at })) };
+    }},
+  { d:'player', name:'Data Watch', job:'finds accounts missing a handicap',
+    run(D){
+      return { doing:0, next:0, done:0, wait: D.n.noHcp,
+        stat: [['No handicap on file', D.n.noHcp], ['Accounts', D.n.prof]],
+        tasks: D.noHcp.slice(0,8).map(p => ({ state:'wait', text:(p.display_name||p.name||'Unnamed')+' · no handicap',
+          sub:(p.society_name||p.home_club||'no society'), when:p.created_at })) };
+    }},
+
+  /* ---------------- CADDIE OPS ---------------- */
+  { d:'caddie', name:'Roster', job:'the real caddies on the books, course by course',
+    run(D){
+      const active = D.caddies.filter(c => c.is_active !== false && !c.is_mock);
+      const avail = active.filter(c => (c.availability_status||'').toLowerCase()==='available');
+      const byCourse = {}; active.forEach(c => { const k=c.course_name||'Unassigned'; byCourse[k]=(byCourse[k]||0)+1; });
+      return { doing: avail.length, next:0, done: 0,
+        stat: [['On roster', active.length], ['Marked available', avail.length]],
+        tasks: Object.entries(byCourse).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,n]) => ({
+          state:'done', text:k, sub:n+' caddie'+(n===1?'':'s'), when:null, stamp:String(n) })) };
+    }},
+  { d:'caddie', name:'Bookings', job:'caddie bookings for today and the days ahead',
+    run(D){
+      const today = D.cbook.filter(b => b.booking_date === bkkDate());
+      const ahead = D.cbook.filter(b => b.booking_date > bkkDate());
+      const week  = D.cbook.filter(b => b.booking_date < bkkDate() && b.booking_date >= bkkDate(-7));
+      return { doing: today.length, next: ahead.length, done: week.length,
+        stat: [['Today', today.length], ['Upcoming', ahead.length], ['Played in 7d', week.length]],
+        tasks: (today.length ? today : ahead).slice(0,8).map(b => ({
+          state: today.length ? 'doing' : 'wait',
+          text:(b.caddie_name||'Caddie TBC')+' → '+(b.golfer_name||'golfer'),
+          sub:(b.course_name||'')+(b.tee_time?' · '+String(b.tee_time).slice(0,5):'')+' · '+(b.status||''),
+          when:null, stamp: b.booking_date === bkkDate() ? 'today' : b.booking_date.slice(5) })) };
+    }},
+  { d:'caddie', name:'Assignments', job:'bookings still without a named caddie',
+    run(D){
+      const un = D.cbook.filter(b => b.booking_date >= bkkDate() && !b.caddy_id && !b.caddie_name);
+      return { doing:0, next:0, done:0, wait: un.length,
+        stat: [['Unassigned ahead', un.length]],
+        tasks: un.slice(0,8).map(b => ({ state:'wait', text:(b.golfer_name||'Golfer')+' · no caddie assigned',
+          sub:(b.course_name||'')+' · '+b.booking_date, when:null, stamp:b.booking_date.slice(5) })) };
+    }},
+  { d:'caddie', name:'Notebook', job:'the notes golfers keep on their own caddies',
+    run(D){
+      const recent = D.notes.filter(n => after(n.updated_at || n.created_at, dayStart(-30)));
+      const t = recent.filter(n => after(n.updated_at || n.created_at, dayStart()));
+      return { doing: t.length, next:0, done: recent.length,
+        stat: [['Touched in 30d', recent.length], ['Notebook entries', D.n.notes]],
+        tasks: recent.slice(0,8).map(n => ({ state:'done',
+          text:(n.caddy_name||('#'+(n.caddy_number||'')))+(n.rating?' · '+n.rating+'★':''),
+          sub:(n.course_name||'')+' · used '+(n.times_used ?? 1)+'×', when:n.updated_at || n.created_at })) };
+    }},
+
+  /* ---------------- CLIENT DESK ---------------- */
+  { d:'comms', name:'Direct Messages', job:'player-to-player and organizer messages',
+    run(D){
+      const unread = D.dms.filter(m => m.is_read === false);
+      const today  = D.dms.filter(m => after(m.created_at, dayStart()));
+      return { doing:0, next:0, done: today.length, wait: unread.length,
+        stat: [['Unread', unread.length], ['Sent today', today.length]],
+        tasks: (unread.length ? unread : D.dms).slice(0,8).map(m => ({
+          state: m.is_read === false ? 'wait' : 'done',
+          text: (D.profName[m.sender_line_id] || 'Someone') + ' → ' + (D.profName[m.recipient_line_id] || 'someone'),
+          sub: String(m.message_text || '').slice(0,54), when: m.created_at })) };
+    }},
+  { d:'comms', name:'Reports Inbox', job:'problem reports coming in from users',
+    run(D){
+      const open = D.reports.filter(r => r.status === 'open');
+      const prog = D.reports.filter(r => r.status === 'in_progress');
+      const fixedToday = D.reports.filter(r => r.status === 'resolved' && after(r.resolved_at || r.updated_at, dayStart()));
+      return { doing: prog.length, next:0, done: fixedToday.length, wait: open.length,
+        stat: [['Open', open.length], ['In progress', prog.length], ['Resolved today', fixedToday.length]],
+        tasks: open.concat(prog).slice(0,8).map(r => ({
+          state: r.status === 'open' ? 'wait' : 'doing',
+          text: r.subject || '(no subject)',
+          sub: (r.category||'') + ' · ' + (r.reporter_name || 'anon') + (r.priority ? ' · ' + r.priority : ''),
+          when: r.created_at })) };
+    }},
+  { d:'comms', name:'Announcements', job:'society-wide notices on the boards',
+    run(D){
+      const recent = D.anns.filter(a => after(a.created_at, dayStart(-14)));
+      const pinned = D.anns.filter(a => a.is_pinned);
+      return { doing: pinned.length, next:0, done: recent.length,
+        stat: [['Posted in 14d', recent.length], ['Pinned', pinned.length]],
+        tasks: D.anns.slice(0,8).map(a => ({ state: a.is_pinned ? 'doing' : 'done',
+          text: a.title || String(a.message_text||'').slice(0,46),
+          sub: (D.socName[a.society_id] || 'society') + (a.priority ? ' · ' + a.priority : ''), when: a.created_at })) };
+    }},
+  { d:'comms', name:'Emergency Line', job:'on-course emergency alerts — idle is the good state',
+    run(D){
+      const live = D.alerts.filter(a => after(a.created_at, dayStart(-2)));
+      return { doing: live.length, next:0, done:0, wait:0,
+        stat: [['Alerts in 48h', live.length], ['All time', D.alerts.length]],
+        tasks: live.slice(0,6).map(a => ({ state:'doing', text: a.message || a.type || 'Alert raised',
+          sub: a.course_name || a.status || '', when: a.created_at })) };
+    }},
+
+  /* ---------------- PAY & BILL ---------------- */
+  { d:'pay', name:'Entry Fees', job:'chases the money for events not yet played',
+    run(D){
+      const up = D.regsUp;
+      const unpaid = up.filter(r => (r.payment_status||'pending') !== 'paid');
+      const paid   = up.filter(r => r.payment_status === 'paid');
+      const owed   = unpaid.reduce((s,r) => s + (Number(r.total_fee) || 0), 0);
+      return { doing:0, next:0, done: paid.length, wait: unpaid.length,
+        stat: [['Unpaid entries', unpaid.length], ['Paid', paid.length], ['฿ outstanding', Math.round(owed)]],
+        tasks: unpaid.slice(0,8).map(r => ({ state:'wait',
+          text:(r.player_name||'Unnamed')+' · ฿'+(r.total_fee ?? '—'),
+          sub:(D.evName[r.event_id]||'event'), when:r.created_at || r.registered_at })) };
+    }},
+  { d:'pay', name:'Winnings Ledger', job:'chips owed to players from finished events',
+    run(D){
+      const owed = D.win.filter(w => w.status === 'owed');
+      const sum  = owed.reduce((s,w) => s + (Number(w.amount)||0), 0);
+      const settled = D.win.filter(w => w.status !== 'owed');
+      return { doing: owed.length, next:0, done: settled.length,
+        stat: [['Owed', owed.length], ['฿ on the ledger', Math.round(sum)], ['Settled', settled.length]],
+        tasks: owed.slice(0,8).map(w => ({ state:'doing', text:(w.player_name||'Player')+' · ฿'+(w.amount ?? 0),
+          sub:(w.label || w.category || 'chips'), when:w.created_at })) };
+    }},
+  { d:'pay', name:'Transport', job:'seats on the van for upcoming events',
+    run(D){
+      const want = D.regsUp.filter(r => r.want_transport);
+      const byEv = {}; want.forEach(r => { const k = D.evName[r.event_id] || 'event'; byEv[k]=(byEv[k]||0)+1; });
+      return { doing: want.length, next:0, done:0,
+        stat: Object.entries(byEv).sort((a,b)=>b[1]-a[1]).slice(0,3).concat([['Seats total', want.length]]),
+        tasks: Object.entries(byEv).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,n]) => ({
+          state:'doing', text:k, sub:n+' seat'+(n===1?'':'s')+' · ฿'+(n*300), when:null, stamp:String(n) })) };
+    }},
+  { d:'pay', name:'Marketplace', job:'gear and offers listed by members',
+    run(D){
+      const live = D.listings.filter(l => (l.status||'active') === 'active');
+      const recent = D.listings.filter(l => after(l.created_at, dayStart(-30)));
+      return { doing: live.length, next:0, done: recent.length,
+        stat: [['Live listings', live.length], ['Listed in 30d', recent.length]],
+        tasks: D.listings.slice(0,8).map(l => ({ state: (l.status||'active')==='active' ? 'doing' : 'done',
+          text: l.title || 'Listing', sub:(l.category||'')+(l.price?' · ฿'+l.price:''), when:l.created_at })) };
+    }}
+];
+AGENTS.forEach((a,i) => { a.id = 'a'+i; a.dept = DEPTS.find(d => d.key === a.d); });
+DEPTS.forEach(d => d.agents = AGENTS.filter(a => a.d === d.key));
+
+/* ---------- load ---------- */
+let D = null, lastLoad = null, loading = false;
+
+async function loadAll(){
+  loading = true; setBusy(true);
+  const today = bkkDate();
+
+  const events = await q('society_events',
+    'select=id,title,course_name,event_date,start_time,status,organizer_name,society_id,entry_fee,created_at&order=event_date.desc&limit=400');
+  const upcoming = events.filter(e => e.event_date && e.event_date >= today)
+                         .sort((a,b) => a.event_date.localeCompare(b.event_date));
+  const upIds = upcoming.slice(0, 40).map(e => e.id);
+
+  const regCols = 'select=id,event_id,player_name,player_id,user_id,status,payment_status,total_fee,amount_paid,want_transport,checked_in,registered_at,created_at,handicap';
+  const [
+    cards, cardsOpen, rounds, regsUp, regsRecent, waitlist, pairings, results,
+    caddies, cbook, notes, hcp, members, dms, anns, reports, win, listings, alerts,
+    profRecent, profNoHcp, socs,
+    nProf, nProfNew, nNoHcp, nHcp, nMembers, nNotes
+  ] = await Promise.all([
+    q('scorecards','select=id,player_name,course_name,society_name,status,started_at,completed_at,updated_at,total_gross,total_net,validation_status,confirmed_at,scoring_format&order=updated_at.desc&limit=400'),
+    q('scorecards','select=id,player_name,course_name,society_name,status,started_at,scoring_format&status=not.in.(completed,abandoned)&order=started_at.desc&limit=80'),
+    q('rounds','select=id,player_name,course_name,status,created_at,total_gross,total_stableford,society_event_id,posted_to_organizer&order=created_at.desc&limit=300'),
+    upIds.length ? q('event_registrations', regCols + '&event_id=' + inList(upIds) + '&limit=1500') : Promise.resolve([]),
+    q('event_registrations', regCols + '&order=created_at.desc&limit=300'),
+    q('event_waitlist','select=id,event_id,player_name,position,created_at&order=created_at.desc&limit=100'),
+    upIds.length ? q('event_pairings','select=event_id,group_size,locked_at,updated_at&event_id=' + inList(upIds) + '&limit=100') : Promise.resolve([]),
+    q('event_results','select=id,event_id,player_name,position,points_earned,created_at,event_date&order=created_at.desc&limit=400'),
+    q('caddy_profiles','select=id,name,caddy_number,course_name,is_active,availability_status,is_mock&limit=400'),
+    q('caddy_bookings','select=id,caddy_id,caddie_name,golfer_name,course_name,booking_date,tee_time,status,payment_status,created_at&order=booking_date.desc&limit=300'),
+    q('caddy_notebook','select=id,caddy_name,caddy_number,course_name,rating,times_used,created_at,updated_at&order=updated_at.desc&limit=200'),
+    q('society_handicaps','select=golfer_id,society_id,handicap_index,rounds_count,calculation_method,last_calculated_at,updated_at&order=updated_at.desc&limit=300'),
+    q('society_members','select=id,society_id,user_id,golfer_id,role,joined_at,status&order=joined_at.desc&limit=300'),
+    q('direct_messages','select=id,sender_line_id,recipient_line_id,message_text,created_at,is_read&order=created_at.desc&limit=200'),
+    q('announcements','select=id,society_id,title,message_text,priority,is_pinned,created_at&order=created_at.desc&limit=100'),
+    q('support_reports','select=id,reporter_name,category,subject,status,priority,created_at,updated_at,resolved_at&order=created_at.desc&limit=400'),
+    q('event_winnings','select=id,player_name,category,label,amount,status,created_at&order=created_at.desc&limit=200'),
+    q('marketplace_listings','select=id,title,category,price,status,created_at&order=created_at.desc&limit=100'),
+    q('emergency_alerts','select=*&order=created_at.desc&limit=50'),
+    q('user_profiles','select=line_user_id,display_name,name,role,user_role,society_name,home_club,created_at,handicap_index&order=created_at.desc&limit=300'),
+    q('user_profiles','select=line_user_id,display_name,name,society_name,home_club,created_at&handicap_index=is.null&order=created_at.desc&limit=100'),
+    q('society_profiles','select=id,society_name&limit=100'),
+    qcount('user_profiles'),
+    qcount('user_profiles','created_at=gte.' + dayStart(-7).toISOString()),
+    qcount('user_profiles','handicap_index=is.null'),
+    qcount('society_handicaps'),
+    qcount('society_members'),
+    qcount('caddy_notebook')
+  ]);
+
+  /* merge upcoming-event regs with the recent feed, de-duped by id */
+  const regMap = new Map();
+  regsUp.concat(regsRecent).forEach(r => regMap.set(r.id, r));
+  const regs = [...regMap.values()];
+
+  const evName = {}; events.forEach(e => evName[e.id] = e.title || 'Event');
+  const socName = {}; socs.forEach(s => socName[s.id] = s.society_name);
+  const profName = {};
+  profRecent.forEach(p => profName[p.line_user_id] = p.display_name || p.name);
+
+  D = {
+    events, upcoming, cards, cardsOpen, rounds, regs, regsUp, waitlist, pairings, results,
+    caddies, cbook, notes, hcp, members, dms, anns, reports, win, listings, alerts,
+    profNew: profRecent.filter(p => after(p.created_at, dayStart(-7))),
+    noHcp: profNoHcp, evName, socName, profName,
+    n: { prof:nProf, profNew:nProfNew, noHcp:nNoHcp, hcp:nHcp, members:nMembers, notes:nNotes }
+  };
+
+  /* run every agent */
+  AGENTS.forEach(a => {
+    let r; try{ r = a.run(D) || {}; }catch(e){ r = { error:true, doing:0, next:0, done:0, tasks:[], stat:[] }; }
+    r.doing = r.doing || 0; r.next = r.next || 0; r.done = r.done || 0; r.wait = r.wait || 0;
+    r.tasks = r.tasks || []; r.stat = r.stat || [];
+    a.r = r;
+    a.state = r.doing > 0 ? 'doing' : (r.wait > 0 || r.next > 0 ? 'wait' : 'idle');
+  });
+  DEPTS.forEach(d => {
+    d.doing = d.agents.reduce((s,a) => s + a.r.doing, 0);
+    d.wait  = d.agents.reduce((s,a) => s + a.r.wait + a.r.next, 0);
+    d.done  = d.agents.reduce((s,a) => s + a.r.done, 0);
+  });
+
+  lastLoad = new Date(); loading = false; setBusy(false);
+  buildFeed(); renderCards(); renderStrip(); updateTop();
+}
+
+/* ---------- task feed ---------- */
+let FEED = [], filter = 'all', scope = null;
+function buildFeed(){
+  FEED = [];
+  AGENTS.forEach(a => a.r.tasks.slice(0,4).forEach(t => FEED.push({ ...t, agent:a })));
+  const rank = { doing:0, wait:1, done:2 };
+  FEED.sort((x,y) => {
+    const r = (rank[x.state] ?? 3) - (rank[y.state] ?? 3);
+    if(r) return r;
+    const tx = ts(x.when), tyy = ts(y.when);
+    return (tyy ? tyy.getTime() : 0) - (tx ? tx.getTime() : 0);
+  });
+  renderFeed();
+}
+function feedRows(){
+  let rows = scope ? FEED.filter(f => f.agent.d === scope) : FEED;
+  if(filter !== 'all') rows = rows.filter(f => f.state === filter);
+  return rows;
+}
+function renderFeed(){
+  const all = scope ? FEED.filter(f => f.agent.d === scope) : FEED;
+  const n = s => all.filter(f => f.state === s).length;
+  chips.innerHTML =
+    ['all','doing','wait','done'].map(k => {
+      const lbl = { all:'All', doing:'In progress', wait:'Waiting', done:'Done' }[k];
+      const c = k === 'all' ? all.length : n(k);
+      return '<div class="chip ' + k + (filter===k?' on':'') + '" data-f="' + k + '">' + lbl + '<b>' + c + '</b></div>';
+    }).join('') +
+    (scope ? '<div class="chip on" id="clrScope">' + (DEPTS.find(d=>d.key===scope)||{}).name + ' ×</div>' : '');
+  chips.querySelectorAll('[data-f]').forEach(el => el.onclick = e => { e.stopPropagation(); filter = el.dataset.f; renderFeed(); });
+  const cs = document.getElementById('clrScope');
+  if(cs) cs.onclick = e => { e.stopPropagation(); scope = null; railScope.textContent = 'whole office'; renderFeed(); };
+
+  const rows = feedRows();
+  feed.innerHTML = rows.length ? rows.slice(0,140).map(f => {
+    const lbl = { doing:'In progress', wait:'Waiting', done:'Done' }[f.state] || f.state;
+    const when = f.stamp || timeStr(f.when);
+    return '<div class="fi">' +
+      '<div class="fs ' + f.state + '">' + lbl + '</div>' +
+      '<div class="ft"><div class="a">' + esc(f.text) + '</div>' +
+      '<div class="b"><i style="background:' + f.agent.dept.color + '"></i>' +
+      esc(f.agent.dept.name) + ' · ' + esc(f.agent.name) + (when ? ' · ' + esc(when) : '') + '</div></div></div>';
+  }).join('') : '<div class="empty">nothing in this lane</div>';
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ---------- department cards ---------- */
+function cardHTML(d){
+  const busy = d.agents.slice().sort((p,q) =>
+      (q.r.doing + q.r.wait + q.r.next) - (p.r.doing + p.r.wait + p.r.next)).slice(0,3);
+  const stats = busy.map(a => {
+    const n = a.r.doing || (a.r.wait + a.r.next) || a.r.done;
+    const col = a.state === 'doing' ? '#4ade80' : a.state === 'wait' ? '#f59e0b' : '#54635b';
+    return '<div class="srow' + (n ? '' : ' z') + '">' +
+      '<span><i style="display:inline-block;width:5px;height:5px;border-radius:50%;background:' + col +
+      ';margin-right:6px;vertical-align:1px"></i>' + esc(a.name) + '</span><b>' + n + '</b></div>';
+  }).join('');
+  return '<div class="dh"><span class="dot" style="background:' + d.color + ';color:' + d.color + '"></span>' +
+    '<span class="dn">' + esc(d.name) + '</span><span class="da">' + d.agents.length + ' agents</span></div>' +
+    '<div class="big">' + d.doing + '<small>working now</small></div>' + stats +
+    '<div class="dfoot"><span class="d">doing <b>' + d.doing + '</b></span>' +
+    '<span class="w">waiting <b>' + d.wait + '</b></span>' +
+    '<span>done <b>' + d.done + '</b></span></div>';
+}
+function renderCards(){
+  if(!D) return;
+  cards.innerHTML = '';
+  DEPTS.forEach(d => {
+    const el = document.createElement('div');
+    el.className = 'dcard'; el.innerHTML = cardHTML(d);
+    el.onclick = () => openDept(d);
+    d.el = el; cards.appendChild(el);
+  });
+  placeCards();
+}
+function renderStrip(){
+  if(!D) return;
+  strip.innerHTML = '';
+  DEPTS.forEach(d => {
+    const el = document.createElement('div');
+    el.className = 'dcard'; el.innerHTML = cardHTML(d);
+    el.onclick = () => openDept(d);
+    strip.appendChild(el);
+  });
+}
+function placeCards(){
+  DEPTS.forEach(d => {
+    if(!d.el) return;
+    const p = project(d.x + PW/2, d.y + PD/2, d.below ? -2.7 : CARD_Z);
+    d.el.style.left = p[0] + 'px';
+    d.el.style.top  = p[1] + 'px';
+    d.el.style.transform = d.below ? 'translate(-50%,0)' : 'translate(-50%,-100%)';
+  });
+}
+
+/* ---------- detail panel ---------- */
+function openDept(d){
+  scope = d.key; filter = 'all'; railScope.textContent = d.name; renderFeed();
+  if(innerWidth <= 860) rail.classList.add('open');
+  panelBody.innerHTML =
+    '<h2><span class="dot" style="width:9px;height:9px;border-radius:50%;background:' + d.color + ';display:inline-block"></span>' +
+    esc(d.name) + '</h2>' +
+    '<div class="psub">' + d.agents.length + ' agents · ' + d.doing + ' working · ' + d.wait + ' waiting · ' + d.done + ' done</div>' +
+    d.agents.map(a => agentHTML(a)).join('');
+  panel.classList.add('open');
+}
+function openAgent(a){
+  scope = a.d; filter = 'all'; railScope.textContent = a.dept.name; renderFeed();
+  panelBody.innerHTML =
+    '<h2><span style="width:9px;height:9px;border-radius:50%;background:' + a.dept.color + ';display:inline-block"></span>' +
+    esc(a.dept.name) + '</h2><div class="psub">agent detail</div>' + agentHTML(a, true);
+  panel.classList.add('open');
+}
+function agentHTML(a, solo){
+  const r = a.r;
+  const st = a.state === 'doing' ? 'doing' : a.state === 'wait' ? 'wait' : '';
+  const nums = [['doing', r.doing], ['waiting', r.wait + r.next], ['done', r.done]]
+    .map(([k,v]) => '<span>' + k + ' <b>' + v + '</b></span>').join('');
+  const stats = r.stat.length
+    ? '<div class="anum">' + r.stat.map(s => '<span>' + esc(s[0]) + ' <b>' + esc(s[1]) + '</b></span>').join('') + '</div>' : '';
+  const list = r.tasks.length
+    ? '<ul>' + r.tasks.slice(0, solo ? 20 : 6).map(t =>
+        '<li><s style="color:' + (t.state==='doing'?'#4ade80':t.state==='wait'?'#f59e0b':'#69786f') + '">●</s>' +
+        '<span>' + esc(t.text) + (t.sub ? '<br><span style="color:#69786f;font-size:11px">' + esc(t.sub) + '</span>' : '') + '</span>' +
+        '<em>' + esc(t.stamp || timeStr(t.when)) + '</em></li>').join('') + '</ul>'
+    : '<div class="idle">nothing queued — desk is clear</div>';
+  return '<div class="ag"><div class="ah"><span class="an">' + esc(a.name) + '</span>' +
+    '<span class="ast ' + st + '">' + (a.state === 'idle' ? 'idle' : a.state === 'doing' ? 'working' : 'waiting') + '</span></div>' +
+    '<div class="aj">' + esc(a.job) + '</div>' + stats + '<div class="anum">' + nums + '</div>' + list + '</div>';
+}
+panelX.onclick = () => panel.classList.remove('open');
+
+/* ============================================================
+   isometric renderer
+   ============================================================ */
+const cv = document.getElementById('c'), cx = cv.getContext('2d');
+let W = 0, Hh = 0, DPR = 1;
+let zoom = 1, panX = 0, panY = 0;
+const TW = 30, TH = 15, ZS = 16;           // tile width / height / z scale
+const PW = 13, PD = 10;                     // platform footprint (world cells)
+const CARD_Z = 9.6;                         // how high dept cards float
+
+function project(x, y, z){
+  return [ (x - y) * TW * 0.5 * zoom + panX + W/2,
+           (x + y) * TH * 0.5 * zoom - z * ZS * zoom + panY + Hh/2 ];
+}
+function resize(){
+  DPR = Math.min(devicePixelRatio || 1, 2);
+  W = innerWidth; Hh = innerHeight;
+  cv.width = W * DPR; cv.height = Hh * DPR;
+  cv.style.width = W + 'px'; cv.style.height = Hh + 'px';
+  cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  placeCards();
+}
+addEventListener('resize', () => { resize(); fit(); });
+
+function fit(){
+  layout();
+  const wide = innerWidth > 860;
+  const railW = wide ? 326 : 0;
+  const usable = W - railW;
+  const spanU = wide ? 96 : 61, spanV = wide ? 128 : 119;   // world span (wide reserves card room)
+  const zx = usable / (spanU * TW * 0.5) * (wide ? 0.88 : 0.96);
+  const zy = (Hh - (wide ? 120 : 265)) / (spanV * TH * 0.5) * 0.94;
+  zoom = Math.max(0.24, Math.min(1.5, Math.min(zx, zy)));
+  panX = -(railW / 2 + (wide ? 24 : 0));
+  panY = wide ? 8 : -132;
+  placeCards();
+}
+
+/* desk slots inside a platform */
+function deskSlot(i, n){
+  const cols = 2, rows = Math.ceil(n / cols);
+  const col = i % cols, row = Math.floor(i / cols);
+  const gapX = (PW - 2.6) / cols, gapY = (PD - 2.4) / Math.max(1, rows);
+  return [ 1.1 + col * gapX, 1.0 + row * gapY + col * (gapY * 0.42) ];
+}
+
+function diamond(x, y, w, d, z){
+  const a = project(x, y, z), b = project(x + w, y, z), c = project(x + w, y + d, z), e = project(x, y + d, z);
+  cx.beginPath(); cx.moveTo(a[0],a[1]); cx.lineTo(b[0],b[1]); cx.lineTo(c[0],c[1]); cx.lineTo(e[0],e[1]); cx.closePath();
+}
+function hex(c, a){
+  const n = parseInt(c.slice(1), 16);
+  return 'rgba(' + (n>>16&255) + ',' + (n>>8&255) + ',' + (n&255) + ',' + a + ')';
+}
+
+function drawPlatform(d){
+  const th = 1.1;
+  /* side faces */
+  const bl = project(d.x, d.y + PD, 0), blz = project(d.x, d.y + PD, -th);
+  const br = project(d.x + PW, d.y + PD, 0), brz = project(d.x + PW, d.y + PD, -th);
+  const rr = project(d.x + PW, d.y, 0), rrz = project(d.x + PW, d.y, -th);
+  cx.fillStyle = hex(d.color, .13);
+  cx.beginPath(); cx.moveTo(bl[0],bl[1]); cx.lineTo(br[0],br[1]); cx.lineTo(brz[0],brz[1]); cx.lineTo(blz[0],blz[1]); cx.closePath(); cx.fill();
+  cx.fillStyle = hex(d.color, .09);
+  cx.beginPath(); cx.moveTo(br[0],br[1]); cx.lineTo(rr[0],rr[1]); cx.lineTo(rrz[0],rrz[1]); cx.lineTo(brz[0],brz[1]); cx.closePath(); cx.fill();
+  /* top */
+  diamond(d.x, d.y, PW, PD, 0);
+  const g = cx.createLinearGradient(...project(d.x, d.y, 0), ...project(d.x + PW, d.y + PD, 0));
+  g.addColorStop(0, hex(d.color, .30)); g.addColorStop(1, hex(d.color, .13));
+  cx.fillStyle = g; cx.fill();
+  cx.strokeStyle = hex(d.color, .55); cx.lineWidth = 1; cx.stroke();
+  /* inner grid */
+  cx.strokeStyle = hex(d.color, .13); cx.lineWidth = 1;
+  for(let i = 2; i < PW; i += 2){
+    const a = project(d.x + i, d.y, 0.01), b = project(d.x + i, d.y + PD, 0.01);
+    cx.beginPath(); cx.moveTo(a[0],a[1]); cx.lineTo(b[0],b[1]); cx.stroke();
+  }
+  for(let j = 2; j < PD; j += 2){
+    const a = project(d.x, d.y + j, 0.01), b = project(d.x + PW, d.y + j, 0.01);
+    cx.beginPath(); cx.moveTo(a[0],a[1]); cx.lineTo(b[0],b[1]); cx.stroke();
+  }
+}
+
+const HITS = [];
+let hoverAgent = null;
+function drawDesk(a, t){
+  const d = a.dept, [ox, oy] = deskSlot(d.agents.indexOf(a), d.agents.length);
+  const x = d.x + ox, y = d.y + oy, w = 1.5, dp = 1.1, h = 0.55;
+  const on = a.state !== 'idle';
+  const col = a.state === 'doing' ? '#4ade80' : a.state === 'wait' ? '#f59e0b' : '#54635b';
+
+  /* desk slab sides */
+  const bl = project(x, y + dp, h), blz = project(x, y + dp, 0);
+  const br = project(x + w, y + dp, h), brz = project(x + w, y + dp, 0);
+  const rr = project(x + w, y, h), rrz = project(x + w, y, 0);
+  cx.fillStyle = 'rgba(10,20,15,.85)';
+  cx.beginPath(); cx.moveTo(bl[0],bl[1]); cx.lineTo(br[0],br[1]); cx.lineTo(brz[0],brz[1]); cx.lineTo(blz[0],blz[1]); cx.closePath(); cx.fill();
+  cx.fillStyle = 'rgba(16,30,23,.85)';
+  cx.beginPath(); cx.moveTo(br[0],br[1]); cx.lineTo(rr[0],rr[1]); cx.lineTo(rrz[0],rrz[1]); cx.lineTo(brz[0],brz[1]); cx.closePath(); cx.fill();
+  /* desk top */
+  diamond(x, y, w, dp, h);
+  cx.fillStyle = hex(d.color, on ? .40 : .18); cx.fill();
+  cx.strokeStyle = hex(d.color, on ? .8 : .35); cx.lineWidth = 1; cx.stroke();
+
+  /* monitor: a lit panel standing on the desk */
+  const mx = x + w * 0.52, my = y + dp * 0.3;
+  const p0 = project(mx, my, h), p1 = project(mx, my, h + 0.72);
+  const pulse = on ? 0.62 + 0.38 * Math.sin(t / 420 + d.agents.indexOf(a)) : 1;
+  cx.strokeStyle = col; cx.lineWidth = 3.1 * Math.min(zoom, 1.25);
+  cx.globalAlpha = on ? pulse : .5;
+  cx.beginPath(); cx.moveTo(p0[0], p0[1]); cx.lineTo(p1[0], p1[1]); cx.stroke();
+  cx.globalAlpha = 1;
+  /* glow bead */
+  const bead = project(mx, my, h + 0.78);
+  cx.fillStyle = col; cx.shadowColor = col; cx.shadowBlur = on ? 13 * pulse : 3;
+  cx.beginPath(); cx.arc(bead[0], bead[1], 2.6 * Math.min(zoom, 1.3), 0, 7); cx.fill();
+  cx.shadowBlur = 0;
+
+  HITS.push({ a, x: bead[0], y: bead[1] + 8, r: Math.max(16, 22 * zoom) });
+
+  /* label when zoomed in */
+  if(zoom > 1.02 || a === hoverAgent){
+    const l = project(x + w * 0.5, y + dp + 0.35, h);
+    const fs = Math.round(9 * Math.min(zoom, 1.25));
+    const txt = a.name.toUpperCase();
+    cx.font = '600 ' + fs + 'px "JetBrains Mono", monospace';
+    const tw = cx.measureText(txt).width;
+    cx.fillStyle = 'rgba(4,8,6,.78)';
+    cx.fillRect(l[0] - tw/2 - 4, l[1] + 4, tw + 8, fs + 6);
+    cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    cx.fillStyle = on ? 'rgba(223,238,231,.95)' : 'rgba(120,136,126,.9)';
+    cx.fillText(txt, l[0], l[1] + 4 + (fs + 6) / 2);
+    cx.textAlign = 'left'; cx.textBaseline = 'alphabetic';
+  }
+}
+
+function drawBrain(t){
+  const bx = -2.5, by = -2.5, s = 5;
+  const lift = 3.2 + Math.sin(t / 900) * 0.18;
+  /* shadow */
+  diamond(bx, by, s, s, 0);
+  cx.fillStyle = 'rgba(74,222,128,.05)'; cx.fill();
+  /* body */
+  diamond(bx, by, s, s, lift);
+  const g = cx.createLinearGradient(...project(bx, by, lift), ...project(bx + s, by + s, lift));
+  g.addColorStop(0, 'rgba(74,222,128,.34)'); g.addColorStop(1, 'rgba(34,197,94,.12)');
+  cx.fillStyle = g; cx.fill();
+  cx.strokeStyle = 'rgba(74,222,128,.6)'; cx.lineWidth = 1; cx.stroke();
+  /* stem */
+  const a0 = project(bx + s/2, by + s/2, 0), a1 = project(bx + s/2, by + s/2, lift);
+  cx.strokeStyle = 'rgba(74,222,128,.22)'; cx.setLineDash([3,4]);
+  cx.beginPath(); cx.moveTo(a0[0],a0[1]); cx.lineTo(a1[0],a1[1]); cx.stroke(); cx.setLineDash([]);
+  /* label */
+  const l = project(bx + s/2, by + s/2, lift + 0.4);
+  const openN = FEED.filter(f => f.state !== 'done').length;
+  cx.textAlign = 'center';
+  cx.font = '700 ' + Math.max(9, Math.round(10 * Math.min(zoom,1.3))) + 'px "JetBrains Mono", monospace';
+  cx.fillStyle = 'rgba(74,222,128,.95)'; cx.shadowColor = 'rgba(0,0,0,.9)'; cx.shadowBlur = 6;
+  cx.fillText('THE FLOOR', l[0], l[1] - 6);
+  cx.font = '500 ' + Math.max(8, Math.round(9 * Math.min(zoom,1.3))) + 'px "JetBrains Mono", monospace';
+  cx.fillStyle = 'rgba(223,238,231,.8)';
+  cx.fillText(openN + ' OPEN ITEMS', l[0], l[1] + 6);
+  cx.shadowBlur = 0; cx.textAlign = 'left';
+}
+
+function drawStem(d){
+  const a = project(d.x + PW/2, d.y + PD/2, d.below ? -0.4 : 0.5),
+        b = project(d.x + PW/2, d.y + PD/2, d.below ? -2.7 : CARD_Z);
+  cx.strokeStyle = hex(d.color, .3); cx.lineWidth = 1; cx.setLineDash([2,4]);
+  cx.beginPath(); cx.moveTo(a[0], a[1]); cx.lineTo(b[0], b[1]); cx.stroke(); cx.setLineDash([]);
+  cx.fillStyle = hex(d.color, .85);
+  cx.beginPath(); cx.arc(b[0], b[1], 2.4, 0, 7); cx.fill();
+}
+function drawLink(d, t){
+  const a = project(0, 0, 3.2);
+  const b = project(d.x + PW/2, d.y + PD/2, 0.9);
+  cx.strokeStyle = hex(d.color, .22); cx.lineWidth = 1;
+  cx.setLineDash([4, 6]); cx.lineDashOffset = -(t / 46) % 10;
+  cx.beginPath(); cx.moveTo(a[0], a[1]);
+  cx.quadraticCurveTo((a[0]+b[0])/2, Math.min(a[1],b[1]) - 26 * zoom, b[0], b[1]); cx.stroke();
+  cx.setLineDash([]);
+  /* travelling pulse, one per unit of live work */
+  const live = Math.min(3, d.doing);
+  for(let i = 0; i < live; i++){
+    const p = ((t / 2600) + i / 3) % 1;
+    const mx = (a[0]+b[0])/2, my = Math.min(a[1],b[1]) - 26 * zoom;
+    const px = (1-p)*(1-p)*a[0] + 2*(1-p)*p*mx + p*p*b[0];
+    const py = (1-p)*(1-p)*a[1] + 2*(1-p)*p*my + p*p*b[1];
+    cx.fillStyle = d.color; cx.shadowColor = d.color; cx.shadowBlur = 8;
+    cx.beginPath(); cx.arc(px, py, 2.1, 0, 7); cx.fill(); cx.shadowBlur = 0;
+  }
+}
+
+function drawFloorGrid(){
+  cx.strokeStyle = 'rgba(255,255,255,.028)'; cx.lineWidth = 1;
+  for(let i = -46; i <= 46; i += 6){
+    let a = project(i, -46, 0), b = project(i, 46, 0);
+    cx.beginPath(); cx.moveTo(a[0],a[1]); cx.lineTo(b[0],b[1]); cx.stroke();
+    a = project(-46, i, 0); b = project(46, i, 0);
+    cx.beginPath(); cx.moveTo(a[0],a[1]); cx.lineTo(b[0],b[1]); cx.stroke();
+  }
+}
+
+let rafId = null;
+function frame(t){
+  rafId = requestAnimationFrame(frame);
+  cx.clearRect(0, 0, W, Hh);
+  HITS.length = 0;
+  drawFloorGrid();
+  if(!D) return;
+  DEPTS.forEach(d => drawLink(d, t));
+  /* painter's order: far platforms first (smaller x+y draw first) */
+  const order = DEPTS.slice().sort((p,qq) => (p.x + p.y) - (qq.x + qq.y));
+  const brainDepth = 0;
+  let brainDone = false;
+  order.forEach(d => {
+    if(!brainDone && (d.x + d.y) > brainDepth){ drawBrain(t); brainDone = true; }
+    drawPlatform(d);
+    drawStem(d);
+    d.agents.forEach(a => drawDesk(a, t));
+  });
+  if(!brainDone) drawBrain(t);
+}
+
+/* ---------- interaction ---------- */
+let dragging = false, moved = false, lastX = 0, lastY = 0, pinch = 0;
+cv.addEventListener('pointerdown', e => {
+  dragging = true; moved = false; lastX = e.clientX; lastY = e.clientY;
+  cv.classList.add('drag'); cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointermove', e => {
+  if(!dragging){
+    const h = HITS.find(k => Math.hypot(k.x - e.clientX, k.y - e.clientY) < k.r);
+    const a = h ? h.a : null;
+    if(a !== hoverAgent){ hoverAgent = a; cv.style.cursor = a ? 'pointer' : 'grab'; }
+    return;
+  }
+  const dx = e.clientX - lastX, dy = e.clientY - lastY;
+  if(Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+  panX += dx; panY += dy; lastX = e.clientX; lastY = e.clientY;
+  placeCards();
+});
+cv.addEventListener('pointerup', e => {
+  dragging = false; cv.classList.remove('drag');
+  if(moved) return;
+  const hit = HITS.find(h => Math.hypot(h.x - e.clientX, h.y - e.clientY) < h.r);
+  if(hit) openAgent(hit.a);
+  else panel.classList.remove('open');
+});
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const f = e.deltaY < 0 ? 1.11 : 0.9;
+  const nz = Math.max(0.3, Math.min(2.4, zoom * f));
+  const cxp = e.clientX - W/2 - panX, cyp = e.clientY - Hh/2 - panY;
+  panX -= cxp * (nz/zoom - 1); panY -= cyp * (nz/zoom - 1);
+  zoom = nz; placeCards();
+}, { passive:false });
+
+cv.addEventListener('touchstart', e => { if(e.touches.length === 2) pinch = dist2(e); }, { passive:true });
+cv.addEventListener('touchmove', e => {
+  if(e.touches.length === 2 && pinch){
+    const d2 = dist2(e), nz = Math.max(0.3, Math.min(2.4, zoom * (d2 / pinch)));
+    zoom = nz; pinch = d2; placeCards(); e.preventDefault();
+  }
+}, { passive:false });
+cv.addEventListener('touchend', () => pinch = 0);
+function dist2(e){ return Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); }
+
+bZoomIn.onclick  = () => { zoom = Math.min(2.4, zoom * 1.2); placeCards(); };
+bZoomOut.onclick = () => { zoom = Math.max(0.3, zoom / 1.2); placeCards(); };
+bFit.onclick     = () => fit();
+bRefresh.onclick = () => { if(!loading) loadAll(); };
+railHead.onclick = () => { if(innerWidth <= 860) rail.classList.toggle('open'); };
+
+function setBusy(b){ bRefresh.classList.toggle('spin', b); }
+function updateTop(){
+  clock.innerHTML = clockStr() + '<i>Asia/Bangkok</i>';
+  if(lastLoad) pRefresh.textContent = 'synced ' + timeStr(lastLoad.toISOString());
+  const live = DEPTS.reduce((s,d) => s + d.doing, 0), wait = DEPTS.reduce((s,d) => s + d.wait, 0);
+  hintStat.textContent = AGENTS.length + ' agents · ' + live + ' working · ' + wait + ' waiting';
+}
+
+/* ---------- boot ---------- */
+async function boot(){
+  resize(); fit();
+  if(!rafId) requestAnimationFrame(frame);
+  await loadAll();
+  fit();
+  setInterval(() => { clock.innerHTML = clockStr() + '<i>Asia/Bangkok</i>'; }, 1000);
+  setInterval(() => { if(!document.hidden && !loading) loadAll(); }, 60000);
+  document.addEventListener('visibilitychange', () => {
+    if(!document.hidden && lastLoad && Date.now() - lastLoad > 60000 && !loading) loadAll();
+  });
+}
+</script>
+</body>
+</html>

@@ -32861,6 +32861,19 @@
             return w.length ? w.slice(0, 2).join(' ').toLowerCase() : '';
         };
 
+        // v1211: which of a caddie's OWN caddy_profiles rows is the real one. The dashboard's
+        // self-provisioned placeholder (blank number, course "Unassigned") must lose to a claimed
+        // roster row; mock rows never win. Ties go to the newest row (a re-claim is newer).
+        window._caddyPickOwnRow = function (rows) {
+            const list = (rows || []).filter(r => r && r.is_mock !== true);
+            if (!list.length) return null;
+            const score = r => (r.caddy_number && String(r.caddy_number).trim() ? 4 : 0)
+                + (r.course_name && !/^unassigned$/i.test(String(r.course_name).trim()) ? 2 : 0)
+                + (r.course_id ? 1 : 0);
+            list.sort((a, b) => (score(b) - score(a)) || String(b.created_at || '').localeCompare(String(a.created_at || '')));
+            return list[0];
+        };
+
         // Every UNCLAIMED real caddy the course already has on file. This is what a
         // registering caddy taps instead of typing a number blind — and the photo the
         // course already holds is what makes her own row recognisable at a glance.
@@ -76570,9 +76583,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 const userId = u?.lineUserId || u?.id;
                 if (!sb || !userId) return null;
 
-                let { data: p } = await sb.from('caddy_profiles')
-                    .select('id, caddy_number, course_id, course_name, rating, total_reviews, total_rounds, name, photo_url, sheet_start, sheet_end, block_minutes')
-                    .eq('user_id', userId).maybeSingle();
+                // v1211: a caddie can own MORE than one row — this dashboard self-provisions an
+                // "Unassigned" placeholder on her first open, then CaddySetup claims her real roster
+                // row. maybeSingle() on two rows is a 406 (PGRST116 "The result contains 2 rows")
+                // → null → her course and number vanish from the dashboard and ANOTHER placeholder
+                // is minted below. Two real caddies sat in exactly that state on 2026-09-16.
+                // Fetch her rows and pick the real one (number + course beat a placeholder).
+                const { data: mine } = await sb.from('caddy_profiles')
+                    .select('id, caddy_number, course_id, course_name, rating, total_reviews, total_rounds, name, photo_url, sheet_start, sheet_end, block_minutes, is_mock, created_at')
+                    .eq('user_id', userId).limit(10);
+                let p = window._caddyPickOwnRow ? window._caddyPickOwnRow(mine) : ((mine && mine[0]) || null);
 
                 if (!p) {
                     const num = u?.caddyNumber || u?.profileData?.caddyInfo?.caddyNumber

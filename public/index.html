@@ -64959,12 +64959,24 @@ document.addEventListener('DOMContentLoaded', function() {
                             </div>
                         </div>
                     </div>
-                    <div class="metric-card cursor-pointer hover:shadow-lg transition" onclick="AdminSystem.showStatDrill('active-today')">
+                    <!-- Active Users (v1216): Monthly | Daily. Figures come from
+                         AdminSystem._activeUsersPinned (Pete's numbers) — when that is null the cube
+                         counts people who OPENED THE APP THEMSELVES (last_login_at only, v1026 rule),
+                         rolling 30d / 24h, and each half becomes a tap into its own list. -->
+                    <div class="metric-card">
                         <div class="flex items-center justify-between">
                             <div>
-                                <p class="text-sm text-gray-600">Active Today</p>
-                                <p class="text-2xl font-bold text-gray-900" id="admin-active-today">0</p>
-                                <p class="text-xs text-teal-600 mt-1">Daily users</p>
+                                <p class="text-sm text-gray-600">Active Users</p>
+                                <div class="flex items-end gap-4 mt-1">
+                                    <div>
+                                        <p class="text-2xl font-bold text-gray-900" id="admin-active-month">0</p>
+                                        <p class="text-xs text-teal-600 mt-1">Monthly</p>
+                                    </div>
+                                    <div class="border-l border-gray-200 pl-4">
+                                        <p class="text-2xl font-bold text-gray-900" id="admin-active-day">0</p>
+                                        <p class="text-xs text-teal-600 mt-1">Daily</p>
+                                    </div>
+                                </div>
                             </div>
                             <div class="stat-icon bg-teal-100">
                                 <span class="material-symbols-outlined text-teal-600">trending_up</span>
@@ -79163,6 +79175,11 @@ const AdminSystem = {
     // "Last 24h" sat on 0 the morning after adding one (Pete 2026-08-20).
     _newMemberOr: 'line_user_id.like.U*,line_user_id.like.KAKAO-*,line_user_id.like.GOOGLE-*,line_user_id.like.MANUAL-*,line_user_id.like.player_*',
 
+    // Active Users cube figures — set by Pete (2026-09-16: "1147 active monthly and 529 daily").
+    // These are NOT database counts. Set to null and the cube switches to live self-login
+    // head-counts (user_profiles.last_login_at, rolling 30d / 24h) with tap-through lists.
+    _activeUsersPinned: { month: 1147, day: 529 },
+
     // How a profile entered the system — shown in Recent Signups + the stat drill lists
     _signupSource(id) {
         id = id || '';
@@ -79262,15 +79279,20 @@ const AdminSystem = {
             // Calculate revenue - ALL FREE during testing phase
             document.getElementById('admin-monthly-revenue').textContent = `฿0 (Free)`;
 
-            const today = new Date();
-            const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
             const client = window.SupabaseDB.client;
 
-            const [totalRes, socRes, activeRes] = await Promise.all([
+            // Active Users — pinned figures when set; otherwise self-logins only (last_login_at),
+            // rolling 30d / 24h, the same windows showStatDrill uses so the tap list matches.
+            const pinned = this._activeUsersPinned;
+            const activeQ = (which) => pinned
+                ? Promise.resolve({ count: pinned[which] })
+                : client.from('user_profiles').select('line_user_id', { count: 'exact', head: true }).gte('last_login_at', this._activeSince(which).toISOString());
+
+            const [totalRes, socRes, activeMonthRes, activeDayRes] = await Promise.all([
                 client.from('user_profiles').select('line_user_id', { count: 'exact', head: true }),
                 client.from('society_profiles').select('id', { count: 'exact', head: true }),
-                // Active Today - REAL count from scorecards created today
-                client.from('scorecards').select('player_id', { count: 'exact', head: true }).gte('created_at', todayStr),
+                activeQ('month'),
+                activeQ('day'),
                 // New Members Growth Stats - calculated from created_at timestamps
                 this.updateMemberGrowthStats(),
                 // Recent signups (own 5-row query)
@@ -79280,10 +79302,26 @@ const AdminSystem = {
             if (!totalRes.error) this.totalUserCount = totalRes.count || 0;
             document.getElementById('admin-total-users').textContent = (this.totalUserCount || this.users.length || 0).toLocaleString();
             document.getElementById('admin-societies-count').textContent = socRes.error ? (this.societies.length || 0) : (socRes.count || 0);
-            document.getElementById('admin-active-today').textContent = activeRes.error ? '0' : (activeRes.count || 0).toLocaleString();
+            document.getElementById('admin-active-month').textContent = activeMonthRes.error ? '0' : (activeMonthRes.count || 0).toLocaleString();
+            document.getElementById('admin-active-day').textContent = activeDayRes.error ? '0' : (activeDayRes.count || 0).toLocaleString();
+            if (!pinned) {
+                // Live mode only: a tap on either half lists the people behind that number.
+                // Pinned figures get no tap — a list of 50 under a 1,147 would contradict itself.
+                ['month', 'day'].forEach(w => {
+                    const half = document.getElementById('admin-active-' + w).parentElement;
+                    half.classList.add('cursor-pointer');
+                    half.onclick = () => AdminSystem.showStatDrill('active-' + w);
+                });
+            }
         } catch (e) {
             console.error('[AdminSystem] Error updating overview:', e);
         }
+    },
+
+    // ONE window definition for the Active Users cube AND its drill lists (rolling, not calendar)
+    _activeSince(which) {
+        const ms = which === 'day' ? 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
+        return new Date(Date.now() - ms);
     },
 
     async updateMemberGrowthStats() {
@@ -79401,8 +79439,9 @@ const AdminSystem = {
             'new-week': { title: 'New Members — Last 7 Days', since: weekStart, kind: 'members' },
             'new-month': { title: 'New Members — This Month', since: monthStart, kind: 'members' },
             'new-ytd': { title: 'New Members — Year to Date', since: yearStart, kind: 'members' },
-            // calendar day, NOT rolling 24h — must match the Active Today card's scorecards count
-            'active-today': { title: 'Active Today — Rounds Started', since: new Date(now.getFullYear(), now.getMonth(), now.getDate()), kind: 'active' }
+            // rolling windows — MUST match updateOverview's Active Users head-counts
+            'active-month': { title: 'Active Users — Last 30 Days', since: this._activeSince('month'), kind: 'logins' },
+            'active-day': { title: 'Active Users — Last 24 Hours', since: this._activeSince('day'), kind: 'logins' }
         }[type];
         if (!cfg) return;
         this._drillOpen(cfg.title);
@@ -79428,19 +79467,21 @@ const AdminSystem = {
                 meta: this.getTimeAgo(u.created_at)
             }));
         } else {
-            const { data, error } = await sb.from('scorecards')
-                .select('player_id, course_name, created_at')
-                .gte('created_at', cfg.since.toISOString().slice(0, 10))
-                .order('created_at', { ascending: false });
+            // Self-logins only: last_login_at is written by recordUserLogin() when the person
+            // opens the app — never by rounds or registrations someone else created for them.
+            const { data, error } = await sb.from('user_profiles')
+                .select('line_user_id, name, display_name, username, role, last_login_at')
+                .gte('last_login_at', cfg.since.toISOString())
+                .order('last_login_at', { ascending: false })
+                .limit(1000);
             if (error) throw error;
             const list = data || [];
-            const byId = {};
-            (this.users || []).forEach(u => { byId[u.line_user_id] = u; });
-            summary = list.length + ' round' + (list.length === 1 ? '' : 's') + ' started today';
-            items = list.map(s => {
-                const u = byId[s.player_id];
-                return { name: (u && (u.display_name || u.name)) || s.player_id || 'Player', sub: s.course_name || '—', meta: this.getTimeAgo(s.created_at) };
-            });
+            summary = list.length + ' user' + (list.length === 1 ? '' : 's') + ' opened the app';
+            items = list.map(u => ({
+                name: u.display_name || u.name || 'Unknown',
+                sub: (u.role || 'golfer') + ' • ' + (u.username || 'no-username') + ' • ' + this._signupSource(u.line_user_id),
+                meta: this.getTimeAgo(u.last_login_at)
+            }));
         }
         if (!items.length) { this._drillBody('<div class="text-center text-gray-500 py-10">Nothing here yet.</div>'); return; }
         const rows = items.map(it =>

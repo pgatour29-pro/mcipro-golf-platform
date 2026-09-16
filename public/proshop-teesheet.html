@@ -467,6 +467,13 @@
     .pill.vip { border-left-color: #fcd34d; background: #fffbeb; }
     .pill.society { border-left-color: #93c5fd; background: #eff6ff; }
     .pill.tournament { border-left-color: #f9a8d4; background: #fdf2f8; }
+    .pill.hotdeal { border-left-color: #fb923c; background: #fff7ed; }
+    .legend-dot.hotdeal { background: #f97316; border: 1px solid #fb923c; }
+    /* Hot deal section in Book Slot (v1219) */
+    .hotdeal-section { margin-top: 10px; border-top: 1px dashed var(--line-2, #e5e7eb); padding-top: 10px; }
+    .hotdeal-fields { margin-top: 8px; }
+    .hotdeal-live { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: 10px; background: rgba(249,115,22,.12); border: 1px solid rgba(249,115,22,.4); font-size: 13px; }
+    .hotdeal-withdraw { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line-2, #e5e7eb); cursor: pointer; font-weight: 700; font-size: 12px; }
     .pill.society:active, .pill.society[draggable="true"]:hover {
       cursor: grab;
       box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
@@ -1879,6 +1886,7 @@
     .pill.vip{--c:var(--vip);background:var(--card)}
     .pill.society{--c:var(--society);background:var(--card)}
     .pill.tournament{--c:var(--tournament);background:var(--card)}
+    .pill.hotdeal{--c:#f97316;background:var(--card)}
     .pill:hover{transform:translateY(-2px);border-color:var(--c);box-shadow:0 12px 26px -10px rgba(0,0,0,.5)}
     .pill-av{width:32px;height:32px;border-radius:9px;flex-shrink:0;display:grid;place-items:center;font-size:12px;font-weight:800;color:#fff;background:linear-gradient(145deg,var(--c),color-mix(in srgb,var(--c) 62%,#000));box-shadow:inset 0 1px 0 rgba(255,255,255,.28)}
     .pill-body{min-width:0;flex:1}
@@ -2168,6 +2176,7 @@
         <div class="legend-item"><span class="legend-dot regular"></span> <span data-i18n="regular">Regular</span></div>
         <div class="legend-item"><span class="legend-dot vip"></span> <span data-i18n="vip">VIP</span></div>
         <div class="legend-item"><span class="legend-dot society"></span> <span data-i18n="society">Society</span></div>
+        <div class="legend-item"><span class="legend-dot hotdeal"></span> <span data-i18n="hotDeal">Hot Deal</span></div>
         <div class="legend-item"><span class="legend-dot tournament"></span> <span data-i18n="tournament">Tournament</span></div>
       </div>
       <div class="ts-kpis" id="ts-kpis"></div>
@@ -2222,6 +2231,7 @@
             <option value="vip" data-i18n="vip">VIP</option>
             <option value="society" data-i18n="society">Society</option>
             <option value="tournament" data-i18n="tournament">Tournament</option>
+            <option value="hotdeal" data-i18n="hotDeal">Hot Deal</option>
           </select>
         </div>
       </div>
@@ -2300,6 +2310,44 @@
           <label data-i18n="notes">Notes</label>
           <textarea id="booking-notes" rows="2"></textarea>
         </div>
+      </div>
+
+      <!-- Hot deal (v1219): publish this open time as a special that golfers grab in the app.
+           The booking saved here becomes the HOLD pill on the slot. -->
+      <div class="hotdeal-section" id="hotdeal-section" style="display:none;">
+        <div class="range-toggle" id="hotdeal-toggle-row">
+          <input type="checkbox" id="hotdeal-toggle">
+          <label for="hotdeal-toggle">🔥 <span data-i18n="hotDealPost">Post as Hot Deal</span></label>
+          <span class="range-hint" data-i18n="hotDealHint">Golfers grab it in the app; it holds this slot</span>
+        </div>
+        <div class="form-row hotdeal-fields" id="hotdeal-fields" style="display:none;">
+          <div class="form-group">
+            <label data-i18n="hotDealSpots">Spots</label>
+            <select id="hotdeal-spots"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option></select>
+          </div>
+          <div class="form-group">
+            <label data-i18n="hotDealPrice">Price / player (฿)</label>
+            <input type="number" id="hotdeal-price" min="0" step="50" placeholder="1500" inputmode="numeric">
+          </div>
+          <div class="form-group">
+            <label data-i18n="caddy">Caddy</label>
+            <select id="hotdeal-caddy">
+              <option value="included" data-i18n="hotDealCaddyIncluded">Caddy included</option>
+              <option value="optional" data-i18n="hotDealCaddyOptional">Caddy optional, fee extra</option>
+              <option value="none" data-i18n="hotDealCaddyNone">No caddy</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label data-i18n="hotDealUntil">Open until</label>
+            <select id="hotdeal-until">
+              <option value="120" data-i18n="hotDealLead120">2 h before tee</option>
+              <option value="60" data-i18n="hotDealLead60">1 h before</option>
+              <option value="30" data-i18n="hotDealLead30">30 min before</option>
+              <option value="0" data-i18n="hotDealLead0">Tee time</option>
+            </select>
+          </div>
+        </div>
+        <div class="hotdeal-live" id="hotdeal-live" style="display:none;"></div>
       </div>
 
       <!-- Recurring Booking Section -->
@@ -3268,6 +3316,14 @@
         timeSlots: "Time Slots", slotsCount: "{n} slots", noGolfers: "No golfers assigned",
         deleteGroup: "Delete Entire Group", confirmDeleteGroup: "Delete all {n} slots in this group?",
         booked: "BOOKED", caddyAlreadyBooked: "This caddy is already booked for this time",
+        hotDeal: "Hot Deal", hotDealPost: "Post as Hot Deal", hotDealHint: "Golfers grab it in the app; it holds this slot", hotDealSpots: "Spots",
+        hotDealPrice: "Price / player (฿)", hotDealCaddyIncluded: "Caddy included", hotDealCaddyOptional: "Caddy optional, fee extra", hotDealCaddyNone: "No caddy",
+        hotDealUntil: "Open until", hotDealLead120: "2 h before tee", hotDealLead60: "1 h before", hotDealLead30: "30 min before", hotDealLead0: "Tee time",
+        hotDealLeft: "left", hotDealPerPlayer: "player", hotDealNeedPrice: "Enter a price per player", hotDealNeedTime: "Pick a tee time",
+        hotDealPast: "That deal would already be closed — pick a later tee time or a shorter lead", hotDealNoRange: "A hot deal is one slot — turn off Block Time Range",
+        hotDealFail: "Could not post the hot deal:", hotDealPosted: "Hot deal posted", hotDealReached: "{n} golfers reached, {p} LINE pushes",
+        hotDealGrab: "Grab it", hotDealBody: "First come, first served — grab it in MyCaddiPro.",
+        hotDealWithdraw: "Withdraw deal", hotDealWithdrawConfirm: "Withdraw this hot deal? Golfers who already grabbed spots keep their bookings.", hotDealWithdrawn: "Hot deal withdrawn",
         rosterTitle: "Caddies", rosterAdd: "+ Add", rosterPaste: "Paste a list (number, name, phone per line)", rosterAddAll: "Add all",
         rosterOffline: "The roster needs a database connection", rosterNeedNumber: "Enter a caddy number", rosterDup: "Already on the roster",
         rosterSaveFail: "Could not save the roster:", rosterEmpty: "No caddies for this course yet. Add them above.", rosterActive: "Active",
@@ -3322,6 +3378,14 @@
         timeSlots: "ช่วงเวลา", slotsCount: "{n} ช่วง", noGolfers: "ยังไม่มีนักกอล์ฟ",
         deleteGroup: "ลบทั้งกลุ่ม", confirmDeleteGroup: "ลบทั้งหมด {n} ช่วงในกลุ่มนี้?",
         booked: "จองแล้ว", caddyAlreadyBooked: "แคดดี้นี้จองแล้วสำหรับเวลานี้",
+        hotDeal: "ดีลพิเศษ", hotDealPost: "ลงเป็นดีลพิเศษ", hotDealHint: "นักกอล์ฟจองในแอปได้ทันที และล็อกช่องเวลานี้ไว้", hotDealSpots: "จำนวนที่",
+        hotDealPrice: "ราคา / คน (฿)", hotDealCaddyIncluded: "รวมแคดดี้", hotDealCaddyOptional: "เลือกแคดดี้ได้ คิดค่าแคดดี้เพิ่ม", hotDealCaddyNone: "ไม่มีแคดดี้",
+        hotDealUntil: "เปิดจองถึง", hotDealLead120: "ก่อนทีออฟ 2 ชม.", hotDealLead60: "ก่อน 1 ชม.", hotDealLead30: "ก่อน 30 นาที", hotDealLead0: "เวลาทีออฟ",
+        hotDealLeft: "ที่เหลือ", hotDealPerPlayer: "คน", hotDealNeedPrice: "กรุณาใส่ราคาต่อคน", hotDealNeedTime: "กรุณาเลือกเวลาทีออฟ",
+        hotDealPast: "ดีลนี้จะปิดไปแล้ว — เลือกเวลาทีออฟที่ช้ากว่านี้หรือลดเวลาปิดจอง", hotDealNoRange: "ดีลพิเศษใช้ได้ทีละช่อง — ปิดโหมดช่วงเวลาก่อน",
+        hotDealFail: "ลงดีลพิเศษไม่สำเร็จ:", hotDealPosted: "ลงดีลพิเศษแล้ว", hotDealReached: "ถึงนักกอล์ฟ {n} คน ส่ง LINE {p} คน",
+        hotDealGrab: "จองเลย", hotDealBody: "ใครมาก่อนได้ก่อน — จองใน MyCaddiPro",
+        hotDealWithdraw: "ถอนดีล", hotDealWithdrawConfirm: "ถอนดีลพิเศษนี้? ผู้ที่จองไปแล้วยังคงได้จอง", hotDealWithdrawn: "ถอนดีลพิเศษแล้ว",
         rosterTitle: "แคดดี้", rosterAdd: "+ เพิ่ม", rosterPaste: "วางรายชื่อ (หมายเลข, ชื่อ, โทร ต่อบรรทัด)", rosterAddAll: "เพิ่มทั้งหมด",
         rosterOffline: "ต้องเชื่อมต่อฐานข้อมูล", rosterNeedNumber: "กรุณาใส่หมายเลขแคดดี้", rosterDup: "มีอยู่ในรายชื่อแล้ว",
         rosterSaveFail: "บันทึกรายชื่อไม่สำเร็จ:", rosterEmpty: "ยังไม่มีแคดดี้ของสนามนี้ เพิ่มได้ด้านบน", rosterActive: "ใช้งาน",
@@ -3376,6 +3440,14 @@
         timeSlots: "시간대", slotsCount: "{n}개 슬롯", noGolfers: "골퍼 미배정",
         deleteGroup: "그룹 전체 삭제", confirmDeleteGroup: "이 그룹의 {n}개 슬롯을 모두 삭제하시겠습니까?",
         booked: "예약됨", caddyAlreadyBooked: "이 캐디는 해당 시간에 이미 예약되어 있습니다",
+        hotDeal: "핫딜", hotDealPost: "핫딜로 올리기", hotDealHint: "골퍼가 앱에서 바로 예약하며 이 시간을 잡아둡니다", hotDealSpots: "자리",
+        hotDealPrice: "1인 가격 (฿)", hotDealCaddyIncluded: "캐디 포함", hotDealCaddyOptional: "캐디 선택, 요금 별도", hotDealCaddyNone: "캐디 없음",
+        hotDealUntil: "마감", hotDealLead120: "티오프 2시간 전", hotDealLead60: "1시간 전", hotDealLead30: "30분 전", hotDealLead0: "티오프 시각",
+        hotDealLeft: "남음", hotDealPerPlayer: "인", hotDealNeedPrice: "1인 가격을 입력하세요", hotDealNeedTime: "티타임을 선택하세요",
+        hotDealPast: "이미 마감될 시간입니다 — 더 늦은 티타임이나 짧은 마감을 선택하세요", hotDealNoRange: "핫딜은 한 슬롯만 가능합니다 — 시간 범위 예약을 끄세요",
+        hotDealFail: "핫딜을 올리지 못했습니다:", hotDealPosted: "핫딜을 올렸습니다", hotDealReached: "골퍼 {n}명에게 전달, LINE 푸시 {p}명",
+        hotDealGrab: "예약하기", hotDealBody: "선착순 — MyCaddiPro에서 예약하세요.",
+        hotDealWithdraw: "핫딜 취소", hotDealWithdrawConfirm: "이 핫딜을 취소할까요? 이미 예약한 골퍼의 예약은 유지됩니다.", hotDealWithdrawn: "핫딜을 취소했습니다",
         rosterTitle: "캐디", rosterAdd: "+ 추가", rosterPaste: "목록 붙여넣기 (번호, 이름, 전화 한 줄씩)", rosterAddAll: "모두 추가",
         rosterOffline: "데이터베이스 연결이 필요합니다", rosterNeedNumber: "캐디 번호를 입력하세요", rosterDup: "이미 명단에 있습니다",
         rosterSaveFail: "명단을 저장할 수 없습니다:", rosterEmpty: "이 코스에 등록된 캐디가 없습니다. 위에서 추가하세요.", rosterActive: "활동",
@@ -3430,6 +3502,14 @@
         timeSlots: "タイムスロット", slotsCount: "{n}スロット", noGolfers: "ゴルファー未割当",
         deleteGroup: "グループ全体を削除", confirmDeleteGroup: "このグループの{n}スロットをすべて削除しますか?",
         booked: "予約済", caddyAlreadyBooked: "このキャディーはこの時間に既に予約されています",
+        hotDeal: "ホットディール", hotDealPost: "ホットディールとして掲載", hotDealHint: "ゴルファーがアプリで即予約。この枠を確保します", hotDealSpots: "枠数",
+        hotDealPrice: "1人あたり価格 (฿)", hotDealCaddyIncluded: "キャディー込み", hotDealCaddyOptional: "キャディー任意、料金別", hotDealCaddyNone: "キャディーなし",
+        hotDealUntil: "受付終了", hotDealLead120: "ティーオフ2時間前", hotDealLead60: "1時間前", hotDealLead30: "30分前", hotDealLead0: "ティータイム",
+        hotDealLeft: "残り", hotDealPerPlayer: "人", hotDealNeedPrice: "1人あたりの価格を入力してください", hotDealNeedTime: "ティータイムを選んでください",
+        hotDealPast: "その時間ではすでに受付終了です — 遅いティータイムか短い締切を選んでください", hotDealNoRange: "ホットディールは1枠のみ — 時間範囲予約をオフにしてください",
+        hotDealFail: "ホットディールを掲載できません:", hotDealPosted: "ホットディールを掲載しました", hotDealReached: "ゴルファー{n}人に配信、LINE通知{p}人",
+        hotDealGrab: "予約する", hotDealBody: "先着順 — MyCaddiProで予約してください。",
+        hotDealWithdraw: "ディールを取り下げ", hotDealWithdrawConfirm: "このホットディールを取り下げますか？すでに予約したゴルファーの予約は残ります。", hotDealWithdrawn: "ホットディールを取り下げました",
         rosterTitle: "キャディー", rosterAdd: "+ 追加", rosterPaste: "リストを貼り付け（番号、名前、電話を1行ずつ）", rosterAddAll: "すべて追加",
         rosterOffline: "データベース接続が必要です", rosterNeedNumber: "キャディー番号を入力してください", rosterDup: "すでに名簿にあります",
         rosterSaveFail: "名簿を保存できません:", rosterEmpty: "このコースのキャディーはまだいません。上で追加してください。", rosterActive: "有効",
@@ -4274,6 +4354,15 @@
       addGolfer: $('add-golfer'),
       bookingNotes: $('booking-notes'),
       caddiesNeeded: $('booking-caddies-needed'),
+      hotdealSection: $('hotdeal-section'),
+      hotdealToggleRow: $('hotdeal-toggle-row'),
+      hotdealToggle: $('hotdeal-toggle'),
+      hotdealFields: $('hotdeal-fields'),
+      hotdealSpots: $('hotdeal-spots'),
+      hotdealPrice: $('hotdeal-price'),
+      hotdealCaddy: $('hotdeal-caddy'),
+      hotdealUntil: $('hotdeal-until'),
+      hotdealLive: $('hotdeal-live'),
       deleteBooking: $('delete-booking'),
       cancelBooking: $('cancel-booking'),
       saveBooking: $('save-booking'),
@@ -4464,7 +4553,11 @@
           groupTotal: b.groupTotal || null,
           col: (b.col === 0 || b.col) ? b.col : null,
           recurringGroupId: b.recurringGroupId || null,
-          caddiesNeeded: parseInt(b.caddiesNeeded) || 0
+          caddiesNeeded: parseInt(b.caddiesNeeded) || 0,
+          hotDeal: b.hotDeal || null,
+          hotDealId: b.hotDealId || null,
+          hotDealPrice: b.hotDealPrice || null,
+          hotDealCaddy: b.hotDealCaddy || null
         }
       };
     }
@@ -4490,6 +4583,8 @@
       if (bd.groupTotal) b.groupTotal = bd.groupTotal;
       if (bd.recurringGroupId) b.recurringGroupId = bd.recurringGroupId;
       if (bd.caddiesNeeded) b.caddiesNeeded = parseInt(bd.caddiesNeeded) || 0;
+      if (bd.hotDeal) b.hotDeal = bd.hotDeal;
+      if (bd.hotDealId) { b.hotDealId = bd.hotDealId; b.hotDealPrice = bd.hotDealPrice; b.hotDealCaddy = bd.hotDealCaddy; }
       return b;
     }
 
@@ -4524,7 +4619,7 @@
         let query = supabaseClient.from('bookings')
           .select('*')
           .eq('date', date)
-          .eq('source', 'teesheet')
+          .in('source', ['teesheet', 'hotdeal'])   // v1219: grabs land here with source 'hotdeal'
           .not('id', 'like', 'teesheet-%');
         const courseId = el.courseSelect.value;
         if (courseId) query = query.or(`course_id.eq.${courseId},course_id.is.null`);
@@ -5204,6 +5299,7 @@
             if (typeClass === 'vip') tag = 'VIP';
             else if (typeClass === 'society') tag = 'SOC';
             else if (typeClass === 'tournament') tag = 'EVENT';
+            else if (typeClass === 'hotdeal') tag = b.hotDeal ? '🔥 DEAL' : 'DEAL';   // HOLD pill vs a grabbed deal
 
             pillsHtml += `<div class="pill ${typeClass} ${groupClass}" data-id="${b.id}" data-group-id="${b.groupId || ''}" data-event-id="${b.eventId || ''}" data-society-id="${b.societyId || ''}" draggable="true">
               <div class="pill-av" data-golfer-face="${(golfers[0] && golfers[0].odoo_id) || ''}">${tsInitials(displayName)}</div>
@@ -5761,6 +5857,141 @@
         this.close();
       }
     };
+
+    // ==================== HOT DEALS (v1219) ====================
+    // Pete: "put up some available times for people to grab and book those specials along
+    // with caddies, just like how a Golfnow promotion would go up like hot deals."
+    // The pro shop ticks "Post as Hot Deal" on an open slot: the saved booking becomes the
+    // HOLD pill (booking_type 'hotdeal', no caddy jobs of its own), a course_offers row
+    // (offer_type 'tee_time', deal json) reaches every golfer who has played this course —
+    // inbox for all, LINE push only to followers who opted in (the v1169 rule) — and grabs
+    // come back onto this sheet through the claim_hot_deal RPC as normal bookings with
+    // pending caddy jobs. The hold shrinks as spots go and disappears when sold out.
+    let pendingHotDeal = null;
+    function fmtBaht(n) { return '฿' + Number(n || 0).toLocaleString('en-US'); }
+    function hotDealHoldLabel(price, left) { return 'HOT DEAL ' + fmtBaht(price) + ' · ' + left + ' ' + t('hotDealLeft'); }
+
+    function paintHotDealSection(seed) {
+      const sec = el.hotdealSection; if (!sec) return;
+      const hd = seed && seed.hotDeal;
+      el.hotdealToggle.checked = false;
+      el.hotdealFields.style.display = 'none';
+      el.hotdealLive.style.display = 'none';
+      el.hotdealLive.innerHTML = '';
+      if (hd) {   // an existing HOLD: show the deal and offer to withdraw it
+        sec.style.display = '';
+        el.hotdealToggleRow.style.display = 'none';
+        const left = hd.spotsLeft != null ? hd.spotsLeft : hd.spotsTotal;
+        let until = '';
+        try { until = hd.validTo ? new Date(hd.validTo).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' }) : ''; } catch (e) {}
+        el.hotdealLive.style.display = '';
+        el.hotdealLive.innerHTML = '<div><b>🔥 ' + t('hotDeal') + '</b> · ' + fmtBaht(hd.price) + '/' + t('hotDealPerPlayer') + ' · ' + left + '/' + hd.spotsTotal + ' ' + t('hotDealLeft')
+          + (hd.caddy === 'included' ? ' · ' + t('hotDealCaddyIncluded') : hd.caddy === 'optional' ? ' · ' + t('hotDealCaddyOptional') : '')
+          + (until ? ' · ' + t('hotDealUntil') + ' ' + until : '')
+          + '</div><button type="button" class="hotdeal-withdraw" id="hotdeal-withdraw">' + t('hotDealWithdraw') + '</button>';
+        const btn = document.getElementById('hotdeal-withdraw');
+        if (btn) btn.addEventListener('click', () => withdrawHotDealFromSheet(seed));
+        return;
+      }
+      if (seed && seed.id) { sec.style.display = 'none'; return; }   // editing a normal booking
+      sec.style.display = '';
+      el.hotdealToggleRow.style.display = '';
+      el.hotdealPrice.value = '';
+    }
+    if ($('hotdeal-toggle')) $('hotdeal-toggle').addEventListener('change', () => {
+      el.hotdealFields.style.display = el.hotdealToggle.checked ? '' : 'none';
+      if (el.hotdealToggle.checked && el.rangeModeToggle && el.rangeModeToggle.checked) { el.hotdealToggle.checked = false; el.hotdealFields.style.display = 'none'; alert(t('hotDealNoRange')); }
+    });
+
+    function readHotDealForm(booking, date) {
+      const spots = Math.min(4, Math.max(1, parseInt(el.hotdealSpots.value) || 4));
+      const price = parseInt(el.hotdealPrice.value);
+      if (!(price > 0)) { alert(t('hotDealNeedPrice')); return null; }
+      const caddy = el.hotdealCaddy.value || 'included';
+      const lead = parseInt(el.hotdealUntil.value) || 0;
+      const tm = toMinsSafe(booking.time);
+      if (tm == null) { alert(t('hotDealNeedTime')); return null; }
+      const teeAt = new Date(date + 'T' + hhmmOf(tm) + ':00+07:00');
+      const validTo = new Date(teeAt.getTime() - lead * 60000);
+      if (!(validTo.getTime() > Date.now())) { alert(t('hotDealPast')); return null; }
+      const feeEl = document.getElementById('caddy-fee-18');
+      const caddyFee = caddy === 'none' ? 0 : (parseInt(feeEl && feeEl.value) || 400);
+      const hotDeal = { offerId: null, price, spotsTotal: spots, spotsLeft: spots, caddy, caddyFee, validTo: validTo.toISOString(), postedAt: new Date().toISOString() };
+      const label = hotDealHoldLabel(price, spots);
+      if (el.recurringToggle) el.recurringToggle.checked = false;   // a deal is one slot, never a series
+      return {
+        hotDeal, spots, price, caddy, caddyFee, validTo, teeAt,
+        bookingPatch: { bookingType: 'hotdeal', golfers: [{ name: label, caddyId: null, caddyNumber: '', caddyName: '' }], name: label, caddyNumber: '', caddiesNeeded: 0, hotDeal }
+      };
+    }
+
+    // The offer's segment is "has played this course": every rounds.course_name at this
+    // facility, because the segment RPC matches exact names and rounds carry variants.
+    async function hotDealSegmentNames(c) {
+      try {
+        const { data } = await supabaseClient.rpc('list_round_course_names');
+        const names = (data || []).map(r => typeof r === 'string' ? r : (r && (r.course_name || r.list_round_course_names || r.name))).filter(Boolean)
+          .filter(n => String(n).toLowerCase().startsWith(c.prefix.toLowerCase()));
+        if (names.length) return Array.from(new Set(names.concat([c.name])));
+      } catch (e) { console.warn('[HotDeal] course names:', e.message); }
+      return [c.name];
+    }
+
+    async function publishHotDeal(booking, date, hd) {
+      pendingHotDeal = null;
+      if (!supabaseClient || !booking) return;
+      const c = courseCtx();
+      let dateLabel = date;
+      try { dateLabel = hd.teeAt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok' }); } catch (e) {}
+      const caddyText = hd.caddy === 'included' ? t('hotDealCaddyIncluded') : hd.caddy === 'optional' ? (t('hotDealCaddyOptional') + ' (' + fmtBaht(hd.caddyFee) + ')') : t('hotDealCaddyNone');
+      const title = '🔥 ' + t('hotDeal') + ': ' + dateLabel + ' ' + booking.time + ' — ' + fmtBaht(hd.price) + '/' + t('hotDealPerPlayer');
+      const body = hd.spots + ' ' + t('hotDealSpots').toLowerCase() + ' · ' + c.name + ' · ' + caddyText + '. ' + t('hotDealBody');
+      const row = {
+        course_id: c.id, course_name: c.name, audience: 'golfer', offer_type: 'tee_time',
+        title, body, cta_label: t('hotDealGrab'), cta_target: 'hotdeal',
+        segment: { course_names: await hotDealSegmentNames(c) }, lang: {}, priority: 'normal',
+        valid_from: new Date().toISOString(), valid_to: hd.validTo.toISOString(), status: 'active', created_by: 'proshop_teesheet',
+        deal: {
+          date, time: booking.time, tee_sheet_course: booking.course || null,
+          tee_number: (booking.tee === 0 || booking.tee) ? booking.tee : null,
+          col: (booking.col === 0 || booking.col) ? booking.col : null,
+          spots_total: hd.spots, spots_taken: 0, price: hd.price, currency: 'THB',
+          caddy: hd.caddy, caddy_fee: hd.caddyFee, round_minutes: roundMinutes(), hold_booking_id: booking.id
+        }
+      };
+      const ins = await supabaseClient.from('course_offers').insert(row).select('id').single();
+      if (ins.error || !ins.data) { alert(t('hotDealFail') + ' ' + ((ins.error && ins.error.message) || '')); return; }
+      // the hold remembers its offer, so opening the pill can show and withdraw it
+      booking.hotDeal = Object.assign({}, booking.hotDeal || hd.hotDeal, { offerId: ins.data.id });
+      const day = getDay(date);
+      const i = day.findIndex(b => b.id === booking.id);
+      if (i >= 0) { day[i] = booking; setDay(date, day); }
+      let reached = '';
+      try {
+        const r = await supabaseClient.functions.invoke('line-push-notification', { body: { type: 'course_offer', record: { offer_id: ins.data.id } } });
+        const d = r && r.data;
+        if (d && typeof d.delivered === 'number') reached = ' · ' + t('hotDealReached').replace('{n}', d.delivered).replace('{p}', d.notified || 0);
+        else if (d && d.reason) reached = ' · ' + d.reason;
+      } catch (e) { console.warn('[HotDeal] push:', e.message); }
+      alert(t('hotDealPosted') + reached);
+      render();
+    }
+
+    async function withdrawHotDealOffer(offerId) {
+      if (!supabaseClient || !offerId) return;
+      try {
+        await supabaseClient.from('course_offers').update({ status: 'deleted', updated_at: new Date().toISOString() }).eq('id', offerId);
+      } catch (e) { console.warn('[HotDeal] withdraw:', e.message); }
+    }
+    async function withdrawHotDealFromSheet(seed) {
+      if (!confirm(t('hotDealWithdrawConfirm'))) return;
+      const date = el.dateInput.value;
+      await withdrawHotDealOffer(seed.hotDeal && seed.hotDeal.offerId);
+      setDay(date, getDay(date).filter(b => b.id !== seed.id));
+      el.dialog.close();
+      render();
+      alert(t('hotDealWithdrawn'));
+    }
 
     // ==================== CADDY ROSTER (v1218) ====================
     // The pro shop keeps its own caddie list here: number, name, phone, active. Rows go
@@ -6412,6 +6643,7 @@
       if (!golfers.length && seed.name) golfers = [{ name: seed.name, caddyNumber: seed.caddyNumber || '' }];
       setGolfersInDialog(golfers);
       if (el.caddiesNeeded) el.caddiesNeeded.value = String(Math.min(4, Math.max(0, parseInt(seed.caddiesNeeded) || 0)));
+      paintHotDealSection(seed);
       // who is out / off around this tee time, so the caddy dropdown can say so
       loadCaddyDayState(el.dateInput.value, seed.time, seed.id || null);
 
@@ -6429,6 +6661,7 @@
       const layout = getLayout();
       const savedBookings = [];     // { b, date } — every booking this save touches, for its caddy jobs
       const recurringSkips = [];
+      pendingHotDeal = null;
 
       // ==================== DOUBLE BOOKING VALIDATION ====================
       function validateNoDuplicateCaddies(golfersToSave, time, excludeBookingId = null) {
@@ -6537,6 +6770,15 @@
           caddiesNeeded: Math.min(4, Math.max(0, parseInt(el.caddiesNeeded && el.caddiesNeeded.value) || 0))
         };
 
+        // v1219: "Post as Hot Deal" — this booking becomes the HOLD pill; the offer is
+        // published after the day is saved (publishHotDeal), grabs come back as bookings.
+        if (el.hotdealToggle && el.hotdealToggle.checked && !el.bookingId.value) {
+          const hd = readHotDealForm(booking, date);
+          if (!hd) return;
+          Object.assign(booking, hd.bookingPatch);
+          pendingHotDeal = Object.assign({ booking }, hd);
+        }
+
         const idx = bookings.findIndex(b => b.id === booking.id);
         if (idx >= 0) bookings[idx] = booking;
         else bookings.push(booking);
@@ -6600,6 +6842,7 @@
       }
       if (jobFails.length) alert(t('caddySyncFail') + '\n\n' + jobFails.join('\n'));
       if (recurringSkips.length) alert(t('recurringCaddySkipped') + '\n\n' + recurringSkips.join('\n'));
+      if (pendingHotDeal) await publishHotDeal(pendingHotDeal.booking, date, pendingHotDeal);
 
       el.dialog.close();
       render();
@@ -6671,6 +6914,7 @@
 
         // v1218: every job this booking owns — a cancel the caddy master can see, not a delete
         await cancelCaddyJobs(booking.id, 'Tee time cancelled by the pro shop');
+        if (booking.hotDeal && booking.hotDeal.offerId) await withdrawHotDealOffer(booking.hotDeal.offerId);   // v1219: a deleted HOLD closes its deal
 
         // CRITICAL: Remove booking from parent BookingManager and cloud
         await ParentBridge.removeBookingFromParent(booking.id);

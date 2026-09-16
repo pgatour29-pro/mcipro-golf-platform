@@ -6415,6 +6415,33 @@
             font:600 13px/1.3 'Instrument Sans',sans-serif; color:#F2F5F7; }
         #golfer-messages .oi-switch input { width:17px; height:17px; accent-color:#16a34a; flex:0 0 17px; }
         #golfer-messages .oi-note { font:400 11px/1.45 'Instrument Sans',sans-serif; color:#59636E; margin:5px 0 0 26px; }
+        /* Hot deals (v1219): open tee times a course puts up, first come first served */
+        #hotDealsStrip { margin: 0 0 12px; }
+        #hotDealsStrip .hd-head { display:flex; align-items:baseline; gap:8px; font-weight:800; font-size:14px; color:#fed7aa; padding:0 2px 8px; }
+        #hotDealsStrip .hd-head span { font-weight:500; font-size:11px; color:#94a3b8; }
+        #hotDealsStrip .hd-row { display:flex; gap:10px; overflow-x:auto; padding-bottom:4px; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; }
+        .hd-card { flex:0 0 232px; scroll-snap-align:start; border-radius:14px; padding:12px 14px; background:linear-gradient(135deg,#431407 0%,#7c2d12 60%,#9a3412 100%); color:#fff; border:1px solid rgba(251,146,60,.45); display:flex; flex-direction:column; gap:3px; }
+        .hd-card .hd-course { font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#fdba74; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .hd-card .hd-when { font-size:15px; font-weight:800; }
+        .hd-card .hd-price { font-size:22px; font-weight:900; line-height:1.1; }
+        .hd-card .hd-price small { font-size:11px; font-weight:600; opacity:.85; }
+        .hd-card .hd-meta { font-size:11px; color:#fed7aa; }
+        .hd-card .hd-btn { margin-top:6px; align-self:flex-start; background:#fb923c; color:#431407; font-weight:800; font-size:12px; border:0; border-radius:999px; padding:7px 14px; cursor:pointer; }
+        .oi-deal { display:flex; flex-wrap:wrap; gap:4px 12px; font-size:12px; font-weight:700; color:#fdba74; margin:4px 0 6px; }
+        body.theme-light .oi-deal { color:#c2410c; }
+        .hd-dim { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:10050; display:flex; align-items:flex-end; justify-content:center; }
+        .hd-sheet { width:100%; max-width:480px; background:#0f172a; color:#f8fafc; border-radius:18px 18px 0 0; padding:16px 18px calc(18px + env(safe-area-inset-bottom,0px)); box-shadow:0 -12px 40px rgba(0,0,0,.5); }
+        body.theme-light .hd-sheet { background:#fff; color:#0f172a; }
+        .hd-sheet h4 { margin:0 0 4px; font-size:17px; font-weight:800; }
+        .hd-sheet .hd-sub { font-size:12px; opacity:.8; margin-bottom:10px; }
+        .hd-sheet .hd-field { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 0; border-top:1px solid rgba(148,163,184,.25); font-size:13px; }
+        .hd-sheet select { background:transparent; color:inherit; border:1px solid rgba(148,163,184,.4); border-radius:8px; padding:6px 10px; font-size:14px; min-width:80px; }
+        .hd-sheet .hd-total { font-size:15px; font-weight:800; padding:10px 0 4px; border-top:1px solid rgba(148,163,184,.25); }
+        .hd-sheet .hd-acts { display:flex; gap:8px; margin-top:8px; }
+        .hd-sheet .hd-acts button { flex:1; border-radius:12px; padding:12px; font-weight:800; font-size:14px; border:0; cursor:pointer; }
+        .hd-sheet .hd-go { background:#f97316; color:#fff; }
+        .hd-sheet .hd-go:disabled { opacity:.6; }
+        .hd-sheet .hd-no { background:rgba(148,163,184,.18); color:inherit; }
         #golfer-messages .oi-card { background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.08);
             border-radius:18px; padding:13px 14px; margin-bottom:8px; cursor:pointer; }
         #golfer-messages .oi-card.unread { border-color:rgba(74,222,128,.35); }
@@ -36018,6 +36045,7 @@ Sent from Login Page`;
             // Show/hide messaging FAB
             const fab = document.getElementById('msgComposeFAB');
             if (fab) fab.style.display = tabName === 'messages' ? 'flex' : 'none';
+            if (tabName === 'booking') { try { if (window.HotDeals) HotDeals.paintStrip(); } catch (e) {} }   // v1219 hot deals strip
 
             // Event Notice Board: refresh dashboard popup + card badges (and start the 15s poll)
             if (tabName === 'overview' || tabName === 'societyevents') {
@@ -54452,6 +54480,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     </div>
                 </div>
+
+                <!-- Hot deals (v1219): open tee times courses put up as specials, first come first served -->
+                <div id="hotDealsStrip" style="display:none;"></div>
 
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-6" style="background:linear-gradient(180deg,#0f172a 0%,#1e293b 100%);border-radius:16px;padding:12px;">
                     <!-- Booking Form -->
@@ -131554,6 +131585,7 @@ const OffersInbox = {
                 </div>
                 <div class="oi-title">${title}</div>
                 <div class="oi-body">${body}</div>
+                ${(o.offer_type === 'tee_time' && o.deal && window.HotDeals) ? HotDeals.dealLine(o) : ''}
                 <div class="oi-actions">
                     ${cta}
                     <button class="oi-btn ghost" onclick="event.stopPropagation();OffersInbox.toggleFollow('${o.course_id}')">
@@ -131576,6 +131608,9 @@ const OffersInbox = {
         }
         if (this.CTA_TABS.includes(t)) {
             return `<button class="oi-btn primary" onclick="event.stopPropagation();OffersInbox.act('${o.id}','${this.esc(t)}')">${label}</button>`;
+        }
+        if (t === 'hotdeal') {   // v1219: a hot deal's button opens the grab sheet
+            return `<button class="oi-btn primary" onclick="event.stopPropagation();OffersInbox.act('${o.id}','hotdeal')">${label}</button>`;
         }
         return '';   // unknown target -> no button at all, never a dead one
     },
@@ -131615,6 +131650,7 @@ const OffersInbox = {
         });
         this.refreshBadge();
         if (/^https?:\/\//i.test(target)) { window.open(target, '_blank', 'noopener'); return; }
+        if (target === 'hotdeal') { if (window.HotDeals) HotDeals.open(offerId); return; }
         try {
             if (typeof showGolferTab === 'function') showGolferTab(target, null);
         } catch (e) { console.warn('[OffersInbox] navigation failed:', e); }
@@ -131679,6 +131715,151 @@ const OffersInbox = {
 };
 
 window.OffersInbox = OffersInbox;
+
+// ===================== HOT DEALS (v1219) — open tee times a course puts up =====================
+// Pete 2026-09-16: "when there are tee times available they want to put up some available times
+// for people to grab and book those specials along with caddies, just like how a Golfnow
+// promotion would go up like hot deals." The course posts from its tee sheet
+// (proshop-teesheet.html). This is the golfer side: a strip on the Booking tab (every live deal,
+// follower or not), the Offers inbox card's "Grab it", and the grab itself through the
+// claim_hot_deal RPC — the only writer, so two golfers can't take the last spot twice. A grab
+// lands on the pro shop's sheet as a normal booking with pending caddy jobs (v1218 model).
+const HotDeals = {
+    deals: [], _busy: false,
+    _sb() { return window.SupabaseDB?.client || null; },
+    uid() { return window.AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id') || null; },
+    myName() {
+        const u = window.AppState?.currentUser || {};
+        return u.name || u.displayName || u.username || localStorage.getItem('mcipro_user_name') || 'Golfer';
+    },
+    esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); },
+    baht(n) { return '฿' + Number(n || 0).toLocaleString('en-US'); },
+    left(o) { const d = o.deal || {}; return Math.max(0, (+d.spots_total || 0) - (+d.spots_taken || 0)); },
+    when(o) {
+        const d = o.deal || {};
+        try {
+            const dt = new Date(d.date + 'T' + (d.time || '00:00') + ':00+07:00');
+            return dt.toLocaleDateString(_lvLocale(), { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok' }) + ' · ' + (d.time || '');
+        } catch (e) { return (d.date || '') + ' ' + (d.time || ''); }
+    },
+    caddyText(o) {
+        const d = o.deal || {};
+        if (d.caddy === 'included') return _lvT('hotdeal.caddy.included', 'Caddy included');
+        if (d.caddy === 'optional') return _lvT('hotdeal.caddy.optional', 'Caddy optional, {fee}').replace('{fee}', this.baht(d.caddy_fee));
+        return _lvT('hotdeal.caddy.none', 'No caddy');
+    },
+    async fetch() {
+        const sb = this._sb(); if (!sb) return [];
+        try {
+            const { data, error } = await sb.from('course_offers')
+                .select('id, course_id, course_name, title, body, deal, valid_to, status, offer_type')
+                .eq('offer_type', 'tee_time').eq('status', 'active').gt('valid_to', new Date().toISOString())
+                .order('valid_to', { ascending: true }).limit(30);
+            if (error) throw error;
+            this.deals = (data || []).filter(o => o.deal && this.left(o) > 0);
+        } catch (e) { console.warn('[HotDeals] fetch:', e.message); this.deals = []; }
+        return this.deals;
+    },
+    dealLine(o) {
+        return '<div class="oi-deal"><span>' + this.esc(this.when(o)) + '</span><span>' + this.baht(o.deal.price) + '/' + _lvT('hotdeal.player', 'player')
+            + '</span><span>' + this.left(o) + ' ' + _lvT('hotdeal.left', 'left') + '</span><span>' + this.esc(this.caddyText(o)) + '</span></div>';
+    },
+    card(o) {
+        return '<div class="hd-card">'
+          + '<div class="hd-course">' + this.esc(o.course_name || o.course_id) + '</div>'
+          + '<div class="hd-when">' + this.esc(this.when(o)) + '</div>'
+          + '<div class="hd-price">' + this.baht(o.deal.price) + ' <small>/ ' + _lvT('hotdeal.player', 'player') + '</small></div>'
+          + '<div class="hd-meta">' + this.left(o) + ' ' + _lvT('hotdeal.left', 'left') + ' · ' + this.esc(this.caddyText(o)) + '</div>'
+          + '<button class="hd-btn" onclick="HotDeals.open(\'' + o.id + '\')">' + _lvT('hotdeal.grab', 'Grab it') + '</button>'
+          + '</div>';
+    },
+    async paintStrip() {
+        const host = document.getElementById('hotDealsStrip'); if (!host) return;
+        await this.fetch();
+        if (!this.deals.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
+        host.style.display = '';
+        host.innerHTML = '<div class="hd-head">🔥 ' + _lvT('hotdeal.title', 'Hot deals') + ' <span>' + _lvT('hotdeal.sub', 'open tee times, first come first served') + '</span></div>'
+          + '<div class="hd-row">' + this.deals.map(o => this.card(o)).join('') + '</div>';
+    },
+    async open(offerId) {
+        let o = this.deals.find(x => x.id === offerId);
+        if (!o) { await this.fetch(); o = this.deals.find(x => x.id === offerId); }
+        if (!o) { window.NotificationManager?.show?.(_lvT('hotdeal.gone', 'That deal is gone'), 'warning'); return; }
+        if (!this.uid()) { window.NotificationManager?.show?.(_lvT('hotdeal.login', 'Sign in to grab a deal'), 'warning'); return; }
+        document.getElementById('hdSheetDim')?.remove();
+        const left = this.left(o), d = o.deal;
+        const opts = []; for (let i = 1; i <= Math.min(4, left); i++) opts.push('<option value="' + i + '">' + i + '</option>');
+        const caddyField = d.caddy === 'none' ? '' :
+            '<div class="hd-field"><span>' + this.esc(this.caddyText(o)) + '</span>'
+            + (d.caddy === 'included' ? '<b>✓</b>' : '<select id="hdCaddy"><option value="yes">' + _lvT('hotdeal.yes', 'Yes') + '</option><option value="no">' + _lvT('hotdeal.no', 'No') + '</option></select>')
+            + '</div>';
+        const dim = document.createElement('div');
+        dim.id = 'hdSheetDim'; dim.className = 'hd-dim';
+        dim.onclick = (e) => { if (e.target === dim) dim.remove(); };
+        dim.innerHTML = '<div class="hd-sheet">'
+          + '<h4>🔥 ' + this.esc(o.course_name || o.course_id) + '</h4>'
+          + '<div class="hd-sub">' + this.esc(this.when(o)) + ' · ' + left + ' ' + _lvT('hotdeal.left', 'left') + '</div>'
+          + '<div class="hd-field"><span>' + _lvT('hotdeal.spots', 'Spots') + '</span><select id="hdSpots">' + opts.join('') + '</select></div>'
+          + caddyField
+          + '<div class="hd-total" id="hdTotal"></div>'
+          + '<div class="hd-acts"><button class="hd-no" onclick="document.getElementById(\'hdSheetDim\').remove()">' + _lvT('hotdeal.cancel', 'Not now') + '</button>'
+          + '<button class="hd-go" id="hdGo" onclick="HotDeals.confirm(\'' + o.id + '\')">' + _lvT('hotdeal.grab', 'Grab it') + '</button></div>'
+          + '</div>';
+        document.body.appendChild(dim);   // body-mounted: .screen transforms trap position:fixed
+        const total = () => {
+            const n = parseInt(document.getElementById('hdSpots')?.value) || 1;
+            const sel = document.getElementById('hdCaddy');
+            const withCaddy = d.caddy === 'included' || (sel ? sel.value === 'yes' : false);
+            const per = (+d.price || 0) + (d.caddy === 'optional' && withCaddy ? (+d.caddy_fee || 0) : 0);
+            const el = document.getElementById('hdTotal');
+            if (el) el.textContent = _lvT('hotdeal.total', 'Total {t} for {n}').replace('{t}', this.baht(per * n))
+                .replace('{n}', n + ' ' + (n === 1 ? _lvT('hotdeal.player', 'player') : _lvT('hotdeal.players', 'players')));
+        };
+        dim.querySelectorAll('select').forEach(s => s.addEventListener('change', total));
+        total();
+    },
+    async confirm(offerId) {
+        if (this._busy) return;
+        const sb = this._sb(); if (!sb) return;
+        const o = this.deals.find(x => x.id === offerId); if (!o) return;
+        const n = parseInt(document.getElementById('hdSpots')?.value) || 1;
+        const sel = document.getElementById('hdCaddy');
+        const wantCaddy = o.deal.caddy === 'included' || (sel ? sel.value === 'yes' : false);
+        const go = document.getElementById('hdGo'); if (go) go.disabled = true;
+        this._busy = true;
+        try {
+            const { data, error } = await sb.rpc('claim_hot_deal', {
+                p_offer_id: offerId, p_golfer_id: this.uid(), p_golfer_name: this.myName(), p_spots: n, p_want_caddy: !!wantCaddy
+            });
+            if (error) throw error;
+            if (!data || data.ok !== true) {
+                const reason = (data && data.reason) || 'x';
+                const why = { sold_out: 'Sorry, those spots just went', already: 'You already grabbed this deal',
+                              expired: 'That deal has closed', closed: 'That deal has closed', not_a_deal: 'That deal is gone' }[reason] || 'Could not book that deal';
+                window.NotificationManager?.show?.(_lvT('hotdeal.fail.' + reason, why), 'error');
+                await this.paintStrip();
+                return;
+            }
+            document.getElementById('hdSheetDim')?.remove();
+            window.NotificationManager?.show?.(
+                _lvT('hotdeal.booked', 'Booked: {when} at {course}, {n} spot(s). The pro shop has it on their sheet.')
+                    .replace('{when}', this.when(o)).replace('{course}', o.course_name || o.course_id).replace('{n}', n), 'success', 7000);
+            try {
+                if (window.OffersInbox) {
+                    await OffersInbox._upsertState(offerId, { read_at: new Date().toISOString(), clicked_at: new Date().toISOString() });
+                    OffersInbox.refreshBadge();
+                    const pane = document.getElementById('msg-content-offers');
+                    if (pane && !pane.classList.contains('hidden')) OffersInbox.load();
+                }
+            } catch (e) {}
+            await this.paintStrip();
+        } catch (e) {
+            console.warn('[HotDeals] claim:', e.message);
+            window.NotificationManager?.show?.(_lvT('hotdeal.fail.x', 'Could not book that deal') + ': ' + e.message, 'error');
+        } finally { this._busy = false; if (go) go.disabled = false; }
+    }
+};
+window.HotDeals = HotDeals;
 console.log('[OffersInbox] ✅ Module loaded');
 
 

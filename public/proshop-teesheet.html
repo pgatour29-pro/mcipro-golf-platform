@@ -1002,6 +1002,30 @@
     #caddy-picker-modal::backdrop {
       background: rgba(0,0,0,0.5);
     }
+
+    /* Caddy Roster (v1218) — the pro shop's own caddie list for this course */
+    #roster-dialog { width: 92vw; max-width: 720px; max-height: 85vh; border-radius: 16px; border: none; box-shadow: 0 25px 50px rgba(0,0,0,0.25); padding: 0; overflow: hidden; }
+    #roster-dialog[open] { display: flex; flex-direction: column; }
+    #roster-dialog::backdrop { background: rgba(0,0,0,0.5); }
+    .roster-add { display: flex; gap: 8px; padding: 12px 16px 6px; flex-wrap: wrap; align-items: center; }
+    .roster-add input { padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 8px; font-size: 13px; background: var(--card); color: var(--ink); min-width: 0; }
+    .roster-bulk { padding: 0 16px 8px; font-size: 12px; color: var(--muted); }
+    .roster-bulk summary { cursor: pointer; }
+    .roster-bulk textarea { width: 100%; margin: 6px 0; padding: 8px; border: 1px solid var(--line-2); border-radius: 8px; font-size: 12px; background: var(--card); color: var(--ink); box-sizing: border-box; }
+    .roster-list { overflow-y: auto; padding: 0 16px 16px; flex: 1; }
+    .roster-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line-2); }
+    .roster-row.off { opacity: .55; }
+    .roster-row .rnum { font-weight: 800; min-width: 44px; font-family: 'IBM Plex Mono', monospace; }
+    .roster-row input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--line-2); border-radius: 6px; font-size: 13px; background: var(--card); color: var(--ink); }
+    .roster-row input.rphone { flex: 0 0 130px; }
+    .roster-row .rchip { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: var(--card-hi); color: var(--muted); white-space: nowrap; }
+    .roster-row button { padding: 5px 9px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--card); color: var(--ink); font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .caddy-need-row { align-items: flex-end; }
+    .caddy-need-row .hint { font-size: 11px; color: var(--muted); padding-bottom: 8px; }
+    .caddy-card-status.off { background: #fee2e2; color: #b91c1c; }
+    @media (max-width: 520px) { .roster-row input.rphone { flex-basis: 96px; } .roster-add input { flex: 1 1 96px; } }
+    /* phone: name and caddy stack instead of squeezing into one line (v1218) */
+    @media (max-width: 520px) { .golfer-fields { flex-wrap: wrap; } .golfer-fields .golfer-field { flex: 1 1 100%; } }
     .caddy-picker-header {
       display: flex;
       justify-content: space-between;
@@ -2079,6 +2103,7 @@
           <button id="next-day">›</button>
           <button id="today-btn" class="today-btn" title="Go to Today">Today</button>
           <button id="calendar-nav-btn" class="cal-nav-btn" title="Month View">📅</button>
+          <button id="roster-btn" class="today-btn" title="Caddies for this course" data-i18n="rosterTitle">Caddies</button>
         </div>
       </div>
 
@@ -2248,6 +2273,17 @@
           <button type="button" class="add-golfer-btn" id="add-golfer" data-i18n="addGolfer">+ Add Golfer</button>
         </h3>
         <div id="golfers-list"></div>
+        <!-- v1218: jobs without a caddy number. The pro shop books "3 caddies" the way it
+             does in G1; the caddy master assigns them from the rotation. -->
+        <div class="form-row caddy-need-row" id="caddy-need-row">
+          <div class="form-group" style="flex:0 0 auto;">
+            <label data-i18n="caddiesNeeded">Caddies needed (no number)</label>
+            <select id="booking-caddies-needed">
+              <option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+            </select>
+          </div>
+          <div class="hint" data-i18n="caddiesNeededHint">Jobs without a caddy number — the caddy master assigns from the rotation.</div>
+        </div>
       </div>
 
       <!-- Range Booking Slots (when range mode is ON) -->
@@ -2331,6 +2367,27 @@
     <div class="caddy-picker-grid" id="caddy-picker-grid">
       <!-- Caddy cards rendered here -->
     </div>
+  </dialog>
+
+  <!-- Caddy Roster (v1218): what the picker, the caddy master and the caddies' own sheets read. -->
+  <dialog id="roster-dialog">
+    <div class="caddy-picker-header">
+      <h3><span class="material-icons" style="vertical-align:middle;margin-right:8px;">badge</span><span data-i18n="rosterTitle">Caddies</span> <span id="roster-course" style="font-weight:500;opacity:.7;font-size:13px;"></span></h3>
+      <button class="caddy-picker-close" id="roster-close">&times;</button>
+    </div>
+    <div class="roster-add">
+      <input id="roster-num" placeholder="#" inputmode="numeric" style="width:64px;" autocomplete="off">
+      <input id="roster-name" placeholder="Name" style="flex:1;min-width:120px;" autocomplete="off">
+      <input id="roster-phone" placeholder="Phone" inputmode="tel" style="width:130px;" autocomplete="off">
+      <button type="button" class="open-picker-btn" id="roster-add-btn" data-i18n="rosterAdd">+ Add</button>
+    </div>
+    <details class="roster-bulk">
+      <summary data-i18n="rosterPaste">Paste a list (number, name, phone per line)</summary>
+      <textarea id="roster-bulk" rows="4" placeholder="12, Nok, 081 234 5678&#10;15, Jin&#10;27 Fern 089 111 2222"></textarea>
+      <button type="button" class="open-picker-btn" id="roster-bulk-btn" data-i18n="rosterAddAll">Add all</button>
+    </details>
+    <div class="caddy-picker-stats" id="roster-stats"></div>
+    <div class="roster-list" id="roster-list"></div>
   </dialog>
 
   <!-- Back to Top Button -->
@@ -2825,7 +2882,8 @@
           .from('caddy_bookings')
           .select('*, caddy_profiles(name, caddy_number, photo_url)')
           .eq('booking_date', date)
-          .neq('status', 'cancelled');
+          .neq('status', 'cancelled')
+          .is('teesheet_booking_id', null);   // v1218: jobs owned by a sheet booking already sit inside that booking's pill
 
         if (error) {
           console.error('[TeeSheet] Error fetching caddy bookings:', error);
@@ -2846,7 +2904,7 @@
         // Convert to tee sheet format
         const bookings = (data || []).map(b => {
           const profile = userProfiles[b.user_id];
-          const golferName = profile?.name || profile?.email?.split('@')[0] || 'Golfer';
+          const golferName = b.golfer_name || profile?.name || profile?.email?.split('@')[0] || 'Golfer';
           const teeTime = b.tee_time ? b.tee_time.substring(0, 5) : null;
           return {
             id: `caddy-${b.id}`,
@@ -3210,6 +3268,14 @@
         timeSlots: "Time Slots", slotsCount: "{n} slots", noGolfers: "No golfers assigned",
         deleteGroup: "Delete Entire Group", confirmDeleteGroup: "Delete all {n} slots in this group?",
         booked: "BOOKED", caddyAlreadyBooked: "This caddy is already booked for this time",
+        rosterTitle: "Caddies", rosterAdd: "+ Add", rosterPaste: "Paste a list (number, name, phone per line)", rosterAddAll: "Add all",
+        rosterOffline: "The roster needs a database connection", rosterNeedNumber: "Enter a caddy number", rosterDup: "Already on the roster",
+        rosterSaveFail: "Could not save the roster:", rosterEmpty: "No caddies for this course yet. Add them above.", rosterActive: "Active",
+        rosterInactive: "Off roster", rosterInApp: "in app", rosterCount: "{n} caddies", rosterAdded: "{n} added",
+        caddiesNeeded: "Caddies needed (no number)", caddiesNeededHint: "Jobs without a caddy number — the caddy master assigns from the rotation.",
+        caddyRefused: "Caddy not available — booking not saved", caddyDayOff: "day off", caddyOutAt: "out at {a}, free after {b}",
+        dayOff: "DAY OFF", outUntil: "Out until {b}", openJobs: "open",
+        caddySyncFail: "The tee time is saved but a caddy job could not be written:", recurringCaddySkipped: "Repeat bookings saved without caddies on these days:",
         caddyInGroup: "This caddy is already assigned to another golfer in this group",
         inGroup: "IN GROUP", selectCourse: "Select Course", noDatesSelected: "No dates selected",
         // Recurring booking translations
@@ -3256,6 +3322,14 @@
         timeSlots: "ช่วงเวลา", slotsCount: "{n} ช่วง", noGolfers: "ยังไม่มีนักกอล์ฟ",
         deleteGroup: "ลบทั้งกลุ่ม", confirmDeleteGroup: "ลบทั้งหมด {n} ช่วงในกลุ่มนี้?",
         booked: "จองแล้ว", caddyAlreadyBooked: "แคดดี้นี้จองแล้วสำหรับเวลานี้",
+        rosterTitle: "แคดดี้", rosterAdd: "+ เพิ่ม", rosterPaste: "วางรายชื่อ (หมายเลข, ชื่อ, โทร ต่อบรรทัด)", rosterAddAll: "เพิ่มทั้งหมด",
+        rosterOffline: "ต้องเชื่อมต่อฐานข้อมูล", rosterNeedNumber: "กรุณาใส่หมายเลขแคดดี้", rosterDup: "มีอยู่ในรายชื่อแล้ว",
+        rosterSaveFail: "บันทึกรายชื่อไม่สำเร็จ:", rosterEmpty: "ยังไม่มีแคดดี้ของสนามนี้ เพิ่มได้ด้านบน", rosterActive: "ใช้งาน",
+        rosterInactive: "พักงาน", rosterInApp: "ใช้แอป", rosterCount: "แคดดี้ {n} คน", rosterAdded: "เพิ่มแล้ว {n}",
+        caddiesNeeded: "ต้องการแคดดี้ (ไม่ระบุหมายเลข)", caddiesNeededHint: "งานที่ยังไม่ระบุแคดดี้ — แคดดี้มาสเตอร์จะจัดตามคิว",
+        caddyRefused: "แคดดี้ไม่ว่าง — ยังไม่บันทึกการจอง", caddyDayOff: "วันหยุด", caddyOutAt: "ออกรอบ {a} ว่างหลัง {b}",
+        dayOff: "วันหยุด", outUntil: "ไม่ว่างถึง {b}", openJobs: "รอจัด",
+        caddySyncFail: "บันทึกทีไทม์แล้ว แต่บันทึกงานแคดดี้ไม่สำเร็จ:", recurringCaddySkipped: "บันทึกการจองซ้ำโดยไม่มีแคดดี้ในวันเหล่านี้:",
         caddyInGroup: "แคดดี้นี้ถูกกำหนดให้นักกอล์ฟคนอื่นในกลุ่มแล้ว",
         inGroup: "ในกลุ่ม", selectCourse: "เลือกสนาม", noDatesSelected: "ไม่ได้เลือกวันที่",
         // Recurring booking translations
@@ -3302,6 +3376,14 @@
         timeSlots: "시간대", slotsCount: "{n}개 슬롯", noGolfers: "골퍼 미배정",
         deleteGroup: "그룹 전체 삭제", confirmDeleteGroup: "이 그룹의 {n}개 슬롯을 모두 삭제하시겠습니까?",
         booked: "예약됨", caddyAlreadyBooked: "이 캐디는 해당 시간에 이미 예약되어 있습니다",
+        rosterTitle: "캐디", rosterAdd: "+ 추가", rosterPaste: "목록 붙여넣기 (번호, 이름, 전화 한 줄씩)", rosterAddAll: "모두 추가",
+        rosterOffline: "데이터베이스 연결이 필요합니다", rosterNeedNumber: "캐디 번호를 입력하세요", rosterDup: "이미 명단에 있습니다",
+        rosterSaveFail: "명단을 저장할 수 없습니다:", rosterEmpty: "이 코스에 등록된 캐디가 없습니다. 위에서 추가하세요.", rosterActive: "활동",
+        rosterInactive: "명단 제외", rosterInApp: "앱 사용", rosterCount: "캐디 {n}명", rosterAdded: "{n}명 추가됨",
+        caddiesNeeded: "필요한 캐디 수 (번호 미지정)", caddiesNeededHint: "번호 없이 요청된 캐디 — 캐디 마스터가 순번에 따라 배정합니다.",
+        caddyRefused: "캐디를 배정할 수 없어 예약이 저장되지 않았습니다", caddyDayOff: "휴무", caddyOutAt: "{a} 라운드 중, {b} 이후 가능",
+        dayOff: "휴무", outUntil: "{b}까지 라운드 중", openJobs: "미배정",
+        caddySyncFail: "티타임은 저장됐지만 캐디 배정을 저장하지 못했습니다:", recurringCaddySkipped: "다음 날짜의 반복 예약은 캐디 없이 저장되었습니다:",
         caddyInGroup: "이 캐디는 이미 그룹 내 다른 골퍼에게 배정되었습니다",
         inGroup: "그룹내", selectCourse: "코스 선택", noDatesSelected: "날짜 선택 안됨",
         // Recurring booking translations
@@ -3348,6 +3430,14 @@
         timeSlots: "タイムスロット", slotsCount: "{n}スロット", noGolfers: "ゴルファー未割当",
         deleteGroup: "グループ全体を削除", confirmDeleteGroup: "このグループの{n}スロットをすべて削除しますか?",
         booked: "予約済", caddyAlreadyBooked: "このキャディーはこの時間に既に予約されています",
+        rosterTitle: "キャディー", rosterAdd: "+ 追加", rosterPaste: "リストを貼り付け（番号、名前、電話を1行ずつ）", rosterAddAll: "すべて追加",
+        rosterOffline: "データベース接続が必要です", rosterNeedNumber: "キャディー番号を入力してください", rosterDup: "すでに名簿にあります",
+        rosterSaveFail: "名簿を保存できません:", rosterEmpty: "このコースのキャディーはまだいません。上で追加してください。", rosterActive: "有効",
+        rosterInactive: "名簿外", rosterInApp: "アプリ利用", rosterCount: "キャディー{n}人", rosterAdded: "{n}人追加",
+        caddiesNeeded: "必要なキャディー数（番号なし）", caddiesNeededHint: "番号なしの依頼 — キャディーマスターが順番で割り当てます。",
+        caddyRefused: "キャディーが空いていないため予約は保存されていません", caddyDayOff: "休み", caddyOutAt: "{a}にラウンド中、{b}以降に空き",
+        dayOff: "休み", outUntil: "{b}までラウンド中", openJobs: "未割当",
+        caddySyncFail: "ティータイムは保存されましたが、キャディーの予約を保存できませんでした:", recurringCaddySkipped: "次の日の繰り返し予約はキャディーなしで保存されました:",
         caddyInGroup: "このキャディーは既にグループ内の別のゴルファーに割り当てられています",
         inGroup: "グループ内", selectCourse: "コース選択", noDatesSelected: "日付未選択",
         // Recurring booking translations
@@ -3794,176 +3884,264 @@
       'laem-chabang': 'Laem Chabang International Country Club'
     };
 
-    // Fetch caddies from Supabase database
+    // Facility prefix per tee-sheet slug. caddy_profiles rows arrive from three writers
+    // (notebook sync, caddy self-registration, this page) carrying course_name VARIANTS
+    // ("Bangpakong Riverside CC" / "...Country Club"), so a roster matches on the slug OR
+    // the facility prefix — never on one exact string.
+    const courseFacilityPrefix = {
+      'treasure-hill-golf': 'Treasure Hill', 'phoenix-gold': 'Phoenix', 'greenwood': 'Greenwood',
+      'pattana': 'Pattana', 'burapha-ac': 'Burapha', 'bangpakong': 'Bangpakong', 'plutaluang': 'Plutaluang',
+      'siam-country-club': 'Siam Country', 'khao-kheow': 'Khao Kheow', 'laem-chabang': 'Laem Chabang'
+    };
+    function facilityPrefixFor(courseId) {
+      if (courseFacilityPrefix[courseId]) return courseFacilityPrefix[courseId];
+      const opt = el && el.courseSelect && el.courseSelect.options[el.courseSelect.selectedIndex];
+      const name = courseIdToDbName[courseId] || (opt && opt.text) || '';
+      return String(name).split(/\s+/)[0] || '';
+    }
+    function courseRosterFilter(q, courseId) {
+      const prefix = facilityPrefixFor(courseId);
+      // "," would split the or() list — a course prefix never carries one, but never assume
+      return prefix ? q.or('course_id.eq.' + courseId + ',course_name.ilike.' + prefix.replace(/,/g, ' ') + '%') : q;
+    }
+
+    // Fetch the REAL roster for this course from caddy_profiles. Demo caddies never appear
+    // on a pro-shop sheet: the trial roster is the roster the caddy master and the caddies see.
     async function fetchCaddiesFromDb(courseId) {
       if (!supabaseClient) return [];
-
       try {
         let query = supabaseClient
           .from('caddy_profiles')
-          .select('id, name, caddy_number, course_name, rating, languages, photo_url, is_active, availability_status')
-          .eq('is_active', true);
-
-        // Filter by course name if specified
-        if (courseId && courseIdToDbName[courseId]) {
-          query = query.eq('course_name', courseIdToDbName[courseId]);
-        }
-
+          .select('id, name, caddy_number, course_name, course_id, rating, languages, photo_url, phone, is_active, availability_status, block_minutes')
+          .eq('is_active', true)
+          .eq('is_mock', false)
+          .limit(500);
+        if (courseId) query = courseRosterFilter(query, courseId);
         const { data, error } = await query;
-
         if (error) {
           console.error('[TeeSheet] Error fetching caddies from DB:', error);
           return [];
         }
-
-        // Map to expected format
-        return (data || []).map(c => ({
-          id: c.id,
-          name: c.name,
-          localName: '',
-          number: c.caddy_number,
-          rating: c.rating || 4.5,
-          language: Array.isArray(c.languages) ? c.languages.join('/') : 'TH/EN',
-          status: c.availability_status === 'booked' ? 'busy' : 'available',
-          photoUrl: c.photo_url,
-          homeClub: courseId
-        }));
+        return (data || [])
+          .map(c => ({
+            id: c.id,
+            name: c.name || ('Caddy #' + c.caddy_number),
+            localName: '',
+            number: String(c.caddy_number == null ? '' : c.caddy_number).trim(),
+            rating: c.rating || 4.5,
+            language: Array.isArray(c.languages) ? c.languages.join('/') : 'TH/EN',
+            status: c.availability_status === 'booked' ? 'busy' : 'available',
+            photoUrl: c.photo_url,
+            phone: c.phone || '',
+            block: Math.max(255, +c.block_minutes || 255),
+            homeClub: courseId
+          }))
+          .filter(c => c.number)
+          .sort((a, b) => ((parseInt(a.number) || 9999) - (parseInt(b.number) || 9999)) || a.number.localeCompare(b.number));
       } catch (e) {
         console.error('[TeeSheet] Caddy fetch error:', e);
         return [];
       }
     }
 
-    // Save caddy booking to Supabase database
-    async function saveCaddyBookingToDb(booking, golfer, date, time) {
-      if (!supabaseClient || !golfer.caddyId) return null;
+    // ==================== CADDY JOBS (v1218) ====================
+    // One tee-time booking owns N rows in caddy_bookings, linked by teesheet_booking_id:
+    // a CONFIRMED job per picked caddy and a PENDING job (no caddy) per "caddy needed" for
+    // the caddy master to assign. Availability is checked BEFORE the tee time is saved,
+    // every write is awaited and reported, and a cancel is a status the caddy master can
+    // see — never a delete. (Bangpakong runs this sheet side by side with G1.)
+    const CADDY_FLOOR = 255;
+    const toMinsSafe = v => { const m = String(v || '').match(/^\s*(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+    const hhmmOf = v => String(Math.floor(v / 60)).padStart(2, '0') + ':' + String(Math.round(v) % 60).padStart(2, '0');
+    function caddyFee(holes) {
+      const inp = document.getElementById(holes === 9 ? 'caddy-fee-9' : 'caddy-fee-18');
+      const v = parseInt(inp && inp.value);
+      return isNaN(v) ? (holes === 9 ? 250 : 400) : v;
+    }
+    function roundMinutes() {
+      const inp = document.getElementById('settings-round-duration');
+      const v = parseInt(inp && inp.value);
+      return v > 0 ? v : ROUND_DURATION_MINUTES;
+    }
+    function courseCtx() {
+      const id = el.courseSelect.value;
+      const opt = el.courseSelect.options[el.courseSelect.selectedIndex];
+      return { id, name: courseIdToDbName[id] || (opt && opt.text) || id, prefix: facilityPrefixFor(id) };
+    }
+    // The name convention the rest of the app keys on ('Caddy #N'): the caddie's own sheet
+    // and the app-side 4:15 guard both match caddie_name when a row has no caddy_id.
+    function caddyJobName(g) { return g.caddyNumber ? ('Caddy #' + String(g.caddyNumber).trim()) : (g.caddyName || 'Caddy'); }
+    function caddyLabelOf(g) { return g.caddyNumber ? ('#' + g.caddyNumber + (g.caddyName ? ' ' + g.caddyName : '')) : (g.caddyName || 'Caddy'); }
 
-      const courseId = el.courseSelect.value;
-      const courseName = courseIdToDbName[courseId] || courseId;
-
+    // Who is OUT around a tee time (4:15 block against caddy_bookings from EVERY source,
+    // scoped to this facility) and who is OFF that day (approved day-off requests).
+    let caddyDayState = { date: null, time: null, out: {}, off: {}, jobs: {} };
+    async function loadCaddyDayState(date, time, ignoreBookingId) {
+      const state = { date, time, out: {}, off: {}, jobs: {} };
+      if (!supabaseClient || !date) { caddyDayState = state; return state; }
+      const want = toMinsSafe(time);
+      const c = courseCtx();
       try {
-        // Look up user by name to get their user_id (LINE ID)
-        let userId = golfer.odoo_id || null; // May already have user ID from existing data
-
-        if (!userId && golfer.name) {
-          // Search for user by name (case-insensitive partial match)
-          const { data: userProfile } = await supabaseClient
-            .from('user_profiles')
-            .select('line_user_id, name')
-            .ilike('name', `%${golfer.name}%`)
-            .limit(1)
-            .single();
-
-          if (userProfile) {
-            userId = userProfile.line_user_id;
-            console.log('[TeeSheet] Found user for golfer:', golfer.name, '→', userProfile.name, userId);
-          }
-        }
-
-        // Check if booking already exists for this caddy/date/time
-        const { data: existing } = await supabaseClient
-          .from('caddy_bookings')
-          .select('id')
-          .eq('caddy_id', golfer.caddyId)
-          .eq('booking_date', date)
-          .eq('tee_time', time + ':00')
-          .single();
-
-        if (existing) {
-          // Update existing booking with user_id if we found one
-          if (userId) {
-            await supabaseClient
-              .from('caddy_bookings')
-              .update({ user_id: userId })
-              .eq('id', existing.id);
-            console.log('[TeeSheet] Updated existing caddy booking with user_id:', existing.id);
-          }
-          return existing.id;
-        }
-
-        // v1187 THE 4:15 GATE. This page ALREADY refuses a caddy double-booking inside
-        // ROUND_DURATION_MINUTES (270) — but only against ITS OWN tee sheet (getDay(date)).
-        // It cannot see caddy_bookings rows a golfer created in the app, and those are real
-        // jobs for the same caddy. This is the check against the table itself.
-        // Fails OPEN on a query error (a lookup hiccup must never stop the pro shop working).
-        try {
-          const FLOOR = 255;
-          const toMins = (v) => { const m = String(v || '').match(/^\s*(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : null; };
-          const hhmm = (v) => String(Math.floor(v / 60)).padStart(2, '0') + ':' + String(v % 60).padStart(2, '0');
-          const want = toMins(time);
-          if (want != null) {
-            const prof = await supabaseClient.from('caddy_profiles').select('block_minutes').eq('id', golfer.caddyId).maybeSingle();
-            const block = Math.max(FLOOR, (prof.data && +prof.data.block_minutes) || FLOOR);
-            const day = await supabaseClient.from('caddy_bookings')
-              .select('id, tee_time, start_time, golfer_name')
-              .eq('caddy_id', golfer.caddyId).eq('booking_date', date).neq('status', 'cancelled').limit(200);
-            if (day.error) throw new Error(day.error.message);
-            const clash = (day.data || []).find(b => { const bt = toMins(b.tee_time || b.start_time); return bt != null && Math.abs(bt - want) < block; });
-            if (clash) {
-              const msg = 'Caddy already out at ' + hhmm(toMins(clash.tee_time || clash.start_time))
-                + ' — blocked until ' + hhmm(toMins(clash.tee_time || clash.start_time) + block) + '. Pick another caddy or another time.';
-              console.warn('[TeeSheet] 4:15 clash:', msg);
-              alert(msg);   // this page talks to the pro shop with alert() everywhere else
-              return null;
-            }
-          }
-        } catch (e) { console.warn('[TeeSheet] 4:15 check skipped:', e.message); }
-
-        // Create new caddy booking with user_id for dashboard visibility
-        const insertData = {
-          caddy_id: golfer.caddyId,
-          booking_date: date,
-          tee_time: time + ':00',
-          course_name: courseName,
-          status: 'confirmed',
-          booking_source: 'proshop_teesheet',
-          golfer_name: golfer.name || 'Guest'
-        };
-
-        // Add user_id if we found the golfer in the system
-        if (userId) {
-          insertData.user_id = userId;
-        }
-
-        const { data, error } = await supabaseClient
-          .from('caddy_bookings')
-          .insert(insertData)
-          .select('id')
-          .single();
-
-        if (error) {
-          console.error('[TeeSheet] Error saving caddy booking:', error);
-          return null;
-        }
-
-        console.log('[TeeSheet] Saved caddy booking to database:', data.id, userId ? `(linked to ${golfer.name})` : '(no user link)');
-        return data.id;
+        let jobsQ = supabaseClient.from('caddy_bookings')
+          .select('id, caddy_id, caddie_name, tee_time, start_time, status, golfer_name, teesheet_booking_id, caddy_profiles(caddy_number, block_minutes)')
+          .eq('booking_date', date).neq('status', 'cancelled').limit(500);
+        jobsQ = courseRosterFilter(jobsQ, c.id);
+        const [jobs, offs] = await Promise.all([
+          jobsQ,
+          supabaseClient.from('caddy_dayoff_requests').select('caddy_number, caddy_name, course_name')
+            .eq('status', 'approved').lte('date_from', date).gte('date_to', date).limit(200)
+        ]);
+        if (jobs.error) throw new Error(jobs.error.message);
+        (jobs.data || []).forEach(j => {
+          const fromProfile = j.caddy_profiles && j.caddy_profiles.caddy_number != null ? String(j.caddy_profiles.caddy_number).trim() : '';
+          const num = fromProfile || ((String(j.caddie_name || '').match(/#\s*(\d+)/) || [])[1] || '');
+          if (!num) return;
+          const bt = toMinsSafe(j.tee_time || j.start_time);
+          const mine = !!ignoreBookingId && j.teesheet_booking_id === ignoreBookingId;
+          (state.jobs[num] = state.jobs[num] || []).push({ time: bt == null ? '??:??' : hhmmOf(bt), golfer: j.golfer_name || 'Guest', mine });
+          if (mine || want == null || bt == null) return;   // this booking's own jobs move with it
+          const block = Math.max(CADDY_FLOOR, (j.caddy_profiles && +j.caddy_profiles.block_minutes) || CADDY_FLOOR);
+          if (Math.abs(bt - want) < block) state.out[num] = { at: hhmmOf(bt), until: hhmmOf(bt + block), golfer: j.golfer_name || '' };
+        });
+        (offs.data || []).forEach(o => {
+          if (o.caddy_number == null) return;
+          if (o.course_name && c.prefix && !String(o.course_name).toLowerCase().startsWith(c.prefix.toLowerCase())) return;
+          state.off[String(o.caddy_number).trim()] = true;
+        });
+        Object.keys(state.jobs).forEach(n => state.jobs[n].sort((a, b) => a.time.localeCompare(b.time)));
       } catch (e) {
-        console.error('[TeeSheet] Caddy booking save error:', e);
-        return null;
+        console.warn('[TeeSheet] caddy day state:', e.message);
+        state.unverified = true;
       }
+      caddyDayState = state;
+      return state;
     }
 
-    // Delete caddy booking from database
-    async function deleteCaddyBookingFromDb(caddyId, date, time) {
-      if (!supabaseClient || !caddyId) return;
+    // Reasons the picked caddies can't take (date, time): out on another job, or off that day.
+    async function caddyRefusals(golfers, date, time, ignoreBookingId) {
+      const st = await loadCaddyDayState(date, time, ignoreBookingId);
+      const out = [];
+      (golfers || []).forEach(g => {
+        if (!g.caddyNumber && !g.caddyId) return;
+        const num = String(g.caddyNumber || '').trim();
+        if (st.off[num]) out.push(caddyLabelOf(g) + ': ' + t('caddyDayOff'));
+        else if (st.out[num]) out.push(caddyLabelOf(g) + ': ' + t('caddyOutAt').replace('{a}', st.out[num].at).replace('{b}', st.out[num].until));
+      });
+      return out;
+    }
 
+    // The golfer's LINE id, when the name matches exactly ONE profile. A partial match used to
+    // link the wrong person's LINE account to the job (and put it on their dashboard).
+    const _golferIdCache = {};
+    async function golferUserId(g) {
+      if (g.odoo_id) return g.odoo_id;
+      const name = String(g.name || '').trim();
+      if (!supabaseClient || name.length < 3) return null;
+      if (name in _golferIdCache) return _golferIdCache[name];
       try {
-        const { error } = await supabaseClient
-          .from('caddy_bookings')
-          .delete()
-          .eq('caddy_id', caddyId)
-          .eq('booking_date', date)
-          .eq('tee_time', time + ':00');
+        const { data } = await supabaseClient.from('user_profiles').select('line_user_id').ilike('name', name).limit(2);
+        _golferIdCache[name] = (data && data.length === 1) ? data[0].line_user_id : null;
+      } catch (e) { _golferIdCache[name] = null; }
+      return _golferIdCache[name];
+    }
 
-        if (error) {
-          console.error('[TeeSheet] Error deleting caddy booking:', error);
-        } else {
-          console.log('[TeeSheet] Deleted caddy booking from database');
-        }
-      } catch (e) {
-        console.error('[TeeSheet] Caddy booking delete error:', e);
+    // Make caddy_bookings match the booking: update the jobs it already owns, insert the new
+    // ones, cancel the rest. Returns { ok, message, inserted, updated, cancelled }.
+    async function syncCaddyJobs(booking, date, opts) {
+      opts = opts || {};
+      if (!supabaseClient || !booking || !booking.id || !date) return { ok: true, inserted: 0, updated: 0, cancelled: 0 };
+      const now = new Date().toISOString();
+      const c = courseCtx();
+      const time = booking.time || '';
+      const tm = toMinsSafe(time);
+      const tee = tm == null ? null : hhmmOf(tm) + ':00';
+      const endT = tm == null ? null : hhmmOf(Math.min(tm + roundMinutes(), 23 * 60 + 59)) + ':00';
+      const holes = 18;
+      const golfers = booking.golfers || [];
+      const wantAssigned = golfers.filter(g => g.caddyId);
+      const wantOpen = Math.max(0, parseInt(booking.caddiesNeeded) || 0);
+      const leadName = (golfers[0] && golfers[0].name) || booking.name || 'Guest';
+      const base = {
+        booking_date: date, tee_time: tee, start_time: tee, end_time: endT,
+        course_id: c.id, course_name: c.name, holes, payment_amount: caddyFee(holes),
+        booking_source: 'proshop_teesheet', teesheet_booking_id: booking.id,
+        special_requests: booking.notes || null, updated_at: now
+      };
+      const { data: existing, error } = await supabaseClient.from('caddy_bookings')
+        .select('id, caddy_id, status').eq('teesheet_booking_id', booking.id).limit(50);
+      if (error) { console.warn('[TeeSheet] caddy jobs read:', error.message); return { ok: false, message: error.message }; }
+      const live = (existing || []).filter(r => r.status !== 'cancelled');
+      const used = new Set();
+      const updates = [], inserts = [];
+      for (const g of wantAssigned) {
+        const row = live.find(r => r.caddy_id === g.caddyId && !used.has(r.id));
+        const uid = await golferUserId(g);
+        const fields = Object.assign({}, base, {
+          caddy_id: g.caddyId, caddie_name: caddyJobName(g), golfer_name: g.name || 'Guest',
+          user_id: uid, golfer_id: uid, status: 'confirmed', confirmed_at: now, confirmed_by: 'Pro shop', payment_status: 'pending'
+        });
+        if (row) { used.add(row.id); updates.push({ id: row.id, fields }); }
+        else inserts.push(fields);
       }
+      const openRows = live.filter(r => !r.caddy_id && !used.has(r.id));
+      openRows.slice(0, wantOpen).forEach(r => {
+        used.add(r.id);
+        updates.push({ id: r.id, fields: Object.assign({}, base, { status: 'pending', caddie_name: 'Unassigned', golfer_name: leadName }) });
+      });
+      for (let i = openRows.length; i < wantOpen; i++) {
+        inserts.push(Object.assign({}, base, { caddy_id: null, caddie_name: 'Unassigned', golfer_name: leadName, status: 'pending', payment_status: 'pending' }));
+      }
+      const toCancel = live.filter(r => !used.has(r.id)).map(r => r.id);
+      const fails = [];
+      for (const u of updates) {
+        const r = await supabaseClient.from('caddy_bookings').update(u.fields).eq('id', u.id).select('id');
+        if (r.error || !r.data || !r.data.length) fails.push('update: ' + ((r.error && r.error.message) || 'no row'));
+      }
+      if (inserts.length) {
+        const r = await supabaseClient.from('caddy_bookings').insert(inserts).select('id');
+        if (r.error) fails.push('insert: ' + r.error.message);
+        else if (!r.data || r.data.length !== inserts.length) fails.push('insert: ' + ((r.data && r.data.length) || 0) + '/' + inserts.length + ' saved');
+      }
+      if (toCancel.length) {
+        const r = await supabaseClient.from('caddy_bookings')
+          .update({ status: 'cancelled', cancelled_at: now, cancellation_reason: opts.reason || 'Changed on the pro shop tee sheet', updated_at: now })
+          .in('id', toCancel).select('id');
+        if (r.error) fails.push('cancel: ' + r.error.message);
+      }
+      delete caddyBookingsCache[date];
+      delete lastFetchTime[date];
+      console.log('[TeeSheet] caddy jobs for', booking.id, '→', updates.length, 'updated,', inserts.length, 'inserted,', toCancel.length, 'cancelled', fails.length ? fails : '');
+      return { ok: !fails.length, message: fails.join('; '), inserted: inserts.length, updated: updates.length, cancelled: toCancel.length };
+    }
+
+    // Cancel a booking's jobs (linked rows), plus rows written before the link existed
+    // (matched by caddy + date + old time, this page's source only).
+    async function cancelCaddyJobs(bookingId, reason, legacy) {
+      if (!supabaseClient) return;
+      const now = new Date().toISOString();
+      const patch = { status: 'cancelled', cancelled_at: now, cancellation_reason: reason || 'Cancelled by the pro shop', updated_at: now };
+      try {
+        if (bookingId) {
+          const r = await supabaseClient.from('caddy_bookings').update(patch).eq('teesheet_booking_id', bookingId).neq('status', 'cancelled').select('id');
+          if (r.error) console.warn('[TeeSheet] cancel jobs:', r.error.message);
+        }
+        if (legacy && legacy.caddyId && legacy.date && legacy.time) {
+          const r = await supabaseClient.from('caddy_bookings').update(patch)
+            .eq('caddy_id', legacy.caddyId).eq('booking_date', legacy.date).eq('tee_time', legacy.time + ':00')
+            .is('teesheet_booking_id', null).eq('booking_source', 'proshop_teesheet').neq('status', 'cancelled').select('id');
+          if (r.error) console.warn('[TeeSheet] cancel legacy job:', r.error.message);
+        }
+      } catch (e) { console.warn('[TeeSheet] cancel jobs:', e.message); }
+    }
+
+    // Kept for any caller not yet moved to syncCaddyJobs/cancelCaddyJobs.
+    async function saveCaddyBookingToDb(booking, golfer, date, time) {
+      if (!booking || !booking.id) return null;
+      const r = await syncCaddyJobs(Object.assign({}, booking, { time: time || booking.time }), date);
+      return r.ok ? booking.id : null;
+    }
+    async function deleteCaddyBookingFromDb(caddyId, date, time) {
+      await cancelCaddyJobs(null, 'Removed on the pro shop tee sheet', { caddyId, date, time });
     }
 
     // Cache for system users (golfers)
@@ -4044,21 +4222,17 @@
       if (window._golferChipDecorate) window._golferChipDecorate(dropdown, 18);
     }
 
-    // Get caddies from parent CaddySystem OR database, filtered by selected course
+    // The roster is the database's real roster for the selected course. The parent's demo
+    // caddies are only a stand-in when there is no database at all (standalone preview).
     async function refreshCaddies() {
       const courseId = el.courseSelect.value;
-
-      // Try parent CaddySystem first
-      const parentCaddies = ParentBridge.getAllCaddies(courseId);
-      if (parentCaddies.length > 0) {
-        allCaddies = parentCaddies;
-        console.log('[TeeSheet] Loaded', allCaddies.length, 'caddies from parent for course:', courseId || 'all');
+      if (supabaseClient) {
+        allCaddies = await fetchCaddiesFromDb(courseId);
+        console.log('[TeeSheet] Loaded', allCaddies.length, 'caddies from database for course:', courseId || 'all');
         return;
       }
-
-      // Fallback: fetch from database
-      allCaddies = await fetchCaddiesFromDb(courseId);
-      console.log('[TeeSheet] Loaded', allCaddies.length, 'caddies from database for course:', courseId || 'all');
+      allCaddies = ParentBridge.getAllCaddies(courseId);
+      console.log('[TeeSheet] No database — using', allCaddies.length, 'demo caddies from parent for course:', courseId || 'all');
     }
 
     // Initial load - wait for DOM to be ready
@@ -4099,6 +4273,7 @@
       golfersList: $('golfers-list'),
       addGolfer: $('add-golfer'),
       bookingNotes: $('booking-notes'),
+      caddiesNeeded: $('booking-caddies-needed'),
       deleteBooking: $('delete-booking'),
       cancelBooking: $('cancel-booking'),
       saveBooking: $('save-booking'),
@@ -4276,6 +4451,10 @@
         status: 'confirmed',
         source: 'teesheet',
         is_vip: (b.bookingType === 'vip'),
+        caddie_id: (golfers[0] && golfers[0].caddyId) || null,
+        caddy_number: (golfers[0] && golfers[0].caddyNumber) || null,
+        caddie_name: (golfers[0] && golfers[0].caddyName) || null,
+        caddie_status: golfers.some(g => g.caddyId) ? 'confirmed' : ((parseInt(b.caddiesNeeded) || 0) ? 'pending' : null),
         deleted: false,
         updated_at: new Date().toISOString(),
         booking_data: {
@@ -4284,7 +4463,8 @@
           groupIndex: (b.groupIndex === 0 || b.groupIndex) ? b.groupIndex : null,
           groupTotal: b.groupTotal || null,
           col: (b.col === 0 || b.col) ? b.col : null,
-          recurringGroupId: b.recurringGroupId || null
+          recurringGroupId: b.recurringGroupId || null,
+          caddiesNeeded: parseInt(b.caddiesNeeded) || 0
         }
       };
     }
@@ -4309,6 +4489,7 @@
       if (bd.groupIndex === 0 || bd.groupIndex) b.groupIndex = bd.groupIndex;
       if (bd.groupTotal) b.groupTotal = bd.groupTotal;
       if (bd.recurringGroupId) b.recurringGroupId = bd.recurringGroupId;
+      if (bd.caddiesNeeded) b.caddiesNeeded = parseInt(bd.caddiesNeeded) || 0;
       return b;
     }
 
@@ -4992,12 +5173,15 @@
             if (isSociety) {
               const withCaddy = golfers.filter(g => g.caddyName || g.caddyNumber).length;
               if (withCaddy) caddyLabel = String(withCaddy);
-            } else if (golfers[0]) {
-              if (golfers[0].caddyNumber) {
-                caddyLabel = 'C' + golfers[0].caddyNumber;
-                caddyPhoto = caddyPhotoByNumber(golfers[0].caddyNumber, 14);
-              }
-              else if (golfers[0].caddyName) caddyLabel = golfers[0].caddyName;
+            } else {
+              const picked = golfers.filter(g => g.caddyNumber || g.caddyName);
+              const open = parseInt(b.caddiesNeeded) || 0;
+              if (picked.length === 1 && picked[0].caddyNumber) {
+                caddyLabel = 'C' + picked[0].caddyNumber;
+                caddyPhoto = caddyPhotoByNumber(picked[0].caddyNumber, 14);
+              } else if (picked.length === 1) caddyLabel = picked[0].caddyName;
+              else if (picked.length > 1) caddyLabel = String(picked.length);
+              if (open) caddyLabel += (caddyLabel ? ' ' : '') + '+' + open + ' ' + t('openJobs');   // jobs waiting on the caddy master
             }
 
             const name = gCount > 0 ? golfers[0].name : (b.name || t('player'));
@@ -5136,6 +5320,10 @@
             return; // No change
           }
 
+          // v1218: the caddies must be free at the new time (their other jobs, day-offs)
+          const moveRefusals = await caddyRefusals(booking.golfers || [], date, newTime, booking.id);
+          if (moveRefusals.length) { alert(t('caddyRefused') + '\n\n' + moveRefusals.join('\n')); render(); return; }
+
           // CRITICAL FIX: If booking came from parent BookingManager, remove the original
           // to prevent duplicates when dragging. The booking will be re-synced via setDay()
           if (booking.parentId) {
@@ -5154,23 +5342,13 @@
           setDay(date, bookings);
           render();
 
-          // CRITICAL: Update caddy bookings in database when dragging
-          // Delete old caddy bookings at old time, then create new at new time
-          // Must await to prevent race conditions and duplicates
-          const golfers = booking.golfers || [];
-          for (const golfer of golfers) {
-            if (golfer.caddyId) {
-              try {
-                // Delete old caddy booking first (await to ensure it completes)
-                await deleteCaddyBookingFromDb(golfer.caddyId, date, oldTime);
-                // Then create new caddy booking at new time
-                await saveCaddyBookingToDb(booking, golfer, date, newTime);
-                console.log('[TeeSheet] Moved caddy booking:', golfer.caddyName, 'from', oldTime, 'to', newTime);
-              } catch (err) {
-                console.error('[TeeSheet] Error moving caddy booking:', err);
-              }
-            }
+          // v1218: the jobs are linked to this booking, so a move is an update of their tee
+          // time. Rows written before the link (keyed by caddy + old time) are cancelled.
+          for (const golfer of (booking.golfers || [])) {
+            if (golfer.caddyId) await cancelCaddyJobs(null, 'Moved on the pro shop tee sheet', { caddyId: golfer.caddyId, date, time: oldTime });
           }
+          const moved = await syncCaddyJobs(booking, date, { reason: 'Moved on the pro shop tee sheet' });
+          if (!moved.ok) alert(t('caddySyncFail') + '\n\n' + moved.message);
           // Clear caddy bookings cache to force refresh
           delete caddyBookingsCache[date];
           delete lastFetchTime[date];
@@ -5326,14 +5504,16 @@
       // Filter caddies - show all but mark booked/assigned ones (search includes local name for Thai/Korean/Japanese)
       allCaddies.filter(c => c.status === 'available' && (!query || (c.number + ' ' + c.name + ' ' + (c.localName || '')).toLowerCase().includes(query)))
         .slice(0, 10).forEach(caddy => {
-          const isBookedExternal = bookedCaddies.has(caddy.number);
+          const dayOff = !!caddyDayState.off[caddy.number];
+          const outJob = caddyDayState.out[caddy.number];
+          const isBookedExternal = bookedCaddies.has(caddy.number) || !!outJob;
           const isInThisGroup = caddiesInThisGroup.has(caddy.number);
-          const isUnavailable = isBookedExternal || isInThisGroup;
+          const isUnavailable = isBookedExternal || isInThisGroup || dayOff;
           const opt = document.createElement('div');
           opt.className = `caddy-option ${isUnavailable ? 'booked' : ''}`;
           opt.title = isUnavailable ? t('caddyAlreadyBooked') : '';
           const stars = '★'.repeat(Math.floor(caddy.rating));
-          const badgeText = isInThisGroup ? t('inGroup') : (isBookedExternal ? t('booked') : '');
+          const badgeText = isInThisGroup ? t('inGroup') : dayOff ? t('dayOff') : outJob ? t('outUntil').replace('{b}', outJob.until) : (isBookedExternal ? t('booked') : '');
           const bookedBadge = isUnavailable ? `<span class="caddy-booked-badge">${badgeText}</span>` : '';
           // Show local name based on current language
           const displayName = (currentLang !== 'en' && caddy.localName) ? `${caddy.localName} (${caddy.name})` : caddy.name;
@@ -5426,7 +5606,8 @@
           }
         });
 
-        // Fetch all caddy bookings for this date
+        // Who is out around this tee time and who is off today (all sources, this facility)
+        await loadCaddyDayState(el.dateInput.value, currentTime, currentEditingBookingId);
         await this.fetchDailyBookings();
 
         this.render();
@@ -5435,54 +5616,11 @@
       },
 
       async fetchDailyBookings() {
+        // v1218: the day state already holds every job at this facility, keyed by number
         this.dailyBookings = {};
-        const currentDate = el.dateInput.value;
-        const courseId = el?.courseSelect?.value || '';
-        const courseName = courseIdToDbName[courseId] || '';
-
-        if (!supabaseClient) return;
-
-        try {
-          let query = supabaseClient
-            .from('caddy_bookings')
-            .select('caddy_id, tee_time, golfer_name, caddy_profiles(caddy_number)')
-            .eq('booking_date', currentDate)
-            .neq('status', 'cancelled');
-
-          if (courseName) {
-            query = query.eq('course_name', courseName);
-          }
-
-          const { data, error } = await query;
-
-          if (error) {
-            console.error('[CaddyPicker] Error fetching daily bookings:', error);
-            return;
-          }
-
-          // Group by caddy number
-          (data || []).forEach(b => {
-            const caddyNum = b.caddy_profiles?.caddy_number;
-            if (!caddyNum) return;
-            if (!this.dailyBookings[caddyNum]) {
-              this.dailyBookings[caddyNum] = [];
-            }
-            const time = b.tee_time ? b.tee_time.substring(0, 5) : '??:??';
-            this.dailyBookings[caddyNum].push({
-              time,
-              golfer: b.golfer_name || 'Guest'
-            });
-          });
-
-          // Sort each caddy's bookings by time
-          Object.keys(this.dailyBookings).forEach(num => {
-            this.dailyBookings[num].sort((a, b) => a.time.localeCompare(b.time));
-          });
-
-          console.log('[CaddyPicker] Loaded daily bookings for', Object.keys(this.dailyBookings).length, 'caddies');
-        } catch (e) {
-          console.error('[CaddyPicker] Fetch error:', e);
-        }
+        Object.keys(caddyDayState.jobs || {}).forEach(num => {
+          this.dailyBookings[num] = caddyDayState.jobs[num].map(j => ({ time: j.time, golfer: j.golfer }));
+        });
       },
 
       close() {
@@ -5533,9 +5671,11 @@
 
         // Render caddy cards
         filtered.forEach(caddy => {
-          const isBookedExternal = this.bookedCaddies.has(caddy.number);
+          const dayOff = !!caddyDayState.off[caddy.number];
+          const outJob = caddyDayState.out[caddy.number];
+          const isBookedExternal = this.bookedCaddies.has(caddy.number) || !!outJob;
           const isInGroup = this.inGroupCaddies.has(caddy.number);
-          const isUnavailable = isBookedExternal || isInGroup;
+          const isUnavailable = isBookedExternal || isInGroup || dayOff;
 
           const card = document.createElement('div');
           card.className = `caddy-card ${isUnavailable ? 'unavailable' : ''}`;
@@ -5547,6 +5687,10 @@
           let statusBadge = '';
           if (isInGroup) {
             statusBadge = `<div class="caddy-card-status in-group">${t('inGroup')}</div>`;
+          } else if (dayOff) {
+            statusBadge = `<div class="caddy-card-status off">${t('dayOff')}</div>`;
+          } else if (outJob) {
+            statusBadge = `<div class="caddy-card-status booked">${t('outUntil').replace('{b}', outJob.until)}</div>`;
           } else if (isBookedExternal) {
             statusBadge = `<div class="caddy-card-status booked">${t('booked')}</div>`;
           }
@@ -5615,6 +5759,137 @@
         }
 
         this.close();
+      }
+    };
+
+    // ==================== CADDY ROSTER (v1218) ====================
+    // The pro shop keeps its own caddie list here: number, name, phone, active. Rows go
+    // straight into caddy_profiles (is_mock=false) for this course, which is what the
+    // picker, the caddy master's roster and the caddies' own sheets all read.
+    const CaddyRoster = {
+      rows: [], _busy: false,
+      _esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); },
+      el() {
+        return { dlg: $('roster-dialog'), list: $('roster-list'), stats: $('roster-stats'), num: $('roster-num'), name: $('roster-name'),
+                 phone: $('roster-phone'), bulk: $('roster-bulk'), course: $('roster-course') };
+      },
+      init() {
+        const e = this.el(); if (!e.dlg) return;
+        $('roster-btn')?.addEventListener('click', () => this.open());
+        $('roster-close')?.addEventListener('click', () => e.dlg.close());
+        $('roster-add-btn')?.addEventListener('click', () => this.addOne());
+        $('roster-bulk-btn')?.addEventListener('click', () => this.addBulk());
+        e.dlg.addEventListener('click', ev => { if (ev.target === e.dlg) e.dlg.close(); });
+        [e.num, e.name, e.phone].forEach(inp => inp?.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); this.addOne(); } }));
+      },
+      async open() {
+        const e = this.el(); if (!e.dlg) return;
+        if (!supabaseClient) { alert(t('rosterOffline')); return; }
+        e.course.textContent = courseCtx().name;
+        await this.load();
+        e.dlg.showModal();
+        e.num?.focus();
+      },
+      async load() {
+        // inactive rows included, so a caddy can be brought back
+        let q = supabaseClient.from('caddy_profiles').select('id, caddy_number, name, phone, is_active, availability_status, user_id, photo_url').eq('is_mock', false).limit(500);
+        q = courseRosterFilter(q, el.courseSelect.value);
+        const { data, error } = await q;
+        if (error) { alert(t('rosterSaveFail') + ' ' + error.message); return; }
+        this.rows = (data || []).sort((a, b) => ((parseInt(a.caddy_number) || 9999) - (parseInt(b.caddy_number) || 9999)) || String(a.caddy_number).localeCompare(String(b.caddy_number)));
+        this.render();
+      },
+      render() {
+        const e = this.el(); if (!e.list) return;
+        const rows = this.rows;
+        e.stats.textContent = t('rosterCount').replace('{n}', rows.filter(r => r.is_active !== false).length);
+        if (!rows.length) { e.list.innerHTML = `<div style="padding:28px 8px;text-align:center;color:var(--muted);font-size:13px;">${t('rosterEmpty')}</div>`; return; }
+        e.list.innerHTML = rows.map(r => `
+          <div class="roster-row ${r.is_active === false ? 'off' : ''}" data-id="${this._esc(r.id)}">
+            ${caddyPhotoImg(r.photo_url, 28)}
+            <span class="rnum">#${this._esc(r.caddy_number)}</span>
+            <input class="rname" value="${this._esc(r.name || '')}" placeholder="Name">
+            <input class="rphone" value="${this._esc(r.phone || '')}" placeholder="Phone" inputmode="tel">
+            ${r.user_id ? `<span class="rchip">${t('rosterInApp')}</span>` : ''}
+            <button type="button" class="ractive">${r.is_active === false ? t('rosterInactive') : t('rosterActive')}</button>
+          </div>`).join('');
+        e.list.querySelectorAll('.roster-row').forEach(row => {
+          const id = row.dataset.id;
+          row.querySelector('.rname').addEventListener('change', ev => { const v = ev.target.value.trim(); if (v) this.patch(id, { name: v }); });
+          row.querySelector('.rphone').addEventListener('change', ev => this.patch(id, { phone: ev.target.value.trim() || null }));
+          row.querySelector('.ractive').addEventListener('click', () => {
+            const r = this.rows.find(x => x.id === id);
+            this.patch(id, { is_active: !!(r && r.is_active === false) });
+          });
+        });
+      },
+      _parseLine(line) {
+        const parts = String(line || '').split(/[,\t]+|\s{2,}/).map(s => s.trim()).filter(Boolean);
+        if (!parts.length) return null;
+        let num = '', name = '', phone = '';
+        const words = parts.length === 1 ? parts[0].split(/\s+/) : parts;
+        const first = words[0].replace(/^#/, '');
+        if (!/^\d{1,4}$/.test(first)) return null;
+        num = String(parseInt(first, 10));
+        const rest = words.slice(1);
+        if (rest.length) {
+          const last = rest[rest.length - 1];
+          if (/^[\d\s\-+()]{7,}$/.test(last) || (rest.length > 1 && /^[\d\-+]{7,}$/.test(rest.slice(-1)[0]))) { phone = rest.pop(); }
+          // a phone typed with spaces ("081 234 5678") arrives as several numeric words
+          while (rest.length && /^\d{2,4}$/.test(rest[rest.length - 1]) && (phone || rest.length > 1)) { phone = rest.pop() + (phone ? ' ' + phone : ''); }
+          name = rest.join(' ');
+        }
+        return { number: num, name, phone };
+      },
+      addOne() {
+        const e = this.el();
+        const item = this._parseLine([e.num.value, e.name.value, e.phone.value].filter(Boolean).join(', '));
+        if (!item) { alert(t('rosterNeedNumber')); e.num?.focus(); return; }
+        if (!item.name && e.name.value.trim()) item.name = e.name.value.trim();
+        if (!item.phone && e.phone.value.trim()) item.phone = e.phone.value.trim();
+        this.insert([item]).then(ok => { if (ok) { e.num.value = ''; e.name.value = ''; e.phone.value = ''; e.num.focus(); } });
+      },
+      addBulk() {
+        const e = this.el();
+        const items = String(e.bulk.value || '').split(/\r?\n/).map(l => this._parseLine(l)).filter(Boolean);
+        if (!items.length) { alert(t('rosterNeedNumber')); return; }
+        this.insert(items).then(ok => { if (ok) e.bulk.value = ''; });
+      },
+      async insert(items) {
+        if (this._busy || !supabaseClient) return false;
+        const c = courseCtx();
+        const have = new Set(this.rows.map(r => String(r.caddy_number).trim()));
+        const seen = new Set();
+        const fresh = items.filter(i => i.number && !have.has(i.number) && !seen.has(i.number) && seen.add(i.number));
+        if (!fresh.length) { alert(items.length ? t('rosterDup') : t('rosterNeedNumber')); return false; }
+        const payload = fresh.map(i => ({
+          caddy_number: i.number, name: i.name || ('Caddy #' + i.number), phone: i.phone || null,
+          course_id: c.id, course_name: c.name, is_mock: false, is_active: true,
+          availability_status: 'available', created_by: 'proshop_teesheet'
+        }));
+        this._busy = true;
+        try {
+          const { data, error } = await supabaseClient.from('caddy_profiles').insert(payload).select('id');
+          if (error) { alert(t('rosterSaveFail') + ' ' + error.message); return false; }
+          const n = (data || []).length;
+          if (n !== payload.length) alert(t('rosterSaveFail') + ' ' + n + '/' + payload.length);
+          await this.load();
+          await refreshCaddies();
+          const e = this.el();
+          if (e.stats) e.stats.textContent = t('rosterAdded').replace('{n}', n) + ' · ' + t('rosterCount').replace('{n}', this.rows.filter(r => r.is_active !== false).length);
+          return n > 0;
+        } finally { this._busy = false; }
+      },
+      // NEVER a blind update — scoped to the row id and checked for a returned row.
+      async patch(id, fields) {
+        if (!supabaseClient || !id) return;
+        fields.updated_at = new Date().toISOString();
+        const { data, error } = await supabaseClient.from('caddy_profiles').update(fields).eq('id', id).select('id');
+        if (error || !data || !data.length) { alert(t('rosterSaveFail') + ' ' + ((error && error.message) || 'no row')); return; }
+        const r = this.rows.find(x => x.id === id);
+        if (r) Object.assign(r, fields);
+        if ('is_active' in fields) this.render();
+        await refreshCaddies();
       }
     };
 
@@ -6136,18 +6411,24 @@
       let golfers = seed.golfers || [];
       if (!golfers.length && seed.name) golfers = [{ name: seed.name, caddyNumber: seed.caddyNumber || '' }];
       setGolfersInDialog(golfers);
+      if (el.caddiesNeeded) el.caddiesNeeded.value = String(Math.min(4, Math.max(0, parseInt(seed.caddiesNeeded) || 0)));
+      // who is out / off around this tee time, so the caddy dropdown can say so
+      loadCaddyDayState(el.dateInput.value, seed.time, seed.id || null);
 
       el.deleteBooking.style.display = seed.id ? '' : 'none';
       el.dialog.showModal();
     }
 
     el.closeDialog.addEventListener('click', () => el.dialog.close());
+    el.bookingTime.addEventListener('change', () => loadCaddyDayState(el.dateInput.value, el.bookingTime.value, currentEditingBookingId));
     el.cancelBooking.addEventListener('click', () => el.dialog.close());
 
-    el.saveBooking.addEventListener('click', () => {
+    el.saveBooking.addEventListener('click', async () => {
       const date = el.dateInput.value;
       let bookings = getDay(date);
       const layout = getLayout();
+      const savedBookings = [];     // { b, date } — every booking this save touches, for its caddy jobs
+      const recurringSkips = [];
 
       // ==================== DOUBLE BOOKING VALIDATION ====================
       function validateNoDuplicateCaddies(golfersToSave, time, excludeBookingId = null) {
@@ -6191,6 +6472,11 @@
           alert(`${t('caddyAlreadyBooked')}:\n\n${allConflicts.join('\n')}`);
           return;
         }
+        // v1218: the caddies' other jobs (any source) and day-offs, before anything is saved
+        for (const slot of rangeSlots) {
+          const rf = await caddyRefusals(slot.golfers || [], date, slot.time, slot.id || null);
+          if (rf.length) { alert(t('caddyRefused') + '\n\n' + slot.time + ': ' + rf.join('\n')); return; }
+        }
 
         // Create bookings for each slot
         rangeSlots.forEach((slot, idx) => {
@@ -6213,6 +6499,7 @@
           };
 
           bookings.push(booking);
+          savedBookings.push({ b: booking, date });
         });
 
         console.log(`[TeeSheet] Saved group booking: ${rangeSlots.length} slots, groupId=${groupId}`);
@@ -6234,6 +6521,9 @@
           alert(`${t('caddyAlreadyBooked')}:\n\n${conflicts.join('\n')}`);
           return;
         }
+        // v1218: the caddies' other jobs (any source) and day-offs, before anything is saved
+        const refusals = await caddyRefusals(golfersWithCaddies, date, bookingTime, el.bookingId.value || null);
+        if (refusals.length) { alert(t('caddyRefused') + '\n\n' + refusals.join('\n')); return; }
 
         const booking = {
           id: el.bookingId.value || genId(),
@@ -6243,12 +6533,14 @@
           golfers,
           notes: el.bookingNotes.value,
           name: golfers[0]?.name || '',
-          caddyNumber: golfers[0]?.caddyNumber || ''
+          caddyNumber: golfers[0]?.caddyNumber || '',
+          caddiesNeeded: Math.min(4, Math.max(0, parseInt(el.caddiesNeeded && el.caddiesNeeded.value) || 0))
         };
 
         const idx = bookings.findIndex(b => b.id === booking.id);
         if (idx >= 0) bookings[idx] = booking;
         else bookings.push(booking);
+        savedBookings.push({ b: booking, date });
 
         // Handle recurring bookings
         if (el.recurringToggle?.checked && !el.bookingId.value) {
@@ -6261,7 +6553,7 @@
             const recurringGroupId = 'rec_' + genId();
             booking.recurringGroupId = recurringGroupId;
 
-            futureDates.forEach(futureDate => {
+            for (const futureDate of futureDates) {
               const futureDateStr = futureDate.toISOString().split('T')[0];
               const futureDayBookings = getDay(futureDateStr);
 
@@ -6276,12 +6568,21 @@
                 notes: booking.notes,
                 name: booking.name,
                 caddyNumber: booking.caddyNumber,
+                caddiesNeeded: booking.caddiesNeeded || 0,
                 recurringGroupId: recurringGroupId
               };
+              // v1218: a caddy who is out or off on a later date keeps that tee time, loses the caddy, and it's said
+              const rf = await caddyRefusals(recurringBooking.golfers, futureDateStr, recurringBooking.time, null);
+              if (rf.length) {
+                recurringBooking.golfers.forEach(g => { g.caddyId = null; g.caddyNumber = ''; g.caddyName = ''; g.caddyLocalName = ''; });
+                recurringBooking.caddyNumber = '';
+                recurringSkips.push(futureDateStr + ': ' + rf.join('; '));
+              }
 
               futureDayBookings.push(recurringBooking);
               setDay(futureDateStr, futureDayBookings);
-            });
+              savedBookings.push({ b: recurringBooking, date: futureDateStr });
+            }
 
             console.log(`[TeeSheet] Created ${futureDates.length + 1} recurring bookings`);
           }
@@ -6290,26 +6591,15 @@
 
       setDay(date, bookings);
 
-      // Sync caddy bookings to database for real-time visibility
-      if (el.rangeModeToggle.checked && rangeSlots.length > 0) {
-        // Range mode - sync all slots with caddies
-        rangeSlots.forEach(slot => {
-          (slot.golfers || []).forEach(g => {
-            if (g.caddyId) {
-              saveCaddyBookingToDb(null, g, date, slot.time);
-            }
-          });
-        });
-      } else {
-        // Single booking mode
-        const bookingTime = el.bookingTime.value;
-        const golfers = getGolfersFromDialog();
-        golfers.forEach(g => {
-          if (g.caddyId) {
-            saveCaddyBookingToDb(null, g, date, bookingTime);
-          }
-        });
+      // v1218: the caddy jobs, written and AWAITED before the dialog closes. A job that
+      // failed to save is said out loud — the tee time is never shown with a caddy it lacks.
+      const jobFails = [];
+      for (const s of savedBookings) {
+        const r = await syncCaddyJobs(s.b, s.date, { reason: 'Changed on the pro shop tee sheet' });
+        if (!r.ok) jobFails.push((s.date !== date ? s.date + ' ' : '') + (s.b.time || '') + ' ' + (s.b.name || '') + ': ' + r.message);
       }
+      if (jobFails.length) alert(t('caddySyncFail') + '\n\n' + jobFails.join('\n'));
+      if (recurringSkips.length) alert(t('recurringCaddySkipped') + '\n\n' + recurringSkips.join('\n'));
 
       el.dialog.close();
       render();
@@ -6372,12 +6662,15 @@
             // Check and promote from waitlist
             await ParentBridge.promoteFromWaitlist(g.caddyId || g.caddyNumber, date, booking.time);
 
-            // Delete caddy booking from database
+            // rows written before the tee-sheet link existed (caddy + date + time)
             if (g.caddyId) {
-              await deleteCaddyBookingFromDb(g.caddyId, date, booking.time);
+              await cancelCaddyJobs(null, 'Tee time cancelled by the pro shop', { caddyId: g.caddyId, date, time: booking.time });
             }
           }
         }
+
+        // v1218: every job this booking owns — a cancel the caddy master can see, not a delete
+        await cancelCaddyJobs(booking.id, 'Tee time cancelled by the pro shop');
 
         // CRITICAL: Remove booking from parent BookingManager and cloud
         await ParentBridge.removeBookingFromParent(booking.id);
@@ -7235,7 +7528,8 @@
             .select('id, user_id, caddy_id, booking_date, tee_time, status, golfer_name, caddy_profiles(name, caddy_number)')
             .gte('booking_date', firstDay)
             .lte('booking_date', lastDay)
-            .neq('status', 'cancelled');
+            .neq('status', 'cancelled')
+            .is('teesheet_booking_id', null);   // v1218: linked jobs are counted through their tee-sheet booking
 
           if (courseName) {
             query = query.eq('course_name', courseName);
@@ -7684,6 +7978,7 @@
 
     // Initialize Caddy Picker
     CaddyPicker.init();
+    CaddyRoster.init();
 
     // Listen for refresh messages from parent (caddy bookings, etc.)
     window.addEventListener('message', (event) => {

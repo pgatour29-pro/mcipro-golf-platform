@@ -7258,6 +7258,11 @@
         #caddie-golfers .cgd-note .t { font-size:13.5px; color:#1f2937; line-height:1.45; white-space:pre-line; }
         #caddie-golfers .cgd-note .by { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:5px; font:600 10px/1.6 'JetBrains Mono',ui-monospace,monospace; color:#6b7280; letter-spacing:.03em; }
         #caddie-golfers .cgd-note .by button { border:none; background:none; color:#b91c1c; font-weight:800; cursor:pointer; padding:2px 6px; font-size:12px; font-family:inherit; }
+        #caddie-golfers .cgd-note .by .r { display:flex; align-items:center; gap:4px; flex:none; }
+        #caddie-golfers .cgd-trbtn { border:none; background:none; color:#0d9488 !important; font-weight:800; cursor:pointer; padding:2px 6px; font-size:11px; font-family:inherit; display:inline-flex; align-items:center; gap:3px; letter-spacing:0; }
+        #caddie-golfers .cgd-trbtn .material-symbols-outlined { font-size:14px; }
+        #caddie-golfers .cgd-tr { margin-top:6px; font-size:13.5px; line-height:1.45; color:#0f172a; background:#f0fdfa; border:1px solid rgba(13,148,136,.25); border-radius:8px; padding:6px 9px; white-space:pre-line; font-family:inherit; }
+        #caddie-golfers .cgd-tr.busy { color:#6b7280; }
         @media (max-width: 419px) {
             #caddie-golfers .cgd-pref { grid-template-columns:1fr 1fr; }
             #caddie-golfers .cgd-pref .k { grid-column:1 / -1; padding-bottom:1px; }
@@ -77860,6 +77865,44 @@ document.addEventListener('DOMContentLoaded', function() {
                 return k.replace(/[^a-z0-9฀-๿]+/gi, '_').replace(/^_+|_+$/g, '');
             },
             _stamp() { return { updated_at: this._now(), updated_by: this._me(), updated_by_name: this._meName(), updated_by_number: this._meNum() }; },
+            // v1214: free text (notes, About) is whatever language the caddy typed — a Thai caddy's
+            // note reads in English for a foreign caddy master and vice versa. Same Gemini
+            // translate-text function + cache the notice board uses; on demand, never automatic.
+            _lang() { try { return localStorage.getItem('mci-pro-language') || 'en'; } catch (e) { return 'en'; } },
+            async _xlate(text) {
+                text = String(text || '').trim(); if (!text) return '';
+                const lang = this._lang();
+                if (window.EventNoticeBoard && EventNoticeBoard.translate) return await EventNoticeBoard.translate(text, lang);
+                try {
+                    const sb = this._sb(); if (!sb || !sb.functions) return '';
+                    const r = await sb.functions.invoke('translate-text', { body: { text: text, target: lang } });
+                    return (r && r.data && r.data.translated) || '';
+                } catch (e) { console.warn('[CGD] translate', e); return ''; }
+            },
+            _trCtl(uid) {
+                return '<button type="button" class="cgd-trbtn" id="cgdtrb-' + uid + '" onclick="CaddyGolferDiary.tr(\'' + uid + '\')"><span class="material-symbols-outlined">translate</span><span class="l">' + this._t('notice.translate', 'Translate') + '</span></button>';
+            },
+            // toggle: fetch once, then flip between the translation and "Show original"
+            async tr(uid) {
+                const box = document.getElementById('cgdtr-' + uid);
+                const lbl = document.querySelector('#cgdtrb-' + uid + ' .l');
+                if (!box) return;
+                if (box.dataset.shown === '1') {
+                    box.hidden = true; box.dataset.shown = '0';
+                    if (lbl) lbl.textContent = this._t('notice.translate', 'Translate');
+                    return;
+                }
+                const src = uid === 'sum' ? (document.getElementById('cgdSummary') ? document.getElementById('cgdSummary').value : '')
+                                          : ((this.notes.find(n => n.id === uid) || {}).note || '');
+                if (!String(src).trim()) return;
+                box.hidden = false; box.dataset.shown = '1'; box.classList.add('busy');
+                box.textContent = this._t('common.loading', 'Loading...');
+                const out = await this._xlate(src);
+                if (box.dataset.shown !== '1') return;
+                box.classList.remove('busy');
+                box.textContent = out || this._t('notice.transfail', 'Translation unavailable');
+                if (lbl) lbl.textContent = this._t('notice.showoriginal', 'Show original');
+            },
             _fail(e) { if (e) console.warn('[CGD]', e.message || e); window.NotificationManager.show(this._t('caddie.gd.err', 'Could not save — try again'), 'error'); },
 
             // ---------- entry ----------
@@ -78139,7 +78182,8 @@ document.addEventListener('DOMContentLoaded', function() {
                    + '<div id="cgdPrefs">' + this.prefsHtml(r.prefs) + '</div></div>';
                 h += '<div class="cgd-card"><div class="cgd-sec">' + this._t('caddie.gd.about', 'ABOUT THIS GOLFER') + '</div>'
                    + '<textarea class="cgd-ta" id="cgdSummary" placeholder="' + this._esc(this._t('caddie.gd.about.ph', 'Who they are, how they play, what to avoid…')) + '">' + this._esc(r.summary || '') + '</textarea>'
-                   + '<div class="cgd-act"><span class="st" id="cgdSumSt"></span><button type="button" class="cgd-btn" onclick="CaddyGolferDiary.saveSummary()"><span class="material-symbols-outlined">save</span>' + this._t('caddie.gd.save', 'Save') + '</button></div></div>';
+                   + '<div class="cgd-tr" id="cgdtr-sum" hidden></div>'
+                   + '<div class="cgd-act" style="justify-content:space-between;">' + this._trCtl('sum') + '<span style="display:inline-flex;align-items:center;gap:8px;"><span class="st" id="cgdSumSt"></span><button type="button" class="cgd-btn" onclick="CaddyGolferDiary.saveSummary()"><span class="material-symbols-outlined">save</span>' + this._t('caddie.gd.save', 'Save') + '</button></span></div></div>';
                 h += '<div class="cgd-card"><div class="cgd-sec">' + this._t('caddie.gd.diary', 'DIARY') + '</div>'
                    + '<textarea class="cgd-ta" id="cgdNote" placeholder="' + this._esc(this._t('caddie.gd.note.ph', "What happened today? What worked, what didn't?")) + '"></textarea>'
                    + '<div class="cgd-act"><input type="date" class="cgd-date" id="cgdNoteDate" value="' + this._today() + '"><button type="button" class="cgd-btn" onclick="CaddyGolferDiary.addNote()"><span class="material-symbols-outlined">edit_note</span>' + this._t('caddie.gd.note.add', 'Add note') + '</button></div>'
@@ -78211,8 +78255,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (!this.notes.length) return '<div class="cgd-empty" style="padding:10px 0 0;">' + this._t('caddie.gd.note.first', 'No diary entries yet — add the first one after your round.') + '</div>';
                 const me = this._me();
                 return this.notes.map(n => '<div class="cgd-note"><div class="t">' + this._esc(n.note) + '</div>'
+                    + '<div class="cgd-tr" id="cgdtr-' + this._esc(n.id) + '" hidden></div>'
                     + '<div class="by"><span>' + this._esc(this._fmtDate(n.round_date || n.created_at)) + ' · ' + this._esc((n.author_number ? '#' + n.author_number + ' ' : '') + (n.author_name || '')) + '</span>'
-                    + (me && n.author_id === me ? '<button type="button" onclick="CaddyGolferDiary.delNote(\'' + this._esc(n.id) + '\')" aria-label="Delete note">✕</button>' : '') + '</div></div>').join('');
+                    + '<span class="r">' + this._trCtl(this._esc(n.id))
+                    + (me && n.author_id === me ? '<button type="button" onclick="CaddyGolferDiary.delNote(\'' + this._esc(n.id) + '\')" aria-label="Delete note">✕</button>' : '') + '</span></div></div>').join('');
             },
             renderNotes() { const el = document.getElementById('cgdNotes'); if (el) el.innerHTML = this.notesHtml(); },
             async addNote() {

@@ -4753,6 +4753,8 @@
 
     async function upsertBookingsToDb(bookingsArr, date) {
       if (!supabaseClient || !bookingsArr.length) return;
+      // no course = no course context to write (course_id null, course_name "-- Select Course --")
+      if (!el.courseSelect.value) { console.warn('[TeeSheet] No course selected — bookings not written'); return; }
       lastLocalSave = Date.now();
       const rows = bookingsArr.map(b => bookingToDbRow(b, date));
       const { error } = await supabaseClient.from('bookings').upsert(rows, { onConflict: 'id' });
@@ -4766,6 +4768,25 @@
         .update({ deleted: true, updated_at: new Date().toISOString() })
         .in('id', ids);
       if (error) console.error('[TeeSheet] DB soft-delete failed:', error);
+    }
+
+    // Every booking id the DB has ever shown this browser (v1232). A row that later disappears
+    // from the DB was deleted THERE and must never be uploaded again from the local cache: before
+    // this, a hard-deleted row came back within seconds from any open sheet on that date, carrying
+    // that sheet's course context (even "-- Select Course --").
+    const DB_SEEN_KEY = 'teesheet.dbSeen.v1';
+    let _dbSeen = null;
+    function dbSeenLoad() {
+      if (_dbSeen) return _dbSeen;
+      _dbSeen = new Set();
+      try { JSON.parse(localStorage.getItem(DB_SEEN_KEY) || '[]').forEach(id => _dbSeen.add(id)); } catch (e) {}
+      return _dbSeen;
+    }
+    function dbSeenHas(id) { return dbSeenLoad().has(id); }
+    function dbSeenAdd(rows) {
+      const seen = dbSeenLoad(); let added = 0;
+      (rows || []).forEach(r => { if (r && r.id && !seen.has(r.id)) { seen.add(r.id); added++; } });
+      if (added) { try { localStorage.setItem(DB_SEEN_KEY, JSON.stringify(Array.from(seen).slice(-3000))); } catch (e) {} }
     }
 
     // Fetch this date's tee sheet bookings from Supabase, migrate any legacy
@@ -4791,12 +4812,14 @@
 
         const knownIds = new Set((data || []).map(r => r.id));
         const live = (data || []).filter(r => !r.deleted).map(dbRowToBooking);
+        dbSeenAdd(data || []);
 
         // One-time migration: push legacy local-only bookings (pre-DB era) up to Supabase.
-        // Ids already known to the DB (even soft-deleted) are never re-uploaded.
+        // Ids already known to the DB (even soft-deleted) or EVER seen from it are never
+        // re-uploaded, and nothing migrates while no course is selected (v1232).
         let legacy = [];
         try { legacy = JSON.parse(localStorage.getItem(storageKey(date)) || '[]'); } catch {}
-        const toMigrate = legacy.filter(b => b && b.id && !knownIds.has(b.id));
+        const toMigrate = courseId ? legacy.filter(b => b && b.id && !knownIds.has(b.id) && !dbSeenHas(b.id)) : [];
         if (toMigrate.length) {
           console.log('[TeeSheet] Migrating', toMigrate.length, 'legacy local bookings to DB for', date);
           await upsertBookingsToDb(toMigrate, date);

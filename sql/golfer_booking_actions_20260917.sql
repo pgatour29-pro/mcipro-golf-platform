@@ -111,6 +111,9 @@ declare
   any_caddy boolean;
   first_slot jsonb;
   old_job  record;
+  old_job_id uuid := null;  -- scalars, not record fields: a record that never got a row cannot be read
+  old_end  time := null;
+  old_fee  numeric := null;
   picked   jsonb := null;   -- the caddy set by this call (the cancel branch never assigns cp)
 begin
   if coalesce(p_golfer_id, '') = '' or coalesce(p_booking_id, '') = '' then
@@ -151,10 +154,11 @@ begin
    where cb.teesheet_booking_id = p_booking_id and coalesce(cb.status, '') <> 'cancelled'
      and ((old_id is not null and cb.caddy_id::text = old_id) or (old_num is not null and cb.caddie_name = 'Caddy #' || old_num))
    order by cb.created_at limit 1;
+  if found then old_job_id := old_job.id; old_end := old_job.end_time; old_fee := old_job.payment_amount; end if;
 
   if p_caddy_id is null then
-    if old_job.id is not null then
-      update public.caddy_bookings set status = 'cancelled', cancelled_at = now(), cancellation_reason = 'Caddy cancelled by the golfer', updated_at = now() where id = old_job.id;
+    if old_job_id is not null then
+      update public.caddy_bookings set status = 'cancelled', cancelled_at = now(), cancellation_reason = 'Caddy cancelled by the golfer', updated_at = now() where id = old_job_id;
     end if;
     slot := slot || jsonb_build_object('caddyId', null, 'caddyNumber', '', 'caddyName', '', 'caddyLocalName', '');
     golfers := jsonb_set(golfers, array[i::text], slot, true);
@@ -178,7 +182,7 @@ begin
         from public.caddy_bookings cb
        where cb.booking_date = the_date
          and coalesce(cb.status, '') <> 'cancelled'
-         and (old_job.id is null or cb.id <> old_job.id)
+         and (old_job_id is null or cb.id <> old_job_id)
          and (cb.caddy_id = cp.id
               or (cb.caddy_id is null and cb.caddie_name = 'Caddy #' || trim(cp.caddy_number)
                   and (cb.course_id = b.course_id or (prefix <> '' and lower(coalesce(cb.course_name, '')) like prefix || '%'))))
@@ -196,22 +200,22 @@ begin
       return jsonb_build_object('ok', false, 'reason', 'caddy_taken', 'caddy', cp.caddy_number, 'off', true);
     end if;
 
-    if old_job.id is not null then
-      update public.caddy_bookings set status = 'cancelled', cancelled_at = now(), cancellation_reason = 'Replaced by the golfer', updated_at = now() where id = old_job.id;
-      end_t := old_job.end_time; fee := coalesce(old_job.payment_amount, 0);
+    if old_job_id is not null then
+      update public.caddy_bookings set status = 'cancelled', cancelled_at = now(), cancellation_reason = 'Replaced by the golfer', updated_at = now() where id = old_job_id;
+      end_t := old_end; fee := coalesce(old_fee, 0);
     else
       -- no caddy on this slot yet: a pending 'Unassigned' job becomes this one — but only when the
       -- open jobs cover every caddy-less slot including mine (a golfer who cancelled their own caddy
       -- and picks again must not eat a job that belongs to another player in the group)
-      old_job := null;
       if need >= (select count(*) from jsonb_array_elements(golfers) with ordinality as t(g, ord)
                    where (ord - 1) <> i and nullif(g->>'caddyId', '') is null and nullif(g->>'caddyNumber', '') is null) + 1 then
         select * into old_job from public.caddy_bookings cb
          where cb.teesheet_booking_id = p_booking_id and cb.caddy_id is null and cb.status = 'pending' order by cb.created_at limit 1;
+        if found then old_job_id := old_job.id; old_end := old_job.end_time; old_fee := old_job.payment_amount; end if;
       end if;
-      if old_job.id is not null then
-        update public.caddy_bookings set status = 'cancelled', cancelled_at = now(), cancellation_reason = 'Filled by the golfer', updated_at = now() where id = old_job.id;
-        end_t := old_job.end_time; fee := coalesce(old_job.payment_amount, 0);
+      if old_job_id is not null then
+        update public.caddy_bookings set status = 'cancelled', cancelled_at = now(), cancellation_reason = 'Filled by the golfer', updated_at = now() where id = old_job_id;
+        end_t := old_end; fee := coalesce(old_fee, 0);
         need := greatest(0, need - 1);
       end if;
     end if;

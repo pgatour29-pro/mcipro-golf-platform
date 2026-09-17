@@ -963,6 +963,14 @@
       display: none;
     }
     .caddy-dropdown.show { display: block; }
+    /* Golfer directory list (v1225): the society tee sheet's name matching, listed under the name field */
+    .golfer-dd { max-height: min(320px, 48vh); }
+    .gs-head { position: sticky; top: 0; z-index: 1; padding: 7px 12px; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: inherit; border-bottom: 1px solid var(--border); }
+    .gs-row { display: flex; align-items: center; gap: 8px; }
+    .gs-row .caddy-option-name { flex: 1; min-width: 0; display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .gs-row.active { background: rgba(34,197,94,.14); box-shadow: inset 3px 0 0 #22c55e; }
+    .gs-hcp { flex: none; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; color: var(--muted); }
+    .gs-empty { color: var(--muted); font-size: 12px; cursor: default; }
     .caddy-option {
       padding: 10px 12px;
       cursor: pointer;
@@ -3024,6 +3032,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="golfer-avatar.js?v=20260830a"></script>
+  <script src="name-search.js?v=20260917a"></script>
   <script>
   (function() {
     'use strict';
@@ -3438,6 +3447,7 @@
         bookSlot: "Book Slot", bookingType: "Booking Type", course: "Course", tee: "Tee", time: "Time",
         golfers: "Golfers", addGolfer: "+ Add Golfer",
         golferName: "Golfer Name", caddy: "Caddy", searchCaddy: "Search caddy...", noCaddy: "No Caddy",
+        nameMatches: "{n} matches", nameHint: "click a name, or ↑ ↓ then Enter", nameNoMatch: "No directory match for \"{q}\" — will be saved as a guest", nameSearching: "Searching…",
         notes: "Notes", delete: "Delete", cancel: "Cancel", save: "Save",
         searchPlaceholder: "Golfer or caddy...", confirmClear: "Clear all bookings for this day?",
         noMatches: "No matches found.", player: "Player",
@@ -3502,6 +3512,7 @@
         bookSlot: "จองช่วงเวลา", bookingType: "ประเภทการจอง", course: "คอร์ส", tee: "ทีออฟ", time: "เวลา",
         golfers: "นักกอล์ฟ", addGolfer: "+ เพิ่มนักกอล์ฟ",
         golferName: "ชื่อนักกอล์ฟ", caddy: "แคดดี้", searchCaddy: "ค้นหาแคดดี้...", noCaddy: "ไม่มีแคดดี้",
+        nameMatches: "พบ {n} รายชื่อ", nameHint: "คลิกชื่อ หรือกด ↑ ↓ แล้ว Enter", nameNoMatch: "ไม่พบ \"{q}\" ในสารบบ — จะบันทึกเป็นแขก", nameSearching: "กำลังค้นหา…",
         notes: "หมายเหตุ", delete: "ลบ", cancel: "ยกเลิก", save: "บันทึก",
         searchPlaceholder: "นักกอล์ฟหรือแคดดี้...", confirmClear: "ล้างการจองทั้งหมดสำหรับวันนี้?",
         noMatches: "ไม่พบผลลัพธ์", player: "ผู้เล่น",
@@ -3566,6 +3577,7 @@
         bookSlot: "슬롯 예약", bookingType: "예약 유형", course: "코스", tee: "티", time: "시간",
         golfers: "골퍼", addGolfer: "+ 골퍼 추가",
         golferName: "골퍼 이름", caddy: "캐디", searchCaddy: "캐디 검색...", noCaddy: "캐디 없음",
+        nameMatches: "{n}명 일치", nameHint: "이름을 클릭하거나 ↑ ↓ 후 Enter", nameNoMatch: "\"{q}\" 검색 결과 없음 — 게스트로 저장됩니다", nameSearching: "검색 중…",
         notes: "메모", delete: "삭제", cancel: "취소", save: "저장",
         searchPlaceholder: "골퍼 또는 캐디...", confirmClear: "오늘 예약을 모두 삭제하시겠습니까?",
         noMatches: "결과를 찾을 수 없습니다.", player: "플레이어",
@@ -3630,6 +3642,7 @@
         bookSlot: "スロット予約", bookingType: "予約タイプ", course: "コース", tee: "ティー", time: "時間",
         golfers: "ゴルファー", addGolfer: "+ ゴルファー追加",
         golferName: "ゴルファー名", caddy: "キャディー", searchCaddy: "キャディー検索...", noCaddy: "キャディーなし",
+        nameMatches: "{n}件一致", nameHint: "名前をクリック、または ↑ ↓ で選んで Enter", nameNoMatch: "\"{q}\" に一致するプロフィールなし — ゲストとして保存", nameSearching: "検索中…",
         notes: "メモ", delete: "削除", cancel: "キャンセル", save: "保存",
         searchPlaceholder: "ゴルファーまたはキャディー...", confirmClear: "本日の予約をすべて削除しますか?",
         noMatches: "結果が見つかりません。", player: "プレイヤー",
@@ -4362,83 +4375,90 @@
       await cancelCaddyJobs(null, 'Removed on the pro shop tee sheet', { caddyId, date, time });
     }
 
-    // Cache for system users (golfers)
-    let allSystemUsers = [];
-    let usersLastFetchTime = 0;
-
-    // Fetch all users from database for golfer autocomplete
-    async function fetchSystemUsers() {
-      if (!supabaseClient) return [];
-
-      const now = Date.now();
-      // Cache for 5 minutes
-      if (allSystemUsers.length > 0 && (now - usersLastFetchTime) < 300000) {
-        return allSystemUsers;
-      }
-
-      try {
-        const { data, error } = await supabaseClient
-          .from('user_profiles')
-          .select('line_user_id, name, email')
-          .order('name');
-
-        if (error) {
-          console.error('[TeeSheet] Error fetching users:', error);
-          return allSystemUsers;
-        }
-
-        allSystemUsers = (data || []).map(u => ({
-          id: u.line_user_id,
-          name: u.name || u.email?.split('@')[0] || 'Unknown',
-          email: u.email
-        }));
-        usersLastFetchTime = now;
-        console.log('[TeeSheet] Loaded', allSystemUsers.length, 'system users');
-        return allSystemUsers;
-      } catch (e) {
-        console.error('[TeeSheet] User fetch error:', e);
-        return allSystemUsers;
-      }
-    }
-
-    // Render user dropdown for golfer name autocomplete
-    function renderUserDropdown(dropdown, input, query) {
-      dropdown.innerHTML = '';
-      query = (query || '').toLowerCase();
-
-      // Filter users by query
-      const matches = allSystemUsers.filter(u =>
-        u.name.toLowerCase().includes(query) ||
-        (u.email && u.email.toLowerCase().includes(query))
-      ).slice(0, 8);
-
-      if (matches.length === 0 && query.length > 0) {
-        const noMatch = document.createElement('div');
-        noMatch.className = 'caddy-option';
-        noMatch.style.color = '#6b7280';
-        noMatch.innerHTML = `<span>No matching users - will create as guest</span>`;
-        dropdown.appendChild(noMatch);
-        return;
-      }
-
-      matches.forEach(user => {
-        const opt = document.createElement('div');
-        opt.className = 'caddy-option';
-        opt.innerHTML = `
-          <span class="caddy-option-name" data-golfer-av="${String(user.id || '').replace(/"/g, '&quot;')}" data-golfer-av-nm="${String(user.name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${user.name}</span>
-          ${user.email ? `<span class="caddy-option-detail">${user.email}</span>` : ''}
-        `;
-        opt.addEventListener('mousedown', e => {
-          e.preventDefault();
-          input.value = user.name;
-          input.dataset.userId = user.id;
-          dropdown.classList.remove('show');
+    // ==================== GOLFER NAME SEARCH (v1225) ====================
+    // The same directory logic as the society tee sheet's name search (SocietyGolfDB.searchPlayers
+    // in index.html, shared for standalone pages as name-search.js): a server-side, anchored
+    // word-prefix match on user_profiles.name with nickname variants ("pete" finds Peter, "bob"
+    // finds Robert), every typed word in any order, ALL matches listed, ↑ ↓ then Enter to pick.
+    // Replaces the old "load every profile once, substring-filter, show 8" list: PostgREST silently
+    // capped that load at 1000 rows, so anyone past the first thousand names could never be found.
+    const GolferSearch = {
+      _esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); },
+      _hcp(h) { if (h == null || isNaN(h)) return ''; const n = Math.round(h * 10) / 10; return n < 0 ? '+' + Math.abs(n) : String(n); },
+      // input: the name box; dropdown: its .golfer-dd list; onPick(p): optional, runs after the box is filled
+      attach(input, dropdown, onPick) {
+        const st = { seq: 0, timer: null, list: [], active: -1, term: '' };
+        const hide = () => { dropdown.classList.remove('show'); dropdown.innerHTML = ''; st.list = []; st.active = -1; };
+        const highlight = () => {
+          const rows = dropdown.querySelectorAll('.gs-row');
+          rows.forEach((r, k) => r.classList.toggle('active', k === st.active));
+          const a = rows[st.active];
+          if (a && a.scrollIntoView) { try { a.scrollIntoView({ block: 'nearest' }); } catch (e) {} }
+        };
+        const pick = (i) => {
+          const p = st.list[i]; if (!p) return;
+          input.value = p.name;
+          input.dataset.userId = p.id;
+          hide();
+          if (onPick) onPick(p);
+        };
+        const render = () => {
+          dropdown.innerHTML = '';
+          if (!st.list.length) {
+            const d = document.createElement('div');
+            d.className = 'caddy-option gs-empty';
+            d.textContent = t('nameNoMatch').replace('{q}', st.term);
+            dropdown.appendChild(d);
+            return;
+          }
+          const head = document.createElement('div');
+          head.className = 'gs-head';
+          head.textContent = t('nameMatches').replace('{n}', st.list.length) + ' · ' + t('nameHint');
+          dropdown.appendChild(head);
+          st.list.forEach((p, i) => {
+            const opt = document.createElement('div');
+            opt.className = 'caddy-option gs-row' + (i === st.active ? ' active' : '');
+            const hc = this._hcp(p.handicap);
+            opt.innerHTML = `<span class="caddy-option-name" data-golfer-av="${this._esc(p.id)}" data-golfer-av-nm="${this._esc(p.name)}" data-golfer-av-sz="20">${this._esc(p.name)}</span>${hc ? `<span class="gs-hcp">HCP ${hc}</span>` : ''}`;
+            opt.addEventListener('mousedown', e => { e.preventDefault(); pick(i); });   // mousedown fires before the input blurs
+            opt.addEventListener('mouseenter', () => { st.active = i; highlight(); });
+            dropdown.appendChild(opt);
+          });
+          // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+          if (window._golferChipDecorate) window._golferChipDecorate(dropdown, 20);
+        };
+        input.addEventListener('input', () => {
+          input.dataset.userId = '';   // typing again unlinks the profile; a pick re-links it
+          st.term = input.value.trim();
+          const seq = ++st.seq;        // only the newest keystroke may render
+          clearTimeout(st.timer);
+          if (!st.term) { hide(); return; }
+          st.timer = setTimeout(() => {
+            if (!supabaseClient || !window.searchProfilesByName) return;
+            if (!st.list.length) dropdown.innerHTML = `<div class="gs-head">${this._esc(t('nameSearching'))}</div>`;
+            dropdown.classList.add('show');
+            window.searchProfilesByName(supabaseClient, st.term, 100).then(list => {
+              if (seq !== st.seq) return;
+              st.list = list || [];
+              st.active = st.list.length ? 0 : -1;
+              render();
+            }).catch(e => {
+              if (seq !== st.seq) return;
+              console.warn('[TeeSheet] golfer search failed', e);
+              hide();
+            });
+          }, 130);
         });
-        dropdown.appendChild(opt);
-      });
-      // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
-      if (window._golferChipDecorate) window._golferChipDecorate(dropdown, 18);
-    }
+        input.addEventListener('keydown', e => {
+          const open = dropdown.classList.contains('show') && st.list.length > 0;
+          if (e.key === 'ArrowDown') { if (!open) return; e.preventDefault(); st.active = Math.min(st.active + 1, st.list.length - 1); highlight(); }
+          else if (e.key === 'ArrowUp') { if (!open) return; e.preventDefault(); st.active = Math.max(st.active - 1, 0); highlight(); }
+          else if (e.key === 'Enter') { if (!open) return; e.preventDefault(); if (st.active >= 0) pick(st.active); }
+          else if (e.key === 'Escape') { if (!dropdown.classList.contains('show')) return; e.preventDefault(); hide(); }   // closes the list, not the dialog
+        });
+        input.addEventListener('blur', () => setTimeout(hide, 200));
+      }
+    };
 
     // The roster is the database's real roster for the selected course. The parent's demo
     // caddies are only a stand-in when there is no database at all (standalone preview).
@@ -5613,7 +5633,7 @@
             <div class="caddy-select-wrapper">
               <input type="text" class="golfer-name" placeholder="${t('golferName')}" value="${golfer.name || ''}"
                 data-user-id="${golfer.odoo_id || ''}" autocomplete="off">
-              <div class="user-dropdown caddy-dropdown"></div>
+              <div class="golfer-dd caddy-dropdown"></div>
             </div>
           </div>
           <div class="golfer-field">
@@ -5624,11 +5644,12 @@
                   value="${golfer.caddyNumber ? '#' + golfer.caddyNumber + ' - ' + (golfer.caddyName || '') : ''}"
                   data-caddy-id="${golfer.caddyId || ''}" data-caddy-number="${golfer.caddyNumber || ''}" data-caddy-name="${golfer.caddyName || ''}">
                 <button type="button" class="clear-caddy-btn" style="display:${hasCaddy ? 'flex' : 'none'};position:absolute;right:8px;top:50%;transform:translateY(-50%);width:20px;height:20px;border:none;background:#ef4444;color:#fff;border-radius:50%;font-size:14px;cursor:pointer;align-items:center;justify-content:center;line-height:1;">&times;</button>
-                <div class="caddy-dropdown"></div>
               </div>
               <button type="button" class="open-picker-btn" title="Browse all caddies">
                 <span class="material-icons" style="font-size:14px;margin-right:2px;">search</span>Browse
               </button>
+              <!-- the list spans the whole caddy field (input + Browse): on a phone the input alone is too narrow to read names in -->
+              <div class="caddy-dd caddy-dropdown"></div>
             </div>
           </div>
         </div>
@@ -5636,25 +5657,16 @@
       `;
 
       const golferNameInput = row.querySelector('.golfer-name');
-      const userDropdown = row.querySelector('.user-dropdown');
+      const golferDropdown = row.querySelector('.golfer-dd');
       const caddyInput = row.querySelector('.caddy-input');
-      const dropdown = row.querySelector('.caddy-dropdown');
+      // The caddy list is its own box. Querying the shared styling class here returned the golfer
+      // NAME box first (it came earlier in the row), so caddy matches dropped under the wrong field.
+      const dropdown = row.querySelector('.caddy-dd');
       const clearCaddyBtn = row.querySelector('.clear-caddy-btn');
       const removeBtn = row.querySelector('.remove-golfer');
 
-      // Golfer name autocomplete
-      golferNameInput.addEventListener('focus', async () => {
-        await fetchSystemUsers(); // Ensure users are loaded
-        renderUserDropdown(userDropdown, golferNameInput, '');
-        userDropdown.classList.add('show');
-      });
-      golferNameInput.addEventListener('input', () => {
-        renderUserDropdown(userDropdown, golferNameInput, golferNameInput.value);
-        userDropdown.classList.add('show');
-        // Clear user ID if manually typing (will be re-matched on save)
-        golferNameInput.dataset.userId = '';
-      });
-      golferNameInput.addEventListener('blur', () => setTimeout(() => userDropdown.classList.remove('show'), 200));
+      // Golfer name: directory search, the same matching as the society tee sheet (v1225)
+      GolferSearch.attach(golferNameInput, golferDropdown);
 
       // Show/hide clear button based on caddy selection
       function updateClearBtn() {
@@ -6542,8 +6554,11 @@
         <div class="golfer-fields">
           <div class="golfer-field">
             <label>${t('golferName')}</label>
-            <input type="text" class="slot-golfer-name" placeholder="${t('golferName')}" value="${golfer.name || ''}"
-              data-slot="${slotIdx}" data-golfer="${gIdx}">
+            <div class="caddy-select-wrapper">
+              <input type="text" class="slot-golfer-name" placeholder="${t('golferName')}" value="${golfer.name || ''}"
+                data-slot="${slotIdx}" data-golfer="${gIdx}" data-user-id="${golfer.odoo_id || ''}" autocomplete="off">
+              <div class="golfer-dd caddy-dropdown"></div>
+            </div>
           </div>
           <div class="golfer-field">
             <label>${t('caddy')}</label>
@@ -6552,23 +6567,29 @@
                 value="${golfer.caddyNumber ? '#' + golfer.caddyNumber + ' - ' + (golfer.caddyName || '') : ''}"
                 data-caddy-id="${golfer.caddyId || ''}" data-caddy-number="${golfer.caddyNumber || ''}" data-caddy-name="${golfer.caddyName || ''}"
                 data-slot="${slotIdx}" data-golfer="${gIdx}">
-              <div class="caddy-dropdown"></div>
+              <div class="caddy-dd caddy-dropdown"></div>
             </div>
           </div>
         </div>
         ${gIdx > 0 ? '<button type="button" class="remove-golfer">&times;</button>' : '<div style="width:32px"></div>'}
       `;
 
-      // Name input handler
+      // Name input: typed text is a guest until a directory pick links the profile (v1225)
       const nameInput = row.querySelector('.slot-golfer-name');
       nameInput.addEventListener('input', () => {
         rangeSlots[slotIdx].golfers[gIdx].name = nameInput.value.trim();
+        rangeSlots[slotIdx].golfers[gIdx].odoo_id = null;
+        updateSlotCardSummary(slotIdx);
+      });
+      GolferSearch.attach(nameInput, row.querySelector('.golfer-dd'), p => {
+        rangeSlots[slotIdx].golfers[gIdx].name = p.name;
+        rangeSlots[slotIdx].golfers[gIdx].odoo_id = p.id;
         updateSlotCardSummary(slotIdx);
       });
 
       // Caddy input handler
       const caddyInput = row.querySelector('.slot-caddy-input');
-      const dropdown = row.querySelector('.caddy-dropdown');
+      const dropdown = row.querySelector('.caddy-dd');
 
       caddyInput.addEventListener('focus', () => { renderCaddyDropdownForSlot(dropdown, caddyInput, '', slotIdx, gIdx); dropdown.classList.add('show'); });
       caddyInput.addEventListener('input', () => { renderCaddyDropdownForSlot(dropdown, caddyInput, caddyInput.value, slotIdx, gIdx); dropdown.classList.add('show'); });

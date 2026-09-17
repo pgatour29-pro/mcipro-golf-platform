@@ -2050,14 +2050,16 @@
     .ds-ctl{background:var(--panel-solid);color:var(--ink);border:1px solid var(--line-2);border-radius:7px;padding:4px 6px;font-size:12px;font-family:inherit;min-width:0;height:26px;box-sizing:border-box}
     input.ds-ctl{width:100%;min-width:120px}
     input.ds-ctl[data-f="notes"]{min-width:160px}
-    select.ds-ctl.ds-cad{max-width:180px}
+    .ds-cw{position:relative;display:block;min-width:0}
+    input.ds-ctl.caddy-input{min-width:150px}
+    .ds-cw .caddy-dropdown{min-width:220px}
     .ds-txt{display:none}
     .ds-open{color:#fb923c;font-weight:800;white-space:nowrap}
     .ds-tag{display:inline-block;margin-top:3px;font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:2px 6px;border-radius:20px;background:var(--card-hi);color:var(--muted);white-space:nowrap}
     .ds-ro{color:var(--muted);font-size:11px;font-style:italic}
     .ds-empty{padding:40px;text-align:center;color:var(--muted)}
     .ds-saved{color:var(--brand);font-size:11px;font-weight:700;white-space:nowrap}
-    @media (max-width:640px){ #daysheet .ds-body{padding:8px} .ds-table{font-size:12px} .ds-table td,.ds-table th{padding:6px 5px} select.ds-ctl.ds-cad{max-width:120px} }
+    @media (max-width:640px){ #daysheet .ds-body{padding:8px} .ds-table{font-size:12px} .ds-table td,.ds-table th{padding:6px 5px} input.ds-ctl.caddy-input{min-width:120px} }
     @media print{
       @page{size:A4 landscape;margin:10mm}
       body>*:not(#daysheet){display:none!important}
@@ -2072,7 +2074,7 @@
       .ds-table th{position:static;background:#fff;color:#000;border-bottom:1.5px solid #000}
       .ds-table td{background:#fff;color:#000;border-bottom:1px solid #999}
       .ds-table tr.ds-hour td{border-top:2px solid #000}
-      .ds-ctl,.ds-saved,.ds-ro{display:none!important}
+      .ds-ctl,.ds-saved,.ds-ro,#daysheet .caddy-dropdown{display:none!important}
       .ds-txt{display:inline}
       .ds-open{color:#000}
       .ds-tag{border:1px solid #000;background:#fff;color:#000}
@@ -4686,6 +4688,9 @@
         tee_time: date + 'T' + (b.time || '00:00') + ':00',
         name: b.name || (golfers[0] && golfers[0].name) || '',
         golfer_name: b.name || (golfers[0] && golfers[0].name) || '',
+        // the linked LINE account (directory pick) — the golfer app shows a tee time ONLY to its
+        // golfer_id / booking_data.golfers[].odoo_id, so an unlinked or renamed booking reaches nobody (v1229)
+        golfer_id: (golfers[0] && golfers[0].odoo_id) || null,
         players: golfers.length || 1,
         group_id: b.groupId || b.id, // column is NOT NULL; singles fall back to their own id
         kind: 'tee',
@@ -5713,27 +5718,17 @@
       return row;
     }
 
-    function renderCaddyDropdown(dropdown, input, query) {
+    // ONE caddy list for every caddy search box (v1229): the booking dialog, the range slots and
+    // the day sheet show the same roster with the same DAY OFF / Out until / booked / in-group
+    // marks and pick the same way. ctx = { time, ignoreBookingId, others: Set(numbers already
+    // taken by the other golfers of this booking), onPick(caddy), onClear() }. Reads the global
+    // caddyDayState — the caller loads it for its own time first (loadCaddyDayState).
+    function renderCaddyList(dropdown, input, query, ctx) {
       dropdown.innerHTML = '';
       query = (query || '').toLowerCase();
-
-      // Get booked caddies for current time slot (from other bookings)
-      const currentTime = el.bookingTime.value;
-      const bookedCaddies = getBookedCaddiesForSlot(el.dateInput.value, currentTime, currentEditingBookingId);
-
-      // Also get caddies already assigned to OTHER golfers in THIS booking dialog
-      const caddiesInThisGroup = new Set();
-      const currentInputCaddyNumber = input.dataset.caddyNumber || '';
-      Array.from(el.golfersList.children).forEach(row => {
-        const caddyInput = row.querySelector('.caddy-input');
-        if (caddyInput && caddyInput !== input) {
-          const caddyNum = caddyInput.dataset.caddyNumber;
-          if (caddyNum) caddiesInThisGroup.add(caddyNum);
-        }
-      });
-
-      // Combine: external bookings + other golfers in same group
-      const allUnavailable = new Set([...bookedCaddies, ...caddiesInThisGroup]);
+      ctx = ctx || {};
+      const bookedCaddies = getBookedCaddiesForSlot(el.dateInput.value, ctx.time, ctx.ignoreBookingId || null);
+      const caddiesInThisGroup = ctx.others || new Set();
 
       // No caddy option
       const noCaddyOpt = document.createElement('div');
@@ -5745,12 +5740,15 @@
         input.dataset.caddyId = '';
         input.dataset.caddyNumber = '';
         input.dataset.caddyName = '';
+        input.dataset.caddyLocalName = '';
+        if (input._updateClearBtn) input._updateClearBtn();
+        if (ctx.onClear) ctx.onClear();
       });
       dropdown.appendChild(noCaddyOpt);
 
-      // Filter caddies - show all but mark booked/assigned ones (search includes local name for Thai/Korean/Japanese)
+      // Every roster caddy that matches (number, name, local name) — marked, never hidden
       allCaddies.filter(c => c.status === 'available' && (!query || (c.number + ' ' + c.name + ' ' + (c.localName || '')).toLowerCase().includes(query)))
-        .slice(0, 10).forEach(caddy => {
+        .slice(0, 60).forEach(caddy => {
           const dayOff = !!caddyDayState.off[caddy.number];
           const outJob = caddyDayState.out[caddy.number];
           const isBookedExternal = bookedCaddies.has(caddy.number) || !!outJob;
@@ -5780,6 +5778,7 @@
               input.dataset.caddyLocalName = caddy.localName || '';
               // Show the clear button
               if (input._updateClearBtn) input._updateClearBtn();
+              if (ctx.onPick) ctx.onPick(caddy);
             });
           } else {
             opt.addEventListener('mousedown', e => {
@@ -5790,6 +5789,16 @@
           }
           dropdown.appendChild(opt);
         });
+    }
+
+    // Booking dialog: the other rows of this dialog are the "others"
+    function renderCaddyDropdown(dropdown, input, query) {
+      const others = new Set();
+      Array.from(el.golfersList.children).forEach(row => {
+        const ci = row.querySelector('.caddy-input');
+        if (ci && ci !== input && ci.dataset.caddyNumber) others.add(ci.dataset.caddyNumber);
+      });
+      renderCaddyList(dropdown, input, query, { time: el.bookingTime.value, ignoreBookingId: currentEditingBookingId, others });
     }
 
     function renumberGolfers() {
@@ -6328,9 +6337,6 @@
         $('ds-title').textContent = c.name + ' · ' + t('dsTitle');
         $('ds-sub').textContent = dateLabel + ' · ' + rows.length + ' ' + t('dsBookings') + ' · ' + players + ' ' + t('dsPlayers') + ' · ' + assigned + ' ' + t('dsCaddies') + (open ? ' · ' + open + ' ' + t('openJobs') : '');
         if (!rows.length) { body.innerHTML = '<div class="ds-empty">' + t('dsEmpty') + '</div>'; return; }
-        const roster = allCaddies.slice();
-        const opts = (sel) => '<option value="">' + t('noCaddy') + '</option>'
-          + roster.map(cd => '<option value="' + this.esc(cd.id) + '"' + (sel && String(sel) === String(cd.number) ? ' selected' : '') + '>#' + this.esc(cd.number) + ' ' + this.esc(cd.name) + '</option>').join('');
         let lastHour = -1;
         body.innerHTML = '<table class="ds-table"><thead><tr><th>' + t('time') + '</th><th>' + t('course') + ' / ' + t('tee') + '</th><th>' + t('golfers') + '</th><th>' + t('caddy') + '</th><th>' + t('caddiesNeeded') + '</th><th>' + t('notes') + '</th><th></th></tr></thead><tbody>'
           + rows.map(b => {
@@ -6339,11 +6345,13 @@
             const hour = Math.floor(minutes(b.time) / 60); const hr = hour !== lastHour; lastHour = hour;
             const isSoc = b.bookingType === 'society' || b.source === 'society-event-db' || (b.groupId && b.groupName);
             const tag = b.hotDeal ? '🔥 ' + t('hotDeal') : (b.bookingType === 'hotdeal' ? t('hotDeal') : isSoc ? t('society') : b.bookingType === 'vip' ? t('vip') : b.bookingType === 'tournament' ? t('tournament') : '');
+            // v1229: the same directory search as the booking dialog on every name, the same
+            // caddy list on every caddy — the day sheet is a full edit surface, not a printout
             const names = golfers.map((g, i) => '<div class="ds-g"><span class="ds-n">'
-              + (ed ? '<input class="ds-ctl" data-f="name" data-i="' + i + '" value="' + this.esc(g.name || '') + '">' : '')
+              + (ed ? '<span class="caddy-select-wrapper ds-cw"><input class="ds-ctl" data-f="name" data-i="' + i + '" value="' + this.esc(g.name || '') + '" data-user-id="' + this.esc(g.odoo_id || '') + '" autocomplete="off" placeholder="' + t('golferName') + '"><div class="golfer-dd caddy-dropdown"></div></span>' : '')
               + '<span class="ds-txt">' + this.esc(g.name || '') + '</span></span></div>').join('');
             const cads = golfers.map((g, i) => '<div class="ds-g">'
-              + (ed ? '<select class="ds-ctl ds-cad" data-f="caddy" data-i="' + i + '">' + opts(g.caddyNumber) + '</select>' : '')
+              + (ed ? '<span class="caddy-select-wrapper ds-cw"><input class="ds-ctl ds-cad caddy-input" data-f="caddy" data-i="' + i + '" placeholder="' + t('searchCaddy') + '" autocomplete="off" value="' + (g.caddyNumber ? '#' + this.esc(g.caddyNumber) + ' - ' + this.esc(g.caddyName || '') : '') + '" data-caddy-id="' + this.esc(g.caddyId || '') + '" data-caddy-number="' + this.esc(g.caddyNumber || '') + '" data-caddy-name="' + this.esc(g.caddyName || '') + '"><div class="caddy-dd caddy-dropdown"></div></span>' : '')
               + '<span class="ds-txt">' + (g.caddyNumber ? '#' + this.esc(g.caddyNumber) + ' ' + this.esc(g.caddyName || '') : '—') + '</span></div>').join('');
             const need = parseInt(b.caddiesNeeded) || 0;
             const needCell = ed ? '<select class="ds-ctl" data-f="need">' + [0, 1, 2, 3, 4].map(n => '<option value="' + n + '"' + (n === need ? ' selected' : '') + '>' + n + '</option>').join('') + '</select>' : '';
@@ -6357,7 +6365,65 @@
               + '<td><span class="ds-saved" data-saved></span></td>'
               + '</tr>';
           }).join('') + '</tbody></table>';
-        body.querySelectorAll('tr[data-id] .ds-ctl').forEach(ctl => ctl.addEventListener('change', (e) => this.onChange(e.target.closest('tr').dataset.id, e.target)));
+        body.querySelectorAll('tr[data-id] .ds-ctl:not(.caddy-input)').forEach(ctl => ctl.addEventListener('change', (e) => this.onChange(e.target.closest('tr').dataset.id, e.target)));
+        // names: directory search; a pick links the profile (data-user-id), typing unlinks it
+        body.querySelectorAll('tr[data-id] input.ds-ctl[data-f="name"]').forEach(inp => {
+          const tr = inp.closest('tr'), dd = inp.parentElement.querySelector('.golfer-dd');
+          if (dd) GolferSearch.attach(inp, dd, () => this.onChange(tr.dataset.id, inp));
+        });
+        // caddies: the shared list, day state loaded for THIS booking's time
+        body.querySelectorAll('tr[data-id] input.caddy-input').forEach(inp => {
+          const tr = inp.closest('tr'), id = tr.dataset.id, i = parseInt(inp.dataset.i), dd = inp.parentElement.querySelector('.caddy-dd');
+          if (!dd) return;
+          const paint = (q) => {
+            const b = getDay(this.date()).find(x => x.id === id); if (!b) return;
+            const others = new Set((b.golfers || []).map((g, k) => k !== i && g.caddyNumber ? String(g.caddyNumber) : '').filter(Boolean));
+            renderCaddyList(dd, inp, q, { time: b.time, ignoreBookingId: b.id, others,
+              onPick: cd => this.setCaddy(id, i, cd), onClear: () => this.setCaddy(id, i, null) });
+            dd.classList.add('show');
+          };
+          inp.addEventListener('focus', async () => {
+            paint('');
+            const b = getDay(this.date()).find(x => x.id === id);
+            await loadCaddyDayState(this.date(), b && b.time, id);
+            if (document.activeElement === inp) paint(inp.value);
+          });
+          inp.addEventListener('input', () => paint(inp.value));
+          inp.addEventListener('blur', () => setTimeout(() => dd.classList.remove('show'), 200));
+        });
+      },
+      // A caddy picked (cd) or cleared (null) for golfer i of booking id — the dialog's rules:
+      // not twice in one group, not when she is out or off; a pick for a golfer who had none
+      // takes one of the open jobs.
+      async setCaddy(id, i, cd) {
+        const date = this.date();
+        const day = getDay(date);
+        const b = day.find(x => x.id === id); if (!b || !this.editable(b)) return;
+        b.golfers = (b.golfers && b.golfers.length) ? b.golfers : [{ name: b.name || t('player'), caddyId: null, caddyNumber: '', caddyName: '' }];
+        const g = b.golfers[i]; if (!g) return;
+        const snap = () => JSON.stringify({ g: b.golfers, n: b.caddiesNeeded || 0 });
+        const before = snap();
+        if (cd) {
+          if (b.golfers.some((o, k) => k !== i && String(o.caddyNumber) === String(cd.number))) { alert(t('caddyInGroup')); this.refresh(); return; }
+          const rf = await caddyRefusals([{ caddyId: cd.id, caddyNumber: cd.number, caddyName: cd.name }], date, b.time, b.id);
+          if (rf.length) { alert(t('caddyRefused') + '\n\n' + rf.join('\n')); this.refresh(); return; }
+          const had = !!(g.caddyId || g.caddyNumber);
+          g.caddyId = cd.id; g.caddyNumber = String(cd.number); g.caddyName = cd.name; g.caddyLocalName = cd.localName || '';
+          if (!had && (parseInt(b.caddiesNeeded) || 0) > 0) b.caddiesNeeded = (parseInt(b.caddiesNeeded) || 0) - 1;
+        } else { g.caddyId = null; g.caddyNumber = ''; g.caddyName = ''; g.caddyLocalName = ''; }
+        b.caddyNumber = (b.golfers[0] && b.golfers[0].caddyNumber) || '';
+        if (before === snap()) return;
+        await this._commit(b, date, day, id);
+      },
+      async _commit(b, date, day, id) {
+        b.lastModifiedBy = 'proshop_daysheet'; b.lastModifiedAt = new Date().toISOString();
+        setDay(date, day);
+        const r = await syncCaddyJobs(b, date, { reason: 'Changed on the day sheet' });
+        if (!r.ok) alert(t('caddySyncFail') + '\n\n' + r.message);
+        render();
+        this.refresh();
+        const mark = document.querySelector('#daysheet tr[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"] [data-saved]');
+        if (mark) { mark.textContent = t('dsSaved'); setTimeout(() => { mark.textContent = ''; }, 1800); }
       },
       async onChange(id, ctl) {
         const date = this.date();
@@ -6367,31 +6433,17 @@
         b.golfers = (b.golfers && b.golfers.length) ? b.golfers : [{ name: b.name || t('player'), caddyId: null, caddyNumber: '', caddyName: '' }];
         const snap = () => JSON.stringify({ g: b.golfers, n: b.caddiesNeeded || 0, notes: b.notes || '' });
         const before = snap();
-        if (f === 'name') { b.golfers[i].name = ctl.value.trim(); if (i === 0) b.name = b.golfers[0].name; }
+        if (f === 'name') {
+          // The LINE link follows the name: a directory pick carries data-user-id, typed text does
+          // not — so a renamed booking no longer stays on the old golfer's account (Pete 2026-09-17).
+          b.golfers[i].name = ctl.value.trim();
+          b.golfers[i].odoo_id = ctl.dataset.userId || null;
+          if (i === 0) b.name = b.golfers[0].name;
+        }
         else if (f === 'notes') b.notes = ctl.value;
         else if (f === 'need') b.caddiesNeeded = Math.min(4, Math.max(0, parseInt(ctl.value) || 0));
-        else if (f === 'caddy') {
-          const g = b.golfers[i]; const had = !!(g.caddyId || g.caddyNumber);
-          const cd = allCaddies.find(x => String(x.id) === ctl.value);
-          if (cd) {
-            if (b.golfers.some((o, k) => k !== i && String(o.caddyNumber) === String(cd.number))) { alert(t('caddyInGroup')); this.refresh(); return; }
-            const rf = await caddyRefusals([{ caddyId: cd.id, caddyNumber: cd.number, caddyName: cd.name }], date, b.time, b.id);
-            if (rf.length) { alert(t('caddyRefused') + '\n\n' + rf.join('\n')); this.refresh(); return; }
-            g.caddyId = cd.id; g.caddyNumber = String(cd.number); g.caddyName = cd.name; g.caddyLocalName = '';
-            // a caddy picked for a golfer who had none takes one of the open jobs
-            if (!had && (parseInt(b.caddiesNeeded) || 0) > 0) b.caddiesNeeded = (parseInt(b.caddiesNeeded) || 0) - 1;
-          } else { g.caddyId = null; g.caddyNumber = ''; g.caddyName = ''; g.caddyLocalName = ''; }
-          b.caddyNumber = (b.golfers[0] && b.golfers[0].caddyNumber) || '';
-        }
         if (before === snap()) return;
-        b.lastModifiedBy = 'proshop_daysheet'; b.lastModifiedAt = new Date().toISOString();
-        setDay(date, day);
-        const r = await syncCaddyJobs(b, date, { reason: 'Changed on the day sheet' });
-        if (!r.ok) alert(t('caddySyncFail') + '\n\n' + r.message);
-        render();
-        this.refresh();
-        const mark = document.querySelector('#daysheet tr[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"] [data-saved]');
-        if (mark) { mark.textContent = t('dsSaved'); setTimeout(() => { mark.textContent = ''; }, 1800); }
+        await this._commit(b, date, day, id);
       }
     };
 
@@ -6591,7 +6643,11 @@
       const caddyInput = row.querySelector('.slot-caddy-input');
       const dropdown = row.querySelector('.caddy-dd');
 
-      caddyInput.addEventListener('focus', () => { renderCaddyDropdownForSlot(dropdown, caddyInput, '', slotIdx, gIdx); dropdown.classList.add('show'); });
+      caddyInput.addEventListener('focus', async () => {
+        renderCaddyDropdownForSlot(dropdown, caddyInput, '', slotIdx, gIdx); dropdown.classList.add('show');
+        await loadCaddyDayState(el.dateInput.value, rangeSlots[slotIdx]?.time, null);   // this slot's own time
+        if (document.activeElement === caddyInput) renderCaddyDropdownForSlot(dropdown, caddyInput, caddyInput.value, slotIdx, gIdx);
+      });
       caddyInput.addEventListener('input', () => { renderCaddyDropdownForSlot(dropdown, caddyInput, caddyInput.value, slotIdx, gIdx); dropdown.classList.add('show'); });
       caddyInput.addEventListener('blur', () => setTimeout(() => dropdown.classList.remove('show'), 200));
 
@@ -6612,84 +6668,26 @@
     }
 
     function renderCaddyDropdownForSlot(dropdown, input, query, slotIdx, gIdx) {
-      dropdown.innerHTML = '';
-      query = (query || '').toLowerCase();
-
-      // Get the specific time for this slot
       const slotTime = rangeSlots[slotIdx]?.time;
-      const editingGroupId = el.bookingGroupId.value || null;
-
-      // Get booked caddies for this specific time slot
-      const bookedCaddies = getBookedCaddiesForSlot(el.dateInput.value, slotTime, null);
-
-      // Also check what caddies are already assigned in OTHER slots of the same group at THIS time
-      // (Allow same caddy in different time slots of same group, but not same time)
-      const currentGroupCaddiesAtTime = new Set();
+      // caddies already taken at THIS time by the other golfers of the group (any slot, not this golfer)
+      const others = new Set();
       rangeSlots.forEach((slot, idx) => {
-        if (slot.time === slotTime && idx !== slotIdx) {
-          slot.golfers.forEach(g => {
-            if (g.caddyNumber) currentGroupCaddiesAtTime.add(g.caddyNumber);
-          });
+        if (slot.time !== slotTime) return;
+        slot.golfers.forEach((g, k) => { if ((idx !== slotIdx || k !== gIdx) && g.caddyNumber) others.add(g.caddyNumber); });
+      });
+      renderCaddyList(dropdown, input, query, {
+        time: slotTime, ignoreBookingId: null, others,
+        onPick: caddy => {
+          const g = rangeSlots[slotIdx].golfers[gIdx];
+          g.caddyId = caddy.id; g.caddyNumber = caddy.number; g.caddyName = caddy.name; g.caddyLocalName = caddy.localName || '';
+          updateSlotCardSummary(slotIdx);
+        },
+        onClear: () => {
+          const g = rangeSlots[slotIdx].golfers[gIdx];
+          g.caddyId = null; g.caddyNumber = ''; g.caddyName = ''; g.caddyLocalName = '';
+          updateSlotCardSummary(slotIdx);
         }
       });
-
-      // Combine external bookings with current group assignments at same time
-      const allBookedForTime = new Set([...bookedCaddies, ...currentGroupCaddiesAtTime]);
-
-      const noCaddyOpt = document.createElement('div');
-      noCaddyOpt.className = 'caddy-option';
-      noCaddyOpt.innerHTML = `<span class="caddy-option-name">${t('noCaddy')}</span>`;
-      noCaddyOpt.addEventListener('mousedown', e => {
-        e.preventDefault();
-        input.value = '';
-        input.dataset.caddyId = '';
-        input.dataset.caddyNumber = '';
-        input.dataset.caddyName = '';
-        rangeSlots[slotIdx].golfers[gIdx].caddyId = null;
-        rangeSlots[slotIdx].golfers[gIdx].caddyNumber = '';
-        rangeSlots[slotIdx].golfers[gIdx].caddyName = '';
-        updateSlotCardSummary(slotIdx);
-      });
-      dropdown.appendChild(noCaddyOpt);
-
-      allCaddies.filter(c => c.status === 'available' && (!query || (c.number + ' ' + c.name + ' ' + (c.localName || '')).toLowerCase().includes(query)))
-        .slice(0, 10).forEach(caddy => {
-          const isBooked = allBookedForTime.has(caddy.number);
-          const opt = document.createElement('div');
-          opt.className = `caddy-option ${isBooked ? 'booked' : ''}`;
-          opt.title = isBooked ? t('caddyAlreadyBooked') : '';
-          const stars = '★'.repeat(Math.floor(caddy.rating));
-          const bookedBadge = isBooked ? `<span class="caddy-booked-badge">${t('booked')}</span>` : '';
-          // Show local name based on current language
-          const displayName = (currentLang !== 'en' && caddy.localName) ? `${caddy.localName} (${caddy.name})` : caddy.name;
-          opt.innerHTML = `${caddyPhotoImg(caddy.photoUrl || caddy.photo_url || caddy.photo, 20)}<span class="caddy-option-name">#${caddy.number} ${displayName}${bookedBadge}</span>
-            <span class="caddy-option-rating">${stars} ${caddy.rating}</span>
-            <div class="caddy-option-info">${caddy.language}</div>`;
-
-          if (!isBooked) {
-            opt.addEventListener('mousedown', e => {
-              e.preventDefault();
-              // Display local name if available and language is not English
-              const displayName = (currentLang !== 'en' && caddy.localName) ? caddy.localName : caddy.name;
-              input.value = `${caddy.number} - ${displayName}`;
-              input.dataset.caddyId = caddy.id;
-              input.dataset.caddyNumber = caddy.number;
-              input.dataset.caddyName = caddy.name;
-              input.dataset.caddyLocalName = caddy.localName || '';
-              rangeSlots[slotIdx].golfers[gIdx].caddyId = caddy.id;
-              rangeSlots[slotIdx].golfers[gIdx].caddyNumber = caddy.number;
-              rangeSlots[slotIdx].golfers[gIdx].caddyName = caddy.name;
-              rangeSlots[slotIdx].golfers[gIdx].caddyLocalName = caddy.localName || '';
-              updateSlotCardSummary(slotIdx);
-            });
-          } else {
-            opt.addEventListener('mousedown', e => {
-              e.preventDefault();
-              alert(t('caddyAlreadyBooked'));
-            });
-          }
-          dropdown.appendChild(opt);
-        });
     }
 
     function updateSlotCardSummary(slotIdx) {

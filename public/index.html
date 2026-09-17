@@ -141,7 +141,7 @@
 
     <!-- Supabase MUST load BEFORE LIFF for login to work -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="supabase-config.js?v=20260910"></script>
+    <script src="supabase-config.js?v=20260917"></script>
 
     <script src="https://static.line-scdn.net/liff/edge/2.1/sdk.js"></script>
     <script src="js/scorecardProfileLoader.js"></script>
@@ -24292,6 +24292,38 @@
             static API_KEY = 'mcipro-site-key-2024';
             static MAX_RETRIES = 5;
 
+            // Whose tee time is this? (v1229) A server booking belongs to the signed-in golfer when
+            // its golfer_id is their LINE id, OR the in-app name slug older dashboard bookings used
+            // ('pete_park'), OR any golfers[] entry carries their LINE id (odoo_id) or that slug.
+            // Before this, every golfer's app merged EVERY booking in the table into its own list —
+            // a pro shop tee time for "alan thomas" showed on Pete's dashboard as his next tee time.
+            static _me() {
+                const id = (window.AppState?.currentUser?.lineUserId) || localStorage.getItem('line_user_id') || '';
+                const nm = (window.AppState?.currentUser?.name) || localStorage.getItem('mcipro_user_name') || '';
+                return { id: String(id || ''), slug: String(nm || '').toLowerCase().replace(/\s+/g, '_') };
+            }
+            static isMineBooking(b, me) {
+                if (!b) return false;
+                me = me || this._me();
+                if (!me.id && !me.slug) return false;
+                const gid = String(b.golferId || '');
+                if (gid && ((me.id && gid === me.id) || (me.slug && gid === me.slug))) return true;
+                const gs = (b.bookingData && b.bookingData.golfers) || b.golfers || [];
+                return Array.isArray(gs) && gs.some(g => g && ((me.id && (g.odoo_id === me.id || g.id === me.id)) || (me.slug && g.id === me.slug)));
+            }
+            // Drop rows another golfer or the pro shop owns: the server-authored sources, plus any
+            // row whose golfer_id is a LINE id that is not this golfer's.
+            static onlyMine(list) {
+                const me = this._me();
+                return (list || []).filter(b => {
+                    if (!b) return false;
+                    const srv = b.source === 'teesheet' || b.source === 'hotdeal';
+                    const foreignLine = /^U[0-9a-f]{32}$/i.test(String(b.golferId || '')) && b.golferId !== me.id;
+                    if (!srv && !foreignLine) return true;
+                    return this.isMineBooking(b, me);
+                });
+            }
+
             static mergeBookings(local, server) {
                 const map = new Map(local.map(b => [b.id, b]));
                 for (const b of server) {
@@ -24410,8 +24442,8 @@
 
                 switch(eventType) {
                     case 'INSERT':
-                        // Add new booking if not already present
-                        if (!localBookings.find(b => b.id === newRecord.id)) {
+                        // Add new booking if not already present — and only if it is mine (v1229)
+                        if (!localBookings.find(b => b.id === newRecord.id) && this.isMineBooking(this.convertBookingFromSupabase(newRecord))) {
                             // Convert snake_case to camelCase
                             const booking = this.convertBookingFromSupabase(newRecord);
                             localBookings.push(booking);
@@ -24425,17 +24457,31 @@
                         break;
 
                     case 'UPDATE':
-                        // Update existing booking
+                        // Update existing booking; a row that is no longer mine leaves the list, a row
+                        // that just became mine (the pro shop linked my account) joins it (v1229)
                         const updateIndex = localBookings.findIndex(b => b.id === newRecord.id);
-                        if (updateIndex !== -1) {
-                            const booking = this.convertBookingFromSupabase(newRecord);
-                            localBookings[updateIndex] = booking;
+                        const updBooking = this.convertBookingFromSupabase(newRecord);
+                        const updMine = this.isMineBooking(updBooking) && !updBooking.deleted;
+                        if (updateIndex !== -1 && !updMine) {
+                            localBookings.splice(updateIndex, 1);
                             localStorage.setItem('mcipro_bookings', JSON.stringify(localBookings));
                             changed = true;
-                            console.log('[SimpleCloudSync] ✏️ Booking updated:', booking.id);
+                            console.log('[SimpleCloudSync] 🗑️ Booking no longer mine:', updBooking.id);
+                            window.dispatchEvent(new CustomEvent('booking-deleted', { detail: { id: updBooking.id } }));
+                        } else if (updateIndex !== -1) {
+                            localBookings[updateIndex] = updBooking;
+                            localStorage.setItem('mcipro_bookings', JSON.stringify(localBookings));
+                            changed = true;
+                            console.log('[SimpleCloudSync] ✏️ Booking updated:', updBooking.id);
 
                             // Trigger UI update
-                            window.dispatchEvent(new CustomEvent('booking-updated', { detail: booking }));
+                            window.dispatchEvent(new CustomEvent('booking-updated', { detail: updBooking }));
+                        } else if (updMine) {
+                            localBookings.push(updBooking);
+                            localStorage.setItem('mcipro_bookings', JSON.stringify(localBookings));
+                            changed = true;
+                            console.log('[SimpleCloudSync] ➕ Booking became mine:', updBooking.id);
+                            window.dispatchEvent(new CustomEvent('booking-added', { detail: updBooking }));
                         }
                         break;
 
@@ -24459,6 +24505,7 @@
                 // until the 5-minute fallback sync.
                 if (changed) {
                     if (typeof BookingManager !== 'undefined') BookingManager.bookings = localBookings;
+                    try { if (window.GolferCubeInfo) GolferCubeInfo.update(); } catch (e) {}   // the Tee Time cube follows (v1229)
                     if (typeof TodaysTeeTimeManager !== 'undefined' && TodaysTeeTimeManager.updateTodaysTeeTime) TodaysTeeTimeManager.updateTodaysTeeTime();
                     if (typeof ScheduleSystem !== 'undefined' && ScheduleSystem.renderScheduleList) ScheduleSystem.renderScheduleList();
                 }
@@ -24758,6 +24805,7 @@
                     isPrivate: booking.is_private,
                     isVIP: booking.is_vip,
                     deleted: booking.deleted,
+                    bookingData: booking.booking_data,
                     createdAt: booking.created_at,
                     updatedAt: booking.updated_at
                 };
@@ -24883,14 +24931,16 @@
                     if (cloudData.version > localVersion) {
                         console.log('[SimpleCloudSync] Cloud version newer, merging bookings');
 
-                        // NEVER replace - always merge using last-write-wins
-                        const merged = this.mergeBookings(localBookings, serverBookings);
+                        // NEVER replace - always merge using last-write-wins — but only MY rows come
+                        // in, and rows that are not mine go out (v1229)
+                        const merged = this.onlyMine(this.mergeBookings(localBookings, serverBookings.filter(b => this.isMineBooking(b))));
                         localStorage.setItem('mcipro_bookings', JSON.stringify(merged));
                         localStorage.setItem('mcipro_baseVersion', JSON.stringify(cloudData.version));
 
                         if (typeof BookingManager !== 'undefined') {
                             BookingManager.bookings = merged;
                             console.log('[SimpleCloudSync] Updated BookingManager with', merged.length, 'bookings');
+                            try { if (window.GolferCubeInfo) GolferCubeInfo.update(); } catch (e) {}   // the Tee Time cube follows (v1229)
                         }
 
                         // Refresh schedule UI since it renders from bookings
@@ -25044,8 +25094,8 @@
                         updatedAt: new Date().toISOString()
                     };
 
-                    // Merge with server state
-                    const merged = this.mergeBookings(cleanBookings, result.bookings);
+                    // Merge with server state — only my rows (v1229)
+                    const merged = this.onlyMine(this.mergeBookings(cleanBookings, result.bookings.filter(b => this.isMineBooking(b))));
                     localStorage.setItem('mcipro_bookings', JSON.stringify(merged));
                     localStorage.setItem('mcipro_baseVersion', JSON.stringify(result.version));
 

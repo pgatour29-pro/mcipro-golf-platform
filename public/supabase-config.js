@@ -120,6 +120,7 @@ class SupabaseClient {
             isPrivate: booking.is_private,
             isVIP: booking.is_vip,
             deleted: booking.deleted,
+            bookingData: booking.booking_data,   // golfers[] with odoo_id (LINE ids) — who this tee time belongs to
 
             // Timestamps
             createdAt: booking.created_at,

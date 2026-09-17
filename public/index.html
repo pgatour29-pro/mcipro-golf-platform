@@ -65379,12 +65379,26 @@ document.addEventListener('DOMContentLoaded', function() {
             <div id="admin-overview" class="admin-tab-content active">
                 <!-- Platform Stats -->
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <!-- Total Users (v1246): TRGG list | New users. The TRGG figure is Pete's pinned
+                         AdminSystem._trggListPinned (the imported TRGG roster as he counts it — not a
+                         table read). New users is a LIVE head-count of real accounts (LINE / Kakao /
+                         Google / organizer adds / guests = the same _newMemberOr population the New
+                         Members cubes below slice by date), and taps into the full list. The title
+                         line carries the sum of the two. -->
                     <div class="metric-card">
                         <div class="flex items-center justify-between">
                             <div>
-                                <p class="text-sm text-gray-600">Total Users</p>
-                                <p class="text-2xl font-bold text-gray-900" id="admin-total-users">0</p>
-                                <p class="text-xs text-green-600 mt-1">All roles</p>
+                                <p class="text-sm text-gray-600">Total Users <span class="font-semibold text-gray-700" id="admin-total-users">0</span></p>
+                                <div class="flex items-end gap-4 mt-1">
+                                    <div>
+                                        <p class="text-2xl font-bold text-gray-900" id="admin-users-trgg">0</p>
+                                        <p class="text-xs text-blue-600 mt-1">TRGG list</p>
+                                    </div>
+                                    <div class="border-l border-gray-200 pl-4 cursor-pointer" onclick="AdminSystem.showStatDrill('users-new')" title="Tap to list every new user">
+                                        <p class="text-2xl font-bold text-gray-900" id="admin-users-new">0</p>
+                                        <p class="text-xs text-blue-600 mt-1">New users</p>
+                                    </div>
+                                </div>
                             </div>
                             <div class="stat-icon bg-blue-100">
                                 <span class="material-symbols-outlined text-blue-600">people</span>
@@ -79642,6 +79656,15 @@ const AdminSystem = {
     // fixed upward step per day after it. Set the whole object to null and the cube switches to
     // live self-login head-counts (user_profiles.last_login_at, rolling 30d / 24h) with tap lists.
     _activeUsersPinned: { month: 1624, day: 1418, since: '2026-09-17' },
+
+    // Total Users cube — the TRGG list figure. Pete 2026-09-17: "make sure that TRGG list of
+    // names are identified at 1108 and the addition to the new users activity is its own
+    // numbers." This is the imported TRGG roster as HE counts it, not a table read (today
+    // user_profiles holds 1,104 TRGG-GUEST-… + 27 TRGG-HCP-… + a few legacy manual_ rows and
+    // trgg_members ~985 — none of those drive this). New users are counted LIVE beside it
+    // (real accounts only, _newMemberOr) so signups grow their own number and never blend into
+    // the TRGG figure. When Pete changes the TRGG number, edit this constant only.
+    _trggListPinned: 1108,
     // Daily step ranges [min, max]. A day's step is fixed by its day number, so every device and
     // every reload shows the same figure for the same day, and the figure can only go up
     // (avg ≈ +8.5 monthly / +7.5 daily per day ⇒ ≈ +255 / +225 over a month; daily can never
@@ -79792,8 +79815,11 @@ const AdminSystem = {
                 ? Promise.resolve({ count: pinned[which] })
                 : client.from('user_profiles').select('line_user_id', { count: 'exact', head: true }).gte('last_login_at', this._activeSince(which).toISOString());
 
-            const [totalRes, socRes, activeMonthRes, activeDayRes] = await Promise.all([
-                client.from('user_profiles').select('line_user_id', { count: 'exact', head: true }),
+            // Total Users = TRGG list (pinned) + New users (live head-count of real accounts —
+            // the same _newMemberOr filter the New Members cubes and their drill lists use, so
+            // the 24h / 7d / month / YTD figures are slices of this number).
+            const [newUsersRes, socRes, activeMonthRes, activeDayRes] = await Promise.all([
+                client.from('user_profiles').select('line_user_id', { count: 'exact', head: true }).or(this._newMemberOr),
                 client.from('society_profiles').select('id', { count: 'exact', head: true }),
                 activeQ('month'),
                 activeQ('day'),
@@ -79803,8 +79829,11 @@ const AdminSystem = {
                 this.loadRecentSignups()
             ]);
 
-            if (!totalRes.error) this.totalUserCount = totalRes.count || 0;
-            document.getElementById('admin-total-users').textContent = (this.totalUserCount || this.users.length || 0).toLocaleString();
+            const trggList = this._trggListPinned;
+            const newUsers = newUsersRes.error ? 0 : (newUsersRes.count || 0);
+            document.getElementById('admin-users-trgg').textContent = trggList.toLocaleString();
+            document.getElementById('admin-users-new').textContent = newUsers.toLocaleString();
+            document.getElementById('admin-total-users').textContent = (trggList + newUsers).toLocaleString();
             document.getElementById('admin-societies-count').textContent = socRes.error ? (this.societies.length || 0) : (socRes.count || 0);
             document.getElementById('admin-active-month').textContent = activeMonthRes.error ? '0' : (activeMonthRes.count || 0).toLocaleString();
             document.getElementById('admin-active-day').textContent = activeDayRes.error ? '0' : (activeDayRes.count || 0).toLocaleString();
@@ -79944,6 +79973,8 @@ const AdminSystem = {
             'new-week': { title: 'New Members — Last 7 Days', since: weekStart, kind: 'members' },
             'new-month': { title: 'New Members — This Month', since: monthStart, kind: 'members' },
             'new-ytd': { title: 'New Members — Year to Date', since: yearStart, kind: 'members' },
+            // Total Users cube → New users half: every real account ever (same filter, no window)
+            'users-new': { title: 'New Users — All Time', since: new Date(0), kind: 'members' },
             // rolling windows — MUST match updateOverview's Active Users head-counts
             'active-month': { title: 'Active Users — Last 30 Days', since: this._activeSince('month'), kind: 'logins' },
             'active-day': { title: 'Active Users — Last 24 Hours', since: this._activeSince('day'), kind: 'logins' }

@@ -123763,7 +123763,11 @@ const GolferCaddyBooking = {
     async _setTeeCaddy(caddyId) {
         const c = this._teeCtx; const sb = window.SupabaseDB && window.SupabaseDB.client; if (!c || !sb) return null;
         try {
-            const { data, error } = await sb.rpc('golfer_set_booking_caddy', { p_booking_id: c.bookingId, p_golfer_id: window.TeeTimeCards.me(), p_caddy_id: caddyId });
+            // cancelling OMITS p_caddy_id (the function's default is null) — an explicit JSON null
+            // for a uuid parameter is not a safe bet through PostgREST
+            const args = { p_booking_id: c.bookingId, p_golfer_id: window.TeeTimeCards.me() };
+            if (caddyId) args.p_caddy_id = caddyId;
+            const { data, error } = await sb.rpc('golfer_set_booking_caddy', args);
             if (error) throw error;
             return data;
         } catch (e) { console.warn('[GolferCaddyBooking] set caddy:', e.message); return { ok: false, reason: 'x', message: e.message }; }

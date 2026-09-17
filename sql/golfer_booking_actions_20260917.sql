@@ -111,6 +111,7 @@ declare
   any_caddy boolean;
   first_slot jsonb;
   old_job  record;
+  picked   jsonb := null;   -- the caddy set by this call (the cancel branch never assigns cp)
 begin
   if coalesce(p_golfer_id, '') = '' or coalesce(p_booking_id, '') = '' then
     return jsonb_build_object('ok', false, 'reason', 'bad_args');
@@ -225,6 +226,7 @@ begin
       18, fee, 'pending', 'confirmed', now(), 'Golfer app',
       p_golfer_id, p_golfer_id, coalesce(slot->>'name', b.golfer_name, 'Golfer'), 'golfer_app', p_booking_id, 'Chosen by the golfer in the app');
 
+    picked := jsonb_build_object('id', cp.id::text, 'number', trim(cp.caddy_number), 'name', coalesce(nullif(trim(cp.name), ''), 'Caddy #' || trim(cp.caddy_number)));
     slot := slot || jsonb_build_object('caddyId', cp.id::text, 'caddyNumber', trim(cp.caddy_number),
                                        'caddyName', coalesce(nullif(trim(cp.name), ''), 'Caddy #' || trim(cp.caddy_number)), 'caddyLocalName', '');
     golfers := jsonb_set(golfers, array[i::text], slot, true);
@@ -242,8 +244,7 @@ begin
          updated_at = now()
    where id = p_booking_id;
 
-  return jsonb_build_object('ok', true, 'slot', i, 'caddiesNeeded', need,
-                            'caddy', case when p_caddy_id is null then null else jsonb_build_object('id', cp.id::text, 'number', trim(cp.caddy_number), 'name', coalesce(nullif(trim(cp.name), ''), 'Caddy #' || trim(cp.caddy_number))) end);
+  return jsonb_build_object('ok', true, 'slot', i, 'caddiesNeeded', need, 'caddy', picked);
 end
 $fn$;
 grant execute on function public.golfer_set_booking_caddy(text, text, uuid) to anon, authenticated;

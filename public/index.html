@@ -65415,10 +65415,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             </div>
                         </div>
                     </div>
-                    <!-- Active Users (v1216): Monthly | Daily. Figures come from
-                         AdminSystem._activeUsersPinned (Pete's numbers) — when that is null the cube
-                         counts people who OPENED THE APP THEMSELVES (last_login_at only, v1026 rule),
-                         rolling 30d / 24h, and each half becomes a tap into its own list. -->
+                    <!-- Active Users (v1216, daily growth v1244): Monthly | Daily. Figures come from
+                         AdminSystem._activeUsersFigures() = Pete's pinned base + one upward step per
+                         Bangkok day (never the TRGG members directory) — when the pinned base is null
+                         the cube counts people who OPENED THE APP THEMSELVES (last_login_at only,
+                         v1026 rule), rolling 30d / 24h, and each half becomes a tap into its own list. -->
                     <div class="metric-card">
                         <div class="flex items-center justify-between">
                             <div>
@@ -79631,10 +79632,53 @@ const AdminSystem = {
     // "Last 24h" sat on 0 the morning after adding one (Pete 2026-08-20).
     _newMemberOr: 'line_user_id.like.U*,line_user_id.like.KAKAO-*,line_user_id.like.GOOGLE-*,line_user_id.like.MANUAL-*,line_user_id.like.player_*',
 
-    // Active Users cube figures — set by Pete (2026-09-16: "1147 active monthly and 529 daily").
-    // These are NOT database counts. Set to null and the cube switches to live self-login
-    // head-counts (user_profiles.last_login_at, rolling 30d / 24h) with tap-through lists.
-    _activeUsersPinned: { month: 1147, day: 529 },
+    // Active Users cube figures — set by Pete (2026-09-16: "1147 active monthly and 529 daily";
+    // 2026-09-17: "make that cube dynamically change upwards on a daily basis"). These are NOT
+    // database counts and NOT the TRGG members directory: nothing on this path reads
+    // trgg_members (its ~949 rows / ~326 current members are a different thing altogether).
+    // `since` is the Bangkok date the base figures belong to; _activeUsersFigures() adds one
+    // fixed upward step per day after it. Set the whole object to null and the cube switches to
+    // live self-login head-counts (user_profiles.last_login_at, rolling 30d / 24h) with tap lists.
+    _activeUsersPinned: { month: 1147, day: 529, since: '2026-09-16' },
+    // Daily step ranges [min, max]. A day's step is fixed by its day number, so every device and
+    // every reload shows the same figure for the same day, and the figure can only go up
+    // (avg ≈ +7.5 monthly / +3 daily per day ⇒ ≈ +225 / +90 over a month).
+    _activeUsersStep: { month: [4, 11], day: [1, 5] },
+
+    // Today's cube figures (Bangkok calendar day) = pinned base + the sum of every day's step
+    // since `since`. `at` (ms) lets the console preview a future day.
+    _activeUsersFigures(at) {
+        const p = this._activeUsersPinned;
+        if (!p) return null;
+        const DAY = 24 * 60 * 60 * 1000, BKK = 7 * 60 * 60 * 1000;
+        const base = Math.floor(Date.parse(p.since) / DAY);            // date-only ISO parses as UTC midnight
+        const today = Math.floor(((at || Date.now()) + BKK) / DAY);    // Bangkok has no DST
+        const n = Math.max(0, today - base);
+        const step = (k, salt, [lo, hi]) => {
+            let x = Math.imul(k, 374761393) + Math.imul(salt, 668265263);
+            x = Math.imul(x ^ (x >>> 13), 1274126177);
+            return lo + (((x ^ (x >>> 16)) >>> 0) % (hi - lo + 1));
+        };
+        let month = p.month, day = p.day;
+        for (let k = 1; k <= n; k++) {
+            month += step(k, 1, this._activeUsersStep.month);
+            day += step(k, 2, this._activeUsersStep.day);
+        }
+        return { month, day };
+    },
+
+    // An admin tab left open across Bangkok midnight repaints the cube with the new day's figures.
+    _armActiveUsersRollover() {
+        clearTimeout(this._activeUsersTimer);
+        const DAY = 24 * 60 * 60 * 1000, BKK = 7 * 60 * 60 * 1000;
+        const msToMidnight = DAY - ((Date.now() + BKK) % DAY) + 1000;
+        this._activeUsersTimer = setTimeout(() => {
+            const f = this._activeUsersFigures();
+            const m = document.getElementById('admin-active-month'), d = document.getElementById('admin-active-day');
+            if (f && m && d) { m.textContent = f.month.toLocaleString(); d.textContent = f.day.toLocaleString(); }
+            this._armActiveUsersRollover();
+        }, msToMidnight);
+    },
 
     // How a profile entered the system — shown in Recent Signups + the stat drill lists
     _signupSource(id) {
@@ -79737,9 +79781,10 @@ const AdminSystem = {
 
             const client = window.SupabaseDB.client;
 
-            // Active Users — pinned figures when set; otherwise self-logins only (last_login_at),
-            // rolling 30d / 24h, the same windows showStatDrill uses so the tap list matches.
-            const pinned = this._activeUsersPinned;
+            // Active Users — pinned base + daily growth when set (never a table read, never the
+            // TRGG directory); otherwise self-logins only (last_login_at), rolling 30d / 24h,
+            // the same windows showStatDrill uses so the tap list matches.
+            const pinned = this._activeUsersFigures();
             const activeQ = (which) => pinned
                 ? Promise.resolve({ count: pinned[which] })
                 : client.from('user_profiles').select('line_user_id', { count: 'exact', head: true }).gte('last_login_at', this._activeSince(which).toISOString());
@@ -79760,6 +79805,7 @@ const AdminSystem = {
             document.getElementById('admin-societies-count').textContent = socRes.error ? (this.societies.length || 0) : (socRes.count || 0);
             document.getElementById('admin-active-month').textContent = activeMonthRes.error ? '0' : (activeMonthRes.count || 0).toLocaleString();
             document.getElementById('admin-active-day').textContent = activeDayRes.error ? '0' : (activeDayRes.count || 0).toLocaleString();
+            if (pinned) this._armActiveUsersRollover();
             if (!pinned) {
                 // Live mode only: a tap on either half lists the people behind that number.
                 // Pinned figures get no tap — a list of 50 under a 1,147 would contradict itself.

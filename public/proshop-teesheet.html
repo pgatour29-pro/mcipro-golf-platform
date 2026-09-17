@@ -4800,13 +4800,17 @@
       // A local save may still be in flight; don't clobber the cache mid-write
       if (now - lastLocalSave < 2500) return teeSheetDbCache[date] || null;
       try {
+        const courseId = el.courseSelect.value;
+        // No course = nothing to show and nothing to cache (v1233): a course-less sheet used to pull
+        // EVERY course's bookings for the day into its local cache, and that cache is what came
+        // back to the DB later with course_name "-- Select Course --".
+        if (!courseId) { teeSheetDbCache[date] = []; teeSheetLastFetch[date] = now; return []; }
         let query = supabaseClient.from('bookings')
           .select('*')
           .eq('date', date)
           .in('source', ['teesheet', 'hotdeal'])   // v1219: grabs land here with source 'hotdeal'
-          .not('id', 'like', 'teesheet-%');
-        const courseId = el.courseSelect.value;
-        if (courseId) query = query.or(`course_id.eq.${courseId},course_id.is.null`);
+          .not('id', 'like', 'teesheet-%')
+          .or(`course_id.eq.${courseId},course_id.is.null`);
         const { data, error } = await query;
         if (error) { console.error('[TeeSheet] DB fetch failed:', error); return null; }
 

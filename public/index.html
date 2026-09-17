@@ -12636,6 +12636,7 @@
                 'lightview.noupcominground': 'No upcoming round',
                 'teetime.mine.title': 'Your tee times', 'teetime.mine.sub': 'Book another one below', 'teetime.tag.proshop': 'Booked by the pro shop', 'teetime.tag.hotdeal': 'Hot deal',
                 'teetime.tag.app': 'Booked in the app', 'teetime.who': 'Players', 'teetime.caddy.proshop': '{n} assigned by the pro shop', 'teetime.caddy.none': 'No caddy',
+                'schedule.proshop.owned': 'That tee time was booked by the pro shop — ask the course to cancel it.',
                 'lightview.departure': 'Departure',
                 'lightview.tee': 'Tee',
                 'lightview.caddy': 'Caddy',
@@ -15237,6 +15238,7 @@
                 'lightview.noupcominground': 'ไม่มีรอบที่จะเล่น',
                 'teetime.mine.title': 'ทีไทม์ของคุณ', 'teetime.mine.sub': 'จองเพิ่มได้ด้านล่าง', 'teetime.tag.proshop': 'จองโดยโปรช็อป', 'teetime.tag.hotdeal': 'ดีลพิเศษ',
                 'teetime.tag.app': 'จองในแอป', 'teetime.who': 'ผู้เล่น', 'teetime.caddy.proshop': 'โปรช็อปจัดให้ {n} คน', 'teetime.caddy.none': 'ไม่มีแคดดี้',
+                'schedule.proshop.owned': 'ทีไทม์นี้จองโดยโปรช็อป — กรุณาติดต่อสนามเพื่อยกเลิก',
                 'lightview.departure': 'เวลาออกเดินทาง',
                 'lightview.tee': 'ออกสตาร์ท',
                 'lightview.caddy': 'แคดดี้',
@@ -18074,6 +18076,7 @@
                 'lightview.noupcominground': '예정된 라운드 없음',
                 'teetime.mine.title': '내 티타임', 'teetime.mine.sub': '아래에서 추가 예약', 'teetime.tag.proshop': '프로샵 예약', 'teetime.tag.hotdeal': '핫딜',
                 'teetime.tag.app': '앱에서 예약', 'teetime.who': '플레이어', 'teetime.caddy.proshop': '프로샵 배정 {n}명', 'teetime.caddy.none': '캐디 없음',
+                'schedule.proshop.owned': '프로샵에서 예약한 티타임입니다 — 취소는 골프장에 문의하세요.',
                 'lightview.departure': '출발 시간',
                 'lightview.tee': '티오프',
                 'lightview.caddy': '캐디',
@@ -20479,6 +20482,7 @@
                 'lightview.noupcominground': '予定されたラウンドなし',
                 'teetime.mine.title': 'あなたのティータイム', 'teetime.mine.sub': '下から追加予約できます', 'teetime.tag.proshop': 'プロショップ予約', 'teetime.tag.hotdeal': 'ホットディール',
                 'teetime.tag.app': 'アプリで予約', 'teetime.who': 'プレーヤー', 'teetime.caddy.proshop': 'プロショップ手配 {n}人', 'teetime.caddy.none': 'キャディーなし',
+                'schedule.proshop.owned': 'このティータイムはプロショップの予約です — キャンセルはゴルフ場へご連絡ください。',
                 'lightview.departure': '出発時刻',
                 'lightview.tee': 'ティーオフ',
                 'lightview.caddy': 'キャディ',
@@ -24349,6 +24353,21 @@
                 });
             }
 
+            // A pro shop / hot-deal row the server no longer returns (inside its 7-day-back window)
+            // was deleted THERE — drop the local copy. mergeBookings only ever removed a row the
+            // server still returned as deleted, so a hard-deleted tee time lingered on the phone (v1233).
+            static dropGoneServerRows(list, server) {
+                const have = new Set((server || []).map(b => b && b.id).filter(Boolean));
+                const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 7);
+                const cut = cutoff.getFullYear() + '-' + String(cutoff.getMonth() + 1).padStart(2, '0') + '-' + String(cutoff.getDate()).padStart(2, '0');
+                return (list || []).filter(b => {
+                    if (!b) return false;
+                    const srv = b.source === 'teesheet' || b.source === 'hotdeal';
+                    if (!srv || have.has(b.id)) return true;
+                    return !(b.date && b.date >= cut);
+                });
+            }
+
             static mergeBookings(local, server) {
                 const map = new Map(local.map(b => [b.id, b]));
                 for (const b of server) {
@@ -24958,7 +24977,7 @@
 
                         // NEVER replace - always merge using last-write-wins — but only MY rows come
                         // in, and rows that are not mine go out (v1229)
-                        const merged = this.onlyMine(this.mergeBookings(localBookings, serverBookings.filter(b => this.isMineBooking(b))));
+                        const merged = this.dropGoneServerRows(this.onlyMine(this.mergeBookings(localBookings, serverBookings.filter(b => this.isMineBooking(b)))), serverBookings);
                         localStorage.setItem('mcipro_bookings', JSON.stringify(merged));
                         localStorage.setItem('mcipro_baseVersion', JSON.stringify(cloudData.version));
 
@@ -25122,7 +25141,7 @@
                     };
 
                     // Merge with server state — only my rows (v1229)
-                    const merged = this.onlyMine(this.mergeBookings(cleanBookings, result.bookings.filter(b => this.isMineBooking(b))));
+                    const merged = this.dropGoneServerRows(this.onlyMine(this.mergeBookings(cleanBookings, result.bookings.filter(b => this.isMineBooking(b)))), result.bookings);
                     localStorage.setItem('mcipro_bookings', JSON.stringify(merged));
                     localStorage.setItem('mcipro_baseVersion', JSON.stringify(result.version));
 
@@ -42326,16 +42345,41 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 const count = this.selectedBookings.length;
-                if (!confirm(`Delete ${count} selected booking${count > 1 ? 's' : ''}?`)) {
-                    return;
-                }
+                // v1233: confirm() never returns true inside the LINE browser — the tap did nothing
+                const q = `Delete ${count} selected booking${count > 1 ? 's' : ''}?`;
+                const ok = window.askConfirm ? await window.askConfirm({ title: q, danger: true, confirmText: _lvT('common.delete', 'Delete') }) : confirm(q);
+                if (!ok) return;
 
                 try {
                     // Get all bookings in selected groups (including range bookings)
-                    const bookingsToDelete = [];
+                    let bookingsToDelete = [];
                     for (const groupId of this.selectedBookings) {
                         const groupBookings = BookingManager.bookings.filter(b => (b.groupId || b.id) === groupId);
                         bookingsToDelete.push(...groupBookings);
+                    }
+
+                    // v1233: a tee time the pro shop or a hot deal made belongs to the course. If the
+                    // server still has it, the golfer is told to ask the course; if the server no longer
+                    // has it (a ghost on this phone), it is simply dropped here.
+                    const owned = bookingsToDelete.filter(b => b.source === 'teesheet' || b.source === 'hotdeal');
+                    if (owned.length && window.SupabaseDB?.client) {
+                        const { data: still } = await window.SupabaseDB.client.from('bookings').select('id, deleted').in('id', owned.map(b => b.id));
+                        const liveIds = new Set((still || []).filter(r => !r.deleted).map(r => r.id));
+                        const keep = owned.filter(b => liveIds.has(b.id));
+                        if (keep.length) {
+                            window.NotificationManager.show(_lvT('schedule.proshop.owned', 'That tee time was booked by the pro shop — ask the course to cancel it.'), 'warning', 6000);
+                            bookingsToDelete = bookingsToDelete.filter(b => !liveIds.has(b.id));
+                            this.selectedBookings = this.selectedBookings.filter(g => !liveIds.has(g));
+                        }
+                        // ghosts: gone on the server → gone here, no upload needed
+                        const ghostIds = new Set(owned.filter(b => !liveIds.has(b.id)).map(b => b.id));
+                        if (ghostIds.size) {
+                            BookingManager.bookings = BookingManager.bookings.filter(b => !ghostIds.has(b.id));
+                            bookingsToDelete = bookingsToDelete.filter(b => !ghostIds.has(b.id));
+                            localStorage.setItem('mcipro_bookings', JSON.stringify(BookingManager.bookings));
+                            try { if (window.GolferCubeInfo) GolferCubeInfo.update(); } catch (e) {}
+                        }
+                        if (!bookingsToDelete.length) { this.selectedBookings = []; this.renderScheduleList(); return; }
                     }
 
                     console.log(`[deleteSelected] Deleting ${bookingsToDelete.length} bookings in ${count} groups`);
@@ -48809,7 +48853,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     const nowMs = Date.now();
                     return list
                         .filter(b => {
-                            if (!((b.kind === 'tee' || b.type === 'tee_time') && b.status === 'confirmed' && b.date)) return false;
+                            if (!((b.kind === 'tee' || b.type === 'tee_time') && b.status === 'confirmed' && b.date) || b.deleted) return false;
                             const tt = b.time ? String(b.time).slice(0, 5) : '23:59';
                             const dt = new Date(b.date + 'T' + tt + ':00');
                             return isNaN(dt.getTime()) || dt.getTime() >= nowMs;

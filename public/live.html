@@ -408,6 +408,16 @@
             renderSidebar();
         }
 
+        // v1243 — an event dated today whose every scorecard is completed is FINAL, not LIVE.
+        // Registered golfers who never opened a card (status not_started) don't hold it open:
+        // 2026-09-17 Phoenix, two registrants never used the engine while the rounds were done,
+        // and the page said LIVE all day. Rebuilt on every live-board load, so a fresh card
+        // (a late group starting) flips the event straight back to LIVE.
+        const finalEventIds = new Set();
+        function eventIsFinal(leaderboard) {
+            const played = (leaderboard || []).filter(p => p && p.status !== 'not_started');
+            return played.length > 0 && played.every(p => p.status === 'completed');
+        }
         function renderSidebar() {
             const sidebar = document.getElementById('eventHistorySidebar');
             const eventsByDate = {};
@@ -491,18 +501,19 @@
             if (item.type === 'event') {
                 const event = item.data;
                 const isActive = selectedEventId === event.id && viewingArchived;
+                const isFinal = isLive && finalEventIds.has(event.id);
                 return `
                     <div class="event-item rounded-lg p-2 mb-1 ${isActive ? 'active' : ''}"
                          onclick="selectEvent('${event.id}', ${isPast})">
                         <div class="flex items-center gap-2">
-                            <span class="material-symbols-outlined text-sm ${isLive ? 'text-red-500' : 'text-blue-500'}">
-                                ${isLive ? 'radio_button_checked' : 'emoji_events'}
+                            <span class="material-symbols-outlined text-sm ${isFinal ? 'text-green-700' : isLive ? 'text-red-500' : 'text-blue-500'}">
+                                ${isFinal ? 'sports_score' : isLive ? 'radio_button_checked' : 'emoji_events'}
                             </span>
                             <div class="flex-1 min-w-0">
                                 <div class="font-medium text-sm text-gray-800 truncate">${event.title}</div>
                                 <div class="text-xs text-gray-500 truncate">${event.organizer_name || 'Golf Society'}</div>
                             </div>
-                            ${isLive ? '<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">LIVE</span>' : ''}
+                            ${isFinal ? '<span class="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">FINAL</span>' : isLive ? '<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">LIVE</span>' : ''}
                         </div>
                     </div>
                 `;
@@ -698,11 +709,20 @@
                 let html = '';
 
                 // Render Society Events
+                let finalChanged = false;
                 for (const event of todayEvents) {
                     const format = event.format || 'stableford';
                     const leaderboard = await getEventLeaderboard(event.id, format);
+                    const isFinal = eventIsFinal(leaderboard);
+                    if (isFinal !== finalEventIds.has(event.id)) {
+                        finalChanged = true;
+                        if (isFinal) finalEventIds.add(event.id); else finalEventIds.delete(event.id);
+                    }
                     html += renderEventCard(event, leaderboard, false, format);
                 }
+                // The sidebar painted BEFORE the boards (loadEventHistory runs first) — repaint
+                // its LIVE/FINAL pills now the cards have said which events are done.
+                if (finalChanged) renderSidebar();
 
                 // NEW: Render Public Casual Rounds (Live Spectatable)
                 for (const round of uniqueRounds) {
@@ -1660,6 +1680,7 @@
         // Render event card
         function renderEventCard(event, leaderboard, isArchived, format = 'stableford') {
             const societyName = event.organizer_name || 'Golf Event';
+            const isFinal = !isArchived && finalEventIds.has(event.id);
             const dateDisplay = formatDate(event.event_date);
             const formatLabels = {
                 'stroke_play': 'Stroke Play',
@@ -1681,15 +1702,15 @@
 
             return `
                 <div id="event-card-${event.id}" class="bg-white rounded-lg shadow-sm mb-4 overflow-hidden">
-                    <div class="bg-gradient-to-r ${isArchived ? 'from-gray-600 to-gray-700' : 'from-blue-600 to-blue-700'} text-white p-4">
+                    <div class="bg-gradient-to-r ${isArchived ? 'from-gray-600 to-gray-700' : isFinal ? 'from-green-700 to-green-800' : 'from-blue-600 to-blue-700'} text-white p-4">
                         <div class="flex items-center justify-between">
                             <div>
                                 <div class="flex items-center gap-2">
                                     <h2 class="font-bold text-lg">${event.title}</h2>
-                                    ${isArchived ? `<span class="text-xs bg-amber-500 text-white px-2 py-0.5 rounded-full">ARCHIVED</span>` : '<span class="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full live-badge">LIVE</span>'}
+                                    ${isArchived ? `<span class="text-xs bg-amber-500 text-white px-2 py-0.5 rounded-full">ARCHIVED</span>` : isFinal ? '<span class="text-xs bg-white text-green-800 font-semibold px-2 py-0.5 rounded-full">FINAL</span>' : '<span class="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full live-badge">LIVE</span>'}
                                 </div>
-                                <p class="${isArchived ? 'text-gray-300' : 'text-blue-200'} text-sm">${societyName} - ${played.base || 'Golf Course'}${ninesChipHtml(played.nines)}</p>
-                                <p class="${isArchived ? 'text-gray-400' : 'text-blue-300'} text-xs mt-1">${dateDisplay} • ${formatLabel}</p>
+                                <p class="${isArchived ? 'text-gray-300' : isFinal ? 'text-green-50' : 'text-blue-200'} text-sm">${societyName} - ${played.base || 'Golf Course'}${ninesChipHtml(played.nines)}</p>
+                                <p class="${isArchived ? 'text-gray-400' : isFinal ? 'text-green-100' : 'text-blue-300'} text-xs mt-1">${dateDisplay} • ${formatLabel}</p>
                             </div>
                             <div class="text-right">
                                 <div class="flex items-center gap-1 text-sm">

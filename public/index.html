@@ -131772,6 +131772,11 @@ window.OffersInbox = OffersInbox;
 // lands on the pro shop's sheet as a normal booking with pending caddy jobs (v1218 model).
 const HotDeals = {
     deals: [], _busy: false,
+    // Live refresh (v1226): a course_offers change (withdrawn, sold out, spots taken) repaints the
+    // strip through realtime; a deal that only TIMES OUT (valid_to passes, no DB write) repaints on
+    // a timer set to the soonest valid_to; coming back to the app repaints on visibilitychange.
+    // Before this the strip painted once per Booking-tab open and stayed stale.
+    _chan: null, _timer: null, _paintSeq: 0, _visWired: false,
     _sb() { return window.SupabaseDB?.client || null; },
     uid() { return window.AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id') || null; },
     myName() {
@@ -131830,16 +131835,61 @@ const HotDeals = {
     async paintStrip() {
         const host = document.getElementById('hotDealsStrip'); if (!host) return;
         this.applyLook();
+        const seq = ++this._paintSeq;          // overlapping paints: only the newest may render
         await this.fetch();
+        if (seq !== this._paintSeq) return;
+        this._armLive(); this._armTimer();
         if (!this.deals.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
         host.style.display = '';
         host.innerHTML = '<div class="hd-head">🔥 ' + _lvT('hotdeal.title', 'Hot deals') + ' <span>' + _lvT('hotdeal.sub', 'open tee times, first come first served') + '</span></div>'
           + '<div class="hd-row">' + this.deals.map(o => this.card(o)).join('') + '</div>';
     },
+    // The strip lives in the Booking tab; off that tab nothing needs painting — the tab-open hook
+    // (showGolferTab('booking')) paints fresh on the way back in.
+    _onScreen() {
+        const tab = document.getElementById('golfer-booking');
+        return !!(tab && tab.getClientRects().length) && document.visibilityState !== 'hidden';
+    },
+    _armLive() {
+        const sb = this._sb(); if (!sb) return;
+        if (!this._chan) {
+            try {
+                this._chan = sb.channel('hot-deals-live')
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'course_offers' }, () => this.refresh('realtime'))
+                    .subscribe();
+            } catch (e) { this._chan = null; console.warn('[HotDeals] realtime:', e.message); }
+        }
+        if (!this._visWired) {
+            this._visWired = true;
+            document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.refresh('visible'); });
+        }
+    },
+    _armTimer() {
+        clearTimeout(this._timer); this._timer = null;
+        if (!this._onScreen()) return;
+        // Soonest valid_to (+1s) so a deal drops the moment it times out; otherwise a 60s sweep.
+        const now = Date.now(); let wait = 60000;
+        this.deals.forEach(o => { const t = o.valid_to ? (new Date(o.valid_to).getTime() - now + 1000) : 0; if (t > 0 && t < wait) wait = t; });
+        this._timer = setTimeout(() => this.refresh('timer'), Math.max(2000, wait));
+    },
+    async refresh(why) {
+        // The Offers inbox carries the same deals: keep an open pane and the badge honest too.
+        if (why === 'realtime') {
+            try {
+                if (window.OffersInbox) {
+                    OffersInbox.refreshBadge();
+                    const pane = document.getElementById('msg-content-offers');
+                    if (pane && !pane.classList.contains('hidden')) OffersInbox.load();
+                }
+            } catch (e) {}
+        }
+        if (!this._onScreen()) { clearTimeout(this._timer); this._timer = null; return; }
+        await this.paintStrip();
+    },
     async open(offerId) {
         let o = this.deals.find(x => x.id === offerId);
         if (!o) { await this.fetch(); o = this.deals.find(x => x.id === offerId); }
-        if (!o) { window.NotificationManager?.show?.(_lvT('hotdeal.gone', 'That deal is gone'), 'warning'); return; }
+        if (!o) { window.NotificationManager?.show?.(_lvT('hotdeal.gone', 'That deal is gone'), 'warning'); this.paintStrip(); return; }
         if (!this.uid()) { window.NotificationManager?.show?.(_lvT('hotdeal.login', 'Sign in to grab a deal'), 'warning'); return; }
         document.getElementById('hdSheetDim')?.remove();
         this.applyLook();

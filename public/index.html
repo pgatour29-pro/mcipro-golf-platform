@@ -10825,7 +10825,7 @@
                 'caddie.ts.none': 'Nothing booked this day',
                 'caddie.ts.booking': 'booking',
                 'caddie.ts.bookings': 'bookings',
-                'caddie.ts.foot': 'Every round blocks you for at least 4h 15m — nobody can book you inside that window.',
+                'caddie.ts.foot': 'Every round blocks you for at least 4h 15m — nobody can book you inside that window. To cancel or change a booking, contact the caddy master — the pro shop makes the change.',
                 'caddie.ts.clash': 'Already out at {a} — blocked until {b} ({c} per round). Pick a time outside that window.',
                 'caddie.ts.unverified': 'Couldn\'t check that caddy\'s schedule — the course will confirm the time.',
                 'caddie.ts.badwindow': 'Your finish time has to be after your start time',
@@ -13431,7 +13431,7 @@
                 'caddie.ts.none': 'วันนี้ไม่มีการจอง',
                 'caddie.ts.booking': 'การจอง',
                 'caddie.ts.bookings': 'การจอง',
-                'caddie.ts.foot': 'ทุกรอบจะกันเวลาคุณอย่างน้อย 4 ชม. 15 นาที — ไม่มีใครจองคุณในช่วงนั้นได้',
+                'caddie.ts.foot': 'ทุกรอบจะกันเวลาคุณอย่างน้อย 4 ชม. 15 นาที — ไม่มีใครจองคุณในช่วงนั้นได้ หากต้องการยกเลิกหรือเปลี่ยนการจอง โปรดติดต่อแคดดี้มาสเตอร์ — โปรช็อปจะเป็นผู้แก้ไข',
                 'caddie.ts.clash': 'ติดงานอยู่แล้วเวลา {a} — กันถึง {b} ({c} ต่อรอบ) กรุณาเลือกเวลานอกช่วงนี้',
                 'caddie.ts.unverified': 'ตรวจสอบตารางของแคดดี้ไม่ได้ — สนามจะยืนยันเวลาอีกครั้ง',
                 'caddie.ts.badwindow': 'เวลาเลิกงานต้องอยู่หลังเวลาเริ่มงาน',
@@ -16028,7 +16028,7 @@
                 'caddie.ts.none': '이 날은 예약이 없습니다',
                 'caddie.ts.booking': '건',
                 'caddie.ts.bookings': '건',
-                'caddie.ts.foot': '라운드 한 건당 최소 4시간 15분 차단됩니다 — 그 사이에는 예약할 수 없습니다.',
+                'caddie.ts.foot': '라운드 한 건당 최소 4시간 15분 차단됩니다 — 그 사이에는 예약할 수 없습니다. 예약 취소나 변경은 캐디 마스터에게 연락하세요 — 프로샵에서 변경합니다.',
                 'caddie.ts.clash': '{a}에 이미 라운드 중 — {b}까지 차단 (라운드당 {c}). 그 시간대를 피해 주세요.',
                 'caddie.ts.unverified': '캐디 일정을 확인하지 못했습니다 — 골프장에서 시간을 확정합니다.',
                 'caddie.ts.badwindow': '종료 시간은 시작 시간보다 늦어야 합니다',
@@ -18683,7 +18683,7 @@
                 'caddie.ts.none': 'この日の予約はありません',
                 'caddie.ts.booking': '件',
                 'caddie.ts.bookings': '件',
-                'caddie.ts.foot': '1ラウンドにつき最低4時間15分ブロックされます — その間は予約できません。',
+                'caddie.ts.foot': '1ラウンドにつき最低4時間15分ブロックされます — その間は予約できません。 予約のキャンセル・変更はキャディーマスターへ — 変更はプロショップが行います。',
                 'caddie.ts.clash': '{a} に既にラウンド中 — {b} までブロック（1ラウンド {c}）。その時間帯を避けてください。',
                 'caddie.ts.unverified': 'キャディのスケジュールを確認できませんでした — コースが時間を確定します。',
                 'caddie.ts.badwindow': '終了時刻は開始時刻より後にしてください',
@@ -42694,27 +42694,36 @@ document.addEventListener('DOMContentLoaded', function() {
             // Check if this is a Supabase caddy booking
             const isSupabaseCaddyBooking = itemId.startsWith('caddy_booking_');
 
-            // v996 (Pete): ONLY Caddy Master / Management / Pro Shop may alter caddy bookings —
-            // golfers ask the course instead of self-cancelling the caddy assignment.
-            if (isSupabaseCaddyBooking && !window.canAlterCaddyBookings?.()) {
+            // v1236 (Pete 2026-09-17): the golfer and the pro shop may cancel; the ONLY rule is that
+            // the caddy herself cannot decline or cancel (she asks the caddy master, the pro shop
+            // makes the change). A golfer's schedule only ever lists their own caddy bookings.
+            const myCb = isSupabaseCaddyBooking ? ((ScheduleSystem._caddyBookingsCache || []).find(cb => 'caddy_booking_' + cb.id === itemId) || null) : null;
+            if (isSupabaseCaddyBooking && !window.canAlterCaddyBookings?.() && !myCb) {
                 window.NotificationManager.show('Caddy bookings are managed by the course — please contact the Pro Shop or Caddy Master to change this', 'error');
                 return;
             }
 
-            if (!confirm('Are you sure you want to cancel this booking?')) {
-                return;
-            }
+            const sure = window.askConfirm ? await window.askConfirm({ title: 'Cancel this booking?', danger: true, confirmText: _lvT('common.delete', 'Cancel booking') }) : confirm('Are you sure you want to cancel this booking?');
+            if (!sure) return;
 
             if (isSupabaseCaddyBooking) {
                 // Cancel in Supabase caddy_bookings table
                 const supabaseId = itemId.replace('caddy_booking_', '');
                 try {
-                    const { error } = await window.SupabaseDB.client
-                        .from('caddy_bookings')
-                        .update({ status: 'cancelled' })
-                        .eq('id', supabaseId);
-
-                    if (error) throw error;
+                    if (myCb && myCb.teesheet_booking_id) {
+                        // a job on a pro shop tee time: the RPC cancels it AND clears the slot on the sheet
+                        const me = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
+                        const { data, error } = await window.SupabaseDB.client.rpc('golfer_set_booking_caddy', { p_booking_id: myCb.teesheet_booking_id, p_golfer_id: me });
+                        if (error) throw error;
+                        if (!data || data.ok !== true) throw new Error((data && data.reason) || 'refused');
+                        try { if (window.TeeTimeCards) TeeTimeCards.applyCaddy(myCb.teesheet_booking_id, data); } catch (e) {}
+                    } else {
+                        const { error } = await window.SupabaseDB.client
+                            .from('caddy_bookings')
+                            .update({ status: 'cancelled', cancelled_at: new Date().toISOString(), cancellation_reason: 'Cancelled by the golfer' })
+                            .eq('id', supabaseId);
+                        if (error) throw error;
+                    }
 
                     // Clear cache so it refreshes
                     ScheduleSystem._caddyBookingsCache = null;
@@ -62974,7 +62983,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </label>
                     </div>
                     <div class="cts-sheet" id="ctsSheet"><div class="cts-empty" data-i18n="common.loading">Loading...</div></div>
-                    <p class="cts-foot" data-i18n="caddie.ts.foot">Every round blocks you for at least 4h 15m &mdash; nobody can book you inside that window.</p>
+                    <p class="cts-foot" data-i18n="caddie.ts.foot">Every round blocks you for at least 4h 15m &mdash; nobody can book you inside that window. To cancel or change a booking, contact the caddy master &mdash; the pro shop makes the change.</p>
                 </div>
 
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -125516,8 +125525,10 @@ const GolferCaddyBooking = {
 
     // Execute cancellation with full audit trail
     async confirmCancel(bookingId) {
-        // v996 (Pete): caddy booking alterations are staff-only (Caddy Master / Management / Pro Shop)
-        if (!window.canAlterCaddyBookings?.()) {
+        // v1236 (Pete 2026-09-17): the golfer may cancel their OWN caddy booking (myBookings are
+        // theirs); staff may cancel any. The caddy herself never can — she asks the caddy master.
+        const mineCb = (this.myBookings || []).find(b => b.id === bookingId) || null;
+        if (!window.canAlterCaddyBookings?.() && !mineCb) {
             document.querySelectorAll('.fixed.inset-0').forEach(modal => modal.remove());
             window.NotificationManager.show('Caddy bookings are managed by the course — please contact the Pro Shop or Caddy Master to change this', 'error');
             return;
@@ -125537,17 +125548,25 @@ const GolferCaddyBooking = {
             // Build cancellation reason with audit info (who cancelled)
             const fullReason = `${reason} | Cancelled by: ${userName} (${userId})`;
 
-            // Update booking status to cancelled
-            const { error } = await window.SupabaseDB.client
-                .from('caddy_bookings')
-                .update({
-                    status: 'cancelled',
-                    cancelled_at: new Date().toISOString(),
-                    cancellation_reason: fullReason
-                })
-                .eq('id', bookingId);
+            if (booking && booking.teesheet_booking_id && !window.canAlterCaddyBookings?.()) {
+                // a job on a pro shop tee time: the RPC cancels it AND clears the golfer's slot on the sheet (v1236)
+                const { data, error } = await window.SupabaseDB.client.rpc('golfer_set_booking_caddy', { p_booking_id: booking.teesheet_booking_id, p_golfer_id: userId });
+                if (error) throw error;
+                if (!data || data.ok !== true) throw new Error((data && data.reason) || 'refused');
+                try { if (window.TeeTimeCards) TeeTimeCards.applyCaddy(booking.teesheet_booking_id, data); } catch (e) {}
+            } else {
+                // Update booking status to cancelled
+                const { error } = await window.SupabaseDB.client
+                    .from('caddy_bookings')
+                    .update({
+                        status: 'cancelled',
+                        cancelled_at: new Date().toISOString(),
+                        cancellation_reason: fullReason
+                    })
+                    .eq('id', bookingId);
 
-            if (error) throw error;
+                if (error) throw error;
+            }
 
             // Update caddy availability back to 'available' if was booked for this
             if (booking && booking.caddy_id) {

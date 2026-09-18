@@ -111,6 +111,17 @@
         return !!(gc && typeof gc === 'object' && gc.scramble);
     }
 
+    // 2026-09-18 (Pete): scrambles, 3-man waltz and ANY team event never count toward a handicap.
+    // Mirrors the DB rule public.is_team_round (trigger + every calculator) → 'scramble' | 'waltz' | 'team' | null.
+    const TEAM_RX = /scramble|waltz|shamble|fourball|four_ball|foursome|greensome|pinehurst|chapman|bestball|best_ball|betterball|better_ball|ryder|team/i;
+    function teamKind(r) {
+        const f = JSON.stringify(r.scoring_formats || '') + JSON.stringify((r.game_config && r.game_config.formats) || '');
+        if (isScramble(r) || /scramble/i.test(f)) return 'scramble';
+        if (/waltz/i.test(f) || !!(r.game_config && r.game_config.waltz)) return 'waltz';
+        if (Number(r.team_size) > 1 || (r.scramble_config && typeof r.scramble_config === 'object') || TEAM_RX.test(f)) return 'team';
+        return null;
+    }
+
     function esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
             '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -198,7 +209,7 @@
                 _cr: cr, _slope: slope,
                 _adjGross: adjustedGross(r),
                 _diff: scoreDifferential(adjustedGross(r), cr, slope),
-                _scramble: isScramble(r),
+                _team: teamKind(r),
                 _nine: (r.holes_played == null ? 18 : r.holes_played) === 9
             });
         });
@@ -217,8 +228,8 @@
         }
 
         // WHS lens mirrors calculate_society_handicap_index over the same 20 —
-        // v1253: scramble rounds are team scores and sit OUTSIDE the window (the DB helper skips them too)
-        S.lensRounds = S.rounds.filter(r => !r._scramble);
+        // v1253/2026-09-18: team rounds (scramble, waltz, any team format) sit OUTSIDE the window (the DB skips them too)
+        S.lensRounds = S.rounds.filter(r => !r._team);
         S.lens = whsLens(S.lensRounds.map(r => r._diff));
 
         // Projector defaults: last tee played + recent average gross (18h equiv)
@@ -331,12 +342,13 @@
 #hlv1Modal .hl-tile .t-label{font-size:10px;font-weight:700;letter-spacing:.12em;color:#64748b}
 #hlv1Modal .hl-tile .t-val{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:4px;line-height:1.1}
 #hlv1Modal .hl-tile .t-sub{font-size:11px;color:#94a3b8;margin-top:4px}
-#hlv1Modal .hl-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;background:#0f172a;border:1px solid #1f2937;border-left:3px solid transparent;margin-bottom:6px}
+#hlv1Modal .hl-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;background:#0f172a;border:1px solid #1f2937;border-left:3px solid transparent;margin-bottom:6px}
 #hlv1Modal .hl-row.counts{border-left-color:${GREEN};background:rgba(34,197,94,.05)}
 #hlv1Modal .hl-row.aging{border-left-color:#f59e0b}
 #hlv1Modal .hl-row .r-date{font-size:11px;color:#94a3b8;width:52px;flex:none}
 #hlv1Modal .hl-row .r-course{flex:1;min-width:0;font-size:12.5px;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #hlv1Modal .hl-row .r-tags{display:flex;gap:4px;flex:none}
+#hlv1Modal .hl-row .r-team{flex-basis:100%;padding-left:62px;margin-top:-4px}
 #hlv1Modal .hl-row .r-num{width:44px;flex:none;text-align:right;font-variant-numeric:tabular-nums;font-size:12.5px;color:#cbd5e1}
 #hlv1Modal .hl-row .r-diff{width:52px;flex:none;text-align:right;font-variant-numeric:tabular-nums;font-size:13px;font-weight:800;color:#e2e8f0}
 #hlv1Modal .hl-row.counts .r-diff{color:${GREEN}}
@@ -439,7 +451,8 @@
             if (counts) tags.push('<span class="hl-chip green">COUNTS</span>');
             if (aging && !counts) tags.push('<span class="hl-chip amber">AGING OUT</span>');
             if (aging && counts) tags.push('<span class="hl-chip amber">AGING</span>');
-            if (r._scramble) tags.push('<span class="hl-chip dim">SCRAMBLE · NOT COUNTED</span>');
+            // team chip rides its own line under the course — inline it pushed GROSS/DIFF off a 360px screen
+            const teamChip = r._team ? '<span class="hl-chip dim">' + ({ scramble: 'SCRAMBLE', waltz: 'WALTZ' }[r._team] || 'TEAM') + ' · NOT COUNTED</span>' : '';
             if (r._nine) tags.push('<span class="hl-chip dim">9H×2</span>');
             return `<div class="hl-row${counts ? ' counts' : ''}${aging ? ' aging' : ''}">
                 <div class="r-date">${dateShort(r)}</div>
@@ -447,6 +460,7 @@
                 <div class="r-tags">${tags.join('')}</div>
                 <div class="r-num">${r.total_gross}</div>
                 <div class="r-diff">${r._diff.toFixed(1)}</div>
+                ${teamChip ? `<div class="r-team">${teamChip}</div>` : ''}
             </div>`;
         }).join('');
 

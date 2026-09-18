@@ -102109,6 +102109,7 @@ class LiveScorecardSystem {
         if (this.currentHoleIndex > 0) {
             this.currentHoleIndex--;
             this.currentHole = this.holeOrder[this.currentHoleIndex];
+            this._scrambleTeamReset(); // v1254: every hole opens on Team A
             this.currentScore = '';
             this._saving = false;
             this.renderHole();
@@ -102138,6 +102139,7 @@ class LiveScorecardSystem {
         if (this.currentHoleIndex < 17) {
             this.currentHoleIndex++;
             this.currentHole = this.holeOrder[this.currentHoleIndex];
+            this._scrambleTeamReset(); // v1254: every hole opens on Team A
             this.currentPlayerId = this._firstOwnedPlayerId();
             this.currentScore = '';
             this._saving = false;
@@ -102191,11 +102193,20 @@ class LiveScorecardSystem {
         }
     }
 
+    // v1254 (Pete 2026-09-18): "after each hole in the 2 man the score box never defaults the first group
+    // box and goes to the second team". The reset to Team A lived only inside the 1.5s auto-advance timer —
+    // a manual next/prev/go-to tap cancels that timer, so the new hole opened on whichever team scored last.
+    // Every hole change now starts on Team A (the first score box), whatever moved the hole.
+    _scrambleTeamReset() {
+        if (this.scoringFormats?.includes('scramble') && this.scrambleConfig?.teams) this._activeScrambleTeam = 'A';
+    }
+
     goToHole(holeNumber) {
         const idx = this.holeOrder.indexOf(holeNumber);
         if (idx >= 0) {
             this.currentHoleIndex = idx;
             this.currentHole = holeNumber;
+            this._scrambleTeamReset(); // v1254: every hole opens on Team A
             this.currentPlayerId = this._firstOwnedPlayerId();
             this.currentScore = '';
             this._saving = false;

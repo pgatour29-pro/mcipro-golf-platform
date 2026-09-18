@@ -379,14 +379,15 @@
             try {
                 const todayStart = localMidnightISO();
                 const today = localDateStr();
-                const [cards, events, caddyB, food, alerts, conds, proshop] = await Promise.all([
+                const [cards, events, caddyB, food, alerts, conds, proshop, revs] = await Promise.all([
                     MD.scorecardsSince(todayStart),
                     MD.eventsFor(today, today),
                     db().from('caddy_bookings').select('id,course_id,caddie_name,golfer_name,tee_time_iso,status,booking_date,payment_amount,payment_status').eq('booking_date', today).or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%').limit(200),
                     MD.orNameFilters(db().from('food_orders').select('id,order_number,customer_name,total,status,created_at,delivery_type'), 'course_name').gte('created_at', todayStart).order('created_at', { ascending: false }).limit(100),
                     db().from('emergency_alerts').select('id,type,message,user_name,status,created_at,course_name,current_hole').eq('status', 'active').order('created_at', { ascending: false }).limit(20),
                     MD.orNameFilters(db().from('course_conditions').select('id,rating,comment,tags,user_name,created_at'), 'course_name').order('created_at', { ascending: false }).limit(5),
-                    db().from('proshop_sales').select('total').eq('course_id', MD.course.id).gte('created_at', todayStart).limit(1000)
+                    db().from('proshop_sales').select('total').eq('course_id', MD.course.id).gte('created_at', todayStart).limit(1000),
+                    MD.reviewsSince(localDateStr(new Date(Date.now() - 30 * 86400000)))
                 ]);
                 if (seq !== MD._seq.overview) return;
                 const scores = await MD.scoresFor(cards.filter(c => !c.completed_at).map(c => c.id));
@@ -472,6 +473,7 @@
                           </div>`).join('')
                         : `<p class="text-xs text-gray-400 py-3 text-center">${esc(tr('mgr.noconds', 'No condition reports yet'))}</p>`}
                       </div>
+                      ${MD.rvOverviewCard(revs || [])}
                       <div id="mgr-ov-weather" class="bg-white rounded-xl border border-gray-200 p-4">
                         <h3 class="text-sm font-bold text-gray-900 mb-1">${mi('wb_cloudy', 'text-blue-500')} ${esc(tr('mgr.weather', 'Weather'))}</h3>
                         <div class="text-xs text-gray-400">${esc(tr('common.loading', 'Loading'))}...</div>
@@ -557,6 +559,103 @@
                 ? `<button onclick="showManagerTab('${o.tab}', event)" class="mgr-kpi text-left w-full">${inner}</button>`
                 : `<div class="mgr-kpi">${inner}</div>`;
         }
+    };
+
+    // ================= CADDY REVIEWS (v1255) — golfers rate their caddy after Finish Round =================
+    // The post-round sheet writes caddy_reviews through submit_caddy_review; this is the GM / marketing read.
+    // Course-scoped the same two-armed way as caddy_bookings (slug OR name stem — rounds without a slug carry the name).
+    MD.reviewsSince = async function (fromDate) {
+        try {
+            const { data } = await db().from('caddy_reviews')
+                .select('id,caddy_id,caddy_number,caddy_name,golfer_name,course_id,course_name,round_date,promptness,professional,helpful,book_again,rating,rating_label,review_text,created_at')
+                .gte('round_date', fromDate)
+                .or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%')
+                .order('created_at', { ascending: false }).limit(1000);
+            const stemHit = (n) => { const s = String(n || '').toLowerCase(); return MD.course.stem.every(t => s.includes(t)); };
+            return (data || []).filter(r => r.course_id === MD.course.id || stemHit(r.course_name));
+        } catch (e) { return []; }
+    };
+    MD.rvStats = function (rows) {
+        const n = rows.length;
+        const pct = (k) => { const has = rows.filter(r => r[k] != null); return has.length ? Math.round(has.filter(r => Number(r[k]) >= 3).length / has.length * 100) : null; };
+        return { n, avg: n ? rows.reduce((s, r) => s + (Number(r.rating) || 0), 0) / n : null,
+                 ontime: pct('promptness'), pro: pct('professional'), help: pct('helpful'), again: pct('book_again'),
+                 dist: [5, 4, 3, 2, 1].map(v => rows.filter(r => Number(r.rating) === v).length) };
+    };
+    MD.rvLabel = (v) => ({ 5: tr('cr.q5.r5', 'Excellent'), 4: tr('cr.q5.r4', 'Good'), 3: tr('cr.q5.r3', 'Average'), 2: tr('cr.q5.r2', 'Needs work'), 1: tr('cr.q5.r1', 'Bad') })[Number(v)] || '—';
+    MD.rvTintCls = (v) => { v = Number(v); return v >= 4 ? 'bg-green-100 text-green-800' : (v === 3 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'); };
+    MD.rvName = (r) => '#' + esc(r.caddy_number || '?') + ((r.caddy_name && r.caddy_name !== 'Caddy #' + r.caddy_number) ? ' ' + esc(r.caddy_name) : '');
+    MD.rvAnswers = function (r) {
+        const A = [['promptness', 'Prompt', 'cr.q1', ['Ready & waiting', 'On time', 'A few minutes late', 'Late']],
+                   ['professional', 'Professional', 'cr.q2', ['Very', 'Yes', 'Somewhat', 'No']],
+                   ['helpful', 'Helpful', 'cr.q3', ['Very helpful', 'Helpful', 'A little', 'Not really']],
+                   ['book_again', 'Book again', 'cr.q4', ['Definitely', 'Probably', 'Maybe', 'Not likely']]];
+        return A.filter(a => r[a[0]] != null).map(a => { const v = Number(r[a[0]]); return tr('cm.rv.q' + (A.indexOf(a) + 1), a[1]) + ': ' + tr(a[2] + '.a' + v, a[3][4 - v] || v); }).join(' · ');
+    };
+    MD.rvRow = function (r, full) {
+        const meta = [esc(r.round_date || '')];
+        if (full) { const a = MD.rvAnswers(r); if (a) meta.push(esc(a)); }
+        if (r.review_text) meta.push('“' + esc(r.review_text) + '”');
+        return `<div class="py-1.5 border-b border-gray-100 last:border-0 flex items-start gap-2">
+            <span class="mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${MD.rvTintCls(r.rating)}">${esc(MD.rvLabel(r.rating))}</span>
+            <div class="min-w-0 flex-1">
+              <div class="text-xs font-semibold text-gray-900 truncate">${MD.rvName(r)} <span class="font-normal text-gray-600">· ${esc(r.golfer_name || tr('mgr.guest', 'Guest'))}</span></div>
+              <div class="text-[11px] text-gray-600 ${full ? '' : 'truncate'}">${meta.join(' · ')}</div>
+            </div></div>`;
+    };
+    // Overview card (last 30 days): the reading at a glance + the last three reviews
+    MD.rvOverviewCard = function (rows) {
+        const s = MD.rvStats(rows);
+        const pct = (v) => v == null ? '—' : v + '%';
+        const m = (v, l) => `<div class="rounded-lg bg-gray-50 border border-gray-200 px-1 py-1.5 text-center min-w-0"><div class="text-[15px] font-extrabold text-green-700 mgr-num leading-tight">${v}</div><div class="text-[10px] font-semibold text-gray-600 leading-tight">${esc(l)}</div></div>`;
+        return `<div class="bg-white rounded-xl border border-gray-200 p-4">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-sm font-bold text-gray-900">${mi('reviews', 'text-amber-600')} ${esc(tr('cm.rv.title', 'Caddy reviews'))}</h3>
+              <button onclick="showManagerTab('analytics', event)" class="text-xs font-medium text-green-700 hover:underline">${esc(tr('mgr.opsanalytics', 'Analytics'))} →</button>
+            </div>
+            ${s.n ? `<div class="flex items-baseline gap-2 mb-2"><span class="text-[26px] font-extrabold mgr-num tracking-tight text-gray-900 leading-none">${s.avg.toFixed(1)}<span class="text-[15px] text-amber-600 ml-0.5">★</span></span><span class="text-[11px] text-gray-600 font-medium">${esc(tr('cm.rv.n', '{n} reviews').replace('{n}', fmtN(s.n)))} · ${esc(tr('cm.rv.last', 'last {d} days').replace('{d}', 30))}</span></div>
+                <div class="grid grid-cols-4 gap-1.5 mb-2">${m(pct(s.ontime), tr('cm.rv.ontime', 'On time'))}${m(pct(s.pro), tr('cm.rv.pro', 'Professional'))}${m(pct(s.help), tr('cm.rv.help', 'Helpful'))}${m(pct(s.again), tr('cm.rv.again', 'Book again'))}</div>
+                ${rows.slice(0, 3).map(r => MD.rvRow(r, false)).join('')}`
+              : `<p class="text-xs text-gray-500 py-3 text-center">${esc(tr('cm.rv.empty', 'No reviews yet — golfers rate their caddy when they finish a round'))}</p>`}
+          </div>`;
+    };
+    // Analytics panel (follows the period toggle): the five readings, the rating spread, and the per-caddy table
+    MD.rvPanel = function (rows, days) {
+        const s = MD.rvStats(rows);
+        const pct = (v) => v == null ? '—' : v + '%';
+        const bar = (l, v, color) => `<div class="flex items-center gap-2 py-1"><span class="text-xs text-gray-700 w-28 truncate font-medium">${esc(l)}</span><div class="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden"><div class="h-full ${color} rounded-full" style="width:${v == null ? 0 : v}%"></div></div><span class="text-xs font-bold text-gray-900 w-10 text-right">${pct(v)}</span></div>`;
+        const by = {};
+        rows.forEach(r => { const k = r.caddy_id || ('n' + String(parseInt(r.caddy_number))); (by[k] = by[k] || { r, rows: [] }).rows.push(r); });
+        const byList = Object.values(by).map(c => ({ ...c, r: c.rows.find(x => x.caddy_name) || c.r, s: MD.rvStats(c.rows) })).sort((a, b) => b.s.n - a.s.n || b.s.avg - a.s.avg).slice(0, 12);
+        return `<div class="bg-white rounded-xl border border-gray-200 p-4 mb-3">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <h4 class="text-sm font-bold text-gray-900">${mi('reviews', 'text-amber-600')} ${esc(tr('cm.rv.title', 'Caddy reviews'))} <span class="text-[11px] font-semibold text-gray-500">· ${days === 365 ? '1Y' : days + 'D'}</span></h4>
+              <span class="text-[11px] text-gray-500 font-medium">${esc(tr('mgr.rv.note', 'collected from golfers after Finish Round'))}</span>
+            </div>
+            ${s.n ? `<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div>
+                  <div class="flex items-baseline gap-2"><span class="text-[34px] font-extrabold mgr-num tracking-tight text-gray-900 leading-none">${s.avg.toFixed(1)}<span class="text-[18px] text-amber-600 ml-0.5">★</span></span><span class="text-xs text-gray-600 font-medium">${esc(tr('cm.rv.n', '{n} reviews').replace('{n}', fmtN(s.n)))}</span></div>
+                  <div class="mt-2">${[5, 4, 3, 2, 1].map((v, i) => `<div class="flex items-center gap-2 py-0.5 text-[11px]"><span class="w-20 font-semibold text-gray-700">${esc(MD.rvLabel(v))}</span><div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden"><div class="h-full ${v >= 4 ? 'bg-green-500' : (v === 3 ? 'bg-amber-500' : 'bg-red-500')}" style="width:${Math.round(s.dist[i] / s.n * 100)}%"></div></div><span class="w-6 text-right font-bold text-gray-900">${s.dist[i]}</span></div>`).join('')}</div>
+                </div>
+                <div>
+                  ${bar(tr('cm.rv.ontime', 'On time'), s.ontime, 'bg-green-500')}
+                  ${bar(tr('cm.rv.pro', 'Professional'), s.pro, 'bg-emerald-500')}
+                  ${bar(tr('cm.rv.help', 'Helpful'), s.help, 'bg-teal-500')}
+                  ${bar(tr('cm.rv.again', 'Would book again'), s.again, 'bg-sky-500')}
+                  <p class="text-[10px] text-gray-500 mt-1">${esc(tr('mgr.rv.pctnote', '% of golfers answering on time / yes / helpful / likely'))}</p>
+                </div>
+                <div>
+                  <div class="text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-1">${esc(tr('cm.rv.bycaddy', 'By caddy'))}</div>
+                  <table class="w-full text-xs"><thead><tr class="text-[10px] text-gray-500"><th class="text-left font-semibold py-1">${esc(tr('cm.rv.caddy', 'Caddy'))}</th><th class="text-right font-semibold py-1">${esc(tr('cm.rv.n.h', 'Reviews'))}</th><th class="text-right font-semibold py-1">${esc(tr('cm.rv.avg', 'Avg'))}</th><th class="text-right font-semibold py-1">${esc(tr('cm.rv.again', 'Book again'))}</th></tr></thead>
+                  <tbody>${byList.map(c => `<tr class="border-t border-gray-100"><td class="py-1 text-gray-900 font-semibold">${MD.rvName(c.r)}</td><td class="py-1 text-right text-gray-900">${c.s.n}</td><td class="py-1 text-right text-gray-900 font-bold">${c.s.avg.toFixed(1)}★</td><td class="py-1 text-right text-gray-900">${c.s.again == null ? '—' : c.s.again + '%'}</td></tr>`).join('')}</tbody></table>
+                </div>
+              </div>
+              <div class="mt-3 border-t border-gray-100 pt-2">
+                <div class="text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-1">${esc(tr('cm.rv.recent', 'Recent reviews'))}</div>
+                ${rows.slice(0, 8).map(r => MD.rvRow(r, true)).join('')}
+              </div>`
+            : `<p class="text-xs text-gray-500 py-4 text-center">${esc(tr('cm.rv.empty', 'No reviews yet — golfers rate their caddy when they finish a round'))}</p>`}
+          </div>`;
     };
 
     // ================= TRAFFIC (live course flow from real scoring) =================
@@ -1286,13 +1385,14 @@
             const fromISO = daysAgoISO(days);
             const fromDate = localDateStr(new Date(Date.now() - days * 86400000));
             const today = localDateStr();
-            const [cards, events, caddyB, food, conds, proshop] = await Promise.all([
+            const [cards, events, caddyB, food, conds, proshop, revs] = await Promise.all([
                 MD.scorecardsSince(fromISO, 'id,player_id,player_name,started_at,completed_at,society_name,created_at,group_id'),
                 MD.eventsFor(fromDate, today),
                 db().from('caddy_bookings').select('id,course_id,caddie_name,booking_date,status,payment_amount,payment_status').gte('booking_date', fromDate).or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%').limit(1000),
                 MD.orNameFilters(db().from('food_orders').select('id,total,status,created_at'), 'course_name').gte('created_at', fromISO).limit(1000),
                 MD.orNameFilters(db().from('course_conditions').select('id,rating,created_at'), 'course_name').gte('created_at', fromISO).limit(500),
-                db().from('proshop_sales').select('total,created_at').eq('course_id', MD.course.id).gte('created_at', fromISO).limit(2000)
+                db().from('proshop_sales').select('total,created_at').eq('course_id', MD.course.id).gte('created_at', fromISO).limit(2000),
+                MD.reviewsSince(fromDate)
             ]);
             if (seq !== MD._seq.an) return;
             const regCounts = events.length ? await MD.regCountsFor(events.map(e => e.id)) : {};
@@ -1371,6 +1471,7 @@
                 </div>
                 ${greenFeeRev ? '' : `<p class="text-[11px] text-amber-600 font-semibold mt-2">${esc(tr('mgr.an.setrate', 'Set the green-fee rate in Settings to include green-fee revenue.'))}</p>`}
               </div>
+              ${MD.rvPanel(revs || [], days)}
               <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
                 <div class="bg-white rounded-xl border border-gray-200 p-4">
                   <h4 class="text-sm font-bold text-gray-900 mb-2">${esc(tr('mgr.roundsperday', 'Rounds per day'))}</h4>

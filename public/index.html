@@ -73025,6 +73025,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                     type: round.type || (round.is_tournament ? 'society' : 'practice'),
                                     stableford: round.total_stableford ?? round.stableford ?? null,
                                     handicapUsed: round.handicap_used,
+                                    scramble: !!(window.ScrambleTeamRecord && window.ScrambleTeamRecord.isScrambleRound(round)),
+                                    teamName: (round.scramble_config && round.scramble_config.teamName) || null,
+                                    teamHcp: (round.scramble_config && round.scramble_config.teamHcp != null) ? round.scramble_config.teamHcp : null,
                                     front9Seconds: round.front9_seconds ?? null,
                                     back9Seconds: round.back9_seconds ?? null,
                                     totalSeconds: round.total_seconds ?? null
@@ -73267,6 +73270,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     else if (score.type === 'private') roundTypeBadge = '<span class="scv3h-rchip">PRIVATE</span>';
                     else if (score.type === 'society') roundTypeBadge = '<span class="scv3h-rchip">SOCIETY</span>';
                     else if (score.type !== 'society' && score.source !== 'database') roundTypeBadge = '';
+                    // v1253: a scramble round is the TEAM's score, off the team handicap — never an individual result
+                    if (score.scramble) roundTypeBadge += `<span class="scv3h-rchip live">SCRAMBLE · TEAM${score.teamHcp != null ? ' HCP ' + score.teamHcp : ''}</span>`;
 
                     // SCV3H numeric mini-card (approved model: numbers, colored digits, OUT/IN)
                     const holes = holesMap[score.id] || [];
@@ -73308,7 +73313,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="scv3h-round" data-course="${String(score.course||'').toLowerCase().replace(/"/g,'')}" data-type="${score.type||''}" data-source="${score.source||''}" data-share="${encodeURIComponent(shareText)}" onclick="GolfScoreSystem.viewRoundDetails('${score.id}')">
                             <div class="scv3h-rtop">
                                 <div style="min-width:0;">
-                                    <div class="scv3h-rcourse">${score.course}</div>
+                                    <div class="scv3h-rcourse">${score.course}${score.scramble && score.teamName ? ` <span style="font-weight:600;color:#3e4956;">· ${score.teamName}</span>` : ''}</div>
                                     <div class="scv3h-rmeta">${formattedDate.toUpperCase()} · ${score.holes || 18}H · ${(score.tee || 'White').toUpperCase()}${metaPace}</div>
                                 </div>
                                 <div class="scv3h-rscore">
@@ -76316,13 +76321,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     const userId = AppState?.currentUser?.lineUserId;
                     if (!userId || !window.SupabaseDB?.client) return;
 
-                    const { data: rounds } = await window.SupabaseDB.client
+                    const { data: roundsRaw } = await window.SupabaseDB.client
                         .from('rounds')
-                        .select('id, total_gross, course_rating, slope_rating, completed_at')
+                        .select('id, total_gross, course_rating, slope_rating, completed_at, scramble_config, team_size, scoring_formats')
                         .eq('golfer_id', userId)
                         .eq('status', 'completed')
                         .order('completed_at', { ascending: false })
-                        .limit(20);
+                        .limit(24);
+                    // v1253: scramble rounds are team scores — not this golfer's own game
+                    const rounds = (roundsRaw || []).filter(r => !(window.ScrambleTeamRecord && window.ScrambleTeamRecord.isScrambleRound(r))).slice(0, 20);
 
                     if (!rounds || rounds.length < 3) return;
 
@@ -100971,9 +100978,17 @@ class LiveScorecardSystem {
             const par = hd.par || 4;
             const si = hd.stroke_index || hd.strokeIndex || hd.handicap || hole;
             const hcp = this.getGameHandicap ? (this.getGameHandicap('stableford', pid) ?? player.handicap) : player.handicap;
-            const strokes = this._engineStrokesFor(hole, hcp) || 0;
-            const net = score - strokes;
-            const pts = Math.max(0, (par - net) + 2);
+            let strokes = this._engineStrokesFor(hole, hcp) || 0;
+            let net = score - strokes;
+            let pts = Math.max(0, (par - net) + 2);
+            if (this.scoringFormats?.includes('scramble')) { // v1253: team strokes, no individual points
+                try {
+                    const _f = this._scramblePersistFields(player);
+                    const _th = _f && _f.scramble_config ? parseFloat(_f.scramble_config.teamHcp) : NaN;
+                    if (!isNaN(_th)) strokes = (window.ScrambleTeamRecord.strokes(_th, this.courseData?.holes || [])[hole]) || 0;
+                } catch (e) {}
+                net = score - strokes; pts = null;
+            }
             const row = { round_id: roundId, hole_number: hole, par: par, stroke_index: si,
                 gross_score: score, net_score: net, stableford_points: pts, handicap_strokes: strokes };
             // Ask FIRST, then write. Never branch on a write's RETURNING rows: an empty
@@ -103054,7 +103069,7 @@ class LiveScorecardSystem {
 
             // Calculate total net using proper per-hole handicap allocation — off the SAME
             // handicap that total_stableford and handicap_used use (see _postingHandicapFor)
-            const hcpUsed = this._postingHandicapFor(player);
+            let hcpUsed = this._postingHandicapFor(player);
             let totalNet = totalGross;
             const scoringEngine = LiveScorecardSystem?.GolfScoringEngine;
             if (scoringEngine && this.courseData?.holes?.length > 0 && hcpUsed != null && hcpUsed !== '') {
@@ -103065,6 +103080,21 @@ class LiveScorecardSystem {
                 }
                 totalNet = netSum;
             }
+
+            // v1253: scramble = the TEAM's record (team hcp, team net, no individual points) — see ScrambleTeamRecord
+            let scrRecord = null;
+            try {
+                const _scrFields = this._scramblePersistFields(player);
+                const _teamHcp = (_scrFields && _scrFields.scramble_config) ? parseFloat(_scrFields.scramble_config.teamHcp) : NaN;
+                if (this.scoringFormats?.includes('scramble') && !isNaN(_teamHcp) && window.ScrambleTeamRecord) {
+                    scrRecord = window.ScrambleTeamRecord.build(_teamHcp, scoresArray.map(sc => {
+                        const hd = this.getHoleData(sc.hole_number) || {};
+                        return { hole_number: sc.hole_number, par: hd.par || 4, stroke_index: hd.stroke_index || hd.strokeIndex || hd.handicap || sc.hole_number, gross: sc.gross_score };
+                    }));
+                    totalNet = scrRecord.total_net; totalStableford = null; hcpUsed = scrRecord.handicap_used;
+                    console.log(`[LiveScorecard] ${player.name}: scramble TEAM record — team hcp ${hcpUsed}, net ${totalNet}, no individual points`);
+                }
+            } catch (e) { console.warn('[LiveScorecard] scramble team record:', e.message); }
 
             console.log(`[LiveScorecard] ${player.name}: ${holesPlayed} holes, gross=${totalGross}, net=${totalNet}`);
 
@@ -103814,9 +103844,13 @@ class LiveScorecardSystem {
                 const strokeIndex = holeData?.stroke_index || holeData?.strokeIndex || holeData?.handicap || holeNum;
 
                 // Calculate net score and stableford using proper shot allocation
-                const shotsReceived = shotAllocation[holeNum] || 0;
-                const netScore = holeScore.net_score != null ? holeScore.net_score : (grossScore - shotsReceived);
-                const stablefordPoints = holeScore.stableford_points != null ? holeScore.stableford_points : Math.max(0, (par - netScore) + 2);
+                let shotsReceived = shotAllocation[holeNum] || 0;
+                let netScore = holeScore.net_score != null ? holeScore.net_score : (grossScore - shotsReceived);
+                let stablefordPoints = holeScore.stableford_points != null ? holeScore.stableford_points : Math.max(0, (par - netScore) + 2);
+                if (scrRecord) { // v1253: team strokes, team net, no individual points on a scramble hole row
+                    const tr = scrRecord.byHole[holeNum];
+                    shotsReceived = tr ? tr.handicap_strokes : 0; netScore = grossScore - shotsReceived; stablefordPoints = null;
+                }
 
                 // Get scramble tracking data for this hole. Two-team scrambles store drive/putt
                 // under a team-specific key (`${hole}_A`/`_B`); single-team uses the plain hole.
@@ -112589,6 +112623,46 @@ window.updateMatchPlayType = function() {
             label.classList.add('border-gray-300', 'bg-white');
         }
     });
+};
+
+// v1253 (Pete 2026-09-18): "at the end of the round it only records the team and not the individual scores
+// and not count towards the hcp". A scramble round is stored on BOTH teammates (the results boards group by
+// scramble_config.teamName) but the numbers are the TEAM's: handicap_used = team hcp, per-hole strokes = the
+// team hcp allocated by stroke index, net = gross − team strokes, stableford = null. The DB handicap engine
+// skips scramble rounds (trigger + calculate_society_handicap_index) — nothing here feeds anyone's index.
+window.ScrambleTeamRecord = {
+    isScrambleRound(r) {
+        if (!r) return false;
+        if (r.scramble_config && typeof r.scramble_config === 'object' && r.scramble_config.teamName) return true;
+        if (Number(r.team_size) > 1) return true;
+        try { return JSON.stringify(r.scoring_formats || '').toLowerCase().includes('scramble'); } catch (e) { return false; }
+    },
+    // strokes per hole for a TEAM handicap (+hcp gives strokes back on the EASIEST holes) — same rule as _scrAllocate
+    strokes(teamHcp, holes) {
+        const out = {}; (holes || []).forEach(x => { out[x.hole_number] = 0; });
+        const h = Math.round(parseFloat(teamHcp) || 0);
+        const n = (holes && holes.length) || 0; if (!n || h === 0) return out;
+        const base = Math.trunc(Math.abs(h) / n), extra = Math.abs(h) % n, sign = h < 0 ? -1 : 1;
+        const si = x => (x.stroke_index != null ? x.stroke_index : (x.strokeIndex != null ? x.strokeIndex : (x.handicap != null ? x.handicap : x.hole_number)));
+        const order = [...holes].sort((a, b) => h < 0 ? (si(b) - si(a)) : (si(a) - si(b)));
+        order.forEach((x, idx) => { out[x.hole_number] = sign * (base + (idx < extra ? 1 : 0)); });
+        return out;
+    },
+    // holes: [{hole_number, par, stroke_index, gross}] (played holes only) → totals + round_holes rows
+    build(teamHcp, holes) {
+        const played = (holes || []).filter(x => Number(x.gross) > 0);
+        const alloc = this.strokes(teamHcp, played);
+        let gross = 0, net = 0; const rows = [], byHole = {};
+        played.forEach(x => {
+            const st = alloc[x.hole_number] || 0; const g = Number(x.gross);
+            gross += g; net += g - st;
+            const row = { hole_number: x.hole_number, par: x.par || 4, stroke_index: x.stroke_index != null ? x.stroke_index : x.hole_number,
+                gross_score: g, net_score: g - st, handicap_strokes: st, stableford_points: null };
+            rows.push(row); byHole[x.hole_number] = row;
+        });
+        const hcp = Math.round(parseFloat(teamHcp) || 0);
+        return { total_gross: gross, total_net: net, total_stableford: null, handicap_used: hcp, holes_played: played.length, rows, byHole };
+    }
 };
 
 window.calculateScrambleHcp = function() {
@@ -164718,7 +164792,10 @@ class OrganizerScoringSystem {
     async _persistHoleScores(round, scoresMap) {
         const sb = window.SupabaseDB.client;
         const courseData = await this.loadEditCourseData();
-        const handicap = window.toPlayingHandicap(round.handicap_used);
+        // v1253: a scramble round plays off the TEAM handicap and carries no individual points
+        const _isScr = !!(window.ScrambleTeamRecord && window.ScrambleTeamRecord.isScrambleRound(round));
+        const _teamHcp = _isScr && round.scramble_config && round.scramble_config.teamHcp != null ? parseFloat(round.scramble_config.teamHcp) : null;
+        const handicap = window.toPlayingHandicap(_teamHcp != null && !isNaN(_teamHcp) ? _teamHcp : round.handicap_used);
         const golferId = round.golfer_id;
         const eventId = this.currentEventId;
 
@@ -164732,9 +164809,9 @@ class OrganizerScoringSystem {
             if (score) {
                 const strokes = this.calcShotsOnHole(handicap, si);
                 const net = score - strokes;
-                const pts = this.calcStablefordPts(score, par, handicap, si);
+                const pts = _isScr ? null : this.calcStablefordPts(score, par, handicap, si);
                 perHole[h] = { par, si, gross: score, net, strokes, pts };
-                totalGross += score; totalNet += net; totalStableford += pts; holesCompleted++;
+                totalGross += score; totalNet += net; totalStableford += (pts || 0); holesCompleted++;
             } else {
                 clearedHoles.push(h);
             }
@@ -164787,10 +164864,10 @@ class OrganizerScoringSystem {
                 }
             }
             if (clearedHoles.length) await sb.from('round_holes').delete().eq('round_id', roundId).in('hole_number', clearedHoles);
-            await sb.from('rounds').update({ total_gross: totalGross, total_net: totalNet, total_stableford: totalStableford, holes_played: holesCompleted }).eq('id', roundId);
+            await sb.from('rounds').update({ total_gross: totalGross, total_net: totalNet, total_stableford: _isScr ? null : totalStableford, holes_played: holesCompleted }).eq('id', roundId);
         }
 
-        return { totalGross, totalNet, totalStableford, holesCompleted };
+        return { totalGross, totalNet, totalStableford: _isScr ? null : totalStableford, holesCompleted };
     }
 
     async openEditScoreModal(roundId) {
@@ -166665,34 +166742,29 @@ class OrganizerScoringSystem {
             holes: (this.scrCourse && this.scrCourse.holes) || []
         };
     }
-    // Saves ONE team's card: a scramble round for BOTH players (same team gross, each player's own strokes).
+    // Saves ONE team's card: a scramble round for BOTH players — the TEAM's record on each (v1253: team hcp,
+    // team strokes by stroke index, team net, no individual points; ScrambleTeamRecord is the one builder).
     async _scrSaveTeam(ti, ctx) {
         const t = this.scrTeams[ti], s = this.scrScores[ti];
         const holes = ctx.holes;
         const teamHcp = parseInt(s.teamHcp) || 0;
         const entered = []; for (let h = 1; h <= 18; h++) { const v = parseInt(s.holes[h]); if (v > 0) entered.push({ h, v }); }
         const totalGross = entered.reduce((a, x) => a + x.v, 0);
+        const rec = window.ScrambleTeamRecord.build(teamHcp, entered.map(({ h, v }) => {
+            const hd = holes[h - 1] || { par: 4, handicap: h };
+            return { hole_number: h, par: hd.par, stroke_index: (hd.handicap != null ? hd.handicap : h), gross: v };
+        }));
         let ok = 0, err = 0;
         for (let m = 0; m < 2; m++) {
-            const gid = t.ids[m], gname = t.names[m], indivHcp = t.hcps[m] || 0;
+            const gid = t.ids[m], gname = t.names[m];
             try {
-                const alloc = this._scrAllocate(indivHcp, holes);
-                let totalStableford = 0, totalStrokes = 0;
-                const holeRecords = [];
-                entered.forEach(({ h, v }) => {
-                    const hd = holes[h - 1] || { par: 4, handicap: h };
-                    const si = hd.handicap != null ? hd.handicap : h;
-                    const strokes = alloc[h] || 0;
-                    const pts = this.calculateStablefordPoints(v, hd.par, indivHcp, si);
-                    totalStableford += pts; totalStrokes += strokes;
-                    holeRecords.push({ round_id: null, hole_number: h, par: hd.par, stroke_index: si, gross_score: v, net_score: (v - strokes), stableford_points: pts, handicap_strokes: strokes });
-                });
+                const holeRecords = rec.rows.map(r => Object.assign({ round_id: null }, r));
                 const roundData = {
                     golfer_id: gid, player_name: gname, course_id: ctx.courseId, course_name: ctx.courseName,
                     type: 'society', society_event_id: this.currentEventId, organizer_id: ctx.organizerId,
                     played_at: ctx.eventDate.toISOString(), started_at: ctx.eventDate.toISOString(), completed_at: new Date().toISOString(),
-                    status: 'completed', total_gross: totalGross, total_net: (totalGross - totalStrokes), total_stableford: totalStableford,
-                    handicap_used: indivHcp, tee_marker: ctx.tee, course_rating: 72.0, slope_rating: 113, holes_played: entered.length,
+                    status: 'completed', total_gross: totalGross, total_net: rec.total_net, total_stableford: null,
+                    handicap_used: teamHcp, tee_marker: ctx.tee, course_rating: 72.0, slope_rating: 113, holes_played: entered.length,
                     team_size: 2, scramble_config: { teamName: t.teamName, teamHcp: teamHcp }, scoring_formats: ['scramble']
                 };
                 const { data: round, error } = await ctx.client.from('rounds').insert(roundData).select().single();

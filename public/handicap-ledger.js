@@ -216,8 +216,10 @@
             } catch (e) { /* ignore */ }
         }
 
-        // WHS lens mirrors calculate_society_handicap_index over the same 20
-        S.lens = whsLens(S.rounds.map(r => r._diff));
+        // WHS lens mirrors calculate_society_handicap_index over the same 20 —
+        // v1253: scramble rounds are team scores and sit OUTSIDE the window (the DB helper skips them too)
+        S.lensRounds = S.rounds.filter(r => !r._scramble);
+        S.lens = whsLens(S.lensRounds.map(r => r._diff));
 
         // Projector defaults: last tee played + recent average gross (18h equiv)
         if (S.rounds.length) {
@@ -428,14 +430,16 @@
 
         // Ledger rows
         const lens = S.lens;
+        const lensIdx = new Map(); (S.lensRounds || S.rounds).forEach((r, k) => lensIdx.set(r, k));
         const rows = S.rounds.map((r, i) => {
-            const counts = lens && lens.bestIdx.has(i);
+            const li = lensIdx.has(r) ? lensIdx.get(r) : -1;
+            const counts = lens && li >= 0 && lens.bestIdx.has(li);
             const aging = n >= 20 && i >= 17;
             const tags = [];
             if (counts) tags.push('<span class="hl-chip green">COUNTS</span>');
             if (aging && !counts) tags.push('<span class="hl-chip amber">AGING OUT</span>');
             if (aging && counts) tags.push('<span class="hl-chip amber">AGING</span>');
-            if (r._scramble) tags.push('<span class="hl-chip dim">SCR</span>');
+            if (r._scramble) tags.push('<span class="hl-chip dim">SCRAMBLE · NOT COUNTED</span>');
             if (r._nine) tags.push('<span class="hl-chip dim">9H×2</span>');
             return `<div class="hl-row${counts ? ' counts' : ''}${aging ? ' aging' : ''}">
                 <div class="r-date">${dateShort(r)}</div>

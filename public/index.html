@@ -12744,6 +12744,10 @@
                 'scorecard.startround': 'Start Round',
                 'scorecard.endround': 'End Round',
                 'scorecard.finishround': 'Finish Round',
+                'scorecard.blank.title': 'No score on hole {h}',
+                'scorecard.blank.msg': 'Finishing now posts the round with these holes blank.',
+                'scorecard.blank.fix': 'Go to hole {h}',
+                'scorecard.blank.finish': 'Finish anyway',
                 'scorecard.mode.live': 'Live Round',
                 'scorecard.mode.demo': 'Demo',
                 'scorecard.mode.post': 'Post Score',
@@ -15549,6 +15553,10 @@
                 'scorecard.startround': 'เริ่มรอบ',
                 'scorecard.endround': 'จบรอบ',
                 'scorecard.finishround': 'เสร็จสิ้นรอบ',
+                'scorecard.blank.title': 'หลุม {h} ยังไม่มีสกอร์',
+                'scorecard.blank.msg': 'ถ้าจบรอบตอนนี้ หลุมเหล่านี้จะไม่มีสกอร์',
+                'scorecard.blank.fix': 'ไปที่หลุม {h}',
+                'scorecard.blank.finish': 'จบรอบเลย',
                 'scorecard.mode.live': 'รอบสด',
                 'scorecard.mode.demo': 'ทดลอง',
                 'scorecard.mode.post': 'บันทึกสกอร์',
@@ -18590,6 +18598,10 @@
                 'scorecard.startround': '라운드 시작',
                 'scorecard.endround': '라운드 종료',
                 'scorecard.finishround': '라운드 완료',
+                'scorecard.blank.title': '{h}번 홀 스코어가 없습니다',
+                'scorecard.blank.msg': '지금 종료하면 이 홀들은 빈 칸으로 제출됩니다.',
+                'scorecard.blank.fix': '{h}번 홀로 이동',
+                'scorecard.blank.finish': '그래도 종료',
                 'scorecard.mode.live': '라이브 라운드',
                 'scorecard.mode.demo': '체험',
                 'scorecard.mode.post': '스코어 입력',
@@ -21199,6 +21211,10 @@
                 'scorecard.startround': 'ラウンド開始',
                 'scorecard.endround': 'ラウンド終了',
                 'scorecard.finishround': 'ラウンド完了',
+                'scorecard.blank.title': '{h}番ホールのスコアがありません',
+                'scorecard.blank.msg': '今終了すると、これらのホールは空欄のまま送信されます。',
+                'scorecard.blank.fix': '{h}番ホールへ',
+                'scorecard.blank.finish': 'このまま終了',
                 'scorecard.mode.live': 'ライブラウンド',
                 'scorecard.mode.demo': '体験',
                 'scorecard.mode.post': 'スコア入力',
@@ -102173,9 +102189,10 @@ class LiveScorecardSystem {
                     + `Finishing now ends the round with ${unscored === 1 ? 'that hole' : 'those holes'} left blank.\n\n`
                     + `OK = finish anyway.\nCancel = keep playing (use the green "Finish Round" button when you're done).`;
             }
-            if (confirm(msg)) {
-                this.completeRound();
-            }
+            // v1255: askConfirm — confirm() returns false instantly in LINE, so this arrow was dead there.
+            // It already named the blank holes, so completeRound skips its own blank-hole prompt.
+            window.askConfirm({ title: (typeof t === 'function' && t('scorecard.finishround') !== 'scorecard.finishround') ? t('scorecard.finishround') : 'Finish Round', message: msg, danger: unscored > 0 })
+                .then(ok => { if (ok) this.completeRound('finish', { blanksOk: true }); });
             // Cancelled → stay exactly on this hole, nothing changes.
         }
     }
@@ -102555,7 +102572,28 @@ class LiveScorecardSystem {
     }
 
 
-    async completeRound(source = 'finish') {
+    // Holes of this round a card THIS phone owns has no score for → [{hole, names, team}]. A card
+    // another phone scores isn't this phone's to finish. 2-man scramble: team = 'A' / 'B'.
+    _blankOwnedHoles() {
+        const out = [];
+        const teams = (this.scoringFormats?.includes('scramble') && this.scrambleConfig?.teams) || null;
+        const inTeam = (arr, id) => (arr || []).some(x => String(x) === String(id));
+        const teamOf = id => !teams ? null : (inTeam(teams.teamA, id) ? 'A' : (inTeam(teams.teamB, id) ? 'B' : null));
+        const owned = (this.players || []).filter(p => this._ownsCard(p.id));
+        for (const h of (this.holeOrder || [])) {
+            const miss = owned.filter(p => typeof this.scoresCache?.[p.id]?.[h] !== 'number');
+            if (miss.length) out.push({ hole: h, names: miss.map(p => p.name), team: teamOf(miss[0].id) });
+        }
+        return out;
+    }
+
+    // Land on a blank hole with the right score box open (goToHole opens every hole on Team A).
+    _goToBlank(b) {
+        this.goToHole(b.hole);
+        if (b.team === 'B') { this._activeScrambleTeam = 'B'; this.renderHole(); }
+    }
+
+    async completeRound(source = 'finish', opts = null) {
         // 🗺️ MAP-AS-YOU-PLAY: before the round saves, the mapped card gets its review-and-save
         // moment. The overlay's buttons re-enter completeRound with _maypSaved/_maypSkipped set,
         // so this fires exactly once per finish. END/abandon ('end') never saves a card.
@@ -102582,6 +102620,30 @@ class LiveScorecardSystem {
                     }
                 }
             } catch (e) { console.warn('[ShotGuard] missing-club check failed', e); }
+        }
+
+        // v1255 (TRGG Green Valley 2-man scramble, 2026-09-18): Finish posted a team card with hole 3
+        // blank — the phone opened hole 3 on Team B, B's score saved, the hole was left before Team A's
+        // went in, and nothing on the way out looked. Every finish door (green button, resume prompt,
+        // map-as-you-play, auto-finish after the 18th-hole drive pick) comes through here, so this is THE
+        // check: a blank hole on a card THIS phone owns stops the finish. askConfirm, never confirm()
+        // (dead in LINE). Backdrop/Esc = go fix it — only the explicit button finishes anyway.
+        if (source === 'finish' && !(opts && opts.blanksOk)) {
+            const blanks = this._blankOwnedHoles();
+            if (blanks.length) {
+                const tt = (k, fb, h) => { let s = fb; try { const v = (typeof t === 'function') ? t(k) : k; if (v && v !== k) s = v; } catch (e) {} return String(s).replace('{h}', h); };
+                const holesTxt = blanks.map(b => b.hole).join(', ');
+                const lines = blanks.slice(0, 6).map(b => `${b.hole} — ${b.names.join(' & ')}`);
+                if (blanks.length > 6) lines.push(`+${blanks.length - 6}`);
+                const finishAnyway = await window.askConfirm({
+                    title: tt('scorecard.blank.title', 'No score on hole {h}', holesTxt),
+                    message: lines.join('\n') + '\n\n' + tt('scorecard.blank.msg', 'Finishing now posts the round with these holes blank.', holesTxt),
+                    confirmText: tt('scorecard.blank.finish', 'Finish anyway', holesTxt),
+                    cancelText: tt('scorecard.blank.fix', 'Go to hole {h}', blanks[0].hole),
+                    danger: true
+                });
+                if (!finishAnyway) { this._goToBlank(blanks[0]); return; }
+            }
         }
 
         // IMMEDIATELY disable button to prevent double-clicks

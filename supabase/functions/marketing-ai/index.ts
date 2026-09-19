@@ -7,26 +7,20 @@
 // function reads nothing from the database (only the rate limiter), so it can expose no data the
 // caller didn't already hold. It spends money, so it is rate-limited per IP and size-capped.
 //
-// Provider: Claude Opus 5 first. If Claude is unavailable (2026-09-19: the Anthropic account is out of credit —
-// "credit balance is too low"), the same conversation is answered by Gemini (GEMINI_API_KEY, like ai-coach and
-// translate-text), so the panel keeps working and switches back to Claude by itself once credit is added.
+// Provider: Gemini (GEMINI_API_KEY — the key ai-coach and translate-text use). Pete 2026-09-19: "use other ai
+// gemini" after the Anthropic account behind ANTHROPIC_API_KEY ran out of credit.
 //
 // Response: NDJSON stream, one object per line —
 //   {"s":"thinking"}           model started reasoning (show "Analysing…")
 //   {"t":"text"}               answer text delta
-//   {"done":true,"stop":"…","via":"claude|gemini"}   finished (stop = end_turn | max_tokens | refusal | STOP …)
+//   {"done":true,"stop":"…"}   finished (stop = Gemini finishReason: STOP | MAX_TOKENS | SAFETY …)
 //   {"error":"…"}              failed (sent instead of done)
 // Deployed with --no-verify-jwt (the browser sends the publishable key, not a JWT) — pinned in config.toml.
-import Anthropic from "npm:@anthropic-ai/sdk@0.127.0";
 import { rateLimit } from "../_shared/ratelimit.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 
-const client = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") ?? "" });
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
-const GEMINI_MODELS = ["gemini-flash-latest", "gemini-3.6-flash"];
-// After Claude fails for account reasons (billing, auth, overload) skip it for a while instead of paying the
-// round trip on every question; per isolate, so a cold start simply tries Claude again.
-let claudeDownUntil = 0;
+const GEMINI_MODELS = ["gemini-flash-latest", "gemini-3.6-flash"];   // second = fallback if the alias errors
 
 const LANGS: Record<string, string> = { en: "English", th: "Thai", ko: "Korean", ja: "Japanese" };
 
@@ -57,6 +51,7 @@ How to answer:
 - Write in the language the request names.`;
 
 type Turn = { q: string; a: string };
+type Msg = { role: "user" | "assistant"; content: string };
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
 
@@ -72,7 +67,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return fail(405, "POST only");
   const limited = await rateLimit(req, "marketing-ai", 10, 60, cors);
   if (limited) return limited;
-  if (!Deno.env.get("ANTHROPIC_API_KEY") && !GEMINI_API_KEY) return fail(500, "No AI key is set");
+  if (!GEMINI_API_KEY) return fail(500, "GEMINI_API_KEY is not set");
 
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return fail(400, "Body must be JSON"); }
@@ -93,7 +88,7 @@ Deno.serve(async (req) => {
 
   // The data rides once, at the head of the first user turn; follow-ups carry only what is on screen now.
   const head = `Course: ${course}\nPeriod: the last ${days} days${today ? ` (today is ${today}, Bangkok time)` : ""}\nAnswer in: ${language}\n\n<report_data>\n${data}\n</report_data>`;
-  const messages: Anthropic.Beta.BetaMessageParam[] = [];
+  const messages: Msg[] = [];
   turns.forEach((x, i) => {
     messages.push({ role: "user", content: i === 0 ? `${head}\n\n${x.q}` : x.q });
     messages.push({ role: "assistant", content: x.a });
@@ -105,25 +100,11 @@ Deno.serve(async (req) => {
   const out = new ReadableStream({
     async start(controller) {
       const send = (o: unknown) => controller.enqueue(enc.encode(JSON.stringify(o) + "\n"));
-      let wrote = false;   // once answer text has gone out, a provider switch would splice two answers — don't
-      const text = (t: string) => { if (t) { wrote = true; send({ t }); } };
       try {
-        if (Deno.env.get("ANTHROPIC_API_KEY") && Date.now() > claudeDownUntil) {
-          try {
-            const stop = await askClaude(messages, send, text);
-            send({ done: true, stop, via: "claude" });
-            return;
-          } catch (e) {
-            const status = e instanceof Anthropic.APIError ? e.status : undefined;
-            console.error("[marketing-ai] claude failed:", `${status ?? ""} ${(e as Error)?.message || e}`.slice(0, 300));
-            if (wrote || !GEMINI_API_KEY) throw e;
-            if (status !== 429) claudeDownUntil = Date.now() + 10 * 60 * 1000;   // a rate limit clears on its own
-          }
-        }
-        const stop = await askGemini(messages, send, text);
-        send({ done: true, stop, via: "gemini" });
+        const stop = await askGemini(messages, send);
+        send({ done: true, stop });
       } catch (e) {
-        const msg = e instanceof Anthropic.APIError ? `${e.status ?? ""} ${e.message}`.trim() : String((e as Error)?.message || e);
+        const msg = String((e as Error)?.message || e);
         console.error("[marketing-ai] failed:", msg);
         send({ error: msg.slice(0, 300) });
       } finally {
@@ -138,30 +119,8 @@ Deno.serve(async (req) => {
 
 type Send = (o: unknown) => void;
 
-async function askClaude(messages: Anthropic.Beta.BetaMessageParam[], send: Send, text: (t: string) => void): Promise<string> {
-  const stream = client.beta.messages.stream({
-    model: "claude-opus-5",
-    max_tokens: 16000,
-    thinking: { type: "adaptive" },
-    output_config: { effort: "medium" },
-    cache_control: { type: "ephemeral" },
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    system: SYSTEM,
-    messages,
-  } as any);
-  for await (const ev of stream as any) {
-    if (ev.type === "content_block_start" && ev.content_block?.type === "thinking") send({ s: "thinking" });
-    else if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") text(ev.delta.text);
-  }
-  const final: any = await stream.finalMessage();
-  const u = final.usage || {};
-  console.log(`[marketing-ai] claude ${final.model} stop=${final.stop_reason} in=${u.input_tokens} cache_read=${u.cache_read_input_tokens ?? 0} out=${u.output_tokens}`);
-  return final.stop_reason;
-}
-
 // Gemini streamGenerateContent over SSE: each `data:` line is a partial GenerateContentResponse.
-async function askGemini(messages: Anthropic.Beta.BetaMessageParam[], send: Send, text: (t: string) => void): Promise<string> {
+async function askGemini(messages: Msg[], send: Send): Promise<string> {
   const contents = messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: String(m.content) }] }));
   let lastErr = "";
   for (const model of GEMINI_MODELS) {
@@ -180,7 +139,7 @@ async function askGemini(messages: Anthropic.Beta.BetaMessageParam[], send: Send
       try {
         const d = JSON.parse(line.slice(5));
         const c = d.candidates?.[0];
-        for (const p of c?.content?.parts || []) if (p.text && !p.thought) { wrote = true; text(p.text); }
+        for (const p of c?.content?.parts || []) if (p.text && !p.thought) { wrote = true; send({ t: p.text }); }
         if (c?.finishReason) stop = c.finishReason;
       } catch { /* partial or keep-alive line */ }
     };

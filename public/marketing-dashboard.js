@@ -13,7 +13,7 @@
  *   Reviews    — caddy reviews + course condition reports
  *   Events     — society events at the course: upcoming demand, past attendance
  *   Reports    — every aggregate as an on-screen report (tiles, chart, sortable/searchable table), its CSV, and an
- *                Ask-AI thread over the same numbers (v1257, edge fn marketing-ai)
+ *                Ask-AI thread over the same numbers (v1257, edge fn marketing-ai — Gemini since v1258)
  * Reads: marketing_audience_report / marketing_offer_stats (aggregate-only RPCs), course_offers,
  * caddy_reviews, course_conditions, society_events (+ registrations counts), count_offer_segment.
  * Writes: course_offers (insert / status), then the line-push-notification edge fn delivers.
@@ -942,7 +942,7 @@
             const stop = String(t.stop || '').toLowerCase();
             return MK.md(t.a) + (t.st !== 'done' ? '<span class="caret"></span>'
                 : stop === 'max_tokens' ? `<p class="note">${esc(tr('mk.ai.long', 'Answer trimmed — ask a narrower question for the rest.'))}</p>`
-                : stop === 'refusal' ? `<p class="note">${esc(tr('mk.ai.refused', 'The AI declined this one — try rephrasing it.'))}</p>`
+                : stop === 'safety' || stop === 'refusal' ? `<p class="note">${esc(tr('mk.ai.refused', 'The AI declined this one — try rephrasing it.'))}</p>`
                 : t.stopped ? `<p class="note">${esc(tr('mk.ai.stopped', 'Stopped.'))}</p>` : '');
         },
         aiPaint(scroll) {

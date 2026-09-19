@@ -324,6 +324,22 @@
     .gfd-sheet .it.red,.gfd-sheet .it.red .material-symbols-outlined{color:var(--mkp-red)}
     .gfd-sheet .it .sub{display:block;font:500 12px/1.3 'Instrument Sans',sans-serif;color:var(--mkp-sub)}
     .gfd-at{font-weight:700;color:var(--mkp-greenhi);cursor:pointer}
+    /* the Tap-In intro toast on the home screen (v1271) — the overview canvas is always light */
+    #gfdIntro{position:fixed;top:calc(env(safe-area-inset-top,0px) + 62px);left:10px;right:10px;z-index:8100;pointer-events:none}
+    #gfdIntro .card{pointer-events:auto;position:relative;max-width:420px;margin:0 auto;display:flex;gap:12px;align-items:flex-start;padding:12px 38px 12px 12px;border-radius:18px;
+      background:#fff;color:#0f172a;box-shadow:0 12px 34px rgba(15,23,42,.22),0 0 0 1px rgba(22,163,74,.25);transform:translateY(-130%);opacity:0;transition:transform .35s cubic-bezier(.2,.9,.3,1.2),opacity .25s}
+    #gfdIntro.in .card{transform:translateY(0);opacity:1}
+    #gfdIntro .tile{flex:none;width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#e2f0d6,#f4faee);display:grid;place-items:center;box-shadow:inset 0 0 0 1px rgba(22,163,74,.2)}
+    #gfdIntro .tile svg{width:46px;height:46px}
+    #gfdIntro .t1{display:flex;align-items:center;gap:8px}
+    #gfdIntro .wm{font:400 28px/1 'Grand Hotel',cursive;background:linear-gradient(95deg,#15803d,#22c55e 60%,#84cc16);-webkit-background-clip:text;background-clip:text;color:transparent;padding:2px 2px 0 0}
+    #gfdIntro .nw{background:#16a34a;color:#fff;text-transform:uppercase;font:800 9.5px/1 'JetBrains Mono',monospace;letter-spacing:.06em;padding:4px 6px;border-radius:6px}
+    #gfdIntro .t2{font:500 13.5px/1.4 'Instrument Sans',sans-serif;color:#334155;margin-top:4px}
+    #gfdIntro .bt{display:flex;gap:8px;margin-top:10px}
+    #gfdIntro .bt button{border:none;border-radius:10px;padding:9px 12px;font:700 13px/1 'Instrument Sans',sans-serif;cursor:pointer}
+    #gfdIntro .bt .go{background:#16a34a;color:#fff}
+    #gfdIntro .bt .ok{background:#f1f5f9;color:#0f172a}
+    #gfdIntro .x{position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;border:none;background:#f1f5f9;color:#475569;font:700 15px/1 sans-serif;cursor:pointer}
     .gfd-head .gfd-wm{font:400 36px/1 'Grand Hotel',cursive;letter-spacing:0;background:linear-gradient(95deg,#15803d,#22c55e 60%,#84cc16);-webkit-background-clip:text;background-clip:text;color:transparent;padding:4px 2px 2px;overflow:visible}
     .gfd-me{display:flex;align-items:center;gap:10px;margin:0 0 10px;padding:8px 10px;border-radius:14px;background:var(--mkp-glass2);box-shadow:inset 0 0 0 1px var(--mkp-slo)}
     .gfd-me .gfd-av{width:34px;height:34px}
@@ -1191,6 +1207,7 @@
             if (!uid() || !db()) return;
             try { GF.counts = (await rpc('golf_nav_counts', { p_user: uid() })) || GF.counts; GF._countsLoaded = true; } catch (e) { return; }
             GF.paintBadges();
+            if (GF.counts.intro) GF.maybeIntro();
             // the feed's own heart badge follows along if the wall is on screen
             const top = GF.stack[GF.stack.length - 1];
             const hb = document.querySelector('#gfdRoot [data-act="activity"]');
@@ -1213,10 +1230,54 @@
             const launch = Date.now() < NEW_UNTIL;
             document.querySelectorAll('.gfdNewChip').forEach(x => { x.style.display = launch ? '' : 'none'; });
         },
+        // ---- the intro toast: every golfer, on the home screen, until they open Tap-In or dismiss it (Pete, 2026-09-19)
+        maybeIntro(force) {
+            if ((!force && !(GF.counts && GF.counts.intro)) || document.getElementById('gfdIntro') || GF._introWaiting) return;
+            GF._introWaiting = true;
+            let tries = 0;
+            const wait = () => {
+                tries++;
+                const dash = document.getElementById('golferDashboard'), home = document.getElementById('golfer-overview');
+                const login = document.getElementById('loginScreen');
+                const busy = (login && getComputedStyle(login).display !== 'none')
+                    || !(dash && dash.classList.contains('active')) || !(home && home.classList.contains('active'))
+                    || document.getElementById('welcomeIntroModal') || document.getElementById('whatsNewModal')
+                    || document.getElementById('pwaInstallGate') || document.getElementById('pwaSessionGate')
+                    || document.getElementById('startNineConfirmModal') || document.getElementById('whoScoreModal') || document.getElementById('legalDim');
+                if (!busy && (force || GF.counts.intro)) { GF._introWaiting = false; GF.showIntro(); return; }
+                if (tries < 20) setTimeout(wait, 1500); else GF._introWaiting = false;
+            };
+            setTimeout(wait, force ? 0 : 1500);
+        },
+        showIntro() {
+            injectStyle();
+            if (document.getElementById('gfdIntro')) return;
+            const el = document.createElement('div'); el.id = 'gfdIntro';
+            el.innerHTML = `<div class="card" role="dialog" aria-label="Tap-In">
+                <span class="tile" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuFeed"/></svg></span>
+                <div><div class="t1"><span class="wm">${esc(tr('gfd.title', 'Tap-In'))}</span><span class="nw">${esc(tr('gfd.new', 'New'))}</span></div>
+                  <div class="t2">${esc(tr('gfd.intro.body', 'Share your rounds, great shots and 15-second videos. Follow golfers, like and comment.'))}</div>
+                  <div class="bt"><button class="go" data-i="open">${esc(tr('gfd.intro.open', 'Open Tap-In'))}</button><button class="ok" data-i="close">${esc(tr('gfd.intro.ok', 'Got it'))}</button></div></div>
+                <button class="x" data-i="close" aria-label="${esc(tr('common.close', 'Close'))}">×</button></div>`;
+            el.addEventListener('click', (e) => {
+                const b = e.target.closest('[data-i]'); if (!b) return;
+                e.preventDefault(); e.stopPropagation();
+                GF.dismissIntro();
+                if (b.dataset.i === 'open') GF.show();
+            });
+            document.body.appendChild(el);
+            requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+        },
+        dismissIntro() {
+            const el = document.getElementById('gfdIntro');
+            if (el) { el.classList.remove('in'); setTimeout(() => el.remove(), 300); }
+            if (GF.counts.intro) { GF.counts.intro = false; GF.markSeen('intro'); }
+        },
         async markSeen(what) {
             try { await rpc('golf_mark_seen', { p_user: uid(), p_what: what }); } catch (e) { return; }
             const now = new Date().toISOString();
-            if (what === 'feed') { GF.counts.feed_new = 0; GF.counts.feed_seen_at = now; }
+            if (what === 'intro') return;
+            if (what === 'feed') { GF.counts.feed_new = 0; GF.counts.feed_seen_at = now; if (GF.counts.intro) { GF.counts.intro = false; } document.getElementById('gfdIntro')?.remove(); }
             else if (what === 'following') { GF.counts.following_new = 0; GF.counts.following_seen_at = now; }
             else { GF.counts.activity_new = 0; ['mentions', 'likes', 'comments', 'follows', 'mkp'].forEach(k => { GF.counts[k] = 0; }); }
             GF.paintBadges();

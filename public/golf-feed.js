@@ -239,6 +239,8 @@
     .gfd-as .gfd-av{width:28px;height:28px;font-size:10px;box-shadow:none}
     .gfd-act .tx .pg{font-style:normal;color:var(--mkp-greenhi);font-weight:600;font-size:12.5px}
     .gfd-pacts .solo{grid-column:1 / -1}
+    #gfdRoot .gfd-empty .mkp-btn-solid,#gfdRoot .gfd-empty .mkp-btn-line{padding:10px 18px;gap:6px;align-items:center;justify-content:center;margin-top:10px}
+    .gfd-empty button .material-symbols-outlined{display:inline-block;margin:0;color:inherit}
     /* v1278: Tap-In over a staff / organizer dashboard (the golfer tab's own root, moved in while open) */
     #gfdOverlay{display:none;position:fixed;inset:0;z-index:11500;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:calc(env(safe-area-inset-top,0px) + 8px) 8px calc(env(safe-area-inset-bottom,0px) + 28px)}
     #gfdOverlay > #gfdRoot{max-width:720px;margin:0 auto}

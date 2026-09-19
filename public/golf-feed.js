@@ -322,6 +322,12 @@
     .gfd-sheet .it.red,.gfd-sheet .it.red .material-symbols-outlined{color:var(--mkp-red)}
     .gfd-sheet .it .sub{display:block;font:500 12px/1.3 'Instrument Sans',sans-serif;color:var(--mkp-sub)}
     .gfd-at{font-weight:700;color:var(--mkp-greenhi);cursor:pointer}
+    .gfd-tile .bl{position:absolute;left:6px;bottom:6px;display:flex;align-items:center;gap:4px}
+    .gfd-tile .bl .ok{position:static}
+    .gfd-tile .lk{display:flex;align-items:center;gap:3px;height:20px;padding:0 7px 0 5px;border-radius:10px;background:rgba(11,15,20,.72);color:#fff;font:700 11px/1 'Instrument Sans',sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+    .gfd-tile .lk .material-symbols-outlined{font-size:13px;color:#ef4444;font-variation-settings:'FILL' 1}
+    .gfd-likedby{padding:4px 12px 0;font:400 13.5px/1.35 'Instrument Sans',sans-serif;color:var(--mkp-text);background:none;border:none;text-align:left;cursor:pointer;display:block;width:100%}
+    .gfd-likedby b{font-weight:700}
     .gfd-car.vid video{display:block;width:100%;aspect-ratio:4/5;object-fit:cover;background:#000}
     .gfd-snd{position:absolute;right:10px;bottom:10px;width:32px;height:32px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;display:grid;place-items:center;cursor:pointer;z-index:2}
     .gfd-snd .material-symbols-outlined{font-size:18px}
@@ -428,7 +434,7 @@
             const r = GF.root(); if (!r) return;
             const top = GF.stack[GF.stack.length - 1] || { s: 'feed' };
             const seq = ++GF._seq;
-            const fn = { feed: GF.rFeed, post: GF.rPost, profile: GF.rProfile, follows: GF.rFollows, saved: GF.rSaved, compose: GF.rCompose, activity: GF.rActivity }[top.s] || GF.rFeed;
+            const fn = { feed: GF.rFeed, post: GF.rPost, profile: GF.rProfile, follows: GF.rFollows, saved: GF.rSaved, compose: GF.rCompose, activity: GF.rActivity, likers: GF.rLikers }[top.s] || GF.rFeed;
             fn.call(GF, top, seq);
         },
         live(seq) { return seq === GF._seq; },
@@ -491,7 +497,7 @@
                 ${sale ? `<span class="sale">${esc(sale)}</span>` : ''}
                 ${GF.isNew(p) ? `<span class="new">${esc(tr('gfd.new', 'NEW'))}</span>` : ''}
                 ${p.video ? `<span class="multi">${mi('play_arrow')}</span>` : (p.photos || []).length > 1 ? `<span class="multi">${mi('filter_none')}</span>` : ''}
-                ${p.round ? `<span class="ok">${mi('check')}</span>` : ''}
+                ${(p.round || p.likes) ? `<span class="bl">${p.round ? `<span class="ok">${mi('check')}</span>` : ''}${p.likes ? `<span class="lk">${mi('favorite')}${esc(p.likes > 9999 ? Math.round(p.likes / 1000) + 'k' : p.likes)}</span>` : ''}</span>` : ''}
                 ${p.audience === 'followers' ? `<span class="lock">${mi('lock')}</span>` : ''}</button>`;
         },
         subline(p) {
@@ -544,13 +550,33 @@
                 <div class="gfd-acts"><button class="${likeCls}" data-act="like" data-id="${esc(p.id)}" aria-label="${esc(tr('gfd.like', 'Like'))}">${mi('favorite')}<span class="n">${p.likes || ''}</span></button>
                   <button data-act="openpost" data-id="${esc(p.id)}" aria-label="${esc(tr('gfd.comments', 'Comments'))}">${mi('chat_bubble')}<span class="n">${p.comments || ''}</span></button><span class="sp"></span>
                   <button class="${p.i_saved ? 'saved' : ''}" data-act="save" data-id="${esc(p.id)}" aria-label="${esc(tr('gfd.save', 'Save'))}">${mi('bookmark')}</button></div>
-                ${GF.verif(p)}${GF.saleBar(p)}
+                ${GF.likedBy(p)}${GF.verif(p)}${GF.saleBar(p)}
                 ${cap ? `<div class="gfd-cap"><b>${esc(a.name)}</b> ${linkify(cap, p.mentions)}</div>` : ''}
                 ${cm ? `<div class="gfd-cms">${cm}</div>` : ''}
                 ${full ? '<div class="gfd-cms" id="gfdComments"></div>' : ''}
                 <div class="gfd-when">${esc(ago(p.created_at))}${p.edited_at ? ' · ' + esc(tr('gfd.edited', 'Edited')) : ''}${p.hidden ? ' · ' + esc(tr('gfd.hiddenlbl', 'Hidden from the feed')) : ''}</div>
                 ${full ? `<div class="gfd-addc"><input id="gfdCmIn" maxlength="1000" autocomplete="off" placeholder="${esc(tr('gfd.addcomment', 'Add a comment…'))}"><button data-act="comment" data-id="${esc(p.id)}">${esc(tr('gfd.send', 'Post'))}</button></div>` : ''}
             </article>`;
+        },
+        likedBy(p) {
+            const L = p.liked_by || []; if (!L.length) return '';
+            const others = Math.max(0, (p.real_likes || 0) - L.length - (p.i_liked ? 1 : 0));
+            const names = L.map(x => `<b>${esc(x.name)}</b>`);
+            const txt = others ? tr('gfd.likedby.n', 'Liked by {a} and {n} others', { a: names.join(', '), n: `<b>${others}</b>` })
+                : L.length === 2 ? tr('gfd.likedby.2', 'Liked by {a} and {b}', { a: names[0], b: names[1] }) : tr('gfd.likedby.1', 'Liked by {a}', { a: names[0] });
+            return `<button class="gfd-likedby" data-act="likers" data-id="${esc(p.id)}">${txt}</button>`;
+        },
+        async rLikers(top, seq) {
+            const r = GF.root();
+            r.innerHTML = `<div class="gfd-head">${GF.backBtn()}<div class="gfd-title">${esc(tr('gfd.likes.t', 'Likes'))}</div></div><div id="gfdLk">${GF.spin()}</div>`;
+            let list;
+            try { list = await rpc('golf_post_likers', { p_user: uid(), p_post: top.id }); } catch (e) { if (GF.live(seq)) GF.err('gfdLk', e); return; }
+            if (!GF.live(seq)) return;
+            // names and photos only — never an id on screen (Pete)
+            document.getElementById('gfdLk').innerHTML = (list && list.length) ? `<div class="mkp-card" style="padding:4px 12px">${list.map(p => `
+                <div class="gfd-act" data-act="profile" data-id="${esc(p.id)}">${av(p, 40)}<div class="tx"><b>${esc(p.name)}</b></div>
+                  ${p.is_me ? '' : `<button class="gfd-fbtn ${p.i_follow ? 'ghost' : ''}" data-act="followbtn" data-id="${esc(p.id)}" data-on="${p.i_follow ? '0' : '1'}">${esc(p.i_follow ? tr('gfd.followingbtn', 'Following') : tr('gfd.follow', 'Follow'))}</button>`}</div>`).join('')}</div>`
+                : `<div class="mkp-card gfd-empty">${mi('favorite')}${esc(tr('gfd.likes.none', 'No likes from golfers yet.'))}</div>`;
         },
         wireCars(scope) {
             if (!GF._vio && window.IntersectionObserver) GF._vio = new IntersectionObserver(es => es.forEach(e => {
@@ -632,7 +658,7 @@
             const on = forceOn ? true : !p.i_liked;
             if (car) { const pop = car.querySelector('.pop'); if (pop) { pop.classList.add('go'); setTimeout(() => pop.classList.remove('go'), 600); } }
             if (on === p.i_liked) return;
-            p.i_liked = on; p.likes = Math.max(0, (p.likes || 0) + (on ? 1 : -1)); GF.paintCount(id);
+            p.i_liked = on; p.likes = Math.max(0, (p.likes || 0) + (on ? 1 : -1)); p.real_likes = Math.max(0, (p.real_likes || 0) + (on ? 1 : -1)); GF.paintCount(id);
             try { const r = await rpc('golf_post_like', { p_user: uid(), p_post: id, p_on: on }); if (r && r.ok) { p.likes = r.likes; GF.paintCount(id); } else throw new Error(GF.why(r)); }
             catch (e) { p.i_liked = !on; p.likes = Math.max(0, (p.likes || 0) + (on ? -1 : 1)); GF.paintCount(id); toast(e.message || String(e), 'error'); }
         },
@@ -1151,6 +1177,7 @@
                 case 'postmenu': GF.postMenu(id); break;
                 case 'like': GF.like(id); break;
                 case 'sound': GF.sound(id, el); break;
+                case 'likers': GF.go({ s: 'likers', id }); break;
                 case 'save': GF.save(id); break;
                 case 'comment': GF.addComment(id); break;
                 case 'delcomment': rpc('golf_comment_delete', { p_user: uid(), p_comment: id }).then(() => { const p = GF._posts[el.dataset.post]; if (p) p.comments = Math.max(0, (p.comments || 1) - 1); GF.paintCount(el.dataset.post); GF.loadComments(el.dataset.post); }).catch(x => toast(x.message, 'error')); break;

@@ -1315,7 +1315,16 @@
         },
         // start the audio engine on a tap — a clip's sound can only be recorded through a context started by a tap
         audioOn() { try { const AC = window.AudioContext || window.webkitAudioContext; if (AC && !GF._ac) GF._ac = new AC(); if (GF._ac) GF._ac.resume().catch(() => { }); } catch (x) { } },
+        // the camera on the T of the home cube: Photo / 15-second video / Library, straight to the camera
+        cubeCam() {
+            const go = (id) => () => { GF.audioOn(); GF.show({ s: 'compose' }); document.getElementById(id)?.click(); };
+            GF.sheet(tr('gfd.cam.t', 'Post to Tap-In'), '', [
+                ['photo_camera', tr('gfd.cam.photo2', 'Photo'), go('gfdCamP')],
+                ['videocam', tr('gfd.cam.video2', '15-second video'), go('gfdCamV')],
+                ['photo_library', tr('gfd.cam.library', 'Library'), go('gfdFile')]]);
+        },
         cubeTap(e) {
+            if (e && e.target && e.target.closest && e.target.closest('.gfd-cubecam')) { GF.cubeCam(); return; }
             const t = e && e.target && e.target.closest && e.target.closest('[data-gfdpost]');
             if (t) GF.show({ s: 'post', id: t.dataset.gfdpost }); else GF.show();
         },

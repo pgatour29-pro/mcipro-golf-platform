@@ -1272,17 +1272,21 @@
             injectStyle();
             const cube = GF.wideCube(); if (!cube || !uid()) return;
             let posts = [];
-            try { const r = await rpc('golf_feed', { p_user: uid(), p_scope: 'everyone', p_author: null, p_before: null, p_limit: 10, p_post: null }); posts = ((r && r.posts) || []).filter(p => !p.mine); }
+            // the newest posts on Tap-In, mine included (Pete: "why isn't the images showing up on the cube" —
+            // with only his own posts the others-only strip was empty); others' unseen posts go first
+            try { const r = await rpc('golf_feed', { p_user: uid(), p_scope: 'everyone', p_author: null, p_before: null, p_limit: 12, p_post: null }); posts = (r && r.posts) || []; }
             catch (e) { return; }
             if (!GF.wideCube()) return;
-            const k = window.innerWidth >= 768 ? 4 : 3, show = posts.slice(0, k);
             const seen = GF.counts.feed_seen_at ? new Date(GF.counts.feed_seen_at) : new Date(Date.now() - 7 * 864e5);
+            const fresh = (p) => !p.mine && new Date(p.created_at) > seen;
+            posts = posts.filter(fresh).concat(posts.filter(p => !fresh(p)));
+            const k = window.innerWidth >= 768 ? 4 : 3, show = posts.slice(0, k);
             const prev = GF._stripIds;
             let strip = cube.querySelector('.gfd-strip');
             if (!strip) { strip = document.createElement('span'); strip.className = 'gfd-strip'; cube.appendChild(strip); }
-            const extra = Math.max(0, (GF.counts.feed_new || 0) - show.filter(p => new Date(p.created_at) > seen).length);
+            const extra = Math.max(0, (GF.counts.feed_new || 0) - show.filter(fresh).length);
             strip.innerHTML = show.length ? show.map((p, i) => {
-                const isNew = new Date(p.created_at) > seen;
+                const isNew = fresh(p);
                 const pop = prev ? !prev.has(p.id) : isNew;   // first paint: the unseen ones pop; later: only fresh arrivals
                 const img = url((p.photos || [])[0]);
                 return `<span class="ph ${pop ? 'pop' : ''}" style="--i:${i}" data-gfdpost="${esc(p.id)}">${img ? `<img src="${img}" alt="" loading="lazy">` : ''}${isNew ? '<i class="nd"></i>' : ''}${av(p.author, 22)}</span>`;

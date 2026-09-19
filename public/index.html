@@ -12989,10 +12989,6 @@
                 'ppw.title': 'Players who chose you',
                 'ppw.picked': 'Picked you to play with them',
                 'ppw.added': 'Added you to their group',
-                'ppw.accept': 'Accept',
-                'ppw.decline': 'Decline',
-                'ppw.accepted': 'Accepted',
-                'ppw.declined': 'Declined · not grouped',
                 'ppw.badgetip': '{n} chose to play with you',
                 'orgreg.recentevents': 'Recent events',
                 'orgreg.expected': 'Expected',
@@ -16166,10 +16162,6 @@
                 'ppw.title': 'ผู้เล่นที่เลือกคุณ',
                 'ppw.picked': 'เลือกเล่นกับคุณ',
                 'ppw.added': 'เพิ่มคุณเข้ากลุ่มของเขา',
-                'ppw.accept': 'ยอมรับ',
-                'ppw.decline': 'ปฏิเสธ',
-                'ppw.accepted': 'ยอมรับแล้ว',
-                'ppw.declined': 'ปฏิเสธแล้ว · ไม่อยู่กลุ่มเดียวกัน',
                 'ppw.badgetip': '{n} คนเลือกเล่นกับคุณ',
                 'orgreg.recentevents': 'อีเวนต์ล่าสุด',
                 'orgreg.expected': 'ที่คาดไว้',
@@ -19579,10 +19571,6 @@
                 'ppw.title': '나를 선택한 선수',
                 'ppw.picked': '함께 치자고 나를 선택함',
                 'ppw.added': '나를 자기 조에 추가함',
-                'ppw.accept': '수락',
-                'ppw.decline': '거절',
-                'ppw.accepted': '수락함',
-                'ppw.declined': '거절함 · 같은 조 아님',
                 'ppw.badgetip': '{n}명이 나와 함께 치기를 선택했습니다',
                 'orgreg.recentevents': '최근 이벤트',
                 'orgreg.expected': '예상',
@@ -22560,10 +22548,6 @@
                 'ppw.title': 'あなたを選んだ選手',
                 'ppw.picked': '一緒に回る相手にあなたを指名',
                 'ppw.added': 'あなたを自分の組に追加',
-                'ppw.accept': '承諾',
-                'ppw.decline': '辞退',
-                'ppw.accepted': '承諾済み',
-                'ppw.declined': '辞退済み · 同じ組になりません',
                 'ppw.badgetip': '{n}人があなたと回ることを選びました',
                 'orgreg.recentevents': '最近のイベント',
                 'orgreg.expected': '予定額',
@@ -144483,32 +144467,22 @@ class GolferEventsManager {
         regs = regs || [];
         const me = String(uid || '');
         if (!me) return '';
+        // Notification only (Pete 2026-09-20: "i don't want the accept or decline option, just keep only
+        // the notification") — no Accept/Decline buttons on either surface. A pick that was declined back
+        // when the buttons existed stays void in PlayTogetherUnits, so it is not announced here either
+        // (no ignoreConsent), and organizer seating is unchanged: a pick was always a request.
         const _ptu = window.PlayTogetherUnits;
-        const picks = _ptu ? regs.filter(r => String(r.playerId) !== me && _ptu.targets(r, regs, { ignoreConsent: true }).indexOf(me) !== -1) : [];
+        const picks = _ptu ? regs.filter(r => String(r.playerId) !== me && _ptu.targets(r, regs).indexOf(me) !== -1) : [];
         const _myReg = regs.find(r => String(r.playerId) === me);
         const added = (_myReg && window.PartnerPickWatch) ? PartnerPickWatch._hostChoosers(regs, _myReg, me, ev).filter(x => picks.indexOf(x.reg) === -1) : [];
         if (!picks.length && !added.length) return '';
-        const _resp = (_myReg && _myReg.specialRequests && _myReg.specialRequests.partnerResponses) || {};
         const _escP = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-        const _btn = (pid, resp, solid, label) => '<button onclick="GolferEventsSystem.respondToPartnerPick(\'' + _escP(pid) + '\',\'' + resp + '\')" style="' +
-            (solid ? 'font-size:11px;font-weight:700;border:none;color:#fff;background:' + (resp === 'accepted' ? '#16a34a' : '#dc2626') + ';'
-                   : 'font-size:10px;font-weight:600;border:1px solid ' + (resp === 'accepted' ? '#86efac;color:#047857' : '#fca5a5;color:#dc2626') + ';background:#fff;') +
-            'border-radius:6px;padding:4px 10px;cursor:pointer;">' + _escP(label) + '</button>';
-        const row = (r, sub, action) => '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px;">' +
-            '<span style="min-width:0;"><span style="display:block;font-size:12.5px;font-weight:700;color:#14532d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _escP(r.playerName) + '</span>' +
-            '<span style="display:block;font-size:10.5px;font-weight:600;color:#15803d;">' + _escP(sub) + '</span></span>' +
-            (action ? '<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0;">' + action + '</span>' : '') +
+        const row = (r, sub) => '<div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;margin-top:7px;">' +
+            '<span style="font-size:12.5px;font-weight:700;color:#14532d;">' + _escP(r.playerName) + '</span>' +
+            '<span style="font-size:10.5px;font-weight:600;color:#15803d;">' + _escP(sub) + '</span>' +
         '</div>';
-        const rows = picks.map(r => {
-            const st = _resp[String(r.playerId)];
-            let action = '';
-            if (_myReg) {
-                if (st === 'accepted') action = '<span style="font-size:10px;font-weight:700;color:#047857;">' + _escP(_lvT('ppw.accepted', 'Accepted')) + '</span>' + _btn(r.playerId, 'declined', false, _lvT('ppw.decline', 'Decline'));
-                else if (st === 'declined') action = '<span style="font-size:10px;font-weight:700;color:#dc2626;">' + _escP(_lvT('ppw.declined', 'Declined · not grouped')) + '</span>' + _btn(r.playerId, 'accepted', false, _lvT('ppw.accept', 'Accept'));
-                else action = _btn(r.playerId, 'accepted', true, _lvT('ppw.accept', 'Accept')) + _btn(r.playerId, 'declined', true, _lvT('ppw.decline', 'Decline'));
-            }
-            return row(r, _lvT('ppw.picked', 'Picked you to play with them'), action);
-        }).concat(added.map(x => row(x.reg, x.kind === 'pick' ? _lvT('ppw.picked', 'Picked you to play with them') : _lvT('ppw.added', 'Added you to their group'), ''))).join('');
+        const rows = picks.map(r => row(r, _lvT('ppw.picked', 'Picked you to play with them')))
+            .concat(added.map(x => row(x.reg, x.kind === 'pick' ? _lvT('ppw.picked', 'Picked you to play with them') : _lvT('ppw.added', 'Added you to their group')))).join('');
         return '<div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1px solid #86efac;border-radius:10px;padding:10px 12px;margin-bottom:8px;">' +
             '<div style="display:flex;align-items:center;gap:8px;">' +
                 '<span class="material-symbols-outlined" style="font-size:20px;line-height:1;color:#15803d;">handshake</span>' +
@@ -144531,8 +144505,10 @@ class GolferEventsManager {
         if (html && ev && ev.id && window.PartnerPickWatch) PartnerPickWatch.markSeen(ev.id, PartnerPickWatch.choosers(regs, uid, ev));
     }
 
-    // v750: consent write — the PICKED player accepts/declines a picker. Stored on MY registration
-    // row: special_requests.partnerResponses[pickerPlayerId] = 'accepted' | 'declined'. Fresh-read
+    // v750: consent write — the PICKED player accepts/declines a picker. NO UI CALLS THIS since v1281
+    // (Pete 2026-09-20: notification only); kept because existing partnerResponses rows still void a
+    // pick everywhere PlayTogetherUnits resolves, and this is their only writer.
+    // Stored on MY registration row: special_requests.partnerResponses[pickerPlayerId]. Fresh-read
     // then merge (never clobber other special_requests keys), then re-render roster + banner.
     async respondToPartnerPick(pickerId, response) {
         try {

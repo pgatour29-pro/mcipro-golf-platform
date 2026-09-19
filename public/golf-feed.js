@@ -324,6 +324,17 @@
     .gfd-sheet .it.red,.gfd-sheet .it.red .material-symbols-outlined{color:var(--mkp-red)}
     .gfd-sheet .it .sub{display:block;font:500 12px/1.3 'Instrument Sans',sans-serif;color:var(--mkp-sub)}
     .gfd-at{font-weight:700;color:var(--mkp-greenhi);cursor:pointer}
+    /* v1276 quick camera: the logo is a button, with a tiny camera sitting on the T (Pete picked option 2) */
+    .gfd-wmwrap{flex:1;min-width:0;display:flex;align-items:center}
+    .gfd-wmbtn{position:relative;border:none;background:none;padding:0;margin:0;cursor:pointer;display:inline-flex}
+    .gfd-head .gfd-wmbtn .gfd-title{flex:none}
+    .gfd-cambadge{position:absolute;left:-6px;top:-10px;z-index:1;width:22px;height:22px;border-radius:50%;background:linear-gradient(145deg,#22c55e,#15803d);color:#fff;display:grid;place-items:center;box-shadow:0 3px 8px rgba(21,128,61,.35)}
+    .gfd-cambadge .material-symbols-outlined{font-size:13px;font-variation-settings:'FILL' 1}
+    .gfd-addrow{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
+    .gfd-addrow button{border:none;border-radius:12px;padding:11px 4px;display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--mkp-glass2);box-shadow:inset 0 0 0 1px var(--mkp-slo);color:var(--mkp-text);font:700 12px/1 'Instrument Sans',sans-serif;cursor:pointer}
+    .gfd-addrow button .material-symbols-outlined{font-size:24px;color:var(--mkp-greenhi)}
+    .gfd-addrow button.p{background:var(--mkp-green);color:#fff;box-shadow:none}
+    .gfd-addrow button.p .material-symbols-outlined{color:#fff}
     /* v1273 the wide Tap-In cube (Pete picked option A): golfers without 1on1 get the whole bottom row —
        wordmark + live line on the left, the newest posts popping in on the right */
     #liteCubesGrid > .gfdCube.gfd-wide{grid-column:1 / -1 !important;height:auto !important;min-height:104px;padding:12px 14px !important;
@@ -514,7 +525,7 @@
         // ------------------------------------------------------------ the feed
         head() {
             const n = GF.counts.activity_new || 0;
-            return `<div class="gfd-head"><div class="gfd-title gfd-wm">${esc(tr('gfd.title', 'Tap-In'))}</div>
+            return `<div class="gfd-head"><div class="gfd-wmwrap"><button class="gfd-wmbtn" data-act="quickcam" aria-label="${esc(tr('gfd.cam.aria', 'Take a photo'))}"><span class="gfd-cambadge">${mi('photo_camera')}</span><span class="gfd-title gfd-wm">${esc(tr('gfd.title', 'Tap-In'))}</span></button></div>
                 <button class="gfd-ibtn" data-act="search" aria-label="${esc(tr('gfd.search', 'Search'))}">${mi('search')}</button>
                 <button class="gfd-ibtn" data-act="activity" aria-label="${esc(tr('gfd.activity', 'Activity'))}">${mi('favorite')}${n ? `<span class="mkp-bdgr">${n > 99 ? '99+' : n}</span>` : ''}</button>
                 <button class="gfd-post-btn" data-act="compose">${mi('add_a_photo')}${esc(tr('gfd.post', 'Post'))}</button></div>`;
@@ -991,8 +1002,13 @@
                 <div class="gfd-kinds">${Object.keys(KIND).map(k => `<button class="${d.kind === k ? 'on' : ''}" data-act="kind" data-v="${k}">${mi(KIND[k][0])}${esc(tr(KIND[k][1], KIND[k][2]))}</button>`).join('')}</div>
                 <div id="gfdRounds"></div>
                 <div class="gfd-lbl">${esc(tr('gfd.photos10', 'Photos · up to 10'))}</div>
+                <div class="gfd-addrow" id="gfdAddRow"><button class="p" data-act="cam" data-v="photo">${mi('photo_camera')}${esc(tr('gfd.cam.photo', 'Camera'))}</button>
+                  <button data-act="cam" data-v="video">${mi('videocam')}${esc(tr('gfd.cam.video', 'Video · 15s'))}</button>
+                  <button data-act="cam" data-v="library">${mi('photo_library')}${esc(tr('gfd.cam.library', 'Library'))}</button></div>
                 <div class="gfd-photos" id="gfdPhotos"></div>
                 <input type="file" id="gfdFile" accept="image/*,video/*" multiple style="display:none">
+                <input type="file" id="gfdCamP" accept="image/*" capture="environment" style="display:none">
+                <input type="file" id="gfdCamV" accept="video/*" capture="environment" style="display:none">
                 <div id="gfdSound"></div>
                 <div class="gfd-lbl">${esc(tr('gfd.caption', 'Caption'))}</div>
                 <textarea class="gfd-ta" id="gfdCap" maxlength="2200" placeholder="${esc(tr('gfd.caption.ph2', 'How did it go? Type @ to tag a golfer'))}">${esc(d.caption)}</textarea>
@@ -1002,7 +1018,7 @@
                 <p class="mkp-note" style="margin-top:10px">${mi('shield')}<span>${esc(tr('gfd.rules', 'Golf and the course only. Photos are resized on your phone and their location is removed before upload.'))} <a href="#" data-act="guidelines" style="color:var(--mkp-greenhi);font-weight:700">${esc(tr('gfd.readguidelines', 'Read the Tap-In guidelines'))}</a></span></p>`;
             document.getElementById('gfdCap').addEventListener('input', e => { d.caption = e.target.value; });
             GF.wireMentions(document.getElementById('gfdCap'), d.mentions);
-            document.getElementById('gfdFile').addEventListener('change', e => { GF.addPhotos(e.target.files); e.target.value = ''; });
+            ['gfdFile', 'gfdCamP', 'gfdCamV'].forEach(id => document.getElementById(id).addEventListener('change', e => { GF.addPhotos(e.target.files); e.target.value = ''; }));
             GF.paintRounds(); GF.paintPhotos();
         },
         paintSound() {
@@ -1032,6 +1048,8 @@
                 <button class="x" data-act="rmphoto" data-v="${i}" aria-label="${esc(tr('common.remove', 'Remove'))}">${mi('close')}</button></div>`).join('')
                 + (d.photos.length < 10 && !d.photos.some(p => p.video) ? `<button class="add" data-act="addphoto" aria-label="${esc(tr('common.add', 'Add'))}">${mi('add_a_photo')}</button>` : '');
             GF.paintSound();
+            const row = document.getElementById('gfdAddRow');
+            if (row) row.style.display = (d.photos.some(p => p.video) || d.photos.length >= 10) ? 'none' : '';
             const sh = document.getElementById('gfdShare');
             if (sh) sh.disabled = !d.photos.length || d.photos.some(p => p.state === 'checking') || !!d.busy;
         },
@@ -1295,6 +1313,8 @@
             GF._stripIds = new Set(show.map(p => p.id));
             cube.classList.toggle('gfd-live', !!((GF.counts.feed_new || 0) + (GF.counts.activity_new || 0)));
         },
+        // start the audio engine on a tap — a clip's sound can only be recorded through a context started by a tap
+        audioOn() { try { const AC = window.AudioContext || window.webkitAudioContext; if (AC && !GF._ac) GF._ac = new AC(); if (GF._ac) GF._ac.resume().catch(() => { }); } catch (x) { } },
         cubeTap(e) {
             const t = e && e.target && e.target.closest && e.target.closest('[data-gfdpost]');
             if (t) GF.show({ s: 'post', id: t.dataset.gfdpost }); else GF.show();
@@ -1437,9 +1457,14 @@
                 case 'allrounds': if (GF.cur()) { GF.cur().allRounds = true; GF.paintRounds(); } break;
                 case 'pickround': if (GF.cur()) { const d = GF.cur(); d.round = d.round === id ? null : id; GF.paintRounds(); } break;
                 case 'addphoto':
-                    // start the audio engine on this tap — a clip's sound can only be recorded through a context started by a tap
-                    try { const AC = window.AudioContext || window.webkitAudioContext; if (AC && !GF._ac) GF._ac = new AC(); if (GF._ac) GF._ac.resume().catch(() => { }); } catch (x) { }
+                    GF.audioOn();
                     document.getElementById('gfdFile')?.click(); break;
+                case 'cam':   // Camera / Video · 15s / Library
+                    GF.audioOn();
+                    document.getElementById(v === 'photo' ? 'gfdCamP' : v === 'video' ? 'gfdCamV' : 'gfdFile')?.click(); break;
+                case 'quickcam':   // the logo: straight to the camera — the composer is drawn synchronously, so this tap still counts as the gesture
+                    GF.go({ s: 'compose' });
+                    document.getElementById('gfdCamP')?.click(); break;
                 case 'rmphoto': if (GF.cur()) { const p = GF.cur().photos.splice(+v, 1)[0]; try { if (p.preview) URL.revokeObjectURL(p.preview); } catch (x) { } GF.paintPhotos(); } break;
                 case 'aud': if (GF.cur()) { GF.cur().audience = v; GF.render(); } break;
                 case 'vsound': if (GF.cur()) { GF.cur().muted = v === 'off'; GF.paintSound(); } break;

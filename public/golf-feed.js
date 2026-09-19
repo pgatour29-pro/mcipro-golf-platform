@@ -74,7 +74,97 @@
         });
         return h;
     }
-    const NEW_UNTIL = Date.parse('2026-10-03T00:00:00+07:00');   // launch "NEW" chip on the cube (Pete, 2026-09-19)
+    const NEW_UNTIL = Date.parse('2026-10-03T00:00:00+07:00');
+    // ---- video (v1265): Pete "cap it at 15 seconds"; sound = only what the phone recorded
+    const VIDEO_MAX_S = 15, VIDEO_MAX_BYTES = 25 * 1024 * 1024;
+    const vExt = (type, name) => /webm/i.test(type || '') ? 'webm' : /quicktime/i.test(type || '') || /\.mov$/i.test(name || '') ? 'mov' : 'mp4';
+    const vMime = (ext) => ext === 'webm' ? 'video/webm' : ext === 'mov' ? 'video/quicktime' : 'video/mp4';
+    const isVideoFile = (f) => /^video\//.test(f.type || '') || /\.(mp4|mov|m4v|webm|3gp)$/i.test(f.name || '');
+    const mmss = (s) => { s = Math.round(s || 0); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+    // Shrinks a clip to 720p on the phone: the <video> plays once into a canvas that MediaRecorder records,
+    // with the clip's own audio routed through WebAudio (silent to the room). Falls back to the original
+    // file when the phone can't (or won't autoplay with sound) and the original is small enough.
+    async function prepVideo(file, keepSound, onProgress) {
+        const url0 = URL.createObjectURL(file);
+        const v = document.createElement('video');
+        v.playsInline = true; v.setAttribute('playsinline', ''); v.preload = 'auto'; v.src = url0;
+        v.style.cssText = 'position:fixed;left:-2px;top:-2px;width:2px;height:2px;opacity:.01;pointer-events:none';
+        document.body.appendChild(v);
+        const cleanup = () => { try { v.pause(); v.remove(); URL.revokeObjectURL(url0); } catch (e) { } };
+        try {
+            await new Promise((ok, no) => { v.onloadedmetadata = ok; v.onerror = () => no(new Error(tr('gfd.v.cantopen', 'This video could not be opened. Try an MP4 from your camera.'))); setTimeout(() => no(new Error(tr('gfd.v.cantopen', 'This video could not be opened. Try an MP4 from your camera.'))), 15000); });
+            const dur = v.duration;
+            if (!isFinite(dur) || dur > VIDEO_MAX_S + 0.5) throw new Error(tr('gfd.v.toolong', 'Videos can be up to 15 seconds. Trim it in your phone’s gallery first.'));
+            const w0 = v.videoWidth || 1280, h0 = v.videoHeight || 720;
+            const r = Math.min(1, 1280 / Math.max(w0, h0));
+            const W = Math.max(2, Math.round(w0 * r / 2) * 2), H = Math.max(2, Math.round(h0 * r / 2) * 2);
+            const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+            const ctx = cv.getContext('2d');
+            const seek = (t) => new Promise(ok => { const done = () => { v.removeEventListener('seeked', done); ok(); }; v.addEventListener('seeked', done); v.currentTime = t; setTimeout(done, 3000); });
+            const frame = async (t) => { await seek(t); ctx.drawImage(v, 0, 0, W, H); return await new Promise(ok => cv.toBlob(b => ok(b), 'image/jpeg', 0.85)); };
+            const poster = await frame(Math.min(0.4, dur / 3));
+            const frames = [poster, await frame(dur * 0.5), await frame(Math.max(0, dur * 0.9))];
+            const original = () => {
+                if (file.size > VIDEO_MAX_BYTES) throw new Error(tr('gfd.v.toobig', 'This video is too big to send from this phone. Record at 1080p or shorten it.'));
+                const ext = vExt(file.type, file.name);
+                return { blob: file, ext, mime: vMime(ext), poster, frames, duration: dur, w: w0, h: h0, shrunk: false };
+            };
+            // H.264 plays on every phone; a phone that can only record VP9/VP8 sends its original (when small
+            // enough), because an older iPhone may not play VP9 — VP9 is the last resort, not the first
+            const sup = (m) => { try { return window.MediaRecorder && MediaRecorder.isTypeSupported(m); } catch (e) { return false; } };
+            // with sound the audio must be AAC too (plays everywhere); without it, plain H.264
+            let mime = (keepSound ? ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4;codecs=avc1.42E01F,mp4a.40.2']
+                                  : ['video/mp4;codecs=avc1.42E01F', 'video/mp4;codecs=avc1']).find(sup);
+            if (!mime && file.size <= VIDEO_MAX_BYTES) return original();
+            if (!mime) mime = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find(sup);
+            if (!mime || !cv.captureStream) return original();
+            const record = async (withSound) => {
+                await seek(0);
+                const stream = cv.captureStream(30);
+                // the clip's own sound goes through the AudioContext that was started on the golfer's tap (Add);
+                // a context started later stays suspended until a tap, so never wait on it for long
+                let srcNode = null;
+                if (withSound) {
+                    const ac = GF._ac;
+                    if (!ac) throw new Error('nosound');
+                    await Promise.race([ac.resume().catch(() => { }), new Promise(r => setTimeout(r, 1200))]);
+                    if (ac.state !== 'running') throw new Error('nosound');
+                    srcNode = ac.createMediaElementSource(v); const dest = ac.createMediaStreamDestination();
+                    srcNode.connect(dest); dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+                }
+                v.muted = !withSound;
+                const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 2500000, audioBitsPerSecond: 96000 });
+                const chunks = []; rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+                const stopped = new Promise(ok => { rec.onstop = ok; });
+                rec.start(250);
+                try { await Promise.race([v.play(), new Promise((_, no) => setTimeout(() => no(new Error('noplay')), 6000))]); }
+                catch (e) { try { rec.stop(); } catch (x) { } try { srcNode && srcNode.disconnect(); } catch (x) { } stream.getTracks().forEach(t => t.stop()); throw e; }
+                await new Promise(done => {
+                    let fin = false; const end = () => { if (!fin) { fin = true; done(); } };
+                    v.onended = end;
+                    const tick = () => { if (fin) return; ctx.drawImage(v, 0, 0, W, H); if (onProgress) onProgress(Math.min(1, v.currentTime / dur)); if (v.currentTime >= dur - 0.04) { end(); return; } if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(tick); else requestAnimationFrame(tick); };
+                    tick();
+                    setTimeout(end, (dur + 8) * 1000);   // never hang on a stalled decoder
+                });
+                v.pause(); rec.stop(); await stopped;
+                stream.getTracks().forEach(t => t.stop()); try { srcNode && srcNode.disconnect(); } catch (e) { }
+                const out = new Blob(chunks, { type: mime.split(';')[0] });
+                return out.size > 1000 ? out : null;
+            };
+            let out = null;
+            try { out = await record(keepSound); }
+            catch (e) {
+                // autoplay WITH sound refused on this phone: send the original if we can (keeps the sound), else record silent
+                if (keepSound && file.size <= VIDEO_MAX_BYTES) return original();
+                try { out = await record(false); } catch (x) { out = null; }
+            }
+            if (!out) return original();
+            if (file.size <= VIDEO_MAX_BYTES && file.size < out.size && /mp4|quicktime/.test(file.type || '')) return original();
+            const ext = /webm/.test(out.type) ? 'webm' : 'mp4';
+            return { blob: out, ext, mime: vMime(ext), poster, frames, duration: dur, w: W, h: H, shrunk: true };
+        } finally { cleanup(); }
+    }
+   // launch "NEW" chip on the cube (Pete, 2026-09-19)
     const PAL = ['#0f766e', '#1d4ed8', '#b45309', '#b91c1c', '#15803d', '#334155', '#7c2d12', '#0e7490'];
     const initials = (n) => { const p = String(n || '').trim().split(/\s+/); return (((p[0] || '')[0] || '') + ((p[1] || '')[0] || '')).toUpperCase() || '?'; };
     function av(p, size) {
@@ -232,6 +322,12 @@
     .gfd-sheet .it.red,.gfd-sheet .it.red .material-symbols-outlined{color:var(--mkp-red)}
     .gfd-sheet .it .sub{display:block;font:500 12px/1.3 'Instrument Sans',sans-serif;color:var(--mkp-sub)}
     .gfd-at{font-weight:700;color:var(--mkp-greenhi);cursor:pointer}
+    .gfd-car.vid video{display:block;width:100%;aspect-ratio:4/5;object-fit:cover;background:#000}
+    .gfd-snd{position:absolute;right:10px;bottom:10px;width:32px;height:32px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;display:grid;place-items:center;cursor:pointer;z-index:2}
+    .gfd-snd .material-symbols-outlined{font-size:18px}
+    .gfd-vdur{position:absolute;left:10px;bottom:10px;padding:3px 7px;border-radius:7px;background:rgba(0,0,0,.6);color:#fff;font:700 10.5px/1 'JetBrains Mono',monospace}
+    .gfd-photos .p .vb{position:absolute;left:4px;bottom:4px;padding:2px 5px;border-radius:6px;background:rgba(0,0,0,.65);color:#fff;font:700 9.5px/1 'JetBrains Mono',monospace;display:flex;align-items:center;gap:2px}
+    .gfd-photos .p .vb .material-symbols-outlined{font-size:12px}
     .gfd-tabn{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 5px;border-radius:9px;background:#ef4444;color:#fff;font:700 9.5px/1 'JetBrains Mono',monospace;letter-spacing:0;margin-left:5px}
     .gfd-tile .new{position:absolute;right:6px;top:6px;padding:3px 6px;border-radius:6px;background:#16a34a;color:#fff;text-transform:uppercase;font:800 9px/1 'JetBrains Mono',monospace;letter-spacing:.06em;box-shadow:0 1px 4px rgba(0,0,0,.35)}
     .gfd-tile .new ~ .multi{top:26px}
@@ -394,7 +490,7 @@
                 ${url(ph) ? `<img src="${url(ph)}" alt="" loading="lazy">` : ''}
                 ${sale ? `<span class="sale">${esc(sale)}</span>` : ''}
                 ${GF.isNew(p) ? `<span class="new">${esc(tr('gfd.new', 'NEW'))}</span>` : ''}
-                ${(p.photos || []).length > 1 ? `<span class="multi">${mi('filter_none')}</span>` : ''}
+                ${p.video ? `<span class="multi">${mi('play_arrow')}</span>` : (p.photos || []).length > 1 ? `<span class="multi">${mi('filter_none')}</span>` : ''}
                 ${p.round ? `<span class="ok">${mi('check')}</span>` : ''}
                 ${p.audience === 'followers' ? `<span class="lock">${mi('lock')}</span>` : ''}</button>`;
         },
@@ -441,7 +537,9 @@
                 <div class="hd"><span data-act="profile" data-id="${esc(a.id)}" style="cursor:pointer">${av(a)}</span>
                   <div class="who" data-act="profile" data-id="${esc(a.id)}"><div class="nm">${esc(a.name)}${GF.isNew(p) ? `<span class="gfd-newtag">${esc(tr('gfd.new', 'NEW'))}</span>` : ''}</div><div class="sb">${p.audience === 'followers' ? mi('lock') + ' ' : ''}${esc(GF.subline(p))}</div></div>
                   <button class="gfd-dots-btn" data-act="postmenu" data-id="${esc(p.id)}" aria-label="${esc(tr('gfd.more', 'More'))}">${mi('more_horiz')}</button></div>
-                ${photos.length ? `<div class="gfd-car ${p.kind === 'listing' ? 'sq' : ''}" data-id="${esc(p.id)}"><div class="gfd-track">${photos.map(u => `<img src="${u}" alt="" loading="lazy">`).join('')}</div>
+                ${url(p.video) ? `<div class="gfd-car vid" data-id="${esc(p.id)}"><video src="${url(p.video)}" poster="${photos[0] || ''}" playsinline muted loop preload="metadata"></video>
+                  <button class="gfd-snd" data-act="sound" data-id="${esc(p.id)}" aria-label="${esc(tr('gfd.v.sound', 'Sound'))}">${mi('volume_off')}</button><div class="pop">${mi('favorite')}</div></div>`
+                : photos.length ? `<div class="gfd-car ${p.kind === 'listing' ? 'sq' : ''}" data-id="${esc(p.id)}"><div class="gfd-track">${photos.map(u => `<img src="${u}" alt="" loading="lazy">`).join('')}</div>
                   ${photos.length > 1 ? `<div class="dots">${photos.map((_, i) => `<i class="${i ? '' : 'on'}"></i>`).join('')}</div>` : ''}<div class="pop">${mi('favorite')}</div></div>` : ''}
                 <div class="gfd-acts"><button class="${likeCls}" data-act="like" data-id="${esc(p.id)}" aria-label="${esc(tr('gfd.like', 'Like'))}">${mi('favorite')}<span class="n">${p.likes || ''}</span></button>
                   <button data-act="openpost" data-id="${esc(p.id)}" aria-label="${esc(tr('gfd.comments', 'Comments'))}">${mi('chat_bubble')}<span class="n">${p.comments || ''}</span></button><span class="sp"></span>
@@ -455,9 +553,13 @@
             </article>`;
         },
         wireCars(scope) {
+            if (!GF._vio && window.IntersectionObserver) GF._vio = new IntersectionObserver(es => es.forEach(e => {
+                const v = e.target; if (e.isIntersecting && e.intersectionRatio >= 0.6) { const pr = v.play(); if (pr && pr.catch) pr.catch(() => { }); } else v.pause();
+            }), { threshold: [0, 0.6] });
+            scope.querySelectorAll('.gfd-car.vid video').forEach(v => { if (GF._vio) GF._vio.observe(v); else { v.autoplay = true; } });
             scope.querySelectorAll('.gfd-car').forEach(car => {
                 const tr_ = car.querySelector('.gfd-track'), dots = car.querySelectorAll('.dots i');
-                if (dots.length) tr_.addEventListener('scroll', () => { const i = Math.round(tr_.scrollLeft / Math.max(1, tr_.clientWidth)); dots.forEach((d, k) => d.classList.toggle('on', k === i)); }, { passive: true });
+                if (tr_ && dots.length) tr_.addEventListener('scroll', () => { const i = Math.round(tr_.scrollLeft / Math.max(1, tr_.clientWidth)); dots.forEach((d, k) => d.classList.toggle('on', k === i)); }, { passive: true });
                 let last = 0;
                 const dbl = () => { GF.like(car.dataset.id, true, car); };
                 car.addEventListener('dblclick', dbl);
@@ -517,6 +619,14 @@
                 const sb = card.querySelector('[data-act="save"]'); if (sb) sb.classList.toggle('saved', !!p.i_saved);
             });
         },
+        sound(id, btn) {
+            const p = GF._posts[id]; const car = btn && btn.closest('.gfd-car'); const v = car && car.querySelector('video'); if (!v) return;
+            if (p && p.muted) { toast(tr('gfd.v.mutedpost', 'This video is posted without sound.'), 'info'); return; }
+            const on = v.muted;
+            document.querySelectorAll('#gfdRoot .gfd-car.vid video').forEach(o => { if (o !== v) { o.muted = true; const b = o.parentNode.querySelector('.gfd-snd .material-symbols-outlined'); if (b) b.textContent = 'volume_off'; } });
+            v.muted = !on; if (on) { const pr = v.play(); if (pr && pr.catch) pr.catch(() => { }); }
+            btn.querySelector('.material-symbols-outlined').textContent = on ? 'volume_up' : 'volume_off';
+        },
         async like(id, forceOn, car) {
             const p = GF._posts[id]; if (!p) return;
             const on = forceOn ? true : !p.i_liked;
@@ -542,6 +652,7 @@
             if (p.mine && p.kind === 'listing' && p.listing) items.push(['edit', tr('gfd.menu.editlisting', 'Edit listing'), () => { try { MarketplaceSystem.editListing(p.listing.id); } catch (e) { } }]);
             if (p.mine && p.kind !== 'listing') items.push(['delete', tr('gfd.menu.delete', 'Delete post'), () => GF.deletePost(id), 'red']);
             if (!p.mine) items.push(['flag', tr('gfd.menu.report', 'Report'), () => GF.reportMenu(id), 'red']);
+            if (GF.me && GF.me.is_admin && p.video) items.push([p.muted ? 'volume_up' : 'volume_off', p.muted ? tr('gfd.menu.unmute', 'Let the sound play (admin)') : tr('gfd.menu.mute', 'Mute this video (admin)'), () => GF.muteVideo(id, !p.muted)]);
             if (GF.me && GF.me.is_admin) items.push([p.hidden ? 'visibility' : 'visibility_off', p.hidden ? tr('gfd.menu.unhide', 'Show on the feed again') : tr('gfd.menu.hide', 'Hide from the feed (admin)'), () => GF.hide(id, !p.hidden)]);
             GF.sheet('', '', items);
         },
@@ -560,7 +671,12 @@
                 ['sports_golf', tr('gfd.report.notgolf', 'Not about golf'), go('not_golf')],
                 ['block', tr('gfd.report.offensive', 'Offensive or inappropriate'), go('offensive')],
                 ['report', tr('gfd.report.spam', 'Spam or selling outside the 19th Hole'), go('spam')],
+                ['music_off', tr('gfd.report.copyright', 'Music or copyright'), go('copyright')],
                 ['more_horiz', tr('gfd.report.other', 'Something else'), go('other')]]);
+        },
+        async muteVideo(id, on) {
+            try { const r = await rpc('golf_post_mute', { p_user: uid(), p_post: id, p_on: on }); if (!r || !r.ok) throw new Error(GF.why(r)); toast(on ? tr('gfd.v.muted.toast', 'Muted for everyone') : tr('gfd.v.unmuted.toast', 'Sound back on'), 'success'); GF.render(); }
+            catch (e) { toast(e.message || String(e), 'error'); }
         },
         async hide(id, on) {
             try { const r = await rpc('golf_post_hide', { p_user: uid(), p_post: id, p_on: on }); if (!r || !r.ok) throw new Error(GF.why(r)); toast(on ? tr('gfd.hidden.toast', 'Hidden from the feed') : tr('gfd.unhidden.toast', 'Back on the feed'), 'success'); GF.render(); }
@@ -681,7 +797,8 @@
                     const p = GF._posts[top.edit];
                     if (!p || !p.mine || p.kind === 'listing') { GF.back(); return; }
                     GF._ed = { edit: p.id, kind: p.kind, round: p.round ? p.round.id : null, caption: p.caption || '', audience: p.audience || 'everyone',
-                        photos: (p.photos || []).map(u => ({ state: 'ok', url: u })), rounds: null, keepRound: p.round || null,
+                        photos: p.video ? [{ video: true, state: 'ok', url: p.video, posterUrl: (p.photos || [])[0] }] : (p.photos || []).map(u => ({ state: 'ok', url: u })),
+                        muted: !!p.muted, rounds: null, keepRound: p.round || null,
                         mentions: (p.mentions || []).map(m => ({ id: m.id, name: m.name })) };
                 }
                 d = GF._ed;
@@ -702,7 +819,8 @@
                 <div id="gfdRounds"></div>
                 <div class="gfd-lbl">${esc(tr('gfd.photos10', 'Photos · up to 10'))}</div>
                 <div class="gfd-photos" id="gfdPhotos"></div>
-                <input type="file" id="gfdFile" accept="image/*" multiple style="display:none">
+                <input type="file" id="gfdFile" accept="image/*,video/*" multiple style="display:none">
+                <div id="gfdSound"></div>
                 <div class="gfd-lbl">${esc(tr('gfd.caption', 'Caption'))}</div>
                 <textarea class="gfd-ta" id="gfdCap" maxlength="2200" placeholder="${esc(tr('gfd.caption.ph2', 'How did it go? Type @ to tag a golfer'))}">${esc(d.caption)}</textarea>
                 <div class="gfd-lbl">${esc(tr('gfd.whosees', 'Who sees it'))}</div>
@@ -713,6 +831,13 @@
             GF.wireMentions(document.getElementById('gfdCap'), d.mentions);
             document.getElementById('gfdFile').addEventListener('change', e => { GF.addPhotos(e.target.files); e.target.value = ''; });
             GF.paintRounds(); GF.paintPhotos();
+        },
+        paintSound() {
+            const d = GF.cur(), box = document.getElementById('gfdSound'); if (!d || !box) return;
+            if (!d.photos.some(p => p.video)) { box.innerHTML = ''; return; }
+            box.innerHTML = `<div class="gfd-lbl">${esc(tr('gfd.v.soundlbl', 'Sound'))}</div>
+                <div class="gfd-seg"><button class="${d.muted ? '' : 'on'}" data-act="vsound" data-v="on">${esc(tr('gfd.v.soundon', 'Sound on'))}</button><button class="${d.muted ? 'on' : ''}" data-act="vsound" data-v="off">${esc(tr('gfd.v.soundoff', 'Sound off'))}</button></div>
+                <p class="mkp-note" style="margin:8px 0 0">${mi('music_off')}<span>${esc(tr('gfd.v.rule', 'Only the sound your phone recorded. No added music or soundtracks.'))}</span></p>`;
         },
         paintRounds() {
             const d = GF.cur(), box = document.getElementById('gfdRounds'); if (!d || !box) return;
@@ -730,9 +855,10 @@
         },
         paintPhotos() {
             const d = GF.cur(), box = document.getElementById('gfdPhotos'); if (!d || !box) return;
-            box.innerHTML = d.photos.map((p, i) => `<div class="p"><img src="${p.url ? url(p.url) : (p.preview || '')}" alt="">${p.state === 'checking' ? `<span class="ck">${esc(tr('gfd.checking', 'CHECKING'))}</span>` : ''}
+            box.innerHTML = d.photos.map((p, i) => `<div class="p"><img src="${p.video ? (p.posterUrl ? url(p.posterUrl) : (p.preview || '')) : p.url ? url(p.url) : (p.preview || '')}" alt="">${p.video && p.state !== 'checking' ? `<span class="vb">${mi('play_arrow')}${p.duration ? esc(mmss(p.duration)) : ''}</span>` : ''}${p.state === 'checking' ? `<span class="ck">${esc(p.video ? tr('gfd.v.preparing', 'PREPARING {p}%', { p: Math.round((p.progress || 0) * 100) }) : tr('gfd.checking', 'CHECKING'))}</span>` : ''}
                 <button class="x" data-act="rmphoto" data-v="${i}" aria-label="${esc(tr('common.remove', 'Remove'))}">${mi('close')}</button></div>`).join('')
-                + (d.photos.length < 10 ? `<button class="add" data-act="addphoto" aria-label="${esc(tr('common.add', 'Add'))}">${mi('add_a_photo')}</button>` : '');
+                + (d.photos.length < 10 && !d.photos.some(p => p.video) ? `<button class="add" data-act="addphoto" aria-label="${esc(tr('common.add', 'Add'))}">${mi('add_a_photo')}</button>` : '');
+            GF.paintSound();
             const sh = document.getElementById('gfdShare');
             if (sh) sh.disabled = !d.photos.length || d.photos.some(p => p.state === 'checking') || !!d.busy;
         },
@@ -776,7 +902,14 @@
         },
         async addPhotos(files) {
             const d = GF.cur(); if (!d) return;
-            const list = Array.from(files || []).filter(f => /^image\//.test(f.type || 'image/')).slice(0, 10 - d.photos.length);
+            const all = Array.from(files || []);
+            const vids = all.filter(isVideoFile);
+            if (vids.length) {
+                if (d.photos.length || vids.length > 1 || all.length > 1) { toast(tr('gfd.v.onlyone', 'A post is photos or one video, not both.'), 'warning'); return; }
+                return GF.addVideo(vids[0]);
+            }
+            if (d.photos.some(p => p.video)) { toast(tr('gfd.v.onlyone', 'A post is photos or one video, not both.'), 'warning'); return; }
+            const list = all.filter(f => /^image\//.test(f.type || 'image/')).slice(0, 10 - d.photos.length);
             for (const f of list) {
                 const item = { state: 'checking', preview: '', blob: null };
                 d.photos.push(item);
@@ -794,16 +927,57 @@
                 GF.paintPhotos();
             }
         },
+        async addVideo(file) {
+            const d = GF.cur(); if (!d) return;
+            const item = { video: true, state: 'checking', progress: 0, preview: '' };
+            d.photos.push(item); GF.paintPhotos();
+            let last = 0;
+            try {
+                const out = await prepVideo(file, !d.muted, (x) => { item.progress = x; const n = Date.now(); if (n - last > 400) { last = n; GF.paintPhotos(); } });
+                Object.assign(item, { blob: out.blob, ext: out.ext, mime: out.mime, posterBlob: out.poster, duration: out.duration });
+                item.preview = URL.createObjectURL(out.poster);
+                item.progress = 1; GF.paintPhotos();
+                for (const fr of out.frames) {   // the cover and two more frames go through the photo check
+                    const s = await ContentModeration.screenImage(fr, 'feed');
+                    if (!s || !s.safe) throw new Error((s && s.reason) || tr('gfd.photo.refused', 'This photo can’t be posted.'));
+                }
+                item.state = 'ok';
+            } catch (e) {
+                d.photos.splice(d.photos.indexOf(item), 1);
+                toast(e.message || String(e), 'error');
+            }
+            GF.paintPhotos();
+        },
         async submit() {
             const d = GF.cur(); if (!d || d.busy) return;
-            const ready = d.photos.filter(p => p.state === 'ok' && (p.blob || p.url));
+            const ready = d.photos.filter(p => p.state === 'ok' && (p.blob || p.url || p.posterUrl));
             if (!ready.length) { toast(tr('gfd.needphoto', 'Add at least one photo.'), 'warning'); return; }
             d.busy = true; GF.paintPhotos();
             const btn = document.getElementById('gfdShare');
             const me = uid(), urls = [];
             try {
-                const nUp = ready.filter(x => !x.url).length; let k = 0;
+                let videoUrl = null;
+                const vItem = ready.find(x => x.video);
+                if (vItem) {   // a video post: its cover is the one photo, the clip goes to golf-feed-video
+                    if (!vItem.posterUrl) {
+                        if (btn) btn.textContent = tr('gfd.uploading', 'Uploading {i} of {n}…', { i: 1, n: 2 });
+                        const pp = `${me}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+                        const up1 = await db().storage.from('golf-feed').upload(pp, vItem.posterBlob, { contentType: 'image/jpeg', upsert: false });
+                        if (up1.error) throw up1.error;
+                        vItem.posterUrl = db().storage.from('golf-feed').getPublicUrl(pp).data.publicUrl;
+                    }
+                    if (!vItem.url) {
+                        if (btn) btn.textContent = tr('gfd.uploading', 'Uploading {i} of {n}…', { i: 2, n: 2 });
+                        const vp = `${me}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${vItem.ext || 'mp4'}`;
+                        const up2 = await db().storage.from('golf-feed-video').upload(vp, vItem.blob, { contentType: vItem.mime || 'video/mp4', upsert: false });
+                        if (up2.error) throw up2.error;
+                        vItem.url = db().storage.from('golf-feed-video').getPublicUrl(vp).data.publicUrl;
+                    }
+                    urls.push(vItem.posterUrl); videoUrl = vItem.url;
+                }
+                const nUp = ready.filter(x => !x.url && !x.video).length; let k = 0;
                 for (let i = 0; i < ready.length; i++) {
+                    if (ready[i].video) continue;
                     if (ready[i].url) { urls.push(ready[i].url); continue; }   // already on the post
                     if (btn) btn.textContent = tr('gfd.uploading', 'Uploading {i} of {n}…', { i: ++k, n: nUp });
                     const path = `${me}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
@@ -814,7 +988,8 @@
                 }
                 const ids = (d.mentions || []).filter(m => (d.caption || '').includes('@' + m.name)).map(m => m.id);
                 const args = { p_user: me, p_kind: d.kind, p_caption: d.caption || '', p_photos: urls,
-                    p_round: d.kind === 'round' ? d.round : null, p_audience: d.audience, p_mentions: ids.length ? ids : null };
+                    p_round: d.kind === 'round' ? d.round : null, p_audience: d.audience, p_mentions: ids.length ? ids : null,
+                    p_video: videoUrl, p_muted: videoUrl ? !!d.muted : false };
                 const r = d.edit ? await rpc('golf_post_update', Object.assign({ p_post: d.edit }, args)) : await rpc('golf_post_create', args);
                 if (!r || !r.ok) throw new Error(GF.why(r));
                 d.photos.forEach(p => { try { if (p.preview) URL.revokeObjectURL(p.preview); } catch (e) { } });
@@ -924,7 +1099,8 @@
                 photo_not_yours: tr('gfd.e.photo', 'A photo didn’t upload. Try again.'), round_not_yours: tr('gfd.e.round', 'That round can’t be attached.'),
                 too_many: tr('gfd.e.toomany', 'That’s a lot of posting — try again later.'), not_found: tr('gfd.gone', 'This post isn’t available any more.'),
                 not_yours: tr('gfd.e.notyours', 'Only the owner can do that.'), length: tr('gfd.e.length', 'That’s too long.'), caption_too_long: tr('gfd.e.length', 'That’s too long.'),
-                not_a_buyer: tr('mkp.e.notbuyer', 'Pick someone who asked about this listing.'), not_registered: tr('mkp.e.notreg', 'You’re not registered for that event.') };
+                not_a_buyer: tr('mkp.e.notbuyer', 'Pick someone who asked about this listing.'),
+                video_not_yours: tr('gfd.e.photo', 'A photo didn’t upload. Try again.'), video_one_cover: tr('gfd.v.onlyone', 'A post is photos or one video, not both.'), not_registered: tr('mkp.e.notreg', 'You’re not registered for that event.') };
             return m[k] || tr('gfd.e.generic', 'Something went wrong. Please try again.');
         },
         err(id, e) {
@@ -974,6 +1150,7 @@
                 case 'profile': GF.profile(id); break;
                 case 'postmenu': GF.postMenu(id); break;
                 case 'like': GF.like(id); break;
+                case 'sound': GF.sound(id, el); break;
                 case 'save': GF.save(id); break;
                 case 'comment': GF.addComment(id); break;
                 case 'delcomment': rpc('golf_comment_delete', { p_user: uid(), p_comment: id }).then(() => { const p = GF._posts[el.dataset.post]; if (p) p.comments = Math.max(0, (p.comments || 1) - 1); GF.paintCount(el.dataset.post); GF.loadComments(el.dataset.post); }).catch(x => toast(x.message, 'error')); break;
@@ -990,9 +1167,13 @@
                 case 'kind': if (GF.cur()) { GF.cur().kind = v; GF.render(); } break;
                 case 'allrounds': if (GF.cur()) { GF.cur().allRounds = true; GF.paintRounds(); } break;
                 case 'pickround': if (GF.cur()) { const d = GF.cur(); d.round = d.round === id ? null : id; GF.paintRounds(); } break;
-                case 'addphoto': document.getElementById('gfdFile')?.click(); break;
+                case 'addphoto':
+                    // start the audio engine on this tap — a clip's sound can only be recorded through a context started by a tap
+                    try { const AC = window.AudioContext || window.webkitAudioContext; if (AC && !GF._ac) GF._ac = new AC(); if (GF._ac) GF._ac.resume().catch(() => { }); } catch (x) { }
+                    document.getElementById('gfdFile')?.click(); break;
                 case 'rmphoto': if (GF.cur()) { const p = GF.cur().photos.splice(+v, 1)[0]; try { if (p.preview) URL.revokeObjectURL(p.preview); } catch (x) { } GF.paintPhotos(); } break;
                 case 'aud': if (GF.cur()) { GF.cur().audience = v; GF.render(); } break;
+                case 'vsound': if (GF.cur()) { GF.cur().muted = v === 'off'; GF.paintSound(); } break;
                 case 'share': GF.submit(); break;
                 case 'actfilter': GF._actFilter = v; GF.paintActivity(); break;
             }
@@ -1176,6 +1357,7 @@
         },
     };
 
+    GF._prepVideo = prepVideo;   // exposed for checks from the console
     window.GolfFeed = GF;
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', GF.boot); else GF.boot();
 })();

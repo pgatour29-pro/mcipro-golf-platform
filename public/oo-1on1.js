@@ -552,7 +552,8 @@
     '.oo-kpi{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}@media(min-width:768px){.oo-kpi{grid-template-columns:repeat(4,minmax(0,1fr))}}' +
     '.oo-two{display:grid;grid-template-columns:1fr;gap:10px}@media(min-width:1024px){.oo-two{grid-template-columns:minmax(0,3fr) minmax(0,2fr);align-items:start}}' +
     '#golferDashboard:not(.oo-on) #ooCube,#golferDashboard:not(.oo-on) .ooCube{display:none !important}' +
-    'body:not(.oo-partner-caddie) [onclick*="OneOnOne.enter(\'partner\')"]{display:none !important}';   /* v1101: caddie-dashboard 1on1 entries only for caddies who ARE partners (invite-only onboarding) */  /* the grids set display:flex with id+class specificity — hide must out-rank it; the on-state simply lets the grid CSS apply */
+    'body:not(.oo-partner-caddie) [onclick*="OneOnOne.enter(\'partner\')"]{display:none !important}'
+    + '[onclick*="OneOnOne.enter("],[onclick*="OneOnOne.open("]{display:none !important}';   /* v1278 (Pete): nobody has 1on1 any more */   /* v1101: caddie-dashboard 1on1 entries only for caddies who ARE partners (invite-only onboarding) */  /* the grids set display:flex with id+class specificity — hide must out-rank it; the on-state simply lets the grid CSS apply */
   try { var st = document.createElement('style'); st.id = 'oo1on1CSS'; st.textContent = CSS; document.head.appendChild(st); } catch (e) {}
 
   /* =====================================================================================

@@ -169,13 +169,20 @@
    // launch "NEW" chip on the cube (Pete, 2026-09-19)
     const PAL = ['#0f766e', '#1d4ed8', '#b45309', '#b91c1c', '#15803d', '#334155', '#7c2d12', '#0e7490'];
     const initials = (n) => { const p = String(n || '').trim().split(/\s+/); return (((p[0] || '')[0] || '') + ((p[1] || '')[0] || '')).toUpperCase() || '?'; };
+    // v1278 Tap-In pages: a society / course posts as a PAGE (id 'society:…' / 'course:…'), drawn as a rounded
+    // square with a verified tick; a course without a logo shows a course mark
+    const isPage = (p) => !!p && (p.kind === 'society' || p.kind === 'course');
     function av(p, size) {
         p = p || {};
         let h = 0; String(p.id || p.name || '').split('').forEach(c => { h = (h * 31 + c.charCodeAt(0)) >>> 0; });
-        const st = `${size ? `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.34)}px;` : ''}background-color:${PAL[h % PAL.length]}`;
+        const st = `${size ? `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.34)}px;` : ''}background-color:${p.kind === 'course' ? '#0e7490' : PAL[h % PAL.length]}`;
         const img = url(p.avatar);
-        return `<span class="gfd-av" style="${st}">${img ? `<img src="${img}" alt="" loading="lazy" onerror="this.remove()">` : ''}<b>${esc(initials(p.name))}</b></span>`;
+        const mark = p.kind === 'course' ? '<span class="material-symbols-outlined">golf_course</span>' : `<b>${esc(initials(p.name))}</b>`;
+        return `<span class="gfd-av${isPage(p) ? ' pg' : ''}" style="${st}">${img ? `<img src="${img}" alt="" loading="lazy" onerror="this.remove()">` : ''}${mark}</span>`;
     }
+    const tick = (p) => isPage(p) && p.verified ? `<span class="material-symbols-outlined gfd-tick" aria-label="${esc(tr('gfd.verifiedpage', 'Verified'))}">verified</span>` : '';
+    // "Society" / "Golf course" / "Caddy" in front of a post's line and under a name
+    const whoLbl = (p) => !p ? '' : p.kind === 'society' ? tr('gfd.k.society', 'Society') : p.kind === 'course' ? tr('gfd.k.course', 'Golf course') : p.kind === 'caddy' ? tr('gfd.k.caddy', 'Caddy') : '';
 
     // ------------------------------------------------------------------ CSS (the approved mockup's)
     const STYLE = `
@@ -214,6 +221,35 @@
     .gfd-spin{padding:40px 0}
     .gfd-av{position:relative;flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:#fff;font:800 13px/1 'Instrument Sans',sans-serif;overflow:hidden;box-shadow:0 0 0 2px var(--mkp-sheet),0 0 0 3.5px #22c55e}
     .gfd-av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
+    .gfd-av.pg{border-radius:28%}
+    .gfd-av.pg img{border-radius:inherit}
+    .gfd-av > .material-symbols-outlined{font-size:1.6em;font-variation-settings:'FILL' 1}
+    .gfd-tick{color:var(--mkp-greenhi);font-size:15px !important;vertical-align:-3px;margin-left:3px;font-variation-settings:'FILL' 1}
+    .gfd-pname .gfd-tick{font-size:18px !important;vertical-align:-3px}
+    .gfd-kind{display:inline-flex;align-items:center;gap:4px;max-width:100%;font:700 10px/1.2 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;padding:4px 8px;border-radius:7px;background:var(--mkp-greendim);color:var(--mkp-greenhi);vertical-align:middle}
+    .gfd-kind .material-symbols-outlined{font-size:13px;font-variation-settings:'FILL' 1}
+    .gfd-kind.course{background:rgba(34,211,238,.13);color:#67e8f9}
+    body.theme-light .gfd-kind.course{background:rgba(14,116,144,.11);color:#0e7490}
+    .gfd-kind.caddy{background:var(--mkp-amberdim);color:var(--mkp-amber)}
+    .gfd-as{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 0 12px;padding:2px 1px}
+    .gfd-as::-webkit-scrollbar{display:none}
+    .gfd-as button{flex:none;display:flex;align-items:center;gap:7px;max-width:250px;border:none;border-radius:999px;padding:5px 12px 5px 5px;background:var(--mkp-glass2);box-shadow:inset 0 0 0 1px var(--mkp-slo);color:var(--mkp-sub);font:700 12.5px/1 'Instrument Sans',sans-serif;cursor:pointer}
+    .gfd-as button .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .gfd-as button.on{background:var(--mkp-greendim);color:var(--mkp-greenhi);box-shadow:inset 0 0 0 1.5px var(--mkp-green)}
+    .gfd-as .gfd-av{width:28px;height:28px;font-size:10px;box-shadow:none}
+    .gfd-act .tx .pg{font-style:normal;color:var(--mkp-greenhi);font-weight:600;font-size:12.5px}
+    .gfd-pacts .solo{grid-column:1 / -1}
+    /* v1278: Tap-In over a staff / organizer dashboard (the golfer tab's own root, moved in while open) */
+    #gfdOverlay{display:none;position:fixed;inset:0;z-index:11500;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:calc(env(safe-area-inset-top,0px) + 8px) 8px calc(env(safe-area-inset-bottom,0px) + 28px)}
+    #gfdOverlay > #gfdRoot{max-width:720px;margin:0 auto}
+    html.gfd-ov-on, html.gfd-ov-on body{overflow:hidden !important}
+    /* the Tap-In cube on the course staff + caddie phone homes (MHV grid) */
+    .mhvCubeHome .mgc.gfd-mgc{grid-column:1 / -1;min-height:104px;flex-direction:row;align-items:center;gap:10px;padding:14px 14px 12px 22px;--p1:#e2f0d6;--p2:#f4faee}
+    .gfd-mgc .l{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:7px;position:relative;z-index:2}
+    .gfd-mgc .wm{position:relative;font:400 30px/1.05 'Grand Hotel',cursive;background:linear-gradient(95deg,#15803d,#22c55e 60%,#84cc16);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;padding:2px 3px 2px 0;white-space:nowrap}
+    .gfd-mgc .pl{background:rgba(255,255,255,.85);border-radius:999px;padding:5px 10px;font:700 11px/1.1 'Instrument Sans',sans-serif;color:#14532d;box-shadow:0 1px 3px rgba(22,35,46,.12);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+    .gfd-mgc .gfd-strip{padding-top:12px}
+    .gfd-mgc.gfd-live .pl::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:6px;vertical-align:1px;animation:gfdPulse 1.6s infinite}
     .gfd-post{margin:0 -12px;border-radius:0}
     .gfd-post + .gfd-post{margin-top:10px}
     .gfd-post .hd{display:flex;align-items:center;gap:10px;padding:10px 12px}
@@ -337,13 +373,13 @@
     .gfd-addrow button.p .material-symbols-outlined{color:#fff}
     /* v1273 the wide Tap-In cube (Pete picked option A): golfers without 1on1 get the whole bottom row —
        wordmark + live line on the left, the newest posts popping in on the right */
-    #liteCubesGrid > .gfdCube.gfd-wide{grid-column:1 / -1 !important;height:auto !important;min-height:104px;padding:12px 14px !important;
+    :is(#liteCubesGrid,#orgLiteCubesGrid) > .gfdCube.gfd-wide{grid-column:1 / -1 !important;height:auto !important;min-height:104px;padding:12px 14px !important;
       display:grid !important;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:10px;row-gap:6px;
       align-items:center !important;justify-items:start;text-align:left !important;overflow:hidden}
-    #liteCubesGrid > .gfdCube.gfd-wide .cube-art{display:none !important}
-    #liteCubesGrid > .gfdCube.gfd-wide h3{grid-column:1;grid-row:1;align-self:end;margin:0 !important;white-space:nowrap}
-    #liteCubesGrid > .gfdCube.gfd-wide .cube-pill{grid-column:1;grid-row:2;align-self:start;position:static !important;display:inline-flex !important;align-items:center;gap:6px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    #liteCubesGrid > .gfdCube.gfd-wide.gfd-live .cube-pill::before{content:'';flex:none;width:7px;height:7px;border-radius:50%;background:#22c55e;animation:gfdPulse 1.6s infinite}
+    :is(#liteCubesGrid,#orgLiteCubesGrid) > .gfdCube.gfd-wide .cube-art{display:none !important}
+    :is(#liteCubesGrid,#orgLiteCubesGrid) > .gfdCube.gfd-wide h3{grid-column:1;grid-row:1;align-self:end;margin:0 !important;white-space:nowrap}
+    :is(#liteCubesGrid,#orgLiteCubesGrid) > .gfdCube.gfd-wide .cube-pill{grid-column:1;grid-row:2;align-self:start;position:static !important;display:inline-flex !important;align-items:center;gap:6px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    :is(#liteCubesGrid,#orgLiteCubesGrid) > .gfdCube.gfd-wide.gfd-live .cube-pill::before{content:'';flex:none;width:7px;height:7px;border-radius:50%;background:#22c55e;animation:gfdPulse 1.6s infinite}
     @keyframes gfdPulse{0%,100%{box-shadow:0 0 0 2px rgba(34,197,94,.35)}50%{box-shadow:0 0 0 6px rgba(34,197,94,0)}}
     @keyframes gfdPop{0%{transform:scale(.4) rotate(-8deg);opacity:0}70%{transform:scale(1.12) rotate(2deg);opacity:1}100%{transform:scale(1) rotate(0);opacity:1}}
     .gfdCube .gfd-strip{grid-column:2;grid-row:1 / 3;display:flex;gap:6px;padding-top:14px}
@@ -355,8 +391,8 @@
     .gfdCube .gfd-strip .more{flex:none;width:58px;height:58px;border-radius:12px;background:rgba(21,128,61,.12);display:grid;place-items:center;color:#15803d;font:800 15px 'Instrument Sans',sans-serif;box-shadow:inset 0 0 0 1.5px rgba(21,128,61,.35)}
     .gfdCube .gfd-strip .ph.empty{background:rgba(21,128,61,.08);box-shadow:inset 0 0 0 1.5px rgba(21,128,61,.3);display:grid;place-items:center;color:#15803d}
     @media (min-width:768px){
-      #liteCubesGrid > .gfdCube.gfd-wide{min-height:0;padding:18px 22px !important}
-      #liteCubesGrid > .gfdCube.gfd-wide h3{font-size:40px !important}
+      :is(#liteCubesGrid,#orgLiteCubesGrid) > .gfdCube.gfd-wide{min-height:0;padding:18px 22px !important}
+      :is(#liteCubesGrid,#orgLiteCubesGrid) > .gfdCube.gfd-wide h3{font-size:40px !important}
       .gfdCube .gfd-strip .ph,.gfdCube .gfd-strip .ph > img,.gfdCube .gfd-strip .more{width:96px;height:96px;border-radius:16px}
       .gfdCube .gfd-strip .ph .gfd-av{width:26px;height:26px}
     }
@@ -477,6 +513,48 @@
 
         // ------------------------------------------------------------ entry / navigation
         root() { return document.getElementById('gfdRoot'); },
+        toTop() { const ov = GF._ov && document.getElementById('gfdOverlay'); if (ov) ov.scrollTop = 0; else window.scrollTo(0, 0); },
+        // ---- v1278: Tap-In over an organizer / course staff / caddie dashboard. The golfer tab's root is moved
+        // into a body-level overlay while it is open (one Tap-In, one set of ids), and back / ✕ puts it home.
+        // ctx = what "Post as" starts on: 'society' (organizer), 'course' (course staff), 'me' (caddie)
+        mountOverlay(ctx) {
+            injectStyle();
+            const root = document.getElementById('gfdRoot'); if (!root) return false;
+            let ov = document.getElementById('gfdOverlay');
+            if (!ov) { ov = document.createElement('div'); ov.id = 'gfdOverlay'; ov.className = 'mkp-scope'; document.body.appendChild(ov); }
+            if (root.parentElement !== ov) { GF._home = root.parentElement; ov.appendChild(root); }
+            ov.style.display = 'block';
+            document.documentElement.classList.add('gfd-ov-on');
+            GF._ov = ctx || 'me';
+            GF.myPages();
+            return true;
+        },
+        closeOverlay() {
+            const ov = document.getElementById('gfdOverlay'), root = document.getElementById('gfdRoot');
+            document.getElementById('gfdSheet')?.remove();
+            if (root && GF._home && root.parentElement !== GF._home) GF._home.appendChild(root);
+            if (ov) ov.style.display = 'none';
+            document.documentElement.classList.remove('gfd-ov-on');
+            GF._ov = null; GF._ed = null; GF.stack = [];
+            const d = GF._draft; if (d && !d.photos.length && !(d.caption || '').trim()) GF._draft = null;   // an empty draft doesn't follow you home
+            if (root) root.innerHTML = '';
+        },
+        // "Post as": me first, then my societies, then my course (golf_my_pages)
+        async myPages() {
+            if (!uid()) return [];
+            if (GF._asList && GF._asListFor === uid()) return GF._asList;
+            try { const l = await rpc('golf_my_pages', { p_user: uid() }); GF._asList = Array.isArray(l) ? l : []; GF._asListFor = uid(); } catch (e) { return GF._asList || []; }
+            return GF._asList;
+        },
+        // the page a dashboard starts on (organizer → the society, course staff → the course, caddie → herself)
+        defaultAs() {
+            const want = GF._ov === 'society' || GF._ov === 'course' ? GF._ov : null;
+            const list = GF._asList || [];
+            // the organizer dashboard's own society first (an admin posts for several)
+            let sid = null; try { sid = window.AppState && AppState.selectedSociety && AppState.selectedSociety.id; } catch (e) { }
+            const p = (want === 'society' && sid && list.find(x => x.id === 'society:' + sid)) || (want && list.find(x => x.kind === want));
+            return p ? p.id : null;
+        },
         view() { try { return localStorage.getItem('gfd.view') === 'list' ? 'list' : 'wall'; } catch (e) { return 'wall'; } },
         // the tab hook (showGolferTab('golffeed')): keep wherever the golfer was — coming back from a
         // chat lands on the profile they left. The cube and the drawer call show(), which starts at the wall.
@@ -488,9 +566,10 @@
             GF.loadMe();
             GF.paintBadges();
         },
-        go(screen) { GF.stack.push(screen); GF.render(); window.scrollTo(0, 0); },
+        go(screen) { GF.stack.push(screen); GF.render(); GF.toTop(); },
         canBack() {
             if (document.getElementById('gfdSheet')) return true;
+            if (GF._ov) return true;
             const tab = document.getElementById('golfer-golffeed');
             return !!(tab && tab.classList.contains('active') && GF.stack.length > 1);
         },
@@ -498,12 +577,14 @@
             const sh = document.getElementById('gfdSheet');
             if (sh) { sh.remove(); return true; }
             if (GF.stack.length > 1) { const t = GF.stack.pop(); if (t && t.edit) GF._ed = null; GF.render(); return true; }
+            if (GF._ov) { GF.closeOverlay(); return true; }
             return false;
         },
         // open the feed tab on a given screen (profile / post), from anywhere in the app
         show(screen) {
             GF._pending = screen ? [{ s: 'feed' }, screen] : [{ s: 'feed' }];
             if (!screen) { GF.scope = 'everyone'; GF.pages = [null]; GF.page = 0; GF._visitPrev = {}; }
+            if (GF._ov) { GF.stack = GF._pending; GF._pending = null; GF.render(); GF.toTop(); GF.loadMe(); GF.paintBadges(); return; }
             try { window.showGolferTab('golffeed'); } catch (e) { GF.open(); }
         },
         profile(id) { if (id) GF.go({ s: 'profile', id }); },
@@ -525,7 +606,7 @@
         // ------------------------------------------------------------ the feed
         head() {
             const n = GF.counts.activity_new || 0;
-            return `<div class="gfd-head"><div class="gfd-wmwrap"><button class="gfd-wmbtn" data-act="quickcam" aria-label="${esc(tr('gfd.cam.aria', 'Take a photo'))}"><span class="gfd-cambadge">${mi('photo_camera')}</span><span class="gfd-title gfd-wm">${esc(tr('gfd.title', 'Tap-In'))}</span></button></div>
+            return `<div class="gfd-head">${GF._ov ? `<button class="gfd-ibtn" data-act="closeov" aria-label="${esc(tr('common.close', 'Close'))}">${mi('close')}</button>` : ''}<div class="gfd-wmwrap"><button class="gfd-wmbtn" data-act="quickcam" aria-label="${esc(tr('gfd.cam.aria', 'Take a photo'))}"><span class="gfd-cambadge">${mi('photo_camera')}</span><span class="gfd-title gfd-wm">${esc(tr('gfd.title', 'Tap-In'))}</span></button></div>
                 <button class="gfd-ibtn" data-act="search" aria-label="${esc(tr('gfd.search', 'Search'))}">${mi('search')}</button>
                 <button class="gfd-ibtn" data-act="activity" aria-label="${esc(tr('gfd.activity', 'Activity'))}">${mi('favorite')}${n ? `<span class="mkp-bdgr">${n > 99 ? '99+' : n}</span>` : ''}</button>
                 <button class="gfd-post-btn" data-act="compose">${mi('add_a_photo')}${esc(tr('gfd.post', 'Post'))}</button></div>`;
@@ -549,12 +630,12 @@
                 <button class="go" data-act="myprofile">${esc(tr('gfd.profile', 'Profile'))}${mi('chevron_right')}</button></div>`;
         },
         async rFeed(top, seq) {
-            if (!GF.me) GF.loadMe().then(() => { const x = document.getElementById('gfdMeRow'); if (x && GF.live(seq)) x.innerHTML = GF.meRow(); });
+            if (!GF.me && uid()) GF.loadMe().then(() => { const x = document.getElementById('gfdMeRow'); if (x && GF.live(seq)) x.innerHTML = GF.meRow(); });
             if (!GF._countsLoaded) await GF.refreshCounts();
             if (!GF.live(seq)) return;
             GF._newSince = GF.prevSeen(GF.scope);
             const r = GF.root(), wall = GF.view() === 'wall';
-            r.innerHTML = `${GF.head()}<div id="gfdMeRow">${GF.meRow()}</div>
+            r.innerHTML = `${GF.head()}<div id="gfdMeRow">${uid() ? GF.meRow() : ''}</div>
                 <div class="gfd-bar"><div class="mkp-tabs">
                     <button class="mkp-tab ${GF.scope === 'everyone' ? 'mkp-on' : ''}" data-act="scope" data-v="everyone">${mi('public')}${esc(tr('gfd.everyone', 'Everyone'))}${GF.tabN('feed_new')}</button>
                     <button class="mkp-tab ${GF.scope === 'following' ? 'mkp-on' : ''}" data-act="scope" data-v="following">${mi('group')}${esc(tr('gfd.following', 'Following'))}${GF.tabN('following_new')}</button></div>
@@ -600,6 +681,8 @@
             }
             const k = KIND[p.kind] || KIND.shot;
             let s = tr(k[1], k[2]);
+            const who = whoLbl(p.author);
+            if (who) s = p.author.kind === 'course' && p.kind === 'course' ? who : who + ' · ' + s;   // not "Golf course · Course"
             if (p.round) s += ' · ' + p.round.course + (p.round.society ? ' · ' + p.round.society : '');
             return s;
         },
@@ -634,7 +717,7 @@
                 + (p.recent || []).map(c => `<div class="gfd-cm"><b data-act="profile" data-id="${esc(c.author_id)}">${esc(c.name)}</b> ${linkify(c.body, c.mentions)}</div>`).join(''));
             return `<article class="mkp-card gfd-post" data-post="${esc(p.id)}">
                 <div class="hd"><span data-act="profile" data-id="${esc(a.id)}" style="cursor:pointer">${av(a)}</span>
-                  <div class="who" data-act="profile" data-id="${esc(a.id)}"><div class="nm">${esc(a.name)}${GF.isNew(p) ? `<span class="gfd-newtag">${esc(tr('gfd.new', 'NEW'))}</span>` : ''}</div><div class="sb">${p.audience === 'followers' ? mi('lock') + ' ' : ''}${esc(GF.subline(p))}</div></div>
+                  <div class="who" data-act="profile" data-id="${esc(a.id)}"><div class="nm">${esc(a.name)}${tick(a)}${GF.isNew(p) ? `<span class="gfd-newtag">${esc(tr('gfd.new', 'NEW'))}</span>` : ''}</div><div class="sb">${p.audience === 'followers' ? mi('lock') + ' ' : ''}${esc(GF.subline(p))}</div></div>
                   <button class="gfd-dots-btn" data-act="postmenu" data-id="${esc(p.id)}" aria-label="${esc(tr('gfd.more', 'More'))}">${mi('more_horiz')}</button></div>
                 ${url(p.video) ? `<div class="gfd-car vid" data-id="${esc(p.id)}"><video src="${url(p.video)}" poster="${photos[0] || ''}" playsinline muted loop preload="metadata"></video>
                   <button class="gfd-snd" data-act="sound" data-id="${esc(p.id)}" aria-label="${esc(tr('gfd.v.sound', 'Sound'))}">${mi('volume_off')}</button><div class="pop">${mi('favorite')}</div></div>`
@@ -762,7 +845,7 @@
         postMenu(id) {
             const p = GF._posts[id]; if (!p) return;
             const items = [];
-            if (p.kind === 'listing' && p.listing) items.push(['storefront', tr('gfd.menu.listing', 'Open in the 19th Hole'), () => GF.openListing(p.listing.id)]);
+            if (p.kind === 'listing' && p.listing && !GF._ov) items.push(['storefront', tr('gfd.menu.listing', 'Open in the 19th Hole'), () => GF.openListing(p.listing.id)]);
             items.push(['share', tr('gfd.menu.share', 'Share'), () => GF.share('/?post=' + encodeURIComponent(id), tr('gfd.title', 'Tap-In'))]);
             if (!p.mine) items.push(['person', tr('gfd.menu.profile', 'View profile'), () => GF.profile(p.author.id)]);
             if (p.mine && p.kind !== 'listing') items.push(['edit', tr('gfd.menu.edit', 'Edit post'), () => GF.go({ s: 'compose', edit: id })]);
@@ -814,6 +897,8 @@
             if (!P) { r.innerHTML = `<div class="gfd-head">${GF.backBtn()}</div><div class="mkp-card gfd-empty">${mi('person_off')}${esc(tr('gfd.nouser', 'This golfer isn’t on MyCaddiPro any more.'))}</div>`; return; }
             if (P.is_me) GF.me = P;
             const posts = (feed && feed.posts) || []; posts.forEach(p => { GF._posts[p.id] = p; });
+            if (P.is_page) { r.innerHTML = GF.pageHtml(P, posts); GF._prof = P; return; }
+            const cc = P.caddy_card;
             const since = P.since ? String(P.since).slice(0, 4) : '';
             const sub = P.is_me ? [P.society, since ? tr('gfd.since', 'on MyCaddiPro since {y}', { y: since }) : ''].filter(Boolean).join(' · ')
                 : [since ? tr('gfd.since.cap', 'On MyCaddiPro since {y}', { y: since }) : '', P.follows_me ? tr('gfd.followsyou', 'follows you') : ''].filter(Boolean).join(' · ');
@@ -825,31 +910,109 @@
                     <div><b>${P.posts || 0}</b><span>${esc(tr('gfd.posts', 'posts'))}</span></div>
                     <button data-act="follows" data-v="followers"><b>${P.followers || 0}</b><span>${esc(tr('gfd.followers', 'followers'))}</span></button>
                     <button data-act="follows" data-v="following"><b>${P.following || 0}</b><span>${esc(tr('gfd.followinglbl', 'following'))}</span></button></div></div>
-                <div class="gfd-pname">${esc(P.name)} ${hcp ? `<span class="mkp-chip" style="vertical-align:middle">HCP ${esc(hcp)}</span>` : ''}</div>
+                <div class="gfd-pname">${esc(P.name)} ${hcp && !cc ? `<span class="mkp-chip" style="vertical-align:middle">HCP ${esc(hcp)}</span>` : ''}</div>
                 ${P.handle ? `<div class="gfd-phandle">@${esc(P.handle)}</div>` : ''}
+                ${cc ? `<div class="gfd-psub" style="margin-top:6px"><span class="gfd-kind caddy">${mi('person_pin_circle')}<span>${esc(tr('gfd.k.caddy', 'Caddy'))}${cc.number ? ' ' + esc(cc.number) : ''} · ${esc(cc.course || '')}</span></span></div>` : ''}
                 ${sub ? `<div class="gfd-psub">${esc(sub)}</div>` : ''}
                 ${P.bio ? `<div class="gfd-pbio">${esc(P.bio)}</div>` : ''}
                 <div id="gfdEditBox"></div>
                 <div class="gfd-pacts">${P.is_me
                     ? `<button class="mkp-btn-line" data-act="editprofile">${mi('edit', 'font-size:16px')}${esc(tr('gfd.editprofile', 'Edit profile'))}</button>
                        <button class="mkp-btn-line" data-act="shareprofile">${mi('share', 'font-size:16px')}${esc(tr('gfd.shareprofile', 'Share profile'))}</button>`
-                    : `<button class="${P.i_follow ? 'mkp-btn-line' : 'mkp-btn-solid'}" data-act="follow" data-id="${esc(P.id)}" data-on="${P.i_follow ? '0' : '1'}">${mi(P.i_follow ? 'how_to_reg' : 'person_add', 'font-size:16px')}${esc(followLbl)}</button>
-                       <button class="mkp-btn-line" data-act="dm" data-id="${esc(P.id)}">${mi('chat', 'font-size:16px')}${esc(tr('gfd.message', 'Message'))}</button>`}</div>
-                <div class="gfd-golf"><div class="mkp-card"><div class="v g">${esc(hcp || '—')}</div><div class="k">${esc(tr('gfd.handicap', 'Handicap'))}</div></div>
+                    : `<button class="${P.i_follow ? 'mkp-btn-line' : 'mkp-btn-solid'} ${GF._ov ? 'solo' : ''}" data-act="follow" data-id="${esc(P.id)}" data-on="${P.i_follow ? '0' : '1'}">${mi(P.i_follow ? 'how_to_reg' : 'person_add', 'font-size:16px')}${esc(followLbl)}</button>
+                       ${GF._ov ? '' : cc ? `<button class="mkp-btn-line" data-act="bookcaddy">${mi('event_available', 'font-size:16px')}${esc(tr('gfd.bookcaddy', 'Book this caddy'))}</button>`
+                         : `<button class="mkp-btn-line" data-act="dm" data-id="${esc(P.id)}">${mi('chat', 'font-size:16px')}${esc(tr('gfd.message', 'Message'))}</button>`}`}</div>
+                ${cc ? `<div class="gfd-golf">${GF.statCard(Number(cc.rating) > 0 ? Number(cc.rating).toFixed(1) : tr('gfd.s.new', 'New'), tr('gfd.s.rating', 'Rating'), true)}
+                    ${GF.statCard(cc.rounds || 0, tr('gfd.rounds', 'Rounds'))}${GF.statCard(cc.years ? tr('gfd.s.yrs', '{n} yrs', { n: cc.years }) : '—', tr('gfd.s.exp', 'Experience'))}</div>`
+                : `<div class="gfd-golf"><div class="mkp-card"><div class="v g">${esc(hcp || '—')}</div><div class="k">${esc(tr('gfd.handicap', 'Handicap'))}</div></div>
                     <div class="mkp-card"><div class="v">${P.rounds || 0}</div><div class="k">${esc(tr('gfd.rounds', 'Rounds'))}</div></div>
-                    <div class="mkp-card"><div class="v">${P.best || '—'}</div><div class="k">${esc(tr('gfd.best', 'Best round'))}</div></div></div>
+                    <div class="mkp-card"><div class="v">${P.best || '—'}</div><div class="k">${esc(tr('gfd.best', 'Best round'))}</div></div></div>`}
                 ${posts.length ? `<div class="gfd-wall">${posts.map(GF.tile).join('')}</div>`
                     : `<div class="mkp-card gfd-empty">${mi('photo_camera')}${esc(P.is_me ? tr('gfd.noposts.me', 'No posts yet. Share a round, a great shot or the course.') : tr('gfd.noposts', 'No posts yet.'))}${P.is_me ? `<br><button class="mkp-btn-solid" data-act="compose" style="display:inline-flex">${mi('add_a_photo', 'font-size:16px')}${esc(tr('gfd.post', 'Post'))}</button>` : ''}</div>`}`;
             GF._prof = P;
         },
+        statCard(v, k, g) { return `<div class="mkp-card"><div class="v${g ? ' g' : ''}">${esc(v)}</div><div class="k">${esc(k)}</div></div>`; },
+        // a society or golf course page (v1278)
+        pageHtml(P, posts) {
+            const soc = P.kind === 'society';
+            const chip = soc ? `<span class="gfd-kind">${mi('groups')}${esc(tr('gfd.k.society', 'Society'))}</span>`
+                : `<span class="gfd-kind course">${mi('golf_course')}${esc(tr('gfd.k.course', 'Golf course'))}</span>`;
+            const followLbl = P.i_follow ? tr('gfd.followingbtn', 'Following') : tr('gfd.follow', 'Follow');
+            const extra = GF._ov ? '' : soc ? `<button class="mkp-btn-line" data-act="pageevents">${mi('event', 'font-size:16px')}${esc(tr('gfd.events', 'Events'))}</button>`
+                : `<button class="mkp-btn-line" data-act="booktee">${mi('sports_golf', 'font-size:16px')}${esc(tr('gfd.booktee', 'Book a tee time'))}</button>`;
+            const acts = P.can_post
+                ? `<button class="mkp-btn-solid" data-act="postaspage">${mi('add_a_photo', 'font-size:16px')}${esc(tr('gfd.post', 'Post'))}</button>
+                   <button class="mkp-btn-line" data-act="editprofile">${mi('edit', 'font-size:16px')}${esc(tr('gfd.editpage', 'Edit page'))}</button>`
+                : `<button class="${P.i_follow ? 'mkp-btn-line' : 'mkp-btn-solid'} ${extra ? '' : 'solo'}" data-act="follow" data-id="${esc(P.id)}" data-on="${P.i_follow ? '0' : '1'}">${mi(P.i_follow ? 'how_to_reg' : 'person_add', 'font-size:16px')}${esc(followLbl)}</button>${extra}`;
+            const loc = String(P.location || '').split(',')[0].trim();
+            const stats = soc
+                ? GF.statCard(P.events_week || 0, tr('gfd.s.week', 'Events this week'), true) + GF.statCard(P.events_month || 0, tr('gfd.s.month', 'Next 30 days'))
+                  + GF.statCard(P.since ? String(P.since).slice(0, 4) : '—', tr('gfd.s.since', 'On MyCaddiPro'))
+                : GF.statCard(P.holes || '—', tr('gfd.s.holes', 'Holes')) + GF.statCard(P.par || '—', tr('gfd.s.par', 'Par'))
+                  + (P.caddies ? GF.statCard(P.caddies, tr('gfd.s.caddies', 'Caddies'), true) : GF.statCard(loc || '—', tr('gfd.s.location', 'Location')));
+            return `<div class="gfd-head">${GF.stack.length > 1 ? GF.backBtn() : ''}<div class="gfd-title">${esc(P.name)}</div>
+                    <button class="gfd-ibtn" data-act="profmenu" aria-label="${esc(tr('gfd.more', 'More'))}">${mi('more_horiz')}</button></div>
+                <div class="gfd-prof">${av(P, 78)}<div class="gfd-pst">
+                    <div><b>${P.posts || 0}</b><span>${esc(tr('gfd.posts', 'posts'))}</span></div>
+                    <button data-act="follows" data-v="followers"><b>${P.followers || 0}</b><span>${esc(tr('gfd.followers', 'followers'))}</span></button>
+                    <div><b>0</b><span>${esc(tr('gfd.followinglbl', 'following'))}</span></div></div></div>
+                <div class="gfd-pname">${esc(P.name)}${tick(P)}</div>
+                ${P.handle ? `<div class="gfd-phandle">@${esc(P.handle)}</div>` : ''}
+                <div class="gfd-psub" style="margin-top:6px">${chip}</div>
+                ${P.bio ? `<div class="gfd-pbio">${esc(P.bio)}</div>` : ''}
+                <div id="gfdEditBox"></div>
+                <div class="gfd-pacts">${acts}</div>
+                <div class="gfd-golf">${stats}</div>
+                ${posts.length ? `<div class="gfd-wall">${posts.map(GF.tile).join('')}</div>`
+                    : `<div class="mkp-card gfd-empty">${mi('photo_camera')}${esc(P.can_post ? tr('gfd.noposts.page', 'No posts yet. Share news, results, course conditions and photos.') : tr('gfd.noposts', 'No posts yet.'))}${P.can_post ? `<br><button class="mkp-btn-solid" data-act="postaspage" style="display:inline-flex">${mi('add_a_photo', 'font-size:16px')}${esc(tr('gfd.post', 'Post'))}</button>` : ''}</div>`}`;
+        },
+        // the page's buttons land in the golfer app's own screens
+        openEvents(P) {
+            try { window.showGolferTab('societyevents'); } catch (e) { return; }
+            // the tab picks its own default society while its events load — switch once they are in, then hold it
+            const want = String(P.name || '').toLowerCase(); let n = 0, held = 0;
+            const iv = setInterval(() => {
+                const G = window.GolferEventsSystem, sel = document.getElementById('societyFilter');
+                const opt = sel && [...sel.options].find(o => o.value && o.value !== 'all' && o.value !== 'private_events' && (want.includes(String(o.value).toLowerCase()) || (o.value + ' ' + o.textContent).toLowerCase().includes(want)));
+                if (++n > 40) { clearInterval(iv); return; }
+                if (!opt || !G || !(G.allEvents || []).length) return;
+                if (sel.value !== opt.value) { held = 0; try { if (G.selectSocietyTile) G.selectSocietyTile(opt.value); else { sel.value = opt.value; G.applyFilters(); } } catch (e) { } }
+                else if (++held >= 4) clearInterval(iv);
+            }, 400);
+        },
+        // the Booking tab keeps its own course list with its own names ("Pattaya Golf Club" = Pattaya Country Club):
+        // match on the name's key words, the manager dashboard's stem rule; no match = the tab as it is
+        bookTee(P) {
+            try { window.showGolferTab('booking'); } catch (e) { return; }
+            const STOP = ['golf', 'club', 'country', 'county', 'course', 'resort', 'international', 'the', 'spa', 'cc', 'and', 'gc'];
+            const stem = (n) => String(n || '').toLowerCase().replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w && !STOP.includes(w)).slice(0, 2).join(' ');
+            setTimeout(() => {
+                let cat = null; try { cat = typeof GolfCoursesDatabase !== 'undefined' ? GolfCoursesDatabase : window.GolfCoursesDatabase; } catch (e) { }
+                const want = stem(P.name), hit = want && cat && (cat.courses || []).find(c => stem(c.name) === want);
+                if (!hit || typeof window.selectCourse !== 'function') return;
+                try { window.selectCourse(hit.id); } catch (e) { return; }
+                try { document.querySelector(`[data-course="${hit.id}"]`)?.scrollIntoView({ block: 'center', inline: 'center' }); } catch (e) { }
+            }, 450);
+        },
+        bookCaddy(cc) {
+            if (!cc || !window.GolferCaddyBooking) return;
+            Promise.resolve(GolferCaddyBooking.showCaddyBookingPage(cc.course)).then(() => setTimeout(() => { try { GolferCaddyBooking.viewCaddyProfile(cc.caddy_id); } catch (e) { } }, 600));
+        },
+        // "Post" on a page: the composer, posting as that page
+        postAsPage(P) {
+            if (!P || !P.can_post) return;
+            const d = GF._draft || (GF._draft = { kind: 'course', round: null, photos: [], caption: '', audience: 'everyone', rounds: null, mentions: [] });
+            d.as = P.id; if (d.kind === 'round') d.kind = P.kind === 'society' ? 'shot' : 'course';
+            GF.go({ s: 'compose' });
+        },
         editProfile() {
             const P = GF._prof; const box = document.getElementById('gfdEditBox'); if (!P || !box) return;
-            box.innerHTML = `<div class="mkp-card gfd-edit"><div class="gfd-lbl" style="margin-top:0">${esc(tr('gfd.handle', 'Your Tap-In handle'))}</div>
+            box.innerHTML = `<div class="mkp-card gfd-edit"><div class="gfd-lbl" style="margin-top:0">${esc(P.is_page ? tr('gfd.pagehandle', 'Page handle') : tr('gfd.handle', 'Your Tap-In handle'))}</div>
                 <div class="gfd-hfield"><b>@</b><input id="gfdHandle" maxlength="24" autocomplete="off" autocapitalize="none" spellcheck="false" value="${esc(P.handle || '')}"></div>
                 <div class="gfd-hmsg" id="gfdHMsg"></div>
-                <div class="gfd-lbl">${esc(tr('gfd.bio', 'About you · 160 characters'))}</div>
-                <textarea class="gfd-ta" id="gfdBio" maxlength="160" placeholder="${esc(tr('gfd.bio.ph', 'e.g. Pattaya. Early tee times, fast greens.'))}">${esc(P.bio || '')}</textarea>
-                <p class="mkp-note" style="margin:8px 0 0">${mi('info')}<span>${esc(tr('gfd.photo.line2', 'Your photo is your LINE profile picture. Golfers find you by name or @handle.'))}</span></p>
+                <div class="gfd-lbl">${esc(P.is_page ? tr('gfd.pagebio', 'About the page · 160 characters') : tr('gfd.bio', 'About you · 160 characters'))}</div>
+                <textarea class="gfd-ta" id="gfdBio" maxlength="160" placeholder="${esc(P.is_page ? tr('gfd.pagebio.ph', 'e.g. Results, draws and course news.') : tr('gfd.bio.ph', 'e.g. Pattaya. Early tee times, fast greens.'))}">${esc(P.bio || '')}</textarea>
+                <p class="mkp-note" style="margin:8px 0 0">${mi('info')}<span>${esc(P.is_page ? tr('gfd.pagephoto', 'The page picture is the society logo or the course mark. Golfers find the page by name or @handle.') : tr('gfd.photo.line2', 'Your photo is your LINE profile picture. Golfers find you by name or @handle.'))}</span></p>
                 <div class="gfd-pacts" style="margin-bottom:0"><button class="mkp-btn-line" data-act="canceledit">${esc(tr('common.cancel', 'Cancel'))}</button><button class="mkp-btn-solid" data-act="savebio">${esc(tr('common.save', 'Save'))}</button></div></div>`;
         },
         async saveBio() {
@@ -857,7 +1020,9 @@
             const h = (document.getElementById('gfdHandle')?.value || '').trim().toLowerCase().replace(/^@/, '');
             const P = GF._prof;
             try {
-                const r = await rpc('golf_profile_update', { p_user: uid(), p_bio: el.value, p_handle: h && (!P || h !== P.handle) ? h : null });
+                const args = { p_user: uid(), p_bio: el.value, p_handle: h && (!P || h !== P.handle) ? h : null };
+                if (P && P.is_page) args.p_as = P.id;
+                const r = await rpc('golf_profile_update', args);
                 if (!r || !r.ok) throw new Error(GF.why(r));
                 GF.me = null; GF.render();
             } catch (e) { toast(e.message || String(e), 'error'); }
@@ -871,7 +1036,7 @@
                 if (inp.value !== h) inp.value = h;
                 const P = GF._prof;
                 if (P && h === P.handle) { msg.className = 'gfd-hmsg ok'; msg.textContent = tr('gfd.handle.ok', '@{h} is yours · letters, numbers, . and _', { h }); return; }
-                let r = null; try { r = await rpc('golf_handle_available', { p_user: uid(), p_handle: h }); } catch (e) { return; }
+                let r = null; try { r = await rpc('golf_handle_available', Object.assign({ p_user: uid(), p_handle: h }, P && P.is_page ? { p_as: P.id } : {})); } catch (e) { return; }
                 if (inp.value.trim().toLowerCase() !== h) return;
                 if (r && r.available) { msg.className = 'gfd-hmsg ok'; msg.textContent = tr('gfd.handle.free', '@{h} is free', { h }); }
                 else { msg.className = 'gfd-hmsg bad'; msg.textContent = r && r.reason === 'taken' ? tr('gfd.handle.taken', '@{h} is taken', { h }) : r && r.reason === 'reserved' ? tr('gfd.handle.reserved', 'That handle is reserved') : tr('gfd.handle.format', 'Use 3–24 letters, numbers, . or _'); }
@@ -893,10 +1058,12 @@
         personRow(p) {
             const bits = [];
             if (p.handle) bits.push(`<span class="h">@${esc(p.handle)}</span>`);
+            if (isPage(p)) bits.push(`<span class="h">${esc(whoLbl(p))}</span>`);
+            else if (p.caddy) bits.push(`<span class="h">${esc(whoLbl(p))} · ${esc(p.caddy.course || '')}</span>`);
             if (p.follows_me && !p.is_me) bits.push(`<i class="fy">${esc(tr('gfd.followsyou', 'follows you'))}</i>`);
             const lbl = p.i_follow ? tr('gfd.followingbtn', 'Following') : (p.follows_me ? tr('gfd.followback', 'Follow back') : tr('gfd.follow', 'Follow'));
             return `<div class="gfd-act" data-act="profile" data-id="${esc(p.id)}" data-q="${esc(((p.name || '') + ' ' + (p.handle || '')).toLowerCase())}">${av(p, 40)}
-                <div class="tx"><b>${esc(p.name)}</b>${bits.length ? '<br>' + bits.join(' · ') : ''}</div>
+                <div class="tx"><b>${esc(p.name)}</b>${tick(p)}${bits.length ? '<br>' + bits.join(' · ') : ''}</div>
                 ${p.is_me ? '' : `<button class="gfd-fbtn ${p.i_follow ? 'ghost' : ''}" data-act="followbtn" data-id="${esc(p.id)}" data-on="${p.i_follow ? '0' : '1'}">${esc(lbl)}</button>`}</div>`;
         },
         async rFollows(top, seq) {
@@ -920,7 +1087,7 @@
         },
         async rSearch(top, seq) {
             const r = GF.root();
-            r.innerHTML = `<div class="gfd-head">${GF.backBtn()}<div class="gfd-srch"><input id="gfdQ" autocomplete="off" enterkeyhint="search" placeholder="${esc(tr('gfd.search.ph', 'Search golfers by name or @handle'))}" value="${esc(top.q || '')}"></div></div>
+            r.innerHTML = `<div class="gfd-head">${GF.backBtn()}<div class="gfd-srch"><input id="gfdQ" autocomplete="off" enterkeyhint="search" placeholder="${esc(tr('gfd.search.ph3', 'Golfers, caddies, societies, courses'))}" value="${esc(top.q || '')}"></div></div>
                 <div id="gfdSr">${GF.spin()}</div>`;
             const inp = document.getElementById('gfdQ');
             let t = null;
@@ -936,7 +1103,7 @@
             const box = document.getElementById('gfdSr'); if (!box) return;
             list = list || [];
             box.innerHTML = list.length
-                ? `<div class="gfd-sec">${esc(sug ? tr('gfd.suggested', 'Suggested for you') : tr('gfd.golfers', 'Golfers'))}</div><div class="mkp-card" style="padding:0 12px">${list.map(GF.personRow).join('')}</div>`
+                ? `<div class="gfd-sec">${esc(sug ? tr('gfd.suggested', 'Suggested for you') : tr('gfd.results', 'Results'))}</div><div class="mkp-card" style="padding:0 12px">${list.map(GF.personRow).join('')}</div>`
                 : `<div class="mkp-card gfd-empty">${mi(sug ? 'person_search' : 'search_off')}${esc(sug ? tr('gfd.search.hint', 'Find golfers by name or @handle and follow them.') : tr('gfd.nomatch', 'No golfers found.'))}</div>`;
         },
         async rSaved(top, seq) {
@@ -951,12 +1118,17 @@
         },
         profMenu() {
             const P = GF._prof; if (!P) return;
+            if (P.is_page) {
+                const it = [['share', tr('gfd.sharepage', 'Share page'), () => GF.shareProfile(P)]];
+                if (P.can_post) it.unshift(['add_a_photo', tr('gfd.postaspage', 'Post as this page'), () => GF.postAsPage(P)], ['edit', tr('gfd.editpage', 'Edit page'), () => { GF.editProfile(); GF.wireHandle(); }]);
+                it.push(['menu_book', tr('gfd.guidelines', 'Guidelines & FAQ'), () => GF.guidelines()]);
+                GF.sheet('', '', it); return;
+            }
             if (P.is_me) GF.sheet('', '', [['bookmark', tr('gfd.savedposts', 'Saved posts'), () => GF.go({ s: 'saved' })],
                 ['edit', tr('gfd.editprofile', 'Edit profile'), () => { GF.editProfile(); GF.wireHandle(); }],
                 ['share', tr('gfd.shareprofile', 'Share profile'), () => GF.shareProfile(P)],
                 ['menu_book', tr('gfd.guidelines', 'Guidelines & FAQ'), () => GF.guidelines()]]);
-            else GF.sheet('', '', [['share', tr('gfd.shareprofile', 'Share profile'), () => GF.shareProfile(P)],
-                ['chat', tr('gfd.message', 'Message'), () => GF.dm(P.id)]]);
+            else GF.sheet('', '', [['share', tr('gfd.shareprofile', 'Share profile'), () => GF.shareProfile(P)]].concat(GF._ov ? [] : [['chat', tr('gfd.message', 'Message'), () => GF.dm(P.id)]]));
         },
         guidelines() { try { window.LegalPages && LegalPages.open('guidelines'); } catch (e) { } },
         shareProfile(P) { GF.share('/?golfer=' + encodeURIComponent(P.id), P.name + ' · ' + tr('gfd.title', 'Tap-In')); },
@@ -986,6 +1158,7 @@
                         mentions: (p.mentions || []).map(m => ({ id: m.id, name: m.name })) };
                 }
                 d = GF._ed;
+                d.page = isPage(p.author);   // a page's post never carries a round
             } else d = GF._draft || (GF._draft = { kind: 'round', round: null, photos: [], caption: '', audience: 'everyone', rounds: null, mentions: [] });
             const r = GF.root();
             if (d.rounds === null) {
@@ -999,7 +1172,8 @@
                 }).catch(() => { });
             }
             r.innerHTML = `<div class="gfd-head">${GF.backBtn()}<div class="gfd-title">${esc(d.edit ? tr('gfd.editpost', 'Edit post') : tr('gfd.newpost', 'New post'))}</div></div>
-                <div class="gfd-kinds">${Object.keys(KIND).map(k => `<button class="${d.kind === k ? 'on' : ''}" data-act="kind" data-v="${k}">${mi(KIND[k][0])}${esc(tr(KIND[k][1], KIND[k][2]))}</button>`).join('')}</div>
+                <div id="gfdAsRow"></div>
+                <div class="gfd-kinds" id="gfdKinds"></div>
                 <div id="gfdRounds"></div>
                 <div class="gfd-lbl">${esc(tr('gfd.photos10', 'Photos · up to 10'))}</div>
                 <div class="gfd-addrow" id="gfdAddRow"><button class="p" data-act="cam" data-v="photo">${mi('photo_camera')}${esc(tr('gfd.cam.photo', 'Camera'))}</button>
@@ -1019,7 +1193,32 @@
             document.getElementById('gfdCap').addEventListener('input', e => { d.caption = e.target.value; });
             GF.wireMentions(document.getElementById('gfdCap'), d.mentions);
             ['gfdFile', 'gfdCamP', 'gfdCamV'].forEach(id => document.getElementById(id).addEventListener('change', e => { GF.addPhotos(e.target.files); e.target.value = ''; }));
-            GF.paintRounds(); GF.paintPhotos();
+            GF.paintKinds(); GF.paintRounds(); GF.paintPhotos();
+            // Post as (v1278): only when this login posts for a society or a course. A dashboard's default
+            // is applied in place — never a re-render, which would drop a camera already opened on this screen.
+            if (!d.edit && uid()) GF.myPages().then(() => {
+                if (!GF.live(seq) || GF.cur() !== d) return;
+                if (d.as === undefined) { d.as = GF.defaultAs() || uid(); if (GF.asPage(d) && d.kind === 'round') d.kind = GF._ov === 'society' ? 'shot' : 'course'; GF.paintKinds(); GF.paintRounds(); }
+                GF.paintAs();
+            });
+        },
+        asPage(d) { return d.edit ? !!d.page : !!d.as && d.as !== uid(); },
+        paintKinds() {
+            const d = GF.cur(), box = document.getElementById('gfdKinds'); if (!d || !box) return;
+            const pg = GF.asPage(d);
+            box.innerHTML = Object.keys(KIND).filter(k => !(pg && k === 'round')).map(k => `<button class="${d.kind === k ? 'on' : ''}" data-act="kind" data-v="${k}">${mi(KIND[k][0])}${esc(tr(KIND[k][1], KIND[k][2]))}</button>`).join('');
+        },
+        paintAs() {
+            const d = GF.cur(), box = document.getElementById('gfdAsRow'); if (!d || !box) return;
+            const list = GF._asList || [];
+            if (d.edit || list.length < 2) { box.innerHTML = ''; return; }
+            const cur = d.as || uid();
+            const was = box.querySelector('.gfd-as'), x0 = was ? was.scrollLeft : null;
+            box.innerHTML = `<div class="gfd-lbl" style="margin-top:0">${esc(tr('gfd.postas', 'Post as'))}</div><div class="gfd-as">${list.map(p => `<button class="${p.id === cur ? 'on' : ''}" data-act="postas" data-v="${esc(p.id)}">${av(p, 28)}<span class="n">${esc(p.name)}</span></button>`).join('')}</div>`;
+            // keep the row where it was; on first paint bring the picked one (a dashboard's page) into view
+            const row = box.querySelector('.gfd-as'), on = row && row.querySelector('.on');
+            if (row && x0 !== null) row.scrollLeft = x0;
+            else if (row && on && on.offsetLeft - row.offsetLeft + on.offsetWidth > row.clientWidth) row.scrollLeft = on.offsetLeft - row.offsetLeft - 8;
         },
         paintSound() {
             const d = GF.cur(), box = document.getElementById('gfdSound'); if (!d || !box) return;
@@ -1178,10 +1377,12 @@
                     urls.push(ready[i].url);
                 }
                 const ids = (d.mentions || []).filter(m => (d.caption || '').includes('@' + m.name) || (m.handle && (d.caption || '').toLowerCase().includes('@' + m.handle))).map(m => m.id);
+                const pageAs = !d.edit && GF.asPage(d);
                 const args = { p_user: me, p_kind: d.kind, p_caption: d.caption || '', p_photos: urls,
-                    p_round: d.kind === 'round' ? d.round : null, p_audience: d.audience, p_mentions: ids.length ? ids : null,
+                    p_round: d.kind === 'round' && !GF.asPage(d) ? d.round : null, p_audience: d.audience, p_mentions: ids.length ? ids : null,
                     p_video: videoUrl, p_muted: videoUrl ? !!d.muted : false };
-                const r = d.edit ? await rpc('golf_post_update', Object.assign({ p_post: d.edit }, args)) : await rpc('golf_post_create', args);
+                const r = d.edit ? await rpc('golf_post_update', Object.assign({ p_post: d.edit }, args))
+                    : await rpc('golf_post_create', pageAs ? Object.assign({ p_as: d.as }, args) : args);
                 if (!r || !r.ok) throw new Error(GF.why(r));
                 d.photos.forEach(p => { try { if (p.preview) URL.revokeObjectURL(p.preview); } catch (e) { } });
                 if (d.edit) {
@@ -1240,7 +1441,7 @@
                 + (shown.length ? `<div class="mkp-card" style="padding:4px 12px">${shown.map(a => `
                 <div class="gfd-act ${a.is_new ? 'new' : ''}" data-act="${a.post_id ? 'openpost' : a.listing_id ? 'listing' : 'profile'}" data-id="${esc(a.post_id || a.listing_id || a.actor.id)}">
                   <span data-act="profile" data-id="${esc(a.actor.id)}">${av(a.actor, 40)}</span>
-                  <div class="tx"><b>${esc(a.actor.name)}</b> ${esc(line(a))} <span>${esc(agoShort(a.at))}</span></div>
+                  <div class="tx"><b>${esc(a.actor.name)}</b>${tick(a.actor)} ${esc(line(a))} ${a.page ? `<i class="pg">${esc(tr('gfd.a.onpage', '· {p}', { p: a.page.name }))}</i> ` : ''}<span>${esc(agoShort(a.at))}</span></div>
                   ${a.type === 'follow' ? `<button class="gfd-fbtn ${a.i_follow ? 'ghost' : ''}" data-act="followbtn" data-id="${esc(a.actor.id)}" data-on="${a.i_follow ? '0' : '1'}">${esc(a.i_follow ? tr('gfd.followingbtn', 'Following') : tr('gfd.follow', 'Follow'))}</button>`
                     : (url(a.thumb) ? `<img class="th" src="${url(a.thumb)}" alt="" loading="lazy">` : '')}</div>`).join('')}</div>`
                 : `<div class="mkp-card gfd-empty">${mi('favorite')}${esc(tr('gfd.noactivity', 'Likes, comments and new followers show up here.'))}</div>`);
@@ -1286,45 +1487,58 @@
             if (!wide) { cube.querySelector('.gfd-strip')?.remove(); return null; }
             return cube;
         },
+        // every Tap-In cube on screen: the golfer home's + the organizer / staff / caddie homes' (v1278)
+        cubes() {
+            const out = [], g = GF.wideCube();
+            if (g && uid()) out.push(g);
+            document.querySelectorAll('.gfdCube.gfd-other').forEach(c => out.push(c));
+            return out;
+        },
         async paintCubeStrip() {
             injectStyle();
-            const cube = GF.wideCube(); if (!cube || !uid()) return;
+            if (!db() || !GF.cubes().length) return;
             let posts = [];
             // the newest posts on Tap-In, mine included (Pete: "why isn't the images showing up on the cube" —
             // with only his own posts the others-only strip was empty); others' unseen posts go first
-            try { const r = await rpc('golf_feed', { p_user: uid(), p_scope: 'everyone', p_author: null, p_before: null, p_limit: 12, p_post: null }); posts = (r && r.posts) || []; }
+            try { const r = await rpc('golf_feed', { p_user: uid() || null, p_scope: 'everyone', p_author: null, p_before: null, p_limit: 12, p_post: null }); posts = (r && r.posts) || []; }
             catch (e) { return; }
-            if (!GF.wideCube()) return;
+            const cubes = GF.cubes(); if (!cubes.length) return;
             const seen = GF.counts.feed_seen_at ? new Date(GF.counts.feed_seen_at) : new Date(Date.now() - 7 * 864e5);
             const fresh = (p) => !p.mine && new Date(p.created_at) > seen;
             posts = posts.filter(fresh).concat(posts.filter(p => !fresh(p)));
             const k = window.innerWidth >= 768 ? 4 : 3, show = posts.slice(0, k);
             const prev = GF._stripIds;
-            let strip = cube.querySelector('.gfd-strip');
-            if (!strip) { strip = document.createElement('span'); strip.className = 'gfd-strip'; cube.appendChild(strip); }
             const extra = Math.max(0, (GF.counts.feed_new || 0) - show.filter(fresh).length);
-            strip.innerHTML = show.length ? show.map((p, i) => {
+            const html = show.length ? show.map((p, i) => {
                 const isNew = fresh(p);
                 const pop = prev ? !prev.has(p.id) : isNew;   // first paint: the unseen ones pop; later: only fresh arrivals
                 const img = url((p.photos || [])[0]);
                 return `<span class="ph ${pop ? 'pop' : ''}" style="--i:${i}" data-gfdpost="${esc(p.id)}">${img ? `<img src="${img}" alt="" loading="lazy">` : ''}${isNew ? '<i class="nd"></i>' : ''}${av(p.author, 22)}</span>`;
             }).join('') + (window.innerWidth >= 768 && extra ? `<span class="more">+${extra > 99 ? '99' : extra}</span>` : '')
                 : `<span class="ph empty">${mi('add_a_photo')}</span><span class="ph empty">${mi('sports_golf')}</span>`;
+            cubes.forEach(cube => {
+                let strip = cube.querySelector('.gfd-strip');
+                if (!strip) { strip = document.createElement('span'); strip.className = 'gfd-strip'; cube.appendChild(strip); }
+                strip.innerHTML = html;
+                cube.classList.toggle('gfd-live', !!((GF.counts.feed_new || 0) + (GF.counts.activity_new || 0)));
+            });
             GF._stripIds = new Set(show.map(p => p.id));
-            cube.classList.toggle('gfd-live', !!((GF.counts.feed_new || 0) + (GF.counts.activity_new || 0)));
         },
         // start the audio engine on a tap — a clip's sound can only be recorded through a context started by a tap
         audioOn() { try { const AC = window.AudioContext || window.webkitAudioContext; if (AC && !GF._ac) GF._ac = new AC(); if (GF._ac) GF._ac.resume().catch(() => { }); } catch (x) { } },
         // the camera on the T of the home cube: Photo / 15-second video / Library, straight to the camera
         cubeCam() {
+            if (!uid()) { GF.needLogin(); return; }
             const go = (id) => () => { GF.audioOn(); GF.show({ s: 'compose' }); document.getElementById(id)?.click(); };
             GF.sheet(tr('gfd.cam.t', 'Post to Tap-In'), '', [
                 ['photo_camera', tr('gfd.cam.photo2', 'Photo'), go('gfdCamP')],
                 ['videocam', tr('gfd.cam.video2', '15-second video'), go('gfdCamV')],
                 ['photo_library', tr('gfd.cam.library', 'Library'), go('gfdFile')]]);
         },
-        cubeTap(e) {
-            if (e && e.target && e.target.closest && e.target.closest('.gfd-cubecam')) { GF.cubeCam(); return; }
+        // ctx: the cube on an organizer ('society'), course staff ('course') or caddie ('me') home opens Tap-In over it
+        cubeTap(e, ctx) {
+            if (ctx && !GF.mountOverlay(ctx)) return;
+            if (e && e.target && e.target.closest && e.target.closest('.gfd-cubecam')) { if (ctx) GF.show(); GF.cubeCam(); return; }
             const t = e && e.target && e.target.closest && e.target.closest('[data-gfdpost]');
             if (t) GF.show({ s: 'post', id: t.dataset.gfdpost }); else GF.show();
         },
@@ -1416,8 +1630,13 @@
             document.body.appendChild(ov);
         },
         openListing(id) {
-            try { window.MarketplaceSystem && MarketplaceSystem.openDetailModal(id); } catch (e) { }
+            try {
+                if (!window.MarketplaceSystem) return;
+                MarketplaceSystem.openDetailModal(id);
+                if (GF._ov) { const m = document.getElementById('listingDetailModal'); if (m) m.style.zIndex = '11600'; }   // above the dashboard overlay
+            } catch (e) { }
         },
+        needLogin() { toast(tr('gfd.signin', 'Sign in with LINE to post on Tap-In.'), 'info'); },
 
         // ------------------------------------------------------------ one click handler for the whole tab
         onClick(e) {
@@ -1428,8 +1647,14 @@
             switch (act) {
                 case 'back': GF.back(); break;
                 case 'retry': GF.render(); break;
-                case 'activity': GF.go({ s: 'activity' }); break;
-                case 'compose': GF.go({ s: 'compose' }); break;
+                case 'activity': if (!uid()) { GF.needLogin(); break; } GF.go({ s: 'activity' }); break;
+                case 'compose': if (!uid()) { GF.needLogin(); break; } GF.go({ s: 'compose' }); break;
+                case 'closeov': GF.closeOverlay(); break;
+                case 'postas': { const d = GF.cur(); if (d && !d.edit) { d.as = v; if (GF.asPage(d) && d.kind === 'round') d.kind = 'course'; GF.paintAs(); GF.paintKinds(); GF.paintRounds(); } break; }
+                case 'postaspage': GF.postAsPage(GF._prof); break;
+                case 'pageevents': if (GF._prof) GF.openEvents(GF._prof); break;
+                case 'booktee': if (GF._prof) GF.bookTee(GF._prof); break;
+                case 'bookcaddy': if (GF._prof && GF._prof.caddy_card) GF.bookCaddy(GF._prof.caddy_card); break;
                 case 'scope': if (GF.scope !== v) { GF.scope = v; GF.pages = [null]; GF.page = 0; GF.render(); } break;
                 case 'viewmode': try { localStorage.setItem('gfd.view', v); } catch (x) { } GF.render(); break;
                 case 'older': {
@@ -1437,7 +1662,7 @@
                     const last = posts[posts.length - 1]; if (!last) break;
                     GF.pages[GF.page + 1] = last.created_at; GF.page++; GF.render(); window.scrollTo(0, 0); break;
                 }
-                case 'newer': if (GF.page > 0) { GF.page--; GF.render(); window.scrollTo(0, 0); } break;
+                case 'newer': if (GF.page > 0) { GF.page--; GF.render(); GF.toTop(); } break;
                 case 'openpost': if (id) GF.go({ s: 'post', id }); break;
                 case 'profile': GF.profile(id); break;
                 case 'postmenu': GF.postMenu(id); break;
@@ -1462,7 +1687,7 @@
                 case 'canceledit': { const b = document.getElementById('gfdEditBox'); if (b) b.innerHTML = ''; break; }
                 case 'savebio': GF.saveBio(); break;
                 case 'shareprofile': if (GF._prof) GF.shareProfile(GF._prof); break;
-                case 'kind': if (GF.cur()) { GF.cur().kind = v; GF.render(); } break;
+                case 'kind': if (GF.cur()) { GF.cur().kind = v; GF.paintKinds(); GF.paintRounds(); } break;
                 case 'allrounds': if (GF.cur()) { GF.cur().allRounds = true; GF.paintRounds(); } break;
                 case 'pickround': if (GF.cur()) { const d = GF.cur(); d.round = d.round === id ? null : id; GF.paintRounds(); } break;
                 case 'addphoto':
@@ -1638,6 +1863,17 @@
             } catch (e) { }
             document.addEventListener('click', GF.onClick, true);
             GF.paintBadges();
+            // the organizer / course staff / caddie cubes (v1278): their strip, even on a PIN (view-only) session
+            let k = 0;
+            const iv2 = setInterval(() => {
+                if (!db() && ++k < 90) return;
+                clearInterval(iv2); if (!db()) return;
+                GF.paintCubeStrip();
+                setInterval(() => {
+                    if (document.visibilityState !== 'visible' || uid()) return;   // a LINE login refreshes through refreshCounts
+                    if ([...document.querySelectorAll('.gfdCube.gfd-other')].some(c => c.offsetParent)) GF.paintCubeStrip();
+                }, 60000);
+            }, 1000);
             let n = 0;
             const iv = setInterval(() => {
                 n++;

@@ -79,3 +79,6 @@ revoke all on function public.gfd_post_json(public.golf_posts,text) from public,
 -- Pete, 2026-09-19: "put 58 likes on pete park post of the bacon brothers and Britt"
 update public.golf_posts set likes_boost = 58
  where id = 'a9982da5-29fd-4b24-b280-2f0ae9070934' and author_id = 'U2b6d976f19bca4b2f4374ae0e10ed873';
+
+-- Pete, 2026-09-19 14:35: "Lets increase the likes on pete park photo to 73" → boost = 73 - real likes (1) = 72
+-- update public.golf_posts set likes_boost = 72 where id = 'a9982da5-29fd-4b24-b280-2f0ae9070934';

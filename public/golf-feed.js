@@ -65,6 +65,16 @@
         if (s < 7 * 86400) return Math.floor(s / 86400) + 'd';
         return Math.floor(s / (7 * 86400)) + 'w';
     }
+    // "@Name" → a tap-to-profile link, only for golfers the server recorded as mentioned (v1262)
+    function linkify(text, mentions) {
+        let h = esc(text || '');
+        (mentions || []).slice().sort((a, b) => String(b.name).length - String(a.name).length).forEach(m => {
+            const at = esc('@' + m.name);
+            h = h.split(at).join(`<b class="gfd-at" data-act="profile" data-id="${esc(m.id)}">${at}</b>`);
+        });
+        return h;
+    }
+    const NEW_UNTIL = Date.parse('2026-10-03T00:00:00+07:00');   // launch "NEW" chip on the cube (Pete, 2026-09-19)
     const PAL = ['#0f766e', '#1d4ed8', '#b45309', '#b91c1c', '#15803d', '#334155', '#7c2d12', '#0e7490'];
     const initials = (n) => { const p = String(n || '').trim().split(/\s+/); return (((p[0] || '')[0] || '') + ((p[1] || '')[0] || '')).toUpperCase() || '?'; };
     function av(p, size) {
@@ -221,6 +231,20 @@
     .gfd-sheet .it .material-symbols-outlined{font-size:21px;color:var(--mkp-sub)}
     .gfd-sheet .it.red,.gfd-sheet .it.red .material-symbols-outlined{color:var(--mkp-red)}
     .gfd-sheet .it .sub{display:block;font:500 12px/1.3 'Instrument Sans',sans-serif;color:var(--mkp-sub)}
+    .gfd-at{font-weight:700;color:var(--mkp-greenhi);cursor:pointer}
+    .gfd-tabn{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 5px;border-radius:9px;background:#ef4444;color:#fff;font:700 9.5px/1 'JetBrains Mono',monospace;letter-spacing:0;margin-left:5px}
+    .gfd-tile .new{position:absolute;right:6px;top:6px;padding:3px 6px;border-radius:6px;background:#16a34a;color:#fff;text-transform:uppercase;font:800 9px/1 'JetBrains Mono',monospace;letter-spacing:.06em;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+    .gfd-tile .new ~ .multi{top:26px}
+    .gfd-newtag{display:inline-block;text-transform:uppercase;margin-left:6px;padding:2px 5px;border-radius:5px;background:#16a34a;color:#fff;font:800 8.5px/1.2 'JetBrains Mono',monospace;letter-spacing:.06em;vertical-align:2px}
+    .gfd-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 -12px 10px;padding:0 12px}
+    .gfd-chips::-webkit-scrollbar{display:none}
+    .gfd-chips button{flex:none;border:none;border-radius:999px;padding:8px 12px;background:var(--mkp-glass2);box-shadow:inset 0 0 0 1px var(--mkp-slo);color:var(--mkp-sub);font:700 12px/1 'Instrument Sans',sans-serif;display:flex;align-items:center;cursor:pointer;white-space:nowrap}
+    .gfd-chips button.on{background:var(--mkp-greendim);color:var(--mkp-greenhi);box-shadow:inset 0 0 0 1.5px var(--mkp-green)}
+    .gfd-atlist{margin:6px 0 0;border-radius:12px;background:var(--mkp-glass2);box-shadow:inset 0 0 0 1px var(--mkp-slo),0 8px 22px rgba(0,0,0,.18);overflow:hidden}
+    .gfd-atlist button{display:flex;align-items:center;gap:10px;width:100%;border:none;background:none;padding:8px 10px;color:var(--mkp-text);font:600 14px/1.2 'Instrument Sans',sans-serif;text-align:left;cursor:pointer}
+    .gfd-atlist button + button{border-top:1px solid var(--mkp-slo)}
+    .gfd-addc{flex-wrap:wrap}
+    .gfd-addc .gfd-atlist{flex:0 0 100%;order:2}
     /* 19th Hole pieces inside the listing detail sheet */
     .mkp-scope .gfd-hand{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:13px;margin-bottom:12px;background:var(--mkp-greendim);color:var(--mkp-greenhi);border:none;width:100%;text-align:left}
     .mkp-scope .gfd-hand.pick{cursor:pointer}
@@ -296,7 +320,7 @@
         // open the feed tab on a given screen (profile / post), from anywhere in the app
         show(screen) {
             GF._pending = screen ? [{ s: 'feed' }, screen] : [{ s: 'feed' }];
-            if (!screen) { GF.scope = 'everyone'; GF.pages = [null]; GF.page = 0; }
+            if (!screen) { GF.scope = 'everyone'; GF.pages = [null]; GF.page = 0; GF._visitPrev = {}; }
             try { window.showGolferTab('golffeed'); } catch (e) { GF.open(); }
         },
         profile(id) { if (id) GF.go({ s: 'profile', id }); },
@@ -322,12 +346,23 @@
                 <button class="gfd-ibtn" data-act="activity" aria-label="${esc(tr('gfd.activity', 'Activity'))}">${mi('favorite')}${n ? `<span class="mkp-bdgr">${n > 99 ? '99+' : n}</span>` : ''}</button>
                 <button class="gfd-post-btn" data-act="compose">${mi('add_a_photo')}${esc(tr('gfd.post', 'Post'))}</button></div>`;
         },
+        tabN(k) { const n = GF.counts[k] || 0; return n ? `<span class="gfd-tabn">${n > 99 ? '99+' : n}</span>` : ''; },
+        // what counts as NEW on the wall this visit: anything newer than the stamp from BEFORE this visit
+        prevSeen(scope) {
+            GF._visitPrev = GF._visitPrev || {};
+            if (!GF._visitPrev[scope]) GF._visitPrev[scope] = GF.counts[scope === 'following' ? 'following_seen_at' : 'feed_seen_at'] || new Date(Date.now() - 7 * 864e5).toISOString();
+            return GF._visitPrev[scope];
+        },
+        isNew(p) { return !p.mine && GF._newSince && new Date(p.created_at) > new Date(GF._newSince); },
         async rFeed(top, seq) {
+            if (!GF._countsLoaded) await GF.refreshCounts();
+            if (!GF.live(seq)) return;
+            GF._newSince = GF.prevSeen(GF.scope);
             const r = GF.root(), wall = GF.view() === 'wall';
             r.innerHTML = `${GF.head()}
                 <div class="gfd-bar"><div class="mkp-tabs">
-                    <button class="mkp-tab ${GF.scope === 'everyone' ? 'mkp-on' : ''}" data-act="scope" data-v="everyone">${mi('public')}${esc(tr('gfd.everyone', 'Everyone'))}</button>
-                    <button class="mkp-tab ${GF.scope === 'following' ? 'mkp-on' : ''}" data-act="scope" data-v="following">${mi('group')}${esc(tr('gfd.following', 'Following'))}</button></div>
+                    <button class="mkp-tab ${GF.scope === 'everyone' ? 'mkp-on' : ''}" data-act="scope" data-v="everyone">${mi('public')}${esc(tr('gfd.everyone', 'Everyone'))}${GF.tabN('feed_new')}</button>
+                    <button class="mkp-tab ${GF.scope === 'following' ? 'mkp-on' : ''}" data-act="scope" data-v="following">${mi('group')}${esc(tr('gfd.following', 'Following'))}${GF.tabN('following_new')}</button></div>
                   <div class="gfd-vsw"><button class="${wall ? 'on' : ''}" data-act="viewmode" data-v="wall" aria-label="${esc(tr('gfd.wall', 'Wall'))}">${mi('grid_view')}</button>
                     <button class="${wall ? '' : 'on'}" data-act="viewmode" data-v="list" aria-label="${esc(tr('gfd.onebyone', 'One by one'))}">${mi('view_agenda')}</button></div></div>
                 <div id="gfdFeedBody">${GF.spin()}</div>`;
@@ -350,7 +385,7 @@
                        <button class="gfd-pbtn" data-act="older" ${GF.more ? '' : 'disabled'}>${esc(tr('gfd.older', 'Older'))} →</button></div>`;
                 if (!wall) GF.wireCars(body);
             }
-            if (GF.page === 0 && GF.scope === 'everyone') GF.markSeen('feed');
+            if (GF.page === 0) GF.markSeen(GF.scope === 'following' ? 'following' : 'feed');
         },
         tile(p) {
             const ph = (p.photos || [])[0];
@@ -358,6 +393,7 @@
             return `<button class="gfd-tile" data-act="openpost" data-id="${esc(p.id)}" aria-label="${esc((p.author || {}).name || '')}">
                 ${url(ph) ? `<img src="${url(ph)}" alt="" loading="lazy">` : ''}
                 ${sale ? `<span class="sale">${esc(sale)}</span>` : ''}
+                ${GF.isNew(p) ? `<span class="new">${esc(tr('gfd.new', 'NEW'))}</span>` : ''}
                 ${(p.photos || []).length > 1 ? `<span class="multi">${mi('filter_none')}</span>` : ''}
                 ${p.round ? `<span class="ok">${mi('check')}</span>` : ''}
                 ${p.audience === 'followers' ? `<span class="lock">${mi('lock')}</span>` : ''}</button>`;
@@ -400,10 +436,10 @@
             const likeCls = p.i_liked ? 'liked' : '';
             const cap = p.kind === 'listing' ? '' : (p.caption || '');
             const cm = full ? '' : ((p.comments > 2 ? `<button class="gfd-more" data-act="openpost" data-id="${esc(p.id)}">${esc(tr('gfd.viewall', 'View all {n} comments', { n: p.comments }))}</button>` : '')
-                + (p.recent || []).map(c => `<div class="gfd-cm"><b>${esc(c.name)}</b> ${esc(c.body)}</div>`).join(''));
+                + (p.recent || []).map(c => `<div class="gfd-cm"><b data-act="profile" data-id="${esc(c.author_id)}">${esc(c.name)}</b> ${linkify(c.body, c.mentions)}</div>`).join(''));
             return `<article class="mkp-card gfd-post" data-post="${esc(p.id)}">
                 <div class="hd"><span data-act="profile" data-id="${esc(a.id)}" style="cursor:pointer">${av(a)}</span>
-                  <div class="who" data-act="profile" data-id="${esc(a.id)}"><div class="nm">${esc(a.name)}</div><div class="sb">${p.audience === 'followers' ? mi('lock') + ' ' : ''}${esc(GF.subline(p))}</div></div>
+                  <div class="who" data-act="profile" data-id="${esc(a.id)}"><div class="nm">${esc(a.name)}${GF.isNew(p) ? `<span class="gfd-newtag">${esc(tr('gfd.new', 'NEW'))}</span>` : ''}</div><div class="sb">${p.audience === 'followers' ? mi('lock') + ' ' : ''}${esc(GF.subline(p))}</div></div>
                   <button class="gfd-dots-btn" data-act="postmenu" data-id="${esc(p.id)}" aria-label="${esc(tr('gfd.more', 'More'))}">${mi('more_horiz')}</button></div>
                 ${photos.length ? `<div class="gfd-car ${p.kind === 'listing' ? 'sq' : ''}" data-id="${esc(p.id)}"><div class="gfd-track">${photos.map(u => `<img src="${u}" alt="" loading="lazy">`).join('')}</div>
                   ${photos.length > 1 ? `<div class="dots">${photos.map((_, i) => `<i class="${i ? '' : 'on'}"></i>`).join('')}</div>` : ''}<div class="pop">${mi('favorite')}</div></div>` : ''}
@@ -411,7 +447,7 @@
                   <button data-act="openpost" data-id="${esc(p.id)}" aria-label="${esc(tr('gfd.comments', 'Comments'))}">${mi('chat_bubble')}<span class="n">${p.comments || ''}</span></button><span class="sp"></span>
                   <button class="${p.i_saved ? 'saved' : ''}" data-act="save" data-id="${esc(p.id)}" aria-label="${esc(tr('gfd.save', 'Save'))}">${mi('bookmark')}</button></div>
                 ${GF.verif(p)}${GF.saleBar(p)}
-                ${cap ? `<div class="gfd-cap"><b>${esc(a.name)}</b> ${esc(cap)}</div>` : ''}
+                ${cap ? `<div class="gfd-cap"><b>${esc(a.name)}</b> ${linkify(cap, p.mentions)}</div>` : ''}
                 ${cm ? `<div class="gfd-cms">${cm}</div>` : ''}
                 ${full ? '<div class="gfd-cms" id="gfdComments"></div>' : ''}
                 <div class="gfd-when">${esc(ago(p.created_at))}${p.hidden ? ' · ' + esc(tr('gfd.hiddenlbl', 'Hidden from the feed')) : ''}</div>
@@ -445,23 +481,28 @@
             GF.wireCars(body);
             GF.loadComments(p.id, seq);
             const inp = document.getElementById('gfdCmIn');
-            if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); GF.addComment(p.id); } });
+            GF._cmMentions = [];
+            if (inp) {
+                inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !document.querySelector('.gfd-atlist')) { e.preventDefault(); GF.addComment(p.id); } });
+                GF.wireMentions(inp, GF._cmMentions);
+            }
         },
         async loadComments(id, seq) {
             let list = [];
             try { list = await rpc('golf_comments', { p_user: uid(), p_post: id }); } catch (e) { }
             if (seq && !GF.live(seq)) return;
             const box = document.getElementById('gfdComments'); if (!box) return;
-            box.innerHTML = (list || []).map(c => `<div class="gfd-cm"><b data-act="profile" data-id="${esc(c.author.id)}">${esc(c.author.name)}</b> ${esc(c.body)}<span class="w">${esc(agoShort(c.created_at))}</span>${c.can_delete ? `<button class="del" data-act="delcomment" data-id="${esc(c.id)}" data-post="${esc(id)}">${esc(tr('common.delete', 'Delete'))}</button>` : ''}</div>`).join('');
+            box.innerHTML = (list || []).map(c => `<div class="gfd-cm"><b data-act="profile" data-id="${esc(c.author.id)}">${esc(c.author.name)}</b> ${linkify(c.body, c.mentions)}<span class="w">${esc(agoShort(c.created_at))}</span>${c.can_delete ? `<button class="del" data-act="delcomment" data-id="${esc(c.id)}" data-post="${esc(id)}">${esc(tr('common.delete', 'Delete'))}</button>` : ''}</div>`).join('');
         },
         async addComment(id) {
             const inp = document.getElementById('gfdCmIn'); if (!inp) return;
             const body = inp.value.trim(); if (!body) return;
             inp.disabled = true;
             try {
-                const r = await rpc('golf_comment_add', { p_user: uid(), p_post: id, p_body: body });
+                const ids = (GF._cmMentions || []).filter(m => body.includes('@' + m.name)).map(m => m.id);
+                const r = await rpc('golf_comment_add', { p_user: uid(), p_post: id, p_body: body, p_mentions: ids.length ? ids : null });
                 if (!r || !r.ok) throw new Error(GF.why(r));
-                inp.value = '';
+                inp.value = ''; if (GF._cmMentions) GF._cmMentions.length = 0;
                 const p = GF._posts[id]; if (p) p.comments = (p.comments || 0) + 1;
                 GF.paintCount(id);
                 await GF.loadComments(id);
@@ -630,7 +671,7 @@
 
         // ------------------------------------------------------------ new post
         async rCompose(top, seq) {
-            const d = GF._draft || (GF._draft = { kind: 'round', round: null, photos: [], caption: '', audience: 'everyone', rounds: null });
+            const d = GF._draft || (GF._draft = { kind: 'round', round: null, photos: [], caption: '', audience: 'everyone', rounds: null, mentions: [] });
             const r = GF.root();
             if (d.rounds === null) {
                 d.rounds = [];
@@ -647,12 +688,13 @@
                 <div class="gfd-photos" id="gfdPhotos"></div>
                 <input type="file" id="gfdFile" accept="image/*" multiple style="display:none">
                 <div class="gfd-lbl">${esc(tr('gfd.caption', 'Caption'))}</div>
-                <textarea class="gfd-ta" id="gfdCap" maxlength="2200" placeholder="${esc(tr('gfd.caption.ph', 'How did it go?'))}">${esc(d.caption)}</textarea>
+                <textarea class="gfd-ta" id="gfdCap" maxlength="2200" placeholder="${esc(tr('gfd.caption.ph2', 'How did it go? Type @ to tag a golfer'))}">${esc(d.caption)}</textarea>
                 <div class="gfd-lbl">${esc(tr('gfd.whosees', 'Who sees it'))}</div>
                 <div class="gfd-seg"><button class="${d.audience === 'everyone' ? 'on' : ''}" data-act="aud" data-v="everyone">${esc(tr('gfd.everyone.s', 'Everyone'))}</button><button class="${d.audience === 'followers' ? 'on' : ''}" data-act="aud" data-v="followers">${esc(tr('gfd.followersonly', 'Followers only'))}</button></div>
                 <button class="gfd-go" id="gfdShare" data-act="share">${esc(tr('gfd.share', 'Share'))}</button>
                 <p class="mkp-note" style="margin-top:10px">${mi('shield')}<span>${esc(tr('gfd.rules', 'Golf and the course only. Photos are resized on your phone and their location is removed before upload.'))}</span></p>`;
             document.getElementById('gfdCap').addEventListener('input', e => { d.caption = e.target.value; });
+            GF.wireMentions(document.getElementById('gfdCap'), d.mentions);
             document.getElementById('gfdFile').addEventListener('change', e => { GF.addPhotos(e.target.files); e.target.value = ''; });
             GF.paintRounds(); GF.paintPhotos();
         },
@@ -677,6 +719,44 @@
                 + (d.photos.length < 10 ? `<button class="add" data-act="addphoto" aria-label="${esc(tr('common.add', 'Add'))}">${mi('add_a_photo')}</button>` : '');
             const sh = document.getElementById('gfdShare');
             if (sh) sh.disabled = !d.photos.length || d.photos.some(p => p.state === 'checking') || !!d.busy;
+        },
+        // "@Na…" in a caption / comment → pick a golfer → "@Name " goes in the text and the id into `store`
+        wireMentions(el, store) {
+            if (!el || el._gfdAt) return; el._gfdAt = true;
+            let t = null, seq = 0;
+            const close = () => { const l = el.parentNode && el.parentNode.querySelector('.gfd-atlist'); if (l) l.remove(); };
+            el.addEventListener('blur', () => setTimeout(close, 200));
+            el.addEventListener('input', () => {
+                clearTimeout(t);
+                const upto = el.value.slice(0, el.selectionStart || el.value.length);
+                const m = upto.match(/(?:^|\s)@([^@\n]{2,30})$/);
+                if (!m || /\s{2}|\s\S+\s\S+\s/.test(m[1])) { close(); return; }
+                const q = m[1];
+                t = setTimeout(async () => {
+                    const my = ++seq;
+                    let list = [];
+                    try { list = await rpc('golf_people_search', { p_user: uid(), p_q: q }) || []; } catch (e) { }
+                    if (my !== seq) return;
+                    close();
+                    if (!list.length) return;
+                    const box = document.createElement('div'); box.className = 'gfd-atlist';
+                    box.innerHTML = list.map((p, i) => `<button type="button" data-i="${i}">${av(p, 28)}<span>${esc(p.name)}</span></button>`).join('');
+                    box.addEventListener('mousedown', e => e.preventDefault());   // keep the keyboard up
+                    box.addEventListener('click', e => {
+                        const b = e.target.closest('button[data-i]'); if (!b) return;
+                        e.preventDefault(); e.stopPropagation();
+                        const p = list[+b.dataset.i];
+                        const pos = el.selectionStart || el.value.length;
+                        const before = el.value.slice(0, pos).replace(/@([^@\n]{2,30})$/, '@' + p.name + ' ');
+                        el.value = before + el.value.slice(pos);
+                        try { el.setSelectionRange(before.length, before.length); } catch (x) { }
+                        if (!store.some(x => x.id === p.id)) store.push({ id: p.id, name: p.name });
+                        el.dispatchEvent(new Event('input'));
+                        close(); el.focus();
+                    });
+                    el.insertAdjacentElement('afterend', box);
+                }, 220);
+            });
         },
         async addPhotos(files) {
             const d = GF._draft; if (!d) return;
@@ -713,8 +793,9 @@
                     if (up.error) throw up.error;
                     urls.push(db().storage.from('golf-feed').getPublicUrl(path).data.publicUrl);
                 }
+                const ids = (d.mentions || []).filter(m => (d.caption || '').includes('@' + m.name)).map(m => m.id);
                 const r = await rpc('golf_post_create', { p_user: me, p_kind: d.kind, p_caption: d.caption || '', p_photos: urls,
-                    p_round: d.kind === 'round' ? d.round : null, p_audience: d.audience });
+                    p_round: d.kind === 'round' ? d.round : null, p_audience: d.audience, p_mentions: ids.length ? ids : null });
                 if (!r || !r.ok) throw new Error(GF.why(r));
                 d.photos.forEach(p => { try { URL.revokeObjectURL(p.preview); } catch (e) { } });
                 GF._draft = null; GF.me = null;
@@ -736,8 +817,9 @@
             try { list = await rpc('golf_activity', { p_user: uid() }); } catch (e) { if (GF.live(seq)) GF.err('gfdAct', e); return; }
             if (!GF.live(seq)) return;
             list = list || [];
-            const line = (a) => {
+            const line = GF._actLine = (a) => {
                 switch (a.type) {
+                    case 'mention': return tr('gfd.a.mention', 'mentioned you: “{b}”', { b: a.body || '' });
                     case 'like': return tr('gfd.a.like', 'liked your post.');
                     case 'comment': return tr('gfd.a.comment', 'commented: “{b}”', { b: a.body || '' });
                     case 'follow': return tr('gfd.a.follow', 'started following you.');
@@ -746,32 +828,62 @@
                 }
                 return '';
             };
-            document.getElementById('gfdAct').innerHTML = list.length ? `<div class="mkp-card" style="padding:4px 12px">${list.map(a => `
+            GF._actList = list;
+            GF.paintActivity();
+            GF.markSeen('activity');
+        },
+        paintActivity() {
+            const list = GF._actList || [], f = GF._actFilter || 'all';
+            const grp = (a) => (a.type === 'enquiry' || a.type === 'offer') ? 'mkp' : a.type;
+            const line = GF._actLine;
+            const nNew = (g) => list.filter(a => a.is_new && (g === 'all' || grp(a) === g)).length;
+            const chips = [['all', tr('gfd.f.all', 'All')], ['mention', tr('gfd.f.mentions', 'Mentions')], ['like', tr('gfd.f.likes', 'Likes')],
+                ['comment', tr('gfd.f.comments', 'Comments')], ['follow', tr('gfd.f.follows', 'Follows')], ['mkp', tr('hole19.title', '19th Hole')]];
+            const shown = list.filter(a => f === 'all' || grp(a) === f);
+            const box = document.getElementById('gfdAct'); if (!box) return;
+            box.innerHTML = `<div class="gfd-chips">${chips.map(([k, l]) => { const n = nNew(k); return `<button class="${f === k ? 'on' : ''}" data-act="actfilter" data-v="${k}">${esc(l)}${n ? `<span class="gfd-tabn">${n > 99 ? '99+' : n}</span>` : ''}</button>`; }).join('')}</div>`
+                + (shown.length ? `<div class="mkp-card" style="padding:4px 12px">${shown.map(a => `
                 <div class="gfd-act ${a.is_new ? 'new' : ''}" data-act="${a.post_id ? 'openpost' : a.listing_id ? 'listing' : 'profile'}" data-id="${esc(a.post_id || a.listing_id || a.actor.id)}">
                   <span data-act="profile" data-id="${esc(a.actor.id)}">${av(a.actor, 40)}</span>
                   <div class="tx"><b>${esc(a.actor.name)}</b> ${esc(line(a))} <span>${esc(agoShort(a.at))}</span></div>
                   ${a.type === 'follow' ? `<button class="gfd-fbtn ${a.i_follow ? 'ghost' : ''}" data-act="followbtn" data-id="${esc(a.actor.id)}" data-on="${a.i_follow ? '0' : '1'}">${esc(a.i_follow ? tr('gfd.followingbtn', 'Following') : tr('gfd.follow', 'Follow'))}</button>`
                     : (url(a.thumb) ? `<img class="th" src="${url(a.thumb)}" alt="" loading="lazy">` : '')}</div>`).join('')}</div>`
-                : `<div class="mkp-card gfd-empty">${mi('favorite')}${esc(tr('gfd.noactivity', 'Likes, comments and new followers show up here.'))}</div>`;
-            GF.markSeen('activity');
+                : `<div class="mkp-card gfd-empty">${mi('favorite')}${esc(tr('gfd.noactivity', 'Likes, comments and new followers show up here.'))}</div>`);
         },
 
         // ------------------------------------------------------------ counts + badges
         async refreshCounts() {
             if (!uid() || !db()) return;
-            try { GF.counts = (await rpc('golf_nav_counts', { p_user: uid() })) || GF.counts; } catch (e) { return; }
+            try { GF.counts = (await rpc('golf_nav_counts', { p_user: uid() })) || GF.counts; GF._countsLoaded = true; } catch (e) { return; }
             GF.paintBadges();
+            // the feed's own heart badge follows along if the wall is on screen
+            const top = GF.stack[GF.stack.length - 1];
+            const hb = document.querySelector('#gfdRoot [data-act="activity"]');
+            if (hb && top && top.s === 'feed') { hb.querySelector('.mkp-bdgr')?.remove(); const n = GF.counts.activity_new || 0; if (n) hb.insertAdjacentHTML('beforeend', `<span class="mkp-bdgr">${n > 99 ? '99+' : n}</span>`); }
         },
         paintBadges() {
             const f = GF.counts.feed_new || 0, a = GF.counts.activity_new || 0, n = f + a;
             const txt = n > 99 ? '99+' : String(n);
             document.querySelectorAll('.gfdCubeBadge, #gfdCubeBadge, .gfdRailBadge, .gfdDrawerBadge').forEach(b => { b.textContent = txt; b.style.display = n ? 'flex' : 'none'; });
-            const pill = a ? tr('gfd.pill.activity', '{n} new for you', { n: a }) : f ? tr('gfd.pill.posts', '{n} new posts', { n: f }) : tr('gfd.pill.open', 'See the feed');
+            // the cube says WHAT is new: the two most important kinds, e.g. "1 mention · 2 likes"
+            const c = GF.counts, parts = [];
+            const add = (n, one, many, k1, kn) => { if (n) parts.push(n === 1 ? tr(k1, one, { n }) : tr(kn, many, { n })); };
+            add(c.mentions || 0, '{n} mention', '{n} mentions', 'gfd.c.mention', 'gfd.c.mentions');
+            add(c.comments || 0, '{n} comment', '{n} comments', 'gfd.c.comment', 'gfd.c.comments');
+            add(c.likes || 0, '{n} like', '{n} likes', 'gfd.c.like', 'gfd.c.likes');
+            add(c.follows || 0, '{n} new follower', '{n} new followers', 'gfd.c.follow', 'gfd.c.follows');
+            add(c.mkp || 0, '{n} 19th Hole', '{n} 19th Hole', 'gfd.c.mkp', 'gfd.c.mkp');
+            const pill = parts.length ? parts.slice(0, 2).join(' · ') : f ? tr('gfd.pill.posts', '{n} new posts', { n: f }) : tr('gfd.pill.open', 'See the feed');
             document.querySelectorAll('.gfdCubePill, #gfdCubePill').forEach(p => { p.textContent = pill; });
+            const launch = Date.now() < NEW_UNTIL;
+            document.querySelectorAll('.gfdNewChip').forEach(x => { x.style.display = launch ? '' : 'none'; });
         },
         async markSeen(what) {
             try { await rpc('golf_mark_seen', { p_user: uid(), p_what: what }); } catch (e) { return; }
-            if (what === 'feed') GF.counts.feed_new = 0; else GF.counts.activity_new = 0;
+            const now = new Date().toISOString();
+            if (what === 'feed') { GF.counts.feed_new = 0; GF.counts.feed_seen_at = now; }
+            else if (what === 'following') { GF.counts.following_new = 0; GF.counts.following_seen_at = now; }
+            else { GF.counts.activity_new = 0; ['mentions', 'likes', 'comments', 'follows', 'mkp'].forEach(k => { GF.counts[k] = 0; }); }
             GF.paintBadges();
             const hb = document.querySelector('#gfdRoot [data-act="activity"] .mkp-bdgr'); if (hb && what === 'activity') hb.remove();
         },
@@ -853,6 +965,7 @@
                 case 'rmphoto': if (GF._draft) { const p = GF._draft.photos.splice(+v, 1)[0]; try { URL.revokeObjectURL(p.preview); } catch (x) { } GF.paintPhotos(); } break;
                 case 'aud': if (GF._draft) { GF._draft.audience = v; GF.render(); } break;
                 case 'share': GF.submit(); break;
+                case 'actfilter': GF._actFilter = v; GF.paintActivity(); break;
             }
         },
 
@@ -1011,6 +1124,7 @@
                 ['golfer', 'post', 'listing'].forEach(k => { const v = q.get(k); if (v) sessionStorage.setItem('gfd_link', JSON.stringify({ k, v })); });
             } catch (e) { }
             document.addEventListener('click', GF.onClick, true);
+            GF.paintBadges();
             let n = 0;
             const iv = setInterval(() => {
                 n++;

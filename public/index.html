@@ -135921,6 +135921,15 @@ console.log('[OffersInbox] ✅ Module loaded');
 // 19TH HOLE MARKETPLACE SYSTEM
 // ==================================================================
 const MarketplaceSystem = {
+    // Everything a member typed (titles, descriptions, names, offer messages, locations) lands
+    // in innerHTML templates below — unescaped, one listing could run script in every buyer's
+    // browser (and the session is in localStorage). Escape it.
+    _h(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); },
+    // Member ids go inside onclick="...('${id}')": HTML-escaping cannot protect a JS string in
+    // an attribute (the parser turns &#39; back into '), so only id-shaped values pass.
+    _id(s) { const v = String(s ?? ''); return /^[A-Za-z0-9_.:@-]+$/.test(v) ? v : ''; },
+    // Links and images: http(s) only — no javascript:, no quotes.
+    _url(s) { const v = String(s ?? ''); return /^https?:\/\//i.test(v) ? this._h(v) : ''; },
     _initialized: false,
     userLineId: null,
     currentSubTab: 'browse',
@@ -136011,13 +136020,13 @@ const MarketplaceSystem = {
         container.style.display = 'block';
         carousel.innerHTML = this.sponsoredAds.map((ad, index) => `
             <div style="display: ${index === 0 ? 'block' : 'none'};" data-ad-index="${index}">
-                <a href="${ad.link_url || '#'}" target="_blank" onclick="MarketplaceSystem.trackAdClick('${ad.id}')" class="block" style="text-decoration:none;">
+                <a href="${this._url(ad.link_url) || '#'}" target="_blank" rel="noopener" onclick="MarketplaceSystem.trackAdClick('${this._id(ad.id)}')" class="block" style="text-decoration:none;">
                     <div class="mkp-ad-body">
-                        <div class="mkp-ad-img">${ad.image_url ? `<img src="${ad.image_url}" alt="${ad.title}">` : '<span class="material-symbols-outlined">campaign</span>'}</div>
+                        <div class="mkp-ad-img">${this._url(ad.image_url) ? `<img src="${this._url(ad.image_url)}" alt="${this._h(ad.title)}">` : '<span class="material-symbols-outlined">campaign</span>'}</div>
                         <div style="flex:1;min-width:0;">
-                            <div class="mkp-ad-t">${ad.title}</div>
-                            <div class="mkp-ad-d">${ad.description || ''}</div>
-                            <div class="mkp-ad-by">${ad.advertiser_name}</div>
+                            <div class="mkp-ad-t">${this._h(ad.title)}</div>
+                            <div class="mkp-ad-d">${this._h(ad.description)}</div>
+                            <div class="mkp-ad-by">${this._h(ad.advertiser_name)}</div>
                         </div>
                     </div>
                 </a>
@@ -136208,7 +136217,7 @@ const MarketplaceSystem = {
     },
 
     renderListingCard(listing) {
-        const imageUrl = listing.images?.[0] || null;
+        const imageUrl = this._url(listing.images?.[0]) || null;
         const price = listing.price_type === 'swap_only' ? 'SWAP' :
                      listing.price ? `฿${listing.price.toLocaleString()}` :
                      listing.listing_type === 'wanted' ? 'WANTED' : 'Make Offer';
@@ -136221,21 +136230,21 @@ const MarketplaceSystem = {
         return `
             <div class="mkp-lst" onclick="MarketplaceSystem.openDetailModal('${listing.id}')">
                 <div class="mkp-lst-img">
-                    ${imageUrl ? `<img src="${imageUrl}" alt="${listing.title}" onerror="this.remove()">` : `<span class="material-symbols-outlined ph">${categoryIcon}</span>`}
+                    ${imageUrl ? `<img src="${imageUrl}" alt="${this._h(listing.title)}" onerror="this.remove()">` : `<span class="material-symbols-outlined ph">${categoryIcon}</span>`}
                     <button onclick="event.stopPropagation(); MarketplaceSystem.toggleFavorite('${listing.id}')" class="mkp-lst-fav" id="fav-btn-${listing.id}">
                         <span class="material-symbols-outlined" id="fav-icon-${listing.id}">favorite</span>
                     </button>
                     ${listing.price_type === 'negotiable' ? '<span class="mkp-lst-tag mkp-chip">Negotiable</span>' : ''}
                 </div>
                 <div class="mkp-lst-b">
-                    <div class="mkp-lst-t">${listing.title}</div>
+                    <div class="mkp-lst-t">${this._h(listing.title)}</div>
                     <div class="mkp-lst-pr">
                         <span class="${priceClass}">${price}</span>
                         <span class="ago">${timeAgo.toUpperCase()}</span>
                     </div>
                     <div class="mkp-lst-loc">
                         <span class="material-symbols-outlined">location_on</span>
-                        <span>${listing.location || 'Thailand'}</span>
+                        <span>${this._h(listing.location || 'Thailand')}</span>
                     </div>
                 </div>
             </div>`;
@@ -136282,7 +136291,7 @@ const MarketplaceSystem = {
     },
 
     renderMyListingItem(listing) {
-        const imageUrl = listing.images?.[0] || null;
+        const imageUrl = this._url(listing.images?.[0]) || null;
         const categoryIcon = listing.category === 'golf_equipment' ? 'sports_golf' :
                             listing.category === 'services' ? 'handyman' : 'category';
         const statusBadge = listing.status === 'active' ?
@@ -136293,9 +136302,9 @@ const MarketplaceSystem = {
 
         return `
             <div class="mkp-ml-row">
-                <div class="mkp-ml-img">${imageUrl ? `<img src="${imageUrl}" alt="${listing.title}" onerror="this.remove()">` : `<span class="material-symbols-outlined">${categoryIcon}</span>`}</div>
+                <div class="mkp-ml-img">${imageUrl ? `<img src="${imageUrl}" alt="${this._h(listing.title)}" onerror="this.remove()">` : `<span class="material-symbols-outlined">${categoryIcon}</span>`}</div>
                 <div style="flex:1;min-width:0;">
-                    <div class="mkp-ml-t">${listing.title}</div>
+                    <div class="mkp-ml-t">${this._h(listing.title)}</div>
                     <div class="mkp-ml-meta">
                         <span class="mkp-ml-p">${listing.price ? `฿${listing.price.toLocaleString()}` : listing.price_type === 'swap_only' ? 'SWAP' : 'Make Offer'}</span>
                         <span class="mkp-ml-v"><span class="material-symbols-outlined">visibility</span>${listing.views || 0} VIEWS</span>
@@ -136422,7 +136431,7 @@ const MarketplaceSystem = {
 
     renderOfferItem(offer, type) {
         const listing = offer.listing;
-        const imageUrl = listing?.images?.[0] || null;
+        const imageUrl = this._url(listing?.images?.[0]) || null;
         const categoryIcon = listing?.category === 'golf_equipment' ? 'sports_golf' :
                             listing?.category === 'services' ? 'handyman' : 'category';
         const statusClass = {
@@ -136442,12 +136451,12 @@ const MarketplaceSystem = {
         return `
             <div class="mkp-card mkp-off">
                 <div class="mkp-off-main">
-                    <div class="mkp-off-img">${imageUrl ? `<img src="${imageUrl}" alt="${listing?.title || 'Listing'}" onerror="this.remove()">` : `<span class="material-symbols-outlined">${categoryIcon}</span>`}</div>
+                    <div class="mkp-off-img">${imageUrl ? `<img src="${imageUrl}" alt="${this._h(listing?.title || 'Listing')}" onerror="this.remove()">` : `<span class="material-symbols-outlined">${categoryIcon}</span>`}</div>
                     <div class="mkp-off-info">
-                        <div class="mkp-off-t">${listing?.title || 'Listing Removed'}</div>
-                        ${type === 'received' ? `<div class="mkp-off-from">From: ${buyerName}</div>` : ''}
+                        <div class="mkp-off-t">${this._h(listing?.title || 'Listing Removed')}</div>
+                        ${type === 'received' ? `<div class="mkp-off-from">From: ${this._h(buyerName)}</div>` : ''}
                         <div class="mkp-off-amt">${offerInfo}</div>
-                        ${offer.offer_message ? `<div class="mkp-off-msg">"${offer.offer_message}"</div>` : ''}
+                        ${offer.offer_message ? `<div class="mkp-off-msg">"${this._h(offer.offer_message)}"</div>` : ''}
                         <div class="mkp-off-ago">${this.timeAgo(offer.created_at).toUpperCase()}</div>
                     </div>
                     ${statusBadge}
@@ -136456,7 +136465,7 @@ const MarketplaceSystem = {
                     <div class="mkp-off-acts">
                         <button onclick="MarketplaceSystem.respondToOffer('${offer.id}', 'accepted')" class="mkp-btn-solid"><span class="material-symbols-outlined" style="font-size:15px;">check</span>Accept</button>
                         <button onclick="MarketplaceSystem.respondToOffer('${offer.id}', 'declined')" class="mkp-btn-line red">Decline</button>
-                        <button onclick="MarketplaceSystem.messageOfferBuyer('${offer.buyer_line_id}', '${offer.listing_id}')" class="mkp-btn-ico">
+                        <button onclick="MarketplaceSystem.messageOfferBuyer('${this._id(offer.buyer_line_id)}', '${offer.listing_id}')" class="mkp-btn-ico">
                             <span class="material-symbols-outlined">chat</span>
                         </button>
                     </div>
@@ -136780,7 +136789,7 @@ const MarketplaceSystem = {
 
             const isOwner = listing.seller_line_id === this.userLineId;
             const sellerName = listing.seller_name || 'Anonymous';
-            const images = listing.images || [];
+            const images = (listing.images || []).map(u => this._url(u)).filter(Boolean);
 
             const categoryIcon = listing.category === 'golf_equipment' ? 'sports_golf' :
                                 listing.category === 'services' ? 'handyman' : 'category';
@@ -136823,26 +136832,26 @@ const MarketplaceSystem = {
                 <div class="mkp-dt-body">
                     <!-- Title and Price -->
                     <div class="mkp-dt-head">
-                        <div class="mkp-dt-t">${listing.title}</div>
+                        <div class="mkp-dt-t">${this._h(listing.title)}</div>
                         ${priceHtml}
                     </div>
 
                     <!-- Details -->
                     <div class="mkp-dt-stats">
-                        <div class="mkp-dt-stat"><span class="k">Category</span><span class="v">${listing.category.replace('_', ' ')}</span></div>
-                        ${listing.condition ? `<div class="mkp-dt-stat"><span class="k">Condition</span><span class="v">${listing.condition.replace('_', ' ')}</span></div>` : ''}
-                        ${listing.location ? `<div class="mkp-dt-stat"><span class="k">Location</span><span class="v">${listing.location}</span></div>` : ''}
+                        <div class="mkp-dt-stat"><span class="k">Category</span><span class="v">${this._h(listing.category.replace('_', ' '))}</span></div>
+                        ${listing.condition ? `<div class="mkp-dt-stat"><span class="k">Condition</span><span class="v">${this._h(listing.condition.replace('_', ' '))}</span></div>` : ''}
+                        ${listing.location ? `<div class="mkp-dt-stat"><span class="k">Location</span><span class="v">${this._h(listing.location)}</span></div>` : ''}
                         <div class="mkp-dt-stat"><span class="k">Views</span><span class="v">${listing.views || 0}</span></div>
                     </div>
 
                     <!-- Description -->
-                    ${listing.description ? `<p class="mkp-dt-desc">${listing.description}</p>` : ''}
+                    ${listing.description ? `<p class="mkp-dt-desc">${this._h(listing.description)}</p>` : ''}
 
                     <!-- Seller Info -->
                     <div class="mkp-seller">
                         <div class="av"><span class="material-symbols-outlined">person</span></div>
                         <div>
-                            <div class="sn">${sellerName}</div>
+                            <div class="sn">${this._h(sellerName)}</div>
                             <div class="sp">Posted ${this.timeAgo(listing.created_at)}</div>
                         </div>
                     </div>
@@ -136859,7 +136868,7 @@ const MarketplaceSystem = {
                             <button onclick="MarketplaceSystem.openMakeOfferModal('${listing.id}')" class="mkp-btn-solid">
                                 <span class="material-symbols-outlined" style="font-size:15px;">local_offer</span>Make Offer
                             </button>
-                            <button onclick="MarketplaceSystem.messageSeller('${listing.seller_line_id}', '${listing.id}')" class="mkp-btn-line">
+                            <button onclick="MarketplaceSystem.messageSeller('${this._id(listing.seller_line_id)}', '${listing.id}')" class="mkp-btn-line">
                                 <span class="material-symbols-outlined" style="font-size:15px;">chat</span>Message
                             </button>
                         </div>

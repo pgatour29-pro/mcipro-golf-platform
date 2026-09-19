@@ -11081,6 +11081,9 @@
                 'common.logout': 'Logout',
                 'common.edit': 'Edit',
                 'common.delete': 'Delete',
+                'mkp.delete.q': 'Delete this listing?',
+                'mkp.marksold.q': 'Mark listing as sold?',
+                'mkp.marksold': 'Mark sold',
                 'common.view': 'View',
                 'common.add': 'Add',
                 'common.remove': 'Remove',
@@ -14027,6 +14030,9 @@
                 'common.logout': 'ออกจากระบบ',
                 'common.edit': 'แก้ไข',
                 'common.delete': 'ลบ',
+                'mkp.delete.q': 'ลบประกาศนี้ใช่ไหม?',
+                'mkp.marksold.q': 'ทำเครื่องหมายว่าขายแล้วใช่ไหม?',
+                'mkp.marksold': 'ขายแล้ว',
                 'common.view': 'ดู',
                 'common.add': 'เพิ่ม',
                 'common.remove': 'ลบออก',
@@ -16844,6 +16850,9 @@
                 'common.logout': '로그아웃',
                 'common.edit': '편집',
                 'common.delete': '삭제',
+                'mkp.delete.q': '이 판매글을 삭제할까요?',
+                'mkp.marksold.q': '판매 완료로 표시할까요?',
+                'mkp.marksold': '판매 완료',
                 'common.view': '보기',
                 'common.add': '추가',
                 'common.remove': '제거',
@@ -19843,6 +19852,9 @@
                 'common.logout': 'ログアウト',
                 'common.edit': '編集',
                 'common.delete': '削除',
+                'mkp.delete.q': 'この出品を削除しますか？',
+                'mkp.marksold.q': '売却済みにしますか？',
+                'mkp.marksold': '売却済みにする',
                 'common.view': '表示',
                 'common.add': '追加',
                 'common.remove': '削除',
@@ -137015,7 +137027,10 @@ const MarketplaceSystem = {
             NotificationManager.show(`Offer ${status}!`, 'success');
 
             if (status === 'accepted') {
-                if (confirm('Mark listing as sold?')) {
+                // confirm() is a dead tap in the LINE WebView (returns false at once) — askConfirm.
+                const q = _lvT('mkp.marksold.q', 'Mark listing as sold?');
+                const sold = window.askConfirm ? await window.askConfirm({ title: q, confirmText: _lvT('mkp.marksold', 'Mark sold') }) : confirm(q);
+                if (sold) {
                     const { data: offer } = await window.SupabaseDB.client
                         .from('marketplace_offers')
                         .select('listing_id')
@@ -137054,12 +137069,15 @@ const MarketplaceSystem = {
     },
 
     // ========== MESSAGING INTEGRATION ==========
+    // openDirectMessage never existed on MessagesSystem — the TypeError inside the timeout
+    // was swallowed, so "Message seller" / "Message buyer" opened the Messages tab and stopped
+    // there. openDirectConversation is the real DM opener (same one g3-desk + reports use).
     async messageSeller(sellerId, listingId) {
         if (typeof MessagesSystem !== 'undefined') {
             showGolferTab('messages', event);
             setTimeout(() => {
                 MessagesSystem.showSubTab('direct');
-                MessagesSystem.openDirectMessage(sellerId);
+                MessagesSystem.openDirectConversation(sellerId);
             }, 200);
         }
     },
@@ -137069,7 +137087,7 @@ const MarketplaceSystem = {
             showGolferTab('messages', event);
             setTimeout(() => {
                 MessagesSystem.showSubTab('direct');
-                MessagesSystem.openDirectMessage(buyerId);
+                MessagesSystem.openDirectConversation(buyerId);
             }, 200);
         }
     },
@@ -137093,7 +137111,10 @@ const MarketplaceSystem = {
     },
 
     async deleteListing(listingId) {
-        if (!confirm('Are you sure you want to delete this listing?')) return;
+        // confirm() is a dead tap in the LINE WebView — the delete never ran there.
+        const q = _lvT('mkp.delete.q', 'Delete this listing?');
+        const ok = window.askConfirm ? await window.askConfirm({ title: q, danger: true, confirmText: _lvT('common.delete', 'Delete') }) : confirm(q);
+        if (!ok) return;
 
         try {
             const { error } = await window.SupabaseDB.client

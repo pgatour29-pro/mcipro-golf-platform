@@ -324,6 +324,31 @@
     .gfd-sheet .it.red,.gfd-sheet .it.red .material-symbols-outlined{color:var(--mkp-red)}
     .gfd-sheet .it .sub{display:block;font:500 12px/1.3 'Instrument Sans',sans-serif;color:var(--mkp-sub)}
     .gfd-at{font-weight:700;color:var(--mkp-greenhi);cursor:pointer}
+    /* v1273 the wide Tap-In cube (Pete picked option A): golfers without 1on1 get the whole bottom row —
+       wordmark + live line on the left, the newest posts popping in on the right */
+    #liteCubesGrid > .gfdCube.gfd-wide{grid-column:1 / -1 !important;height:auto !important;min-height:104px;padding:12px 14px !important;
+      display:grid !important;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:10px;row-gap:6px;
+      align-items:center !important;justify-items:start;text-align:left !important;overflow:hidden}
+    #liteCubesGrid > .gfdCube.gfd-wide .cube-art{display:none !important}
+    #liteCubesGrid > .gfdCube.gfd-wide h3{grid-column:1;grid-row:1;align-self:end;margin:0 !important;white-space:nowrap}
+    #liteCubesGrid > .gfdCube.gfd-wide .cube-pill{grid-column:1;grid-row:2;align-self:start;position:static !important;display:inline-flex !important;align-items:center;gap:6px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #liteCubesGrid > .gfdCube.gfd-wide.gfd-live .cube-pill::before{content:'';flex:none;width:7px;height:7px;border-radius:50%;background:#22c55e;animation:gfdPulse 1.6s infinite}
+    @keyframes gfdPulse{0%,100%{box-shadow:0 0 0 2px rgba(34,197,94,.35)}50%{box-shadow:0 0 0 6px rgba(34,197,94,0)}}
+    @keyframes gfdPop{0%{transform:scale(.4) rotate(-8deg);opacity:0}70%{transform:scale(1.12) rotate(2deg);opacity:1}100%{transform:scale(1) rotate(0);opacity:1}}
+    .gfdCube .gfd-strip{grid-column:2;grid-row:1 / 3;display:flex;gap:6px;padding-top:14px}
+    .gfdCube .gfd-strip .ph{position:relative;flex:none;width:58px;height:58px;border-radius:12px;background:#0f2417;box-shadow:0 3px 10px rgba(15,23,42,.25),0 0 0 2px #fff}
+    .gfdCube .gfd-strip .ph > img{width:100%;height:100%;object-fit:cover;border-radius:12px;display:block}
+    .gfdCube .gfd-strip .ph.pop{animation:gfdPop .6s cubic-bezier(.2,.9,.3,1.3) both;animation-delay:calc(var(--i,0) * 120ms)}
+    .gfdCube .gfd-strip .ph .nd{position:absolute;right:-4px;top:-4px;width:12px;height:12px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 2px #fff}
+    .gfdCube .gfd-strip .ph .gfd-av{position:absolute;left:-5px;bottom:-5px;width:22px;height:22px;font-size:8px;box-shadow:0 0 0 2px #fff}
+    .gfdCube .gfd-strip .more{flex:none;width:58px;height:58px;border-radius:12px;background:rgba(21,128,61,.12);display:grid;place-items:center;color:#15803d;font:800 15px 'Instrument Sans',sans-serif;box-shadow:inset 0 0 0 1.5px rgba(21,128,61,.35)}
+    .gfdCube .gfd-strip .ph.empty{background:rgba(21,128,61,.08);box-shadow:inset 0 0 0 1.5px rgba(21,128,61,.3);display:grid;place-items:center;color:#15803d}
+    @media (min-width:768px){
+      #liteCubesGrid > .gfdCube.gfd-wide{min-height:0;padding:18px 22px !important}
+      #liteCubesGrid > .gfdCube.gfd-wide h3{font-size:40px !important}
+      .gfdCube .gfd-strip .ph,.gfdCube .gfd-strip .ph > img,.gfdCube .gfd-strip .more{width:96px;height:96px;border-radius:16px}
+      .gfdCube .gfd-strip .ph .gfd-av{width:26px;height:26px}
+    }
     /* the Tap-In intro toast on the home screen (v1271) — the overview canvas is always light */
     #gfdIntro{position:fixed;top:calc(env(safe-area-inset-top,0px) + 62px);left:10px;right:10px;z-index:8100;pointer-events:none}
     #gfdIntro .card{pointer-events:auto;position:relative;max-width:420px;margin:0 auto;display:flex;gap:12px;align-items:flex-start;padding:12px 38px 12px 12px;border-radius:18px;
@@ -1206,9 +1231,10 @@
         // ------------------------------------------------------------ counts + badges
         async refreshCounts() {
             if (!uid() || !db()) return;
-            try { GF.counts = (await rpc('golf_nav_counts', { p_user: uid() })) || GF.counts; GF._countsLoaded = true; } catch (e) { return; }
+            try { GF.counts = (await rpc('golf_nav_counts', { p_user: uid() })) || GF.counts; GF._countsLoaded = true; GF._lastCounts = Date.now(); } catch (e) { return; }
             GF.paintBadges();
             if (GF.counts.intro) GF.maybeIntro();
+            GF.paintCubeStrip();
             // the feed's own heart badge follows along if the wall is on screen
             const top = GF.stack[GF.stack.length - 1];
             const hb = document.querySelector('#gfdRoot [data-act="activity"]');
@@ -1226,10 +1252,48 @@
             add(c.likes || 0, '{n} like', '{n} likes', 'gfd.c.like', 'gfd.c.likes');
             add(c.follows || 0, '{n} new follower', '{n} new followers', 'gfd.c.follow', 'gfd.c.follows');
             add(c.mkp || 0, '{n} 19th Hole', '{n} 19th Hole', 'gfd.c.mkp', 'gfd.c.mkp');
-            const pill = parts.length ? parts.slice(0, 2).join(' · ') : f ? tr('gfd.pill.posts', '{n} new posts', { n: f }) : tr('gfd.pill.open', 'See the feed');
+            // the approved cube line: new posts first, then the most important interaction ("3 new posts · 1 mention")
+            if (f) parts.unshift(tr('gfd.pill.posts', '{n} new posts', { n: f }));
+            const pill = parts.length ? parts.slice(0, 2).join(' · ') : tr('gfd.pill.open', 'See the feed');
             document.querySelectorAll('.gfdCubePill, #gfdCubePill').forEach(p => { p.textContent = pill; });
             const launch = Date.now() < NEW_UNTIL;
             document.querySelectorAll('.gfdNewChip').forEach(x => { x.style.display = launch ? '' : 'none'; });
+        },
+        // ---- the wide cube strip (v1273): newest posts from others, green dot while unseen, new arrivals pop in
+        wideCube() {
+            const cube = document.querySelector('#liteCubesGrid > .gfdCube'), dash = document.getElementById('golferDashboard');
+            if (!cube || !dash) return null;
+            const wide = !dash.classList.contains('oo-on');   // only 1on1 members keep the half cube beside 1on1
+            cube.classList.toggle('gfd-wide', wide);
+            if (!wide) { cube.querySelector('.gfd-strip')?.remove(); return null; }
+            return cube;
+        },
+        async paintCubeStrip() {
+            injectStyle();
+            const cube = GF.wideCube(); if (!cube || !uid()) return;
+            let posts = [];
+            try { const r = await rpc('golf_feed', { p_user: uid(), p_scope: 'everyone', p_author: null, p_before: null, p_limit: 10, p_post: null }); posts = ((r && r.posts) || []).filter(p => !p.mine); }
+            catch (e) { return; }
+            if (!GF.wideCube()) return;
+            const k = window.innerWidth >= 768 ? 4 : 3, show = posts.slice(0, k);
+            const seen = GF.counts.feed_seen_at ? new Date(GF.counts.feed_seen_at) : new Date(Date.now() - 7 * 864e5);
+            const prev = GF._stripIds;
+            let strip = cube.querySelector('.gfd-strip');
+            if (!strip) { strip = document.createElement('span'); strip.className = 'gfd-strip'; cube.appendChild(strip); }
+            const extra = Math.max(0, (GF.counts.feed_new || 0) - show.filter(p => new Date(p.created_at) > seen).length);
+            strip.innerHTML = show.length ? show.map((p, i) => {
+                const isNew = new Date(p.created_at) > seen;
+                const pop = prev ? !prev.has(p.id) : isNew;   // first paint: the unseen ones pop; later: only fresh arrivals
+                const img = url((p.photos || [])[0]);
+                return `<span class="ph ${pop ? 'pop' : ''}" style="--i:${i}" data-gfdpost="${esc(p.id)}">${img ? `<img src="${img}" alt="" loading="lazy">` : ''}${isNew ? '<i class="nd"></i>' : ''}${av(p.author, 22)}</span>`;
+            }).join('') + (window.innerWidth >= 768 && extra ? `<span class="more">+${extra > 99 ? '99' : extra}</span>` : '')
+                : `<span class="ph empty">${mi('add_a_photo')}</span><span class="ph empty">${mi('sports_golf')}</span>`;
+            GF._stripIds = new Set(show.map(p => p.id));
+            cube.classList.toggle('gfd-live', !!((GF.counts.feed_new || 0) + (GF.counts.activity_new || 0)));
+        },
+        cubeTap(e) {
+            const t = e && e.target && e.target.closest && e.target.closest('[data-gfdpost]');
+            if (t) GF.show({ s: 'post', id: t.dataset.gfdpost }); else GF.show();
         },
         // ---- the intro toast: every golfer, on the home screen, until they open Tap-In or dismiss it (Pete, 2026-09-19)
         maybeIntro(force) {
@@ -1542,7 +1606,17 @@
                 if (uid() && db() && window.AppState && AppState.currentUser && (AppState.currentUser.lineUserId || AppState.currentUser.id)) {
                     clearInterval(iv);
                     GF.refreshCounts();
-                    setInterval(() => { if (document.visibilityState === 'visible') GF.refreshCounts(); }, 180000);
+                    setInterval(() => {
+                        if (document.visibilityState !== 'visible') return;
+                        const home = document.getElementById('golfer-overview');
+                        if (home && home.classList.contains('active')) GF.refreshCounts();   // new posts pop in within a minute
+                        else if (!GF._lastCounts || Date.now() - GF._lastCounts > 170000) GF.refreshCounts();
+                    }, 60000);
+                    try {
+                        const dash = document.getElementById('golferDashboard');
+                        if (dash && window.MutationObserver) new MutationObserver(() => { const w = !dash.classList.contains('oo-on'); if (w !== GF._wasWide) { GF._wasWide = w; GF._stripIds = null; GF.paintCubeStrip(); } })
+                            .observe(dash, { attributes: true, attributeFilter: ['class'] });
+                    } catch (e) { }
                     GF.openLink();
                 } else if (n > 180) clearInterval(iv);
             }, 1000);

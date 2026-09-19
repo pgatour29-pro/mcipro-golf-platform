@@ -367,6 +367,35 @@ window.ContentModeration = (function() {
     }
 
     /**
+     * v1261: phone photos for surfaces other people see (Golf Feed, 19th Hole listings).
+     * Redraws ANY size photo onto a canvas as a JPEG no longer than `maxDim` on its long edge —
+     * EXIF (and the GPS in it) does not survive the redraw, and a 12MP phone photo lands well
+     * under the 2MB storage limit. The 2MB validateFile() gate is for surfaces that take the
+     * original; this one is for phone cameras, whose originals are routinely 3–6MB.
+     * @returns {Promise<Blob>} image/jpeg
+     */
+    function shrinkImage(file, maxDim, quality) {
+        maxDim = maxDim || 1600; quality = quality || 0.85;
+        return new Promise((resolve, reject) => {
+            if (!file || !/^image\//.test(file.type || 'image/')) { reject(new Error('Not an image')); return; }
+            const img = new Image();
+            const url = URL.createObjectURL(file);
+            img.onload = () => {
+                URL.revokeObjectURL(url);
+                const r = Math.min(1, maxDim / Math.max(img.width || 1, img.height || 1));
+                const c = document.createElement('canvas');
+                c.width = Math.max(1, Math.round(img.width * r)); c.height = Math.max(1, Math.round(img.height * r));
+                const ctx = c.getContext('2d');
+                ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height);   // transparent PNGs flatten onto white
+                ctx.drawImage(img, 0, 0, c.width, c.height);
+                c.toBlob(b => b ? resolve(b) : reject(new Error('Failed to process image')), 'image/jpeg', quality);
+            };
+            img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('This photo could not be opened. Try a JPG or PNG.')); };
+            img.src = url;
+        });
+    }
+
+    /**
      * Full image processing pipeline: validate → strip EXIF → NSFW check → server screen
      * @param {File} file
      * @param {string} [context] when given (profile | caddy | logo | listing | course | maintenance | general) the
@@ -1384,6 +1413,7 @@ window.ContentModeration = (function() {
         validateChatMessage,
         validateFile,
         stripExif,
+        shrinkImage,
         processImage,
         screenImage,
         checkRateLimit,

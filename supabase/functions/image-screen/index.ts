@@ -24,6 +24,7 @@ const CONTEXT_NOTE: Record<string, string> = {
   listing: "This is a photo in a golf classifieds listing — clubs, bags, shoes, gadgets and their owners are expected.",
   course: "This is a photo of course conditions — grass, bunkers, greens, damage and machinery are expected.",
   maintenance: "This is a photo attached to a maintenance job — equipment, turf and facilities are expected.",
+  feed: "This is a photo in the Golf Feed, a social feed for golfers — rounds, courses, shots, golfers, groups of friends, equipment and the clubhouse / 19th hole (food and drinks) are expected.",
   general: "",
 };
 

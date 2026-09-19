@@ -69,7 +69,7 @@
   "#g3Rail .g3-it.on{background:rgba(255,255,255,.1);color:#fff}\n" +
   "#g3Rail .g3-it.on .material-symbols-outlined{color:#4ade80;font-variation-settings:'FILL' 1,'wght' 500,'GRAD' 0,'opsz' 24}\n" +
   "#g3Rail .g3-it.on:before{content:'';position:absolute;left:-14px;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:#22c55e}\n" +
-  "#g3Rail .g3-it .g3-n,#g3Rail .g3-it .messagesBadge,#g3Rail .g3-it .marketplaceBadge,#g3Rail .g3-it .enb-events-badge{margin-left:auto;min-width:20px;height:20px;border-radius:10px;background:#B3402F;color:#fff;font-size:11px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 6px;position:static !important;box-shadow:none !important;line-height:1;animation:none}\n" +
+  "#g3Rail .g3-it .g3-n,#g3Rail .g3-it .messagesBadge,#g3Rail .g3-it .marketplaceBadge,#g3Rail .g3-it .gfdRailBadge,#g3Rail .g3-it .enb-events-badge{margin-left:auto;min-width:20px;height:20px;border-radius:10px;background:#B3402F;color:#fff;font-size:11px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 6px;position:static !important;box-shadow:none !important;line-height:1;animation:none}\n" +
   "#g3Rail .g3-it .g3-n.turf{background:#22c55e;color:#072A1E}\n" +
   "#g3Rail .g3-me{display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);cursor:pointer;margin-top:10px}\n" +
   "#g3Rail .g3-me img.user-avatar{width:30px;height:30px;border-radius:50%;object-fit:cover;box-shadow:0 0 0 2px rgba(74,222,128,.7);flex:none}\n" +
@@ -272,6 +272,7 @@
     { tab: 'caddies', icon: 'person_pin_circle', k: 'g3.caddies', fb: 'Caddies' },
     { act: 'oo', icon: 'handshake', k: 'oo.title', fb: '1on1', badge: 'ooCubeBadge' }, /* 1on1 (v1089→v1091): opens the 1on1 dashboard screen; CSS-hidden unless #golferDashboard.oo-on */
     { tab: 'messages', icon: 'chat', k: 'g3.messages', fb: 'Messages', badge: 'messagesBadge' },
+    { tab: 'golffeed', icon: 'photo_camera', k: 'gfd.title', fb: 'Golf Feed', badge: 'gfdRailBadge' },   /* v1261 Golf Feed (golf-feed.js paints the badge) */
     { tab: 'marketplace', icon: 'storefront', k: null, fb: '19th Hole', badge: 'marketplaceBadge' },
     { tab: 'food', icon: 'restaurant', k: 'g3.food', fb: 'Food' },
     { tab: 'status', icon: 'receipt_long', k: 'g3.orders', fb: 'Orders' },
@@ -288,6 +289,7 @@
   ];
   var TITLES = { overview: ['g3.today', 'Today'], societyevents: ['g3.societyevents', 'Society events'], scorecard: ['g3.playgolf', 'Play golf'], rounds: ['g3.roundhistory', 'Round history'], golfanalytics: ['g3.analytics', 'Analytics'], schedule: ['g3.schedule', 'Schedule'], caddies: ['g3.caddies', 'Caddies'], messages: ['g3.messages', 'Messages'], marketplace: [null, '19th Hole'], food: ['g3.food', 'Food'], status: ['g3.orders', 'Orders'], booking: ['g3.teetime', 'Tee time'], conditions: ['g3.conditions', 'Conditions'] };
   TITLES.oo = ['oo.title', '1on1'];
+  TITLES.golffeed = ['gfd.title', 'Golf Feed'];
 
   var G3 = {
     _built: false, _tab: 'overview', _mq: null, _timer: null, _seq: 0, _ev: null,
@@ -895,6 +897,9 @@
         var pts = last.map(function (x) { return parseInt(x.total_stableford) || 0; });
         var mx = Math.max.apply(null, pts.concat([1])), mn = Math.min.apply(null, pts);
         var best = Math.min.apply(null, rows.map(function (x) { return x.total_gross; }));
+        // v1261: "best" = best 18-hole INDIVIDUAL round, from golf_profile (the Golf Feed profile and the home cube read
+        // the same) — a 2-man scramble team score is not a personal best (team rounds rule, v1256).
+        try { var gp = await db.rpc('golf_profile', { p_user: me, p_target: me }); if (gp && gp.data && gp.data.best) best = gp.data.best; } catch (e) {}
         var top8 = pts.slice().sort(function (a, b) { return b - a; }).slice(0, 8);
         var bars = last.map(function (x, i) { var p = pts[i], h = Math.max(8, Math.round(100 * (p - (mn > 4 ? mn - 4 : 0)) / Math.max(1, mx - (mn > 4 ? mn - 4 : 0)))); var hi = top8.indexOf(p) >= 0; if (hi) top8.splice(top8.indexOf(p), 1); return '<i class="' + (hi ? '' : 'lo') + '" style="height:' + h + '%" title="' + esc((x.played_at || x.created_at || '').slice(0, 10)) + ' · ' + p + ' pts · ' + x.total_gross + '" onclick="G3Desk.openRound(\'' + esc(x.id) + '\', event)"></i>'; }).join('');
         var avg = pts.length ? Math.round(pts.reduce(function (a, b) { return a + b; }, 0) / pts.length) : 0;

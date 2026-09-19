@@ -429,7 +429,8 @@
 
     const KIND = {
         round: ['scoreboard', 'gfd.kind.round', 'Round'], shot: ['sports_golf', 'gfd.kind.shot', 'Great shot'],
-        course: ['landscape', 'gfd.kind.course', 'Course'], gear: ['golf_course', 'gfd.kind.gear', 'Gear'],
+        course: ['landscape', 'gfd.kind.course', 'Course'], caddy: ['person_pin_circle', 'gfd.kind.caddy', 'Caddy'],   // v1272 (Pete)
+        gear: ['golf_course', 'gfd.kind.gear', 'Gear'],
         nineteenth: ['sports_bar', 'gfd.kind.nineteenth', '19th Hole'],
     };
     const PAGE = 15;

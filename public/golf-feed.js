@@ -698,7 +698,8 @@
                 ['block', tr('gfd.report.offensive', 'Offensive or inappropriate'), go('offensive')],
                 ['report', tr('gfd.report.spam', 'Spam or selling outside the 19th Hole'), go('spam')],
                 ['music_off', tr('gfd.report.copyright', 'Music or copyright'), go('copyright')],
-                ['more_horiz', tr('gfd.report.other', 'Something else'), go('other')]]);
+                ['more_horiz', tr('gfd.report.other', 'Something else'), go('other')],
+                ['menu_book', tr('gfd.readguidelines', 'Read the Tap-In guidelines'), () => GF.guidelines()]]);
         },
         async muteVideo(id, on) {
             try { const r = await rpc('golf_post_mute', { p_user: uid(), p_post: id, p_on: on }); if (!r || !r.ok) throw new Error(GF.why(r)); toast(on ? tr('gfd.v.muted.toast', 'Muted for everyone') : tr('gfd.v.unmuted.toast', 'Sound back on'), 'success'); GF.render(); }
@@ -797,10 +798,12 @@
             const P = GF._prof; if (!P) return;
             if (P.is_me) GF.sheet('', '', [['bookmark', tr('gfd.savedposts', 'Saved posts'), () => GF.go({ s: 'saved' })],
                 ['edit', tr('gfd.editprofile', 'Edit profile'), () => GF.editProfile()],
-                ['share', tr('gfd.shareprofile', 'Share profile'), () => GF.shareProfile(P)]]);
+                ['share', tr('gfd.shareprofile', 'Share profile'), () => GF.shareProfile(P)],
+                ['menu_book', tr('gfd.guidelines', 'Guidelines & FAQ'), () => GF.guidelines()]]);
             else GF.sheet('', '', [['share', tr('gfd.shareprofile', 'Share profile'), () => GF.shareProfile(P)],
                 ['chat', tr('gfd.message', 'Message'), () => GF.dm(P.id)]]);
         },
+        guidelines() { try { window.LegalPages && LegalPages.open('guidelines'); } catch (e) { } },
         shareProfile(P) { GF.share('/?golfer=' + encodeURIComponent(P.id), P.name + ' · ' + tr('gfd.title', 'Tap-In')); },
         async share(path, title) {
             const u = location.origin + path;
@@ -852,7 +855,7 @@
                 <div class="gfd-lbl">${esc(tr('gfd.whosees', 'Who sees it'))}</div>
                 <div class="gfd-seg"><button class="${d.audience === 'everyone' ? 'on' : ''}" data-act="aud" data-v="everyone">${esc(tr('gfd.everyone.s', 'Everyone'))}</button><button class="${d.audience === 'followers' ? 'on' : ''}" data-act="aud" data-v="followers">${esc(tr('gfd.followersonly', 'Followers only'))}</button></div>
                 <button class="gfd-go" id="gfdShare" data-act="share">${esc(d.edit ? tr('gfd.savechanges', 'Save changes') : tr('gfd.share', 'Share'))}</button>
-                <p class="mkp-note" style="margin-top:10px">${mi('shield')}<span>${esc(tr('gfd.rules', 'Golf and the course only. Photos are resized on your phone and their location is removed before upload.'))}</span></p>`;
+                <p class="mkp-note" style="margin-top:10px">${mi('shield')}<span>${esc(tr('gfd.rules', 'Golf and the course only. Photos are resized on your phone and their location is removed before upload.'))} <a href="#" data-act="guidelines" style="color:var(--mkp-greenhi);font-weight:700">${esc(tr('gfd.readguidelines', 'Read the Tap-In guidelines'))}</a></span></p>`;
             document.getElementById('gfdCap').addEventListener('input', e => { d.caption = e.target.value; });
             GF.wireMentions(document.getElementById('gfdCap'), d.mentions);
             document.getElementById('gfdFile').addEventListener('change', e => { GF.addPhotos(e.target.files); e.target.value = ''; });
@@ -1178,6 +1181,7 @@
                 case 'like': GF.like(id); break;
                 case 'sound': GF.sound(id, el); break;
                 case 'likers': GF.go({ s: 'likers', id }); break;
+                case 'guidelines': GF.guidelines(); break;
                 case 'save': GF.save(id); break;
                 case 'comment': GF.addComment(id); break;
                 case 'delcomment': rpc('golf_comment_delete', { p_user: uid(), p_comment: id }).then(() => { const p = GF._posts[el.dataset.post]; if (p) p.comments = Math.max(0, (p.comments || 1) - 1); GF.paintCount(el.dataset.post); GF.loadComments(el.dataset.post); }).catch(x => toast(x.message, 'error')); break;

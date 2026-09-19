@@ -1263,7 +1263,7 @@
         wideCube() {
             const cube = document.querySelector('#liteCubesGrid > .gfdCube'), dash = document.getElementById('golferDashboard');
             if (!cube || !dash) return null;
-            const wide = !dash.classList.contains('oo-on');   // only 1on1 members keep the half cube beside 1on1
+            const wide = true;   // v1274: 1on1 is gone, so Tap-In takes the whole bottom row for everyone
             cube.classList.toggle('gfd-wide', wide);
             if (!wide) { cube.querySelector('.gfd-strip')?.remove(); return null; }
             return cube;

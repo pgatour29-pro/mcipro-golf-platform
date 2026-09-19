@@ -270,7 +270,7 @@
     { tab: 'schedule', icon: 'calendar_month', k: 'g3.schedule', fb: 'Schedule' },
     { act: 'teesheet', icon: 'view_list', k: 'g3.teesheet', fb: 'Tee sheet' },
     { tab: 'caddies', icon: 'person_pin_circle', k: 'g3.caddies', fb: 'Caddies' },
-    { act: 'oo', icon: 'handshake', k: 'oo.title', fb: '1on1', badge: 'ooCubeBadge' }, /* 1on1 (v1089→v1091): opens the 1on1 dashboard screen; CSS-hidden unless #golferDashboard.oo-on */
+    /* v1274: the 1on1 rail item is gone — 1on1 is no longer developed (Pete, 2026-09-19) */
     { tab: 'messages', icon: 'chat', k: 'g3.messages', fb: 'Messages', badge: 'messagesBadge' },
     { tab: 'golffeed', icon: 'photo_camera', k: 'gfd.title', fb: 'Tap-In', badge: 'gfdRailBadge' },   /* v1261 Golf Feed (golf-feed.js paints the badge) */
     { tab: 'marketplace', icon: 'storefront', k: null, fb: '19th Hole', badge: 'marketplaceBadge' },

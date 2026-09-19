@@ -12,7 +12,8 @@
  *                and the composer: the first course-side offer authoring UI (v1169 left it "not built")
  *   Reviews    — caddy reviews + course condition reports
  *   Events     — society events at the course: upcoming demand, past attendance
- *   Reports    — CSV exports of every aggregate on this dashboard
+ *   Reports    — every aggregate as an on-screen report (tiles, chart, sortable/searchable table), its CSV, and an
+ *                Ask-AI thread over the same numbers (v1257, edge fn marketing-ai)
  * Reads: marketing_audience_report / marketing_offer_stats (aggregate-only RPCs), course_offers,
  * caddy_reviews, course_conditions, society_events (+ registrations counts), count_offer_segment.
  * Writes: course_offers (insert / status), then the line-push-notification edge fn delivers.
@@ -135,7 +136,7 @@
             const n = document.getElementById('mkCourseName'); if (n) n.textContent = MK.course ? MK.course.name : tr('mk.pick.short', 'Pick a course');
             const n2 = document.getElementById('mkCourseName2'); if (n2) n2.textContent = MK.course ? MK.course.name : '';
         },
-        onLanguage() { MK._loaded = {}; MK.onTab(MK._cur, true); },
+        onLanguage() { MK._loaded = {}; MK.onTab(MK._cur, true); if (MK._rv) { MK.rvPaintShell(); MK.rvPaintData(); MK.aiPaint(); } },
         spinner() { return `<div class="flex items-center justify-center py-16 text-gray-400"><span class="material-symbols-outlined animate-spin text-3xl">progress_activity</span></div>`; },
 
         // ---------- tabs ----------
@@ -291,15 +292,15 @@
         TYPES: [['promotion', 'Special offer'], ['food_beverage', 'Food & drink'], ['caddy', 'Caddy offer'], ['society_package', 'Society package'], ['other', 'Course news'], ['tee_time', 'Tee time deal']],
         CTAS: [['', 'No button'], ['booking', 'Book a tee time'], ['caddy', 'Book a caddy'], ['proshop', 'Pro shop'], ['url', 'Web link']],
         typeLabel(t) { const f = MK.TYPES.find(x => x[0] === t); return f ? tr('mk.type.' + t, f[1]) : (t || '—'); },
-        statusChip(o) {
+        statusOf(o) {
             const live = MK.isLive(o);
-            const s = o.status === 'deleted' ? ['withdrawn', 'bg-gray-100 text-gray-700', tr('mk.st.withdrawn', 'Withdrawn')]
+            return o.status === 'deleted' ? ['withdrawn', 'bg-gray-100 text-gray-700', tr('mk.st.withdrawn', 'Withdrawn')]
                 : o.status === 'paused' ? ['paused', 'bg-amber-100 text-amber-800', tr('mk.st.paused', 'Paused')]
                 : (o.status === 'expired' || (o.valid_to && new Date(o.valid_to).getTime() <= Date.now())) ? ['expired', 'bg-gray-100 text-gray-700', tr('mk.st.expired', 'Expired')]
                 : (o.valid_from && new Date(o.valid_from).getTime() > Date.now()) ? ['scheduled', 'bg-sky-100 text-sky-800', tr('mk.st.scheduled', 'Scheduled')]
-                : live ? ['live', 'bg-green-100 text-green-800', tr('mk.st.live', 'Live')] : ['off', 'bg-gray-100 text-gray-700', esc(o.status || '—')];
-            return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${s[1]}">${s[2]}</span>`;
+                : live ? ['live', 'bg-green-100 text-green-800', tr('mk.st.live', 'Live')] : ['off', 'bg-gray-100 text-gray-700', o.status || '—'];
         },
+        statusChip(o) { const s = MK.statusOf(o); return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${s[1]}">${esc(s[2])}</span>`; },
         offerRow(o, compact) {
             const d = Number(o.delivered) || 0, op = Number(o.opened) || 0, cl = Number(o.clicked) || 0, pu = Number(o.pushed) || 0;
             const deal = o.deal ? ` · ${esc(o.deal.spots_taken || 0)}/${esc(o.deal.spots_total || '?')} ${esc(tr('mk.grabbed', 'grabbed'))}` : '';
@@ -355,8 +356,12 @@
             return ov;
         },
         _closeOvl() { const o = document.getElementById('mkOvl'); if (o) o.remove(); },
-        canBack() { return !!document.getElementById('mkOvl') || !!document.getElementById('mkCoursePicker'); },
-        back() { if (document.getElementById('mkOvl')) { MK._closeOvl(); return true; } return false; },
+        canBack() { return !!document.getElementById('mkOvl') || !!document.getElementById('mkRepView') || !!document.getElementById('mkCoursePicker'); },
+        back() {
+            if (document.getElementById('mkOvl')) { MK._closeOvl(); return true; }   // a sheet opened over the report viewer closes first
+            if (document.getElementById('mkRepView')) { MK.closeReport(); return true; }
+            return false;
+        },
         async openOffer(id) {
             const offers = await MK.offers(); const o = offers.find(x => x.id === id); if (!o) return;
             const d = Number(o.delivered) || 0, op = Number(o.opened) || 0, cl = Number(o.clicked) || 0, pu = Number(o.pushed) || 0, dm = Number(o.dismissed) || 0;
@@ -606,7 +611,21 @@
             } catch (e) { console.warn('[Marketing] events:', e.message); host.innerHTML = MK.errorBox(e); }
         },
 
-        // ================= REPORTS (CSV of the aggregates) =================
+        // ================= REPORTS (on-screen viewer + Ask AI + CSV) =================
+        // v1257 (Pete 2026-09-19): "downloading the CSV is great and keep that, but i want it to open on screen and explore
+        // and analyze with Ai assistance". Every report opens in the body-mounted #mkRepView: headline tiles, a chart, a
+        // sortable + searchable table, the CSV (same file as before) and an Ask-AI thread. The AI (edge fn marketing-ai)
+        // reads the SAME aggregate rows the tables show — every report for the period — never a golfer list.
+        REPS: [
+            ['summary', 'summarize', 'mk.rep.summary', 'Marketing summary', 'mk.rep.summary.sub', 'Every headline figure for the period in one row'],
+            ['campaigns', 'campaign', 'mk.rep.campaigns', 'Campaign performance', 'mk.rep.campaigns.sub', 'Delivered, pushed, opened, clicked per campaign · 12 months'],
+            ['rounds', 'show_chart', 'mk.rep.rounds', 'Rounds per day', 'mk.rep.rounds.sub', 'Daily play volume for the period'],
+            ['societies', 'diversity_3', 'mk.rep.societies', 'Society mix', 'mk.rep.societies.sub', 'Golfers and rounds by society'],
+            ['countries', 'public', 'mk.rep.countries', 'Golfer origin', 'mk.rep.countries.sub', 'App golfers by country'],
+            ['languages', 'translate', 'mk.rep.languages', 'Languages', 'mk.rep.languages.sub', 'App golfers by language'],
+            ['events', 'event', 'mk.rep.events', 'Upcoming society events', 'mk.rep.events.sub', 'Next 60 days with registrations']
+        ],
+        repMeta(key) { const m = MK.REPS.find(x => x[0] === key) || MK.REPS[0]; return { key: m[0], icon: m[1], title: tr(m[2], m[3]), sub: tr(m[4], m[5]), periodic: !['campaigns', 'events'].includes(m[0]) }; },
         csv(name, rows) {
             if (!rows || !rows.length) { window.NotificationManager.show(tr('mgr.nodata', 'No data in this period'), 'warning'); return; }
             const cols = Object.keys(rows[0]);
@@ -629,20 +648,379 @@
         },
         loadReports() {
             const host = document.getElementById('mk-rep-body'); if (!host) return;
-            const R = [['summary', 'summarize', tr('mk.rep.summary', 'Marketing summary'), tr('mk.rep.summary.sub', 'Every headline figure for the period in one row')],
-                       ['campaigns', 'campaign', tr('mk.rep.campaigns', 'Campaign performance'), tr('mk.rep.campaigns.sub', 'Delivered, pushed, opened, clicked per campaign · 12 months')],
-                       ['rounds', 'show_chart', tr('mk.rep.rounds', 'Rounds per day'), tr('mk.rep.rounds.sub', 'Daily play volume for the period')],
-                       ['societies', 'diversity_3', tr('mk.rep.societies', 'Society mix'), tr('mk.rep.societies.sub', 'Golfers and rounds by society')],
-                       ['countries', 'public', tr('mk.rep.countries', 'Golfer origin'), tr('mk.rep.countries.sub', 'App golfers by country')],
-                       ['languages', 'translate', tr('mk.rep.languages', 'Languages'), tr('mk.rep.languages.sub', 'App golfers by language')],
-                       ['events', 'event', tr('mk.rep.events', 'Upcoming society events'), tr('mk.rep.events.sub', 'Next 60 days with registrations')]];
-            host.innerHTML = MK.periodBar(`<div class="text-[11px] text-gray-500 font-medium">${esc(tr('mk.rep.note', 'CSV downloads of the aggregates on this dashboard. Nothing here identifies a golfer.'))}</div>`) + `
+            host.innerHTML = MK.periodBar(`<div class="text-[11px] text-gray-500 font-medium">${esc(tr('mk.rep.note2', 'Open a report to sort, search and chart it, and ask AI what it means. CSV downloads stay one tap away. Nothing here identifies a golfer.'))}</div>`) + `
+              <button onclick="MarketingDashboard.openReport('summary', 'ai')" class="w-full text-left bg-white rounded-xl border border-green-300 p-4 mb-3 flex items-center gap-3 hover:border-green-500" style="flex-wrap:nowrap">
+                <span class="mk-chip bg-green-100 flex-shrink-0">${mi('auto_awesome', 'text-green-700')}</span>
+                <span class="min-w-0 flex-1"><span class="block text-sm font-bold text-gray-900">${esc(tr('mk.ai.hero', 'Ask AI about your reports'))}</span><span class="block text-[11px] text-gray-600">${esc(tr('mk.ai.herosub', 'What stands out, why play moved, who to target next and with what offer — answered from this course\'s own numbers.'))}</span></span>
+                <span class="text-gray-500 text-xl flex-shrink-0">${mi('chevron_right')}</span>
+              </button>
               <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                ${R.map(x => `<button onclick="MarketingDashboard.exportReport('${x[0]}')" class="bg-white rounded-xl border border-gray-200 p-4 text-left hover:border-green-400 flex items-start gap-3" style="flex-wrap:nowrap">
+                ${MK.REPS.map(x => `<div role="button" tabindex="0" onclick="MarketingDashboard.openReport('${x[0]}')" onkeydown="if (event.key === 'Enter') this.click()" class="bg-white rounded-xl border border-gray-200 p-4 text-left hover:border-green-400 flex items-start gap-3 cursor-pointer" style="flex-wrap:nowrap">
                     <span class="mk-chip bg-green-50 flex-shrink-0">${mi(x[1], 'text-green-600')}</span>
-                    <span class="min-w-0 flex-1"><span class="block text-sm font-bold text-gray-900">${esc(x[2])}</span><span class="block text-[11px] text-gray-600">${esc(x[3])}</span><span class="block text-[11px] font-bold text-green-700 mt-1">${mi('download')} CSV</span></span></button>`).join('')}
+                    <span class="min-w-0 flex-1"><span class="block text-sm font-bold text-gray-900">${esc(tr(x[2], x[3]))}</span><span class="block text-[11px] text-gray-600">${esc(tr(x[4], x[5]))}</span>
+                      <span class="flex items-center gap-2 mt-2" style="flex-wrap:nowrap"><span class="mk-open">${mi('open_in_full')} ${esc(tr('mk.rv.open', 'Open'))}</span><button type="button" class="mk-csv" onclick="event.stopPropagation(); MarketingDashboard.exportReport('${x[0]}')">${mi('download')} CSV</button></span></span></div>`).join('')}
               </div>`;
             MK._loaded.rep = true;
+        },
+
+        // ---- the report viewer ----
+        wd(d) { try { return new Date(d + 'T12:00:00').toLocaleDateString(typeof _lvLocale === 'function' ? _lvLocale() : 'en-US', { weekday: 'short' }); } catch (e) { return ''; } },
+        periodText(days) { const d = days || MK.days; return d >= 365 ? tr('mk.rv.12m', 'Last 12 months') : tr('mk.rv.last', 'Last') + ' ' + d + ' ' + tr('mk.rv.days', 'days'); },
+        // rows + column spec per report; the table, the tiles and the AI all read these (CSV keeps its own file shape above)
+        dataset(key, r, offers) {
+            const p = r.period || {}, re = r.reach || {}, s = r.satisfaction || {}, ev = r.events || {};
+            const C = (k, l, o) => Object.assign({ k, l }, o || {});
+            const share = (n, tot) => tot ? Math.round((Number(n) || 0) / tot * 1000) / 10 : 0;
+            const ratio = (a, b) => (rows) => { const x = rows.reduce((t, r) => t + (Number(r[a]) || 0), 0), y = rows.reduce((t, r) => t + (r[b] == null ? 0 : Number(r[b]) || 0), 0); return y ? Math.round(x / y * 1000) / 10 : null; };
+            const n = (v) => Number(v) || 0;
+            if (key === 'summary') {
+                const row = (metric, value, prev) => ({ metric, value: value == null ? null : value, prev: prev == null ? null : prev, change: prev == null || value == null ? '' : MK.trendOf(n(value), n(prev)) });
+                const rating = (v) => v == null ? null : Math.round(Number(v) * 100) / 100;
+                return { cols: [C('metric', tr('mk.rv.metric', 'Metric')), C('value', tr('mk.rv.thisperiod', 'This period'), { num: 1 }), C('prev', tr('mk.rv.prev', 'Period before'), { num: 1 }), C('change', tr('mk.rv.change', 'Change'))], rows: [
+                    row(tr('mk.kpi.golfers', 'Golfers played here'), p.golfers, p.golfers_prev),
+                    row(tr('mk.rv.rounds', 'Rounds'), p.rounds, p.rounds_prev),
+                    row(tr('mk.seg.app', 'Reachable in the app'), p.app_users),
+                    row(tr('mk.seg.new', 'First-timers'), p.new_golfers),
+                    row(tr('mk.seg.frequent', 'Regulars'), p.frequent),
+                    row(tr('mk.rv.lapsed', 'Lapsed (played in the last year, not the last 90 days)'), p.lapsed),
+                    row(tr('mk.kpi.followers', 'Followers'), re.followers),
+                    row(tr('mk.reach.push', 'LINE push opt-ins'), re.opt_in),
+                    row(tr('mk.kpi.caddy', 'Caddy rating'), rating(s.caddy_avg)),
+                    row(tr('mk.rv.caddyn', 'Caddy reviews'), s.caddy_n),
+                    row(tr('mk.rev.cond', 'Course condition'), rating(s.cond_avg)),
+                    row(tr('mk.rv.evheld', 'Society events held'), ev.past),
+                    row(tr('mk.rv.evplayers', 'Players at those events'), ev.past_regs),
+                    row(tr('mk.ev.up', 'Upcoming · 60 days'), ev.upcoming),
+                    row(tr('mk.rv.upregs', 'Registered for upcoming events'), ev.upcoming_regs),
+                    row(tr('mk.rv.alltimeg', 'All-time golfers here'), p.all_time),
+                    row(tr('mk.rv.alltimer', 'All-time rounds here'), p.all_time_rounds)
+                ] };
+            }
+            if (key === 'rounds') return { cols: [C('date', tr('mk.rv.date', 'Date')), C('weekday', tr('mk.rv.weekday', 'Day')), C('rounds', tr('mk.rv.rounds', 'Rounds'), { num: 1, sum: 1 })],
+                rows: (r.per_day || []).map(x => ({ date: x.d, weekday: MK.wd(x.d), rounds: n(x.n) })).sort((a, b) => a.date < b.date ? 1 : -1) };
+            if (key === 'societies') return { cols: [C('society', tr('mk.rv.society', 'Society')), C('golfers', tr('mk.rv.golfers', 'Golfers'), { num: 1 }), C('share', tr('mk.rv.share', '% of golfers'), { num: 1, pct: 1 }), C('rounds', tr('mk.rv.rounds', 'Rounds'), { num: 1, sum: 1 })],
+                rows: (r.societies || []).map(x => ({ society: x.name, golfers: n(x.golfers), share: share(x.golfers, p.golfers), rounds: n(x.rounds) })) };
+            if (key === 'countries' || key === 'languages') {
+                const f = key === 'countries' ? fold(r.countries, countryName) : fold(r.languages, langName), tot = p.app_users || f.reduce((a, x) => a + x.n, 0);
+                return { cols: [C('name', key === 'countries' ? tr('mk.rv.country', 'Country') : tr('mk.rv.language', 'Language')), C('golfers', tr('mk.rv.appgolfers', 'App golfers'), { num: 1, sum: 1 }), C('share', tr('mk.rv.share', '% of golfers'), { num: 1, pct: 1 })],
+                    rows: f.map(x => ({ name: x.name, golfers: x.n, share: share(x.n, tot) })) };
+            }
+            if (key === 'events') return { cols: [C('date', tr('mk.rv.date', 'Date')), C('time', tr('mk.rv.time', 'Time')), C('title', tr('mk.rv.event', 'Event')), C('registered', tr('mk.rv.registered', 'Registered'), { num: 1, sum: 1 }), C('max', tr('mk.rv.max', 'Max'), { num: 1, sum: 1 }), C('fill', tr('mk.rv.fill', '% full'), { num: 1, pct: 1, tot: ratio('registered', 'max') })],
+                rows: (r.upcoming || []).map(e => ({ date: e.date, time: String(e.time || '').slice(0, 5), title: e.title, registered: n(e.regs), max: e.max ? n(e.max) : null, fill: e.max ? Math.round(n(e.regs) / n(e.max) * 100) : null })) };
+            if (key === 'campaigns') return { cols: [C('title', tr('mk.rv.campaign', 'Campaign')), C('status', tr('mk.rv.status', 'Status')), C('created', tr('mk.rv.created', 'Created')), C('delivered', tr('mk.rv.delivered', 'Delivered'), { num: 1, sum: 1 }), C('pushed', tr('mk.rv.pushed', 'Pushed'), { num: 1, sum: 1 }), C('opened', tr('mk.rv.opened', 'Opened'), { num: 1, sum: 1 }), C('open_rate', tr('mk.rv.openrate', 'Open %'), { num: 1, pct: 1, tot: ratio('opened', 'delivered') }), C('clicked', tr('mk.rv.clicked', 'Clicked'), { num: 1, sum: 1 }), C('click_rate', tr('mk.rv.clickrate', 'Click %'), { num: 1, pct: 1, tot: ratio('clicked', 'delivered') }), C('dismissed', tr('mk.rv.dismissed', 'Dismissed'), { num: 1, sum: 1 }), C('type', tr('mk.rv.type', 'Type'))],
+                rows: (offers || []).map(o => { const d = n(o.delivered); return { title: o.title, status: MK.statusOf(o)[2], created: String(o.created_at || '').slice(0, 10), delivered: d, pushed: n(o.pushed), opened: n(o.opened), open_rate: d ? Math.round(n(o.opened) / d * 1000) / 10 : null, clicked: n(o.clicked), click_rate: d ? Math.round(n(o.clicked) / d * 1000) / 10 : null, dismissed: n(o.dismissed), type: MK.typeLabel(o.offer_type) }; }) };
+            return { cols: [], rows: [] };
+        },
+        cell(c, v) { if (v == null || v === '') return '—'; if (c.pct) return (Math.round(Number(v) * 10) / 10) + '%'; if (c.num) return fmtN(v); return String(v); },
+        async openReport(key, tab) {
+            if (!MK.course) { MK.onTab('reports'); return; }
+            const sig = MK.course.id + '|' + MK.days;
+            if (!MK._ai || MK._ai.sig !== sig) MK._ai = { sig, turns: [] };
+            let el = document.getElementById('mkRepView');
+            if (el && MK._rv) Object.assign(MK._rv, { key: key || 'summary', q: '', sort: null }, tab ? { tab } : {});
+            else MK._rv = { key: key || 'summary', q: '', sort: null, tab: tab || 'data', busy: false, abort: null, r: null, offers: null, r365: null };
+            if (!el) {
+                el = document.createElement('div'); el.id = 'mkRepView'; el.className = 'mk-rv';
+                el.innerHTML = `<div class="mk-rv-hd">
+                    <div class="r1"><button class="ib" onclick="MarketingDashboard.closeReport()" aria-label="Back">${mi('arrow_back')}</button><div class="tt"><div class="t" id="mkRvTitle"></div><div class="s" id="mkRvSub"></div></div><button class="csv" onclick="MarketingDashboard.exportReport(MarketingDashboard._rv.key)">${mi('download')} CSV</button></div>
+                    <div class="r2" id="mkRvChips"></div>
+                    <div class="r3"><div class="per" id="mkRvPeriod"></div><div class="seg" id="mkRvSeg"><button data-t="data" onclick="MarketingDashboard.rvTab('data')">${mi('table_chart')} ${esc(tr('mk.rv.data', 'Data'))}</button><button data-t="ai" onclick="MarketingDashboard.rvTab('ai')">${mi('auto_awesome')} ${esc(tr('mk.ai.title', 'Ask AI'))}</button></div></div>
+                  </div>
+                  <div class="mk-rv-bd" id="mkRvBody"><div class="mk-rv-grid"><section class="col-data" id="mkRvData"></section><section class="col-ai" id="mkRvAI"></section></div></div>`;
+                document.body.appendChild(el);   // body-mounted: .screen transforms trap position:fixed
+            }
+            const body = document.getElementById('mkRvBody'); if (body) body.scrollTop = 0;
+            MK.rvPaintShell(); MK.rvPaintData(); MK.aiPaint();
+            await MK.rvLoad();
+        },
+        closeReport() {
+            const V = MK._rv; if (V && V.abort) { try { V.abort.abort(); } catch (e) { } }
+            const el = document.getElementById('mkRepView'); if (el) el.remove();
+            MK._rv = null;
+            if (MK._cur === 'reports') MK.loadReports();   // the period may have changed in the viewer
+        },
+        async rvLoad() {
+            const V = MK._rv; if (!V) return;
+            const seq = (MK._seq.rv = (MK._seq.rv || 0) + 1);
+            const host = document.getElementById('mkRvData');
+            if (!V.r && host) host.innerHTML = MK.spinner();
+            try {
+                const [r, offers, r365] = await Promise.all([MK.report(), MK.offers(), MK.days < 365 ? MK.report(365).catch(() => null) : Promise.resolve(null)]);
+                if (seq !== MK._seq.rv || MK._rv !== V) return;
+                V.r = r; V.offers = offers; V.r365 = r365;
+                MK.rvPaintData(); MK.aiPaint();
+            } catch (e) { console.warn('[Marketing] report viewer:', e.message); if (host && MK._rv === V) host.innerHTML = MK.errorBox(e); }
+        },
+        rvPaintShell() {
+            const V = MK._rv, el = document.getElementById('mkRepView'); if (!V || !el) return;
+            const m = MK.repMeta(V.key);
+            el.dataset.tab = V.tab;
+            document.getElementById('mkRvTitle').textContent = m.title;
+            document.getElementById('mkRvSub').textContent = MK.course.name + ' · ' + (m.periodic ? MK.periodText() : m.sub);
+            const chips = document.getElementById('mkRvChips');
+            chips.innerHTML = MK.REPS.map(x => `<button class="${x[0] === V.key ? 'on' : ''}" onclick="MarketingDashboard.openReport('${x[0]}')">${mi(x[1])} ${esc(tr(x[2], x[3]))}</button>`).join('');
+            const on = chips.querySelector('button.on'); if (on) chips.scrollLeft = Math.max(0, on.offsetLeft - (chips.clientWidth - on.offsetWidth) / 2);
+            document.getElementById('mkRvPeriod').innerHTML = m.periodic
+                ? [7, 30, 90, 365].map(d => `<button class="${MK.days === d ? 'on' : ''}" onclick="MarketingDashboard.rvSetDays(${d})">${d === 365 ? '1Y' : d + 'D'}</button>`).join('')
+                : `<span class="pfix">${esc(V.key === 'campaigns' ? tr('mk.rv.12m', 'Last 12 months') : tr('mk.rv.next60', 'Next 60 days'))}</span>`;
+            document.querySelectorAll('#mkRvSeg button').forEach(b => b.classList.toggle('on', b.dataset.t === V.tab));
+        },
+        rvTab(t) { const V = MK._rv; if (!V) return; V.tab = t; MK.rvPaintShell(); const b = document.getElementById('mkRvBody'); if (b) b.scrollTop = t === 'ai' ? b.scrollHeight : 0; },
+        rvSetDays(d) {
+            const V = MK._rv; if (!V || MK.days === d) return;
+            if (V.abort) { try { V.abort.abort(); } catch (e) { } }
+            MK.days = d; MK._loaded = {}; V.r = null; V.ds = null;
+            MK._ai = { sig: MK.course.id + '|' + d, turns: [] };   // new numbers — a fresh conversation, so old answers can't be mistaken for these
+            MK.rvPaintShell(); MK.aiPaint(); MK.rvLoad();
+        },
+        rvSort(k) { const V = MK._rv; if (!V || !V.ds) return; const c = V.ds.cols.find(x => x.k === k); V.sort = V.sort && V.sort.k === k ? { k, dir: V.sort.dir === 'asc' ? 'desc' : 'asc' } : { k, dir: c && c.num ? 'desc' : 'asc' }; MK.rvPaintTable(); },
+        rvSearch(v, clear) { const V = MK._rv; if (!V) return; V.q = String(v || ''); if (clear) { const i = document.getElementById('mkRvQ'); if (i) { i.value = ''; i.focus(); } } MK.rvPaintTable(); },
+        panel(icon, title, body, right) { return `<div class="panel"><h4>${mi(icon, 'text-green-600')} <span class="flex-1 min-w-0">${esc(title)}</span>${right || ''}</h4>${body}</div>`; },
+        rvBars(r) {
+            // zero-filled daily bars; weekly buckets past 90 days so a year still reads on a phone
+            const map = {}; (r.per_day || []).forEach(p => { map[p.d] = Number(p.n) || 0; });
+            const days = Math.max(1, Math.min(Number(r.days) || MK.days, 366)), vals = [];
+            for (let i = days - 1; i >= 0; i--) { const d = localDateStr(new Date(Date.now() - i * 86400000)); vals.push({ d, n: map[d] || 0 }); }
+            let bars = vals, unit = tr('mk.roundsperday', 'rounds per day');
+            if (days > 90) { bars = []; for (let i = 0; i < vals.length; i += 7) { const w = vals.slice(i, i + 7); bars.push({ d: w[0].d, n: w.reduce((a, x) => a + x.n, 0) }); } unit = tr('mk.rv.perweek', 'rounds per week'); }
+            const max = Math.max(...bars.map(v => v.n), 1);
+            return `<div class="bars" style="gap:${bars.length > 45 ? 1 : 2}px">${bars.map(v => `<div style="height:${v.n ? Math.max(3, Math.round(v.n / max * 100)) : 1}%" title="${esc(v.d)} · ${v.n}"></div>`).join('')}</div>
+                <div class="bars-x"><span>${esc(when(bars[0].d))}</span><span>${esc(unit)} · ${esc(tr('mk.rv.peak', 'peak'))} ${fmtN(max)}</span><span>${esc(when(bars[bars.length - 1].d))}</span></div>`;
+        },
+        rvWeekdays(rows) {
+            const tot = [0, 0, 0, 0, 0, 0, 0];
+            rows.forEach(x => { const i = new Date(x.date + 'T12:00:00').getDay(); if (!isNaN(i)) tot[i] += x.rounds; });
+            return [1, 2, 3, 4, 5, 6, 0].map(i => ({ name: MK.wd('2026-09-' + (13 + i)), n: tot[i] }));   // 2026-09-13 is a Sunday
+        },
+        rvInsights(key, ds, r, offers) {
+            const p = r.period || {}, re = r.reach || {}, ev = r.events || {}, rows = ds.rows;
+            const T = (icon, color, val, label, sub, trend) => ({ icon, color, val: esc(val), label, sub: esc(sub == null ? '' : sub), trend });
+            const top = (list, k) => list.slice().sort((a, b) => (b[k] || 0) - (a[k] || 0))[0];
+            if (key === 'summary') return [
+                T('groups', 'green', fmtN(p.golfers), tr('mk.kpi.golfers', 'Golfers played here'), fmtN(p.golfers_prev) + ' ' + tr('mk.rv.before', 'the period before'), MK.trendOf(p.golfers, p.golfers_prev)),
+                T('sports_golf', 'teal', fmtN(p.rounds), tr('mk.rv.rounds', 'Rounds'), fmtN(p.rounds_prev) + ' ' + tr('mk.rv.before', 'the period before'), MK.trendOf(p.rounds, p.rounds_prev)),
+                T('person_add', 'emerald', fmtN(p.new_golfers), tr('mk.seg.new', 'First-timers'), fmtN(p.frequent) + ' ' + tr('mk.rv.regulars', 'regulars')),
+                T('smartphone', 'sky', fmtN(p.app_users), tr('mk.seg.app', 'Reachable in the app'), fmtN(re.followers) + ' ' + tr('mk.rv.followers', 'followers') + ' · ' + fmtN(re.opt_in) + ' ' + tr('mk.optin', 'opted in to pushes'))];
+            if (key === 'rounds') {
+                const total = rows.reduce((a, x) => a + x.rounds, 0), b = top(rows, 'rounds'), wk = MK.rvWeekdays(rows), bw = top(wk, 'n');
+                return [
+                    T('sports_golf', 'green', fmtN(total), tr('mk.rv.rounds', 'Rounds'), fmtN(p.rounds_prev) + ' ' + tr('mk.rv.before', 'the period before'), MK.trendOf(total, p.rounds_prev)),
+                    T('calendar_month', 'teal', fmtN(rows.length) + ' / ' + fmtN(r.days || MK.days), tr('mk.rv.activedays', 'Days with play'), rows.length ? tr('mk.rv.avg', 'avg') + ' ' + fmtN(Math.round(total / rows.length)) + ' ' + tr('mk.rv.perplayday', 'per day played') : ''),
+                    T('local_fire_department', 'amber', b ? fmtN(b.rounds) : '—', tr('mk.rv.busiest', 'Busiest day'), b ? when(b.date) + ' · ' + b.weekday : ''),
+                    T('date_range', 'sky', bw && bw.n ? bw.name : '—', tr('mk.rv.bestday', 'Busiest weekday'), bw && bw.n ? fmtN(bw.n) + ' ' + tr('mk.rounds', 'rounds') + ' · ' + pct(bw.n, total) + '%' : '')];
+            }
+            if (key === 'societies') {
+                const named = rows.filter(x => x.society !== 'Independent'), t = top(named, 'golfers'), ind = rows.find(x => x.society === 'Independent'), sr = named.reduce((a, x) => a + x.rounds, 0);
+                return [
+                    T('diversity_3', 'green', fmtN(named.length), tr('mk.rv.socs', 'Societies'), tr('mk.rv.socsub', 'posted rounds here')),
+                    T('emoji_events', 'amber', t ? t.share + '%' : '—', tr('mk.rv.topsoc', 'Top society'), t ? t.society : ''),
+                    T('sports_golf', 'teal', fmtN(sr), tr('mk.rv.socrounds', 'Society rounds'), pct(sr, p.rounds) + '% ' + tr('mk.rv.ofall', 'of all rounds')),
+                    T('person', 'sky', (ind ? ind.share : 0) + '%', tr('mk.rv.indep', 'Independent'), tr('mk.rv.indepsub', 'no society tag'))];
+            }
+            if (key === 'countries' || key === 'languages') {
+                const unk = key === 'countries' ? 'Unknown' : 'English', known = rows.filter(x => key === 'languages' || x.name !== 'Unknown'), t = top(known, 'golfers'), u = rows.find(x => x.name === unk);
+                return [
+                    T(key === 'countries' ? 'public' : 'translate', 'sky', fmtN(known.length), key === 'countries' ? tr('mk.rv.countries', 'Countries') : tr('mk.rv.languages', 'Languages'), ''),
+                    T('flag', 'green', t ? t.share + '%' : '—', key === 'countries' ? tr('mk.rv.toporigin', 'Top origin') : tr('mk.rv.toplang', 'Top language'), t ? t.name : ''),
+                    T('smartphone', 'teal', fmtN(p.app_users), tr('mk.rv.appgolfers', 'App golfers'), tr('mk.rv.appsub', 'the base these shares use')),
+                    key === 'countries'
+                        ? T('help', 'amber', (u ? u.share : 0) + '%', tr('mk.rv.unknown', 'Unknown origin'), tr('mk.rv.unknownsub', 'no country recorded'))
+                        : T('forum', 'amber', Math.round((100 - (u ? u.share : 0)) * 10) / 10 + '%', tr('mk.rv.notenglish', 'Not English'), tr('mk.rv.notenglishsub', 'write these golfers their own version'))];
+            }
+            if (key === 'events') {
+                const regs = rows.reduce((a, x) => a + x.registered, 0), capped = rows.filter(x => x.max), fill = capped.length ? Math.round(capped.reduce((a, x) => a + x.registered, 0) / capped.reduce((a, x) => a + x.max, 0) * 100) : null, nx = rows[0];
+                return [
+                    T('event_upcoming', 'green', fmtN(rows.length), tr('mk.ev.up', 'Upcoming · 60 days'), ''),
+                    T('how_to_reg', 'teal', fmtN(regs), tr('mk.rv.registered', 'Registered'), rows.length ? fmtN(Math.round(regs / rows.length)) + ' ' + tr('mk.rv.perevent', 'per event') : ''),
+                    T('percent', 'amber', fill == null ? '—' : fill + '%', tr('mk.rv.fillavg', 'Places filled'), tr('mk.rv.fillsub', 'events with a player cap')),
+                    T('schedule', 'sky', nx ? when(nx.date) : '—', tr('mk.rv.next', 'Next event'), nx ? nx.title : '')];
+            }
+            if (key === 'campaigns') {
+                const d = rows.reduce((a, x) => a + x.delivered, 0), o = rows.reduce((a, x) => a + x.opened, 0), c = rows.reduce((a, x) => a + x.clicked, 0);
+                return [
+                    T('campaign', 'green', fmtN(rows.length), tr('mk.rv.campaigns', 'Campaigns'), fmtN((offers || []).filter(MK.isLive).length) + ' ' + tr('mk.st.live', 'Live').toLowerCase()),
+                    T('inbox', 'teal', fmtN(d), tr('mk.rv.delivered', 'Delivered'), ''),
+                    T('drafts', 'amber', d ? pct(o, d) + '%' : '—', tr('mk.rv.openrate', 'Open %'), fmtN(o) + ' ' + tr('mk.f.opened', 'opened')),
+                    T('ads_click', 'sky', d ? pct(c, d) + '%' : '—', tr('mk.rv.clickrate', 'Click %'), fmtN(c) + ' ' + tr('mk.f.clicked', 'clicked'))];
+            }
+            return [];
+        },
+        rvChart(key, ds, r) {
+            const p = r.period || {}, rows = ds.rows;
+            if (key === 'summary') return MK.panel('show_chart', tr('mk.ov.trend', 'Rounds played here'), MK.rvBars(r));
+            if (key === 'rounds') return MK.panel('show_chart', tr('mk.ov.trend', 'Rounds played here'), MK.rvBars(r)) + MK.panel('date_range', tr('mk.rv.byweekday', 'By weekday'), MK.barList(MK.rvWeekdays(rows), 'name', 'n', 'bg-green-500', rows.reduce((a, x) => a + x.rounds, 0)));
+            if (key === 'societies') return MK.panel('diversity_3', tr('mk.ov.societies', 'Who brings the players'), MK.barList(rows.slice(0, 10), 'society', 'golfers', 'bg-green-500', p.golfers));
+            if (key === 'countries') return MK.panel('public', tr('mk.ov.countries', 'Where app golfers come from'), MK.barList(rows.slice(0, 10), 'name', 'golfers', 'bg-sky-500', p.app_users));
+            if (key === 'languages') return MK.panel('translate', tr('mk.ov.languages', 'App language'), MK.barList(rows.slice(0, 10), 'name', 'golfers', 'bg-teal-500', p.app_users));
+            if (key === 'events') return MK.panel('event', tr('mk.rv.evdemand', 'Registrations per event'), MK.barList(rows.slice(0, 12).map(e => ({ name: when(e.date) + ' · ' + e.title, n: e.registered })), 'name', 'n', 'bg-green-500'));
+            if (key === 'campaigns') {
+                const t = (k) => rows.reduce((a, x) => a + (Number(x[k]) || 0), 0), d = t('delivered');
+                const f = (l, v, color) => `<div class="flex items-center gap-2 py-1" style="flex-wrap:nowrap"><span class="text-xs text-gray-700 w-20 font-medium">${esc(l)}</span><div class="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden"><div class="h-full ${color}" style="width:${d ? Math.round(v / d * 100) : 0}%"></div></div><span class="text-xs font-bold text-gray-900 w-20 text-right">${fmtN(v)}${d && v !== d ? ` <span class="text-gray-500 font-medium">${pct(v, d)}%</span>` : ''}</span></div>`;
+                return MK.panel('filter_alt', tr('mk.camp.funnel', 'All campaigns · last 12 months'), f(tr('mk.rv.delivered', 'Delivered'), d, 'bg-green-500') + f(tr('mk.rv.pushed', 'Pushed'), t('pushed'), 'bg-emerald-500') + f(tr('mk.rv.opened', 'Opened'), t('opened'), 'bg-teal-500') + f(tr('mk.rv.clicked', 'Clicked'), t('clicked'), 'bg-sky-500'));
+            }
+            return '';
+        },
+        rvPaintData() {
+            const V = MK._rv, host = document.getElementById('mkRvData'); if (!V || !host) return;
+            if (!V.r) { host.innerHTML = MK.spinner(); return; }
+            const ds = V.ds = MK.dataset(V.key, V.r, V.offers);
+            host.innerHTML = `
+              <div class="kpis">${MK.rvInsights(V.key, ds, V.r, V.offers).map(o => MK.kpi(o)).join('')}</div>
+              <button class="ai-nudge" onclick="MarketingDashboard.rvTab('ai')"><span class="spark">${mi('auto_awesome')}</span><span class="tx"><b>${esc(tr('mk.ai.nudge', 'Ask AI about this report'))}</b><span>${esc(MK.aiSuggest(V.key)[0])}</span></span><span class="go">${mi('chevron_right')}</span></button>
+              ${MK.rvChart(V.key, ds, V.r)}
+              ${MK.panel('table_rows', tr('mk.rv.table', 'All rows'), `
+                <div class="tb-tools"><label class="srch" id="mkRvSrch"><input id="mkRvQ" type="text" enterkeyhint="search" autocomplete="off" placeholder="${esc(tr('mk.rv.search', 'Search this report'))}" oninput="MarketingDashboard.rvSearch(this.value)"><button type="button" class="x" onclick="MarketingDashboard.rvSearch('', true)" aria-label="Clear">${mi('close')}</button></label><span class="cnt" id="mkRvCnt"></span></div>
+                <div class="tbw" id="mkRvTable"></div>
+                <p class="hint">${esc(tr('mk.rv.sorthint', 'Tap a column heading to sort.'))}</p>`)}`;
+            MK.rvPaintTable();
+        },
+        rvPaintTable() {
+            const V = MK._rv, host = document.getElementById('mkRvTable'); if (!V || !host || !V.ds) return;
+            const { cols, rows } = V.ds, q = V.q.trim().toLowerCase();
+            const list = q ? rows.filter(r => cols.some(c => MK.cell(c, r[c.k]).toLowerCase().includes(q))) : rows.slice();
+            if (V.sort) {
+                const c = cols.find(x => x.k === V.sort.k) || {}, dir = V.sort.dir === 'asc' ? 1 : -1;
+                list.sort((a, b) => { const x = a[V.sort.k], y = b[V.sort.k]; if (x == null || x === '') return 1; if (y == null || y === '') return -1; return (c.num ? Number(x) - Number(y) : String(x).localeCompare(String(y))) * dir; });
+            }
+            const cnt = document.getElementById('mkRvCnt'); if (cnt) cnt.textContent = (q ? fmtN(list.length) + ' / ' : '') + fmtN(rows.length) + ' ' + (rows.length === 1 ? tr('mk.rv.row', 'row') : tr('mk.rv.rows', 'rows'));
+            const srch = document.getElementById('mkRvSrch'); if (srch) srch.classList.toggle('has', !!V.q);
+            if (!rows.length) { host.innerHTML = `<p class="empty">${esc(tr('mgr.nodata', 'No data in this period'))}</p>`; return; }
+            const foot = cols.some(c => c.sum || c.tot) && list.length > 1;
+            const sum = (c) => c.tot ? c.tot(list) : c.sum ? list.reduce((a, r) => a + (Number(r[c.k]) || 0), 0) : '';
+            host.innerHTML = `<table class="rt"><thead><tr>${cols.map(c => `<th class="${c.num ? 'n' : ''}${V.sort && V.sort.k === c.k ? ' on' : ''}" onclick="MarketingDashboard.rvSort('${c.k}')">${esc(c.l)}${V.sort && V.sort.k === c.k ? (V.sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead>
+              <tbody>${list.map(r => `<tr>${cols.map((c, i) => `<td class="${c.num ? 'n' : ''}${i === 0 ? ' f' : ''}"${i === 0 ? ` title="${esc(r[c.k])}"` : ''}>${esc(MK.cell(c, r[c.k]))}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" class="empty">${esc(tr('mk.rv.nomatch', 'No row matches'))}</td></tr>`}</tbody>
+              ${foot ? `<tfoot><tr class="tot">${cols.map((c, i) => `<td class="${c.num ? 'n' : ''}">${i === 0 ? esc(q ? tr('mk.rv.totalf', 'Total (filtered)') : tr('mk.rv.total', 'Total')) : esc(sum(c) === '' ? '' : MK.cell(c, sum(c)))}</td>`).join('')}</tr></tfoot>` : ''}</table>`;
+        },
+
+        // ---- Ask AI (edge fn marketing-ai, NDJSON stream) ----
+        SUGG: {
+            summary: [['mk.ai.s.sum1', 'What stands out in this period?'], ['mk.ai.s.sum2', 'Where are we losing golfers, and how do we win them back?'], ['mk.ai.s.sum3', 'What should our next campaign be?']],
+            rounds: [['mk.ai.s.rd1', 'Which days are busiest, and which are quiet?'], ['mk.ai.s.rd2', 'How much of our play comes from society days?'], ['mk.ai.s.rd3', 'When should we run a quiet-day offer?']],
+            societies: [['mk.ai.s.so1', 'Which societies matter most to us?'], ['mk.ai.s.so2', 'How do we get more society days booked?'], ['mk.ai.s.so3', 'What does the Independent share tell us?']],
+            countries: [['mk.ai.s.co1', 'Who should we be marketing to?'], ['mk.ai.s.co2', 'How should our offers change for where golfers come from?'], ['mk.ai.s.co3', 'How reliable is this origin data?']],
+            languages: [['mk.ai.s.la1', 'Which languages should our offers be written in?'], ['mk.ai.s.la2', 'Is a Thai version worth writing?'], ['mk.ai.s.la3', 'How many golfers can we reach in their own language?']],
+            campaigns: [['mk.ai.s.ca1', 'Which campaign worked best, and why?'], ['mk.ai.s.ca2', 'How do we get more golfers to open our offers?'], ['mk.ai.s.ca3', 'What should the next campaign be?']],
+            events: [['mk.ai.s.ev1', 'Which upcoming events need a push?'], ['mk.ai.s.ev2', 'How full are the upcoming society days?'], ['mk.ai.s.ev3', 'What package would bring more societies here?']]
+        },
+        aiSuggest(key) { return (MK.SUGG[key] || MK.SUGG.summary).map(x => tr(x[0], x[1])); },
+        // everything the AI sees = the rows of every report for the period (the tables' own numbers) + a 12-month daily series
+        aiContext() {
+            const V = MK._rv, r = V.r || {}, offers = V.offers || [];
+            const rows = (k) => MK.dataset(k, r, offers).rows;
+            const segOf = (o) => { const s = o.segment || {}; return [s.played_since ? 'played here since ' + s.played_since : 'anyone who played here', s.lang ? 'language ' + s.lang : '', (s.hcp_min != null || s.hcp_max != null) ? 'handicap ' + (s.hcp_min ?? '') + '-' + (s.hcp_max ?? '') : ''].filter(Boolean).join(', '); };
+            const d = {
+                period_days: r.days || MK.days,
+                summary: rows('summary').map(x => ({ metric: x.metric, value: x.value, period_before: x.prev })),
+                rounds_per_day: rows('rounds').map(x => ({ date: x.date, day: x.weekday, rounds: x.rounds })),
+                society_mix: rows('societies'),
+                societies_seen_last_12_months: r.society_list || [],
+                golfer_origin: rows('countries'),
+                app_languages: rows('languages'),
+                upcoming_society_events_next_60_days: rows('events'),
+                campaigns_last_12_months: rows('campaigns').map((x, i) => Object.assign({}, x, { audience: segOf(offers[i] || {}), ends: String((offers[i] || {}).valid_to || '').slice(0, 10) }))
+            };
+            if (V.r365 && (r.days || MK.days) < 365) d.rounds_per_day_last_12_months = (V.r365.per_day || []).map(p => ({ date: p.d, rounds: Number(p.n) || 0 }));
+            return d;
+        },
+        md(src) {
+            const inl = (x) => x.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[\s(])\*([^*\s][^*]*?)\*(?=[\s).,;:!?]|$)/g, '$1<i>$2</i>');
+            let html = '', list = '';
+            String(src || '').split('\n').forEach(raw => {
+                const l = esc(raw.trim());
+                const m = l.match(/^(?:[*\-•]|(\d+)[.)])\s+(.*)$/);
+                if (m) { const tag = m[1] ? 'ol' : 'ul'; if (list !== tag) { if (list) html += `</${list}>`; html += `<${tag}>`; list = tag; } html += `<li>${inl(m[2])}</li>`; return; }
+                if (list) { html += `</${list}>`; list = ''; }
+                if (!l) return;
+                const h = l.match(/^#{1,6}\s+(.*)$/);
+                html += `<p>${h ? '<b>' + inl(h[1]) + '</b>' : inl(l)}</p>`;
+            });
+            return html + (list ? `</${list}>` : '');
+        },
+        aiAnswerHTML(t) {
+            if (t.st === 'error') return `<div class="err">${esc(tr('mk.ai.fail', 'The AI could not answer'))}: ${esc(t.err || '')}</div>`;
+            if (!t.a) return `<span class="wait">${mi('progress_activity', 'animate-spin')} ${esc(t.st === 'think' ? tr('mk.ai.thinking', 'Analysing your numbers…') : tr('mk.ai.reading', 'Reading the reports…'))}</span>`;
+            const stop = String(t.stop || '').toLowerCase();
+            return MK.md(t.a) + (t.st !== 'done' ? '<span class="caret"></span>'
+                : stop === 'max_tokens' ? `<p class="note">${esc(tr('mk.ai.long', 'Answer trimmed — ask a narrower question for the rest.'))}</p>`
+                : stop === 'refusal' ? `<p class="note">${esc(tr('mk.ai.refused', 'The AI declined this one — try rephrasing it.'))}</p>`
+                : t.stopped ? `<p class="note">${esc(tr('mk.ai.stopped', 'Stopped.'))}</p>` : '');
+        },
+        aiPaint(scroll) {
+            const host = document.getElementById('mkRvAI'), V = MK._rv; if (!host || !V) return;
+            const T = MK._ai.turns, old = document.getElementById('mkAiQ'), draft = old ? old.value : '';
+            MK._sugg = V.busy ? [] : MK.aiSuggest(V.key).filter(s => !T.some(t => t.q === s));
+            host.innerHTML = `<div class="ai-card">
+                <div class="ai-hd"><span class="spark">${mi('auto_awesome')}</span><div class="t">${esc(tr('mk.ai.title', 'Ask AI'))}<div class="s">${esc(tr('mk.ai.sub', 'Reads this course\'s report figures — never a golfer list'))}</div></div>${T.length && !V.busy ? `<button class="new" onclick="MarketingDashboard.aiReset()">${mi('refresh')} ${esc(tr('mk.ai.new', 'New chat'))}</button>` : ''}</div>
+                <div class="ai-thread" id="mkAiThread">
+                  ${T.length ? T.map((t, i) => `<div class="q">${esc(t.q)}</div><div class="a" id="mkAiA${i}">${MK.aiAnswerHTML(t)}</div>`).join('') : `<p class="ai-empty">${esc(tr('mk.ai.intro', 'Ask anything about these numbers — what stands out, why play moved, who to target next and with what offer. The AI sees every report here for the period you picked. Check key figures before you act on them.'))}</p>`}
+                  ${MK._sugg.length ? `<div class="sugg">${MK._sugg.map((s, i) => `<button onclick="MarketingDashboard.aiAsk(MarketingDashboard._sugg[${i}])">${esc(s)}</button>`).join('')}</div>` : ''}
+                </div>
+                <div class="ai-in"><textarea id="mkAiQ" rows="1" maxlength="800" autocomplete="off" placeholder="${esc(tr('mk.ai.ph', 'Ask about these numbers…'))}" oninput="MarketingDashboard.aiGrow(this)" onkeydown="MarketingDashboard.aiKey(event)"></textarea><button id="mkAiSend" onclick="MarketingDashboard.aiSend()" ${V.busy || !V.r ? 'disabled' : ''} aria-label="${esc(tr('mk.ai.send', 'Send'))}">${mi('send')}</button></div>
+              </div>`;
+            const inp = document.getElementById('mkAiQ'); if (inp && draft) { inp.value = draft; MK.aiGrow(inp); }
+            if (scroll) MK.aiScroll(true);
+        },
+        aiScroller() { return window.innerWidth >= 1024 ? document.getElementById('mkAiThread') : document.getElementById('mkRvBody'); },
+        aiScroll(force) { const sc = MK.aiScroller(); if (sc && (force || sc.scrollHeight - sc.scrollTop - sc.clientHeight < 160)) sc.scrollTop = sc.scrollHeight; },
+        aiPaintTurn(t) {
+            if (MK._aiRaf) return;
+            MK._aiRaf = requestAnimationFrame(() => {
+                MK._aiRaf = 0;
+                const el = document.getElementById('mkAiA' + MK._ai.turns.indexOf(t)); if (!el) return;
+                const sc = MK.aiScroller(), near = sc && sc.scrollHeight - sc.scrollTop - sc.clientHeight < 160;
+                el.innerHTML = MK.aiAnswerHTML(t);
+                if (near) sc.scrollTop = sc.scrollHeight;
+            });
+        },
+        aiGrow(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; },
+        aiKey(e) { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); MK.aiSend(); } },
+        aiSend() { const el = document.getElementById('mkAiQ'); if (el && el.value.trim()) MK.aiAsk(el.value); },
+        aiReset() { const V = MK._rv; if (!V || V.busy) return; MK._ai.turns = []; MK.aiPaint(); },
+        async aiAsk(q) {
+            const V = MK._rv; q = String(q || '').trim().slice(0, 800);
+            if (!V || V.busy || !V.r || !q) return;
+            const T = MK._ai.turns, turn = { q, a: '', st: 'wait' };
+            T.push(turn); V.busy = true;
+            const inp = document.getElementById('mkAiQ'); if (inp) inp.value = '';
+            if (V.tab !== 'ai') { V.tab = 'ai'; MK.rvPaintShell(); }
+            MK.aiPaint(true);
+            const cfg = window.SUPABASE_CONFIG || {};
+            const ctrl = V.abort = window.AbortController ? new AbortController() : null;
+            let lang = 'en'; try { lang = localStorage.getItem('mci-pro-language') || 'en'; } catch (e) { }
+            try {
+                const res = await fetch(cfg.url + '/functions/v1/marketing-ai', {
+                    method: 'POST', signal: ctrl ? ctrl.signal : undefined,
+                    headers: { 'Content-Type': 'application/json', apikey: cfg.anonKey, Authorization: 'Bearer ' + cfg.anonKey },
+                    body: JSON.stringify({ question: q, course: MK.course.name, focus: MK.repMeta(V.key).title, days: V.r.days || MK.days, today: localDateStr(), lang, data: MK.aiContext(),
+                        turns: T.slice(0, -1).filter(x => x.st === 'done' && x.a).map(x => ({ q: x.q, a: x.a })) })
+                });
+                if (!res.ok) { let m = ''; try { m = (await res.json()).error || ''; } catch (e) { } throw new Error(res.status === 429 ? tr('mk.ai.busy', 'Too many questions this minute — wait a moment and ask again') : (m || 'HTTP ' + res.status)); }
+                const eat = (line) => {
+                    if (!line) return;
+                    let o; try { o = JSON.parse(line); } catch (e) { return; }
+                    if (o.error) throw new Error(o.error);
+                    if (o.t) { turn.a += o.t; turn.st = 'stream'; }
+                    else if (o.s && !turn.a) turn.st = 'think';
+                    else if (o.done) { turn.st = 'done'; turn.stop = o.stop; }
+                    MK.aiPaintTurn(turn);
+                };
+                if (res.body && res.body.getReader) {
+                    const rd = res.body.getReader(), dec = new TextDecoder(); let buf = '';
+                    for (;;) {
+                        const { value, done } = await rd.read(); if (done) break;
+                        buf += dec.decode(value, { stream: true });
+                        let i; while ((i = buf.indexOf('\n')) >= 0) { eat(buf.slice(0, i).trim()); buf = buf.slice(i + 1); }
+                    }
+                    eat(buf.trim());
+                } else (await res.text()).split('\n').forEach(l => eat(l.trim()));
+                if (turn.st !== 'done') { if (!turn.a) throw new Error(tr('mk.ai.cut', 'The answer was cut off — ask again')); turn.st = 'done'; }
+            } catch (e) {
+                if (e && e.name === 'AbortError') { if (turn.a) { turn.st = 'done'; turn.stopped = true; } else { const i = T.indexOf(turn); if (i >= 0) T.splice(i, 1); } }
+                else { console.warn('[Marketing] ask AI:', e && e.message); turn.st = 'error'; turn.err = (e && e.message) || String(e); }
+            } finally {
+                V.busy = false; V.abort = null;
+                if (MK._rv === V) MK.aiPaint();
+            }
         },
 
         // ---------- design system (scoped to the screen; sheets are body-mounted so their rules are global) ----------
@@ -669,6 +1047,99 @@
               .mk-btn { padding:10px 12px; border-radius:11px; font-size:13px; font-weight:800; border:1px solid transparent; font-family:inherit; cursor:pointer; line-height:1.2; }
               .mk-btn.g { background:#16a34a; color:#fff; } .mk-btn.n { background:#fff; color:#334155; border-color:rgba(15,23,42,.17); } .mk-btn.r { background:#fee2e2; color:#991b1b; }
               .mk-btn[disabled] { opacity:.55; cursor:default; }
+              #marketingDashboard .mk-open { display:inline-flex; align-items:center; gap:4px; height:28px; padding:0 10px; border-radius:8px; background:#16a34a; color:#fff; font-size:12px; font-weight:800; }
+              #marketingDashboard .mk-csv { display:inline-flex; align-items:center; gap:4px; height:28px; padding:0 10px; border-radius:8px; background:#fff; border:1px solid rgba(15,23,42,.17); color:#15803d; font-size:12px; font-weight:800; cursor:pointer; }
+              /* v1257 report viewer */
+              .mk-rv { position:fixed; inset:0; z-index:10040; background:#eef1f6; display:flex; flex-direction:column; color:#0f172a; }
+              .mk-rv-hd { flex:0 0 auto; background:#fff; border-bottom:1px solid rgba(15,23,42,.12); padding:8px 12px; padding-top:max(8px, env(safe-area-inset-top)); }
+              .mk-rv-hd .r1 { display:flex; align-items:center; gap:8px; flex-wrap:nowrap; max-width:1280px; margin:0 auto; }
+              .mk-rv .ib { width:36px; height:36px; border-radius:50%; border:none; background:#f1f5f9; color:#0f172a; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; cursor:pointer; font-size:22px; }
+              .mk-rv-hd .tt { min-width:0; flex:1 1 auto; }
+              .mk-rv-hd .tt .t { font-size:16px; font-weight:800; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+              .mk-rv-hd .tt .s { font-size:11px; font-weight:600; color:#3e4956; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+              .mk-rv-hd .csv { flex:0 0 auto; display:inline-flex; align-items:center; gap:4px; height:34px; padding:0 12px; border-radius:10px; border:1px solid rgba(15,23,42,.17); background:#fff; color:#15803d; font-size:13px; font-weight:800; cursor:pointer; }
+              .mk-rv-hd .r2 { display:flex; gap:6px; flex-wrap:nowrap; overflow-x:auto; margin:8px -12px 0; padding:0 12px 2px; scrollbar-width:none; }
+              .mk-rv-hd .r2::-webkit-scrollbar { display:none; }
+              .mk-rv-hd .r2 button { flex:0 0 auto; display:inline-flex; align-items:center; gap:4px; height:32px; padding:0 11px; border-radius:999px; border:1px solid rgba(15,23,42,.17); background:#fff; color:#334155; font-size:12.5px; font-weight:700; white-space:nowrap; cursor:pointer; }
+              .mk-rv-hd .r2 button.on { background:#16a34a; border-color:#16a34a; color:#fff; }
+              .mk-rv-hd .r3 { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:nowrap; margin:8px auto 0; max-width:1280px; }
+              .mk-rv .per, .mk-rv .seg { display:flex; flex-wrap:nowrap; gap:2px; padding:3px; background:#f1f5f9; border-radius:11px; flex:0 0 auto; }
+              .mk-rv .per button, .mk-rv .seg button { height:30px; padding:0 9px; border:none; border-radius:8px; background:transparent; color:#334155; font-size:12.5px; font-weight:800; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; }
+              .mk-rv .per button.on { background:#16a34a; color:#fff; }
+              .mk-rv .seg button.on { background:#0f172a; color:#fff; }
+              .mk-rv .per .pfix { font-size:12px; font-weight:700; color:#3e4956; padding:0 8px; line-height:30px; white-space:nowrap; }
+              .mk-rv-bd { flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
+              .mk-rv-grid { max-width:1280px; margin:0 auto; padding:12px 12px 20px; }
+              .mk-rv[data-tab="ai"] .col-data, .mk-rv[data-tab="data"] .col-ai { display:none; }
+              .mk-rv .kpis { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; margin-bottom:12px; }
+              .mk-rv .mk-kpi { background:#fff; border:1px solid rgba(15,23,42,.12); border-radius:16px; padding:12px 14px; box-shadow:0 1px 2px rgba(15,23,42,.04); min-width:0; overflow:hidden; }
+              .mk-rv .mk-kpi .mk-num { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+              .mk-rv .mk-kpi > div:last-child { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+              .mk-rv .mk-chip { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:10px; font-size:20px; }
+              .mk-rv .mk-num { font-variant-numeric:tabular-nums; letter-spacing:-.01em; }
+              .mk-rv .panel { background:#fff; border:1px solid rgba(15,23,42,.12); border-radius:16px; padding:14px; margin-bottom:12px; }
+              .mk-rv .panel h4 { display:flex; align-items:center; gap:6px; font-size:13.5px; font-weight:800; margin:0 0 8px; flex-wrap:nowrap; }
+              .mk-rv .bars { display:flex; align-items:flex-end; height:96px; }
+              .mk-rv .bars > div { flex:1 1 0; min-width:1px; background:#22c55e; border-radius:3px 3px 0 0; }
+              .mk-rv .bars-x { display:flex; justify-content:space-between; gap:6px; font-size:10.5px; font-weight:600; color:#3e4956; margin-top:4px; }
+              .mk-rv .ai-nudge { width:100%; display:flex; align-items:center; gap:10px; flex-wrap:nowrap; text-align:left; background:#f0fdf4; border:1px solid #86efac; border-radius:14px; padding:10px 12px; margin-bottom:12px; cursor:pointer; color:#14532d; }
+              .mk-rv .ai-nudge .tx { min-width:0; flex:1 1 auto; font-size:12.5px; }
+              .mk-rv .ai-nudge .tx b { display:block; font-size:13.5px; font-weight:800; }
+              .mk-rv .ai-nudge .tx span { display:block; color:#166534; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+              .mk-rv .ai-nudge .go { flex:0 0 auto; font-size:22px; color:#15803d; }
+              .mk-rv .spark { width:30px; height:30px; border-radius:9px; background:#dcfce7; color:#15803d; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; font-size:18px; }
+              .mk-rv .tb-tools { display:flex; align-items:center; gap:8px; flex-wrap:nowrap; margin-bottom:8px; }
+              .mk-rv .srch { position:relative; flex:1 1 auto; min-width:0; display:block; }
+              .mk-rv .srch input { width:100%; height:40px; font-size:16px; padding:0 38px 0 12px; border:1px solid rgba(15,23,42,.2); border-radius:11px; background:#fff; color:#0f172a; font-family:inherit; }
+              .mk-rv .srch .x { position:absolute; right:4px; top:50%; transform:translateY(-50%); width:32px; height:32px; border:none; border-radius:50%; background:transparent; color:#3e4956; display:none; align-items:center; justify-content:center; cursor:pointer; font-size:18px; }
+              .mk-rv .srch.has .x { display:inline-flex; }
+              .mk-rv .cnt { flex:0 0 auto; font-size:12px; font-weight:700; color:#3e4956; white-space:nowrap; }
+              .mk-rv .tbw { overflow-x:auto; border:1px solid rgba(15,23,42,.12); border-radius:12px; background:#fff; -webkit-overflow-scrolling:touch; }
+              .mk-rv table.rt { width:100%; border-collapse:separate; border-spacing:0; font-size:13px; }
+              .mk-rv table.rt th { background:#f8fafc; text-align:left; font-size:11.5px; font-weight:800; color:#3e4956; padding:9px 10px; white-space:nowrap; cursor:pointer; user-select:none; border-bottom:1px solid rgba(15,23,42,.12); }
+              .mk-rv table.rt th.on { color:#15803d; }
+              .mk-rv table.rt td { padding:9px 10px; border-top:1px solid rgba(15,23,42,.07); white-space:nowrap; font-variant-numeric:tabular-nums; background:#fff; }
+              .mk-rv table.rt .n { text-align:right; }
+              .mk-rv table.rt td.f { max-width:170px; overflow:hidden; text-overflow:ellipsis; font-weight:600; }
+              .mk-rv table.rt th:first-child, .mk-rv table.rt td:first-child { position:sticky; left:0; z-index:1; box-shadow:1px 0 0 rgba(15,23,42,.08); }
+              .mk-rv table.rt tr.tot td { font-weight:800; background:#f0fdf4; border-top:1px solid rgba(15,23,42,.17); }
+              .mk-rv table.rt .empty, .mk-rv .tbw .empty { text-align:center; color:#3e4956; padding:18px 10px; font-size:12.5px; white-space:normal; }
+              .mk-rv .hint { font-size:11px; color:#5c6875; margin-top:6px; }
+              .mk-rv .ai-card { background:#fff; border:1px solid rgba(15,23,42,.12); border-radius:16px; }
+              .mk-rv .ai-hd { display:flex; align-items:center; gap:10px; flex-wrap:nowrap; padding:12px 14px; border-bottom:1px solid rgba(15,23,42,.08); }
+              .mk-rv .ai-hd .t { flex:1 1 auto; min-width:0; font-size:15px; font-weight:800; }
+              .mk-rv .ai-hd .t .s { font-size:11px; font-weight:600; color:#3e4956; }
+              .mk-rv .ai-hd .new { flex:0 0 auto; display:inline-flex; align-items:center; gap:4px; height:32px; padding:0 10px; border-radius:9px; border:1px solid rgba(15,23,42,.17); background:#fff; color:#334155; font-size:12px; font-weight:700; cursor:pointer; }
+              .mk-rv .ai-thread { padding:10px 14px 12px; }
+              .mk-rv .ai-empty { font-size:13px; color:#334155; line-height:1.5; margin:2px 0 0; }
+              .mk-rv .sugg { display:flex; flex-direction:column; align-items:flex-start; gap:6px; margin-top:12px; }
+              .mk-rv .sugg button { text-align:left; padding:8px 12px; border-radius:12px; border:1px solid #86efac; background:#f0fdf4; color:#166534; font-size:13px; font-weight:700; line-height:1.3; cursor:pointer; max-width:100%; }
+              .mk-rv .q { margin:12px 0 8px auto; width:fit-content; max-width:88%; background:#0f172a; color:#fff; padding:8px 12px; border-radius:14px 14px 4px 14px; font-size:13.5px; font-weight:600; white-space:pre-wrap; word-break:break-word; }
+              .mk-rv .a { font-size:14px; line-height:1.55; color:#0f172a; word-break:break-word; }
+              .mk-rv .a p { margin:0 0 8px; }
+              .mk-rv .a ul, .mk-rv .a ol { margin:0 0 8px; padding-left:20px; }
+              .mk-rv .a ul { list-style:disc; } .mk-rv .a ol { list-style:decimal; }
+              .mk-rv .a li { margin:3px 0; }
+              .mk-rv .a b { font-weight:800; }
+              .mk-rv .a .note { font-size:11.5px; color:#3e4956; }
+              .mk-rv .a .wait { display:inline-flex; align-items:center; gap:6px; color:#3e4956; font-weight:700; font-size:13px; }
+              .mk-rv .a .err { color:#991b1b; background:#fee2e2; border-radius:10px; padding:8px 10px; font-size:12.5px; }
+              .mk-rv .a .caret { display:inline-block; width:7px; height:15px; background:#16a34a; vertical-align:-2px; margin-left:2px; animation:mkCaret 1s steps(1) infinite; }
+              @keyframes mkCaret { 50% { opacity:0; } }
+              .mk-rv .ai-in { position:sticky; bottom:0; display:flex; align-items:flex-end; gap:8px; flex-wrap:nowrap; padding:10px 14px calc(10px + env(safe-area-inset-bottom)); border-top:1px solid rgba(15,23,42,.08); background:#fff; border-radius:0 0 16px 16px; }
+              .mk-rv .ai-in textarea { flex:1 1 auto; min-width:0; font-size:16px; line-height:1.35; padding:9px 11px; border:1px solid rgba(15,23,42,.2); border-radius:12px; resize:none; max-height:120px; font-family:inherit; color:#0f172a; background:#fff; }
+              .mk-rv .ai-in button { flex:0 0 auto; width:44px; height:42px; border-radius:12px; border:none; background:#16a34a; color:#fff; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; font-size:20px; }
+              .mk-rv .ai-in button[disabled] { opacity:.45; cursor:default; }
+              @media (min-width:640px) { .mk-rv .kpis { grid-template-columns:repeat(4, minmax(0,1fr)); } }
+              @media (min-width:1024px) {
+                .mk-rv-grid { display:grid; grid-template-columns:minmax(0,3fr) minmax(360px,2fr); gap:16px; align-items:start; padding:16px 24px 24px; }
+                .mk-rv[data-tab] .col-data, .mk-rv[data-tab] .col-ai { display:block; }
+                .mk-rv .seg, .mk-rv .ai-nudge { display:none; }
+                .mk-rv .col-ai { position:sticky; top:16px; }
+                .mk-rv .ai-card { display:flex; flex-direction:column; max-height:calc(100dvh - 170px); }
+                .mk-rv .ai-thread { flex:1 1 auto; overflow-y:auto; min-height:160px; }
+                .mk-rv .ai-in { position:static; }
+              }
             `;
             document.head.appendChild(st);
         }

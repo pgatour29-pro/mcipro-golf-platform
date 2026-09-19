@@ -69,7 +69,7 @@
   "#g3Rail .g3-it.on{background:rgba(255,255,255,.1);color:#fff}\n" +
   "#g3Rail .g3-it.on .material-symbols-outlined{color:#4ade80;font-variation-settings:'FILL' 1,'wght' 500,'GRAD' 0,'opsz' 24}\n" +
   "#g3Rail .g3-it.on:before{content:'';position:absolute;left:-14px;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:#22c55e}\n" +
-  "#g3Rail .g3-it .g3-n,#g3Rail .g3-it .messagesBadge,#g3Rail .g3-it .marketplaceBadge,#g3Rail .g3-it .gfdRailBadge,#g3Rail .g3-it .enb-events-badge{margin-left:auto;min-width:20px;height:20px;border-radius:10px;background:#B3402F;color:#fff;font-size:11px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 6px;position:static !important;box-shadow:none !important;line-height:1;animation:none}\n" +
+  "#g3Rail .g3-it .g3-n,#g3Rail .g3-it .messagesBadge,#g3Rail .g3-it .marketplaceBadge,#g3Rail .g3-it .gfdRailBadge,#g3Rail .g3-it .enb-events-badge,#g3Rail .g3-it .teeSheetPickBadge{margin-left:auto;min-width:20px;height:20px;border-radius:10px;background:#B3402F;color:#fff;font-size:11px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 6px;position:static !important;box-shadow:none !important;line-height:1;animation:none}\n" +
   "#g3Rail .g3-it .g3-n.turf{background:#22c55e;color:#072A1E}\n" +
   "#g3Rail .g3-me{display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);cursor:pointer;margin-top:10px}\n" +
   "#g3Rail .g3-me img.user-avatar{width:30px;height:30px;border-radius:50%;object-fit:cover;box-shadow:0 0 0 2px rgba(74,222,128,.7);flex:none}\n" +
@@ -268,7 +268,7 @@
     { act: 'chips', icon: 'poker_chip', k: 'g3.chips', fb: 'Chips' },
     { grp: 'g3.around', fb: 'Around the course' },
     { tab: 'schedule', icon: 'calendar_month', k: 'g3.schedule', fb: 'Schedule' },
-    { act: 'teesheet', icon: 'view_list', k: 'g3.teesheet', fb: 'Tee sheet' },
+    { act: 'teesheet', icon: 'view_list', k: 'g3.teesheet', fb: 'Tee sheet', badge: 'teeSheetPickBadge' },   /* players chose you (PartnerPickWatch paints it) */
     { tab: 'caddies', icon: 'person_pin_circle', k: 'g3.caddies', fb: 'Caddies' },
     /* v1274: the 1on1 rail item is gone — 1on1 is no longer developed (Pete, 2026-09-19) */
     { tab: 'messages', icon: 'chat', k: 'g3.messages', fb: 'Messages', badge: 'messagesBadge' },
@@ -339,6 +339,7 @@
         if (ev.target.closest('.g3-me')) { try { ProfileSystem.showProfileModal(); } catch (e) {} }
       });
       dash.insertBefore(rail, dash.firstChild);
+      try { if (window.PartnerPickWatch && PartnerPickWatch._ready) PartnerPickWatch.renderBadges(); } catch (e) {}   /* rail built after the first paint */
       /* title in the header */
       var hdrRow = dash.querySelector(':scope > header.nav-header .flex.justify-between');
       if (hdrRow) {

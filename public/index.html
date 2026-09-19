@@ -12986,6 +12986,14 @@
                 'lb.autoupdates': 'Auto-updates on score entry',
                 'lb.scramble.rule': 'teams rank by NET (gross − team hcp)',
                 'lightview.loadingteesheet': 'Loading tee sheet…',
+                'ppw.title': 'Players who chose you',
+                'ppw.picked': 'Picked you to play with them',
+                'ppw.added': 'Added you to their group',
+                'ppw.accept': 'Accept',
+                'ppw.decline': 'Decline',
+                'ppw.accepted': 'Accepted',
+                'ppw.declined': 'Declined · not grouped',
+                'ppw.badgetip': '{n} chose to play with you',
                 'orgreg.recentevents': 'Recent events',
                 'orgreg.expected': 'Expected',
                 'orgreg.outstanding': 'Outstanding',
@@ -16155,6 +16163,14 @@
                 'lb.autoupdates': 'อัปเดตอัตโนมัติเมื่อบันทึกสกอร์',
                 'lb.scramble.rule': 'จัดอันดับทีมด้วยเน็ต (กรอส − แฮนดิแคปทีม)',
                 'lightview.loadingteesheet': 'กำลังโหลดตารางออกรอบ…',
+                'ppw.title': 'ผู้เล่นที่เลือกคุณ',
+                'ppw.picked': 'เลือกเล่นกับคุณ',
+                'ppw.added': 'เพิ่มคุณเข้ากลุ่มของเขา',
+                'ppw.accept': 'ยอมรับ',
+                'ppw.decline': 'ปฏิเสธ',
+                'ppw.accepted': 'ยอมรับแล้ว',
+                'ppw.declined': 'ปฏิเสธแล้ว · ไม่อยู่กลุ่มเดียวกัน',
+                'ppw.badgetip': '{n} คนเลือกเล่นกับคุณ',
                 'orgreg.recentevents': 'อีเวนต์ล่าสุด',
                 'orgreg.expected': 'ที่คาดไว้',
                 'orgreg.outstanding': 'ค้างชำระ',
@@ -19560,6 +19576,14 @@
                 'lb.autoupdates': '스코어 입력 시 자동 업데이트',
                 'lb.scramble.rule': '팀은 NET(그로스 − 팀 핸디캡)으로 순위',
                 'lightview.loadingteesheet': '티 시트 불러오는 중…',
+                'ppw.title': '나를 선택한 선수',
+                'ppw.picked': '함께 치자고 나를 선택함',
+                'ppw.added': '나를 자기 조에 추가함',
+                'ppw.accept': '수락',
+                'ppw.decline': '거절',
+                'ppw.accepted': '수락함',
+                'ppw.declined': '거절함 · 같은 조 아님',
+                'ppw.badgetip': '{n}명이 나와 함께 치기를 선택했습니다',
                 'orgreg.recentevents': '최근 이벤트',
                 'orgreg.expected': '예상',
                 'orgreg.outstanding': '미수금',
@@ -22533,6 +22557,14 @@
                 'lb.autoupdates': 'スコア入力で自動更新',
                 'lb.scramble.rule': 'チームはNET（グロス − チームHCP）で順位',
                 'lightview.loadingteesheet': 'ティーシートを読み込み中…',
+                'ppw.title': 'あなたを選んだ選手',
+                'ppw.picked': '一緒に回る相手にあなたを指名',
+                'ppw.added': 'あなたを自分の組に追加',
+                'ppw.accept': '承諾',
+                'ppw.decline': '辞退',
+                'ppw.accepted': '承諾済み',
+                'ppw.declined': '辞退済み · 同じ組になりません',
+                'ppw.badgetip': '{n}人があなたと回ることを選びました',
                 'orgreg.recentevents': '最近のイベント',
                 'orgreg.expected': '予定額',
                 'orgreg.outstanding': '未収',
@@ -28850,6 +28882,8 @@
 
                         // Tee-sheet/pairings badges (cube + event cards, realtime)
                         if (window.PairingsWatch) PairingsWatch.init();
+                        // "Chose you" badges — Tee Sheet cube + the right sheet's pill (2026-09-19)
+                        if (window.PartnerPickWatch) PartnerPickWatch.init();
                         // Hot deal toasts on the dashboard (v1227) — idempotent, re-scans on every overview open
                         try { if (window.HotDeals) HotDeals.armDashboard(); } catch (e) {}
 
@@ -38321,6 +38355,249 @@ Sent from Login Page`;
             }
         };
         window.PairingsWatch = PairingsWatch;
+
+        // =====================================================
+        // PARTNER PICK WATCH (Pete 2026-09-19): "when other players have chosen you to play with or
+        // be in your group by choice, give a notification badge in the Tee Sheet cube and if there
+        // are multiple tee sheets put the notification on the correct sheet".
+        // A CHOOSER = another registrant of an upcoming event I'm registered in who picked me in
+        // PLAY WITH (partner_prefs, resolved by PlayTogetherUnits.targets — the resolver every pairing
+        // surface uses, so a pick I declined is void here too) or put me in their group via hostId
+        // (see _hostChoosers). A chooser stops counting once that event's TEE SHEET has shown them
+        // (GolferEventsSystem._renderSheetPickNotice) or I've accepted/declined them.
+        // Seen map { eventId: [chooserId,…] } — localStorage cache + profile_data.partnerPicksSeen
+        // (merge-don't-clobber, synced across devices, same pattern as PairingsWatch).
+        // Paints .teeSheetPickBadge (Tee Sheet cube + desktop rail) = total unseen choosers, and the
+        // tee sheet's event pills — the count sits on the sheet the choice was made on.
+        // =====================================================
+        const PartnerPickWatch = {
+            KEY: 'mcipro_partner_picks_seen',
+            _by: {},            // eventId -> [{ id, name, kind: 'pick'|'added', answered }]
+            _myEventIds: [],
+            _ready: false,
+            _p: null,           // in-flight refresh (whenReady)
+            _seq: 0,
+            _chan: null,
+            _chanKey: '',
+            _t: null,
+
+            _uid() { return (window.AppState && AppState.currentUser && AppState.currentUser.lineUserId) || localStorage.getItem('line_user_id') || ''; },
+            // per USER, not per device — a second golfer on the same phone starts clean
+            _key() { return this.KEY + '.' + this._uid(); },
+            _seen() { try { const s = JSON.parse(localStorage.getItem(this._key()) || '{}'); return (s && typeof s === 'object') ? s : {}; } catch (e) { return {}; } },
+
+            // Per event: the union of both devices' seen ids
+            _mergeSeen(a, b) {
+                const out = {};
+                [a, b].forEach(m => Object.entries(m || {}).forEach(([id, arr]) => {
+                    if (!Array.isArray(arr)) return;
+                    const set = new Set(out[id] || []);
+                    arr.forEach(x => set.add(String(x)));
+                    out[id] = [...set];
+                }));
+                return out;
+            },
+
+            _is2ManScramble(ev) {
+                try { if (typeof GolferEventsSystem !== 'undefined' && GolferEventsSystem._isTwoManScrambleEvent) return !!GolferEventsSystem._isTwoManScrambleEvent(ev || {}); } catch (e) {}
+                return false;
+            },
+
+            // regs = camelCase registration rows ({ id, playerId, playerName, partnerPrefs, specialRequests, createdAt })
+            choosers(regs, uid, ev) {
+                const me = String(uid || '');
+                regs = regs || [];
+                const mine = regs.find(r => String(r.playerId) === me);
+                if (!me || !mine) return [];
+                const resp = (mine.specialRequests && mine.specialRequests.partnerResponses) || {};
+                const out = [], got = {};
+                const add = (r, kind) => {
+                    const k = String(r.playerId || '');
+                    if (!k || k === me || got[k]) return;
+                    got[k] = 1;
+                    out.push({ id: k, name: r.playerName || '', kind: kind, answered: !!resp[k] });
+                };
+                const P = window.PlayTogetherUnits;
+                if (P) regs.forEach(r => { if (String(r.playerId) !== me && P.targets(r, regs).indexOf(me) !== -1) add(r, 'pick'); });
+                this._hostChoosers(regs, mine, me, ev).forEach(x => add(x.reg, x.kind));
+                return out;
+            },
+
+            // hostId carries no author. A registrant's added players point at the registrant, and on a
+            // 2-man scramble the partner radio points the PICKER's own row at the partner. So only the
+            // direction the data proves counts:
+            //  • my row → H: H registered me into their group — except on a 2-man scramble when my row
+            //    wasn't created in H's own submit (then I locked myself to H: my choice, not theirs);
+            //  • R's row → me: on a 2-man scramble only, R (a real login) locked themselves to me —
+            //    unless R was created in MY submit (my TEAM partner). Anywhere else it's a player I added.
+            // Returns [{ reg, kind }] — 'added' (they registered me) or 'pick' (scramble partner radio).
+            _hostChoosers(regs, mine, me, ev) {
+                const hostOf = (r) => { const s = (r && r.specialRequests) || {}; return s.sameGroup === false ? '' : String(s.hostId || s.host_id || ''); };
+                const t = (r) => Date.parse(r && r.createdAt) || 0;
+                const sameSubmit = (host, guest) => { const d = t(guest) - t(host); return t(host) > 0 && t(guest) > 0 && d >= 0 && d <= 180000; };
+                const scr = this._is2ManScramble(ev);
+                const out = [];
+                const hid = hostOf(mine);
+                if (hid && hid !== me) {
+                    const host = regs.find(r => String(r.playerId) === hid);
+                    if (host && (!scr || sameSubmit(host, mine))) out.push({ reg: host, kind: 'added' });
+                }
+                if (scr) regs.forEach(r => {
+                    const pid = String(r.playerId || '');
+                    if (pid === me || hostOf(r) !== me || /^(GUEST-|MANUAL-|TRGG-)/i.test(pid)) return;
+                    if (!sameSubmit(mine, r)) out.push({ reg: r, kind: 'pick' });
+                });
+                return out;
+            },
+
+            _unseen(eventId) {
+                const id = String(eventId);
+                const s = this._seen()[id] || [];
+                return (this._by[id] || []).filter(c => !c.answered && s.indexOf(c.id) === -1);
+            },
+            unseenFor(eventId) { return this._unseen(eventId).length; },
+            unseenCount() { return Object.keys(this._by).reduce((n, id) => n + this._unseen(id).length, 0); },
+
+            // The tee sheet showed these choosers for this event → they stop counting
+            markSeen(eventId, list) {
+                const id = String(eventId || '');
+                const ids = (list || this._by[id] || []).map(c => String((c && c.id) || c || '')).filter(Boolean);
+                if (!id || !ids.length) return;
+                const s = this._seen();
+                const cur = new Set(s[id] || []);
+                const before = cur.size;
+                ids.forEach(x => cur.add(x));
+                if (cur.size === before) return;
+                s[id] = [...cur];
+                try { localStorage.setItem(this._key(), JSON.stringify(s)); } catch (e) {}
+                this.renderBadges();
+                this._persistSeen();   // fire-and-forget cross-device sync
+            },
+
+            async _persistSeen() {
+                try {
+                    const uid = this._uid();
+                    const sb = window.SupabaseDB && window.SupabaseDB.client;
+                    if (!uid || !sb) return;
+                    // merge-don't-clobber; ABORT if the read fails — writing pd={} would wipe the whole
+                    // profile_data (golfInfo, personalInfo, everything)
+                    const res = await sb.from('user_profiles').select('profile_data').eq('line_user_id', uid).single();
+                    if (res.error || !res.data) return;
+                    let pd = res.data.profile_data || {};
+                    if (typeof pd === 'string') { try { pd = JSON.parse(pd); } catch (e) { return; } }
+                    pd.partnerPicksSeen = this._mergeSeen(pd.partnerPicksSeen, this._seen());
+                    await sb.from('user_profiles').update({ profile_data: pd }).eq('line_user_id', uid);
+                } catch (e) { console.warn('[PartnerPickWatch] persist seen failed', e); }
+            },
+
+            // Overview open (next to PairingsWatch.init) pulls the synced seen map; realtime and my own
+            // Accept/Decline refresh without it.
+            init() { return this.refresh(true); },
+            whenReady() { return this._p || Promise.resolve(); },
+            refresh(pullSeen) { const p = this._refresh(!!pullSeen); this._p = p; return p; },
+
+            async _refresh(pullSeen) {
+                const seq = ++this._seq;
+                try {
+                    const uid = this._uid();
+                    const sb = window.SupabaseDB && window.SupabaseDB.client;
+                    if (!uid || !sb) return;
+                    if (pullSeen) {
+                        try {
+                            const res = await sb.from('user_profiles').select('partnerPicksSeen:profile_data->partnerPicksSeen').eq('line_user_id', uid).limit(1);
+                            const synced = res && res.data && res.data[0] && res.data[0].partnerPicksSeen;
+                            if (synced && typeof synced === 'object') localStorage.setItem(this._key(), JSON.stringify(this._mergeSeen(this._seen(), synced)));
+                        } catch (e) {}
+                    }
+                    const d = new Date();
+                    const today = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                    const mine = await sb.from('event_registrations').select('event_id,status').eq('player_id', uid);
+                    if (mine.error) return;
+                    const ids = [...new Set((mine.data || []).filter(r => r.status !== 'cancelled').map(r => String(r.event_id || '')).filter(Boolean))];
+                    let evs = [];
+                    if (ids.length) {
+                        const er = await sb.from('society_events').select('id,title,format,event_date,start_time,departure_time').in('id', ids.slice(0, 200)).gte('event_date', today);
+                        if (er.error) return;
+                        const nowMs = Date.now();
+                        // STRICT fall-off — the moment the tee time passes the event is gone (same rule as the cube)
+                        evs = (er.data || []).filter(e => {
+                            const tt = e.start_time || e.departure_time || '23:59';
+                            const ms = new Date(e.event_date + 'T' + String(tt).slice(0, 5) + ':00').getTime();
+                            return isNaN(ms) || ms >= nowMs;
+                        });
+                    }
+                    const evIds = evs.map(e => String(e.id));
+                    // ≤5 events per read keeps every read far under PostgREST's 1000-row cap
+                    const chunks = [];
+                    for (let i = 0; i < evIds.length; i += 5) chunks.push(evIds.slice(i, i + 5));
+                    const reads = await Promise.all(chunks.map(c => sb.from('event_registrations')
+                        .select('id,event_id,player_id,player_name,partner_prefs,special_requests,status,created_at').in('event_id', c)));
+                    if (reads.some(r => r.error)) return;
+                    if (seq !== this._seq) return;   // a newer refresh owns the paint
+                    const byEv = {};
+                    reads.forEach(r => (r.data || []).forEach(x => {
+                        if (x.status === 'cancelled') return;
+                        (byEv[String(x.event_id)] = byEv[String(x.event_id)] || []).push({
+                            id: x.id, playerId: x.player_id, playerName: x.player_name,
+                            partnerPrefs: x.partner_prefs || [], specialRequests: x.special_requests || {}, createdAt: x.created_at
+                        });
+                    }));
+                    const by = {};
+                    evs.forEach(e => {
+                        const list = this.choosers(byEv[String(e.id)] || [], uid, { title: e.title, format: e.format });
+                        if (list.length) by[String(e.id)] = list;
+                    });
+                    this._by = by;
+                    this._myEventIds = evIds;
+                    this._ready = true;
+                    this.renderBadges();
+                    this._subscribe();
+                } catch (e) { console.warn('[PartnerPickWatch] refresh failed:', e); }
+            },
+
+            // One table per channel (a binding on an unpublished table silently kills the whole
+            // channel), filtered server-side to my upcoming events; rebuilt only when that set changes.
+            _subscribe() {
+                const sb = window.SupabaseDB && window.SupabaseDB.client;
+                if (!sb) return;
+                const ids = this._myEventIds.slice(0, 90);
+                const key = ids.slice().sort().join(',');
+                if (this._chan && key === this._chanKey) return;
+                if (this._chan) { try { sb.removeChannel(this._chan); } catch (e) {} this._chan = null; }
+                this._chanKey = key;
+                if (!ids.length) return;
+                this._chan = sb.channel('partner-picks-watch')
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'event_registrations', filter: 'event_id=in.(' + ids.join(',') + ')' }, () => {
+                        clearTimeout(this._t);
+                        this._t = setTimeout(() => this.refresh(false), 1500);
+                    })
+                    .subscribe();
+            },
+
+            renderBadges() {
+                const n = this.unseenCount();
+                const tip = (typeof _lvT === 'function' ? _lvT('ppw.badgetip', '{n} chose to play with you') : '{n} chose to play with you').replace('{n}', n);
+                document.querySelectorAll('.teeSheetPickBadge').forEach(b => {
+                    b.style.display = n > 0 ? 'flex' : 'none';
+                    b.textContent = String(n);
+                    b.title = tip;
+                    b.setAttribute('aria-label', tip);
+                });
+                this.paintChips();
+            },
+
+            // The open tee sheet's event pills: each pill carries its own event's count
+            paintChips() {
+                document.querySelectorAll('#playersModalEvChips [data-evid]').forEach(btn => {
+                    const el = btn.querySelector('.ppw-chip-n');
+                    if (!el) return;
+                    const k = this.unseenFor(btn.getAttribute('data-evid'));
+                    el.style.display = k > 0 ? 'inline-flex' : 'none';
+                    el.textContent = String(k);
+                });
+            }
+        };
+        window.PartnerPickWatch = PartnerPickWatch;
 
         // =====================================================
         // SOCIETY SETUP (SOC1) — self-serve society registration (Pete 2026-07-10).
@@ -51547,12 +51824,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     const tee = ev.startTime ? String(ev.startTime).slice(0, 5) : '';
                     const soc = ev.societyName || ev.organizerName || '';
                     const course = ev.courseName || ev.name || 'Event';
+                    // players chose me on THIS sheet → its row carries the count (PartnerPickWatch)
+                    const picks = window.PartnerPickWatch ? PartnerPickWatch.unseenFor(ev.id) : 0;
                     return '<button data-evid="' + esc(ev.id) + '" style="display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;margin-top:8px;cursor:pointer;text-align:left;">' +
                         '<span class="material-symbols-outlined" style="font-size:20px;color:#15803d;flex-shrink:0;">grid_view</span>' +
                         '<span style="flex:1;min-width:0;">' +
                           '<span style="display:block;font-size:13px;font-weight:700;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(course) + '</span>' +
                           (soc ? '<span style="display:block;font-size:11px;font-weight:600;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(soc) + '</span>' : '') +
                         '</span>' +
+                        (picks > 0 ? '<span style="flex-shrink:0;min-width:20px;height:20px;border-radius:10px;background:#ef4444;color:#fff;font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;padding:0 6px;line-height:1;">' + picks + '</span>' : '') +
                         '<span style="flex-shrink:0;text-align:right;">' +
                           '<span style="display:block;font-size:11px;font-weight:700;color:' + (isToday ? '#15803d' : '#334155') + ';">' + esc(dateLbl) + '</span>' +
                           (tee ? '<span style="display:block;font-size:11px;font-weight:600;color:#475569;">' + esc(tee) + '</span>' : '') +
@@ -55682,7 +55962,12 @@ document.addEventListener('DOMContentLoaded', function() {
                             <div id="cubeEventsCount" style="position:relative;z-index:2;margin-top:2px;font-size:10px;font-weight:600;color:#64748b;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" data-i18n="lightview.upcoming">Upcoming</div>
                         </button>
                         <button onclick="GolferCubeInfo.openTeeSheetCube()" class="card-hover metric-card cube-poster" style="--p1:#e2e7ec;--p2:#f5f7f9">
-                            <span class="teeSheetCubeBadge" style="display:none;position:absolute;top:8px;right:8px;background:#16a34a;color:#fff;font-size:10px;font-weight:800;min-width:20px;height:20px;border-radius:10px;align-items:center;justify-content:center;padding:0 7px;box-shadow:0 1px 5px rgba(0,0,0,.3);z-index:3;line-height:1;letter-spacing:.02em;"></span>
+                            <!-- One corner, two badges side by side: ⛳ = a sheet was saved/changed (PairingsWatch),
+                                 red = players chose you for their group (PartnerPickWatch, same red as Event Results) -->
+                            <span style="position:absolute;top:8px;right:8px;display:flex;gap:4px;z-index:3;pointer-events:none;">
+                                <span class="teeSheetCubeBadge" style="display:none;background:#16a34a;color:#fff;font-size:10px;font-weight:800;min-width:20px;height:20px;border-radius:10px;align-items:center;justify-content:center;padding:0 7px;box-shadow:0 1px 5px rgba(0,0,0,.3);line-height:1;letter-spacing:.02em;"></span>
+                                <span class="teeSheetPickBadge" style="display:none;background:#ef4444;color:#fff;font-size:11px;font-weight:800;min-width:20px;height:20px;border-radius:10px;align-items:center;justify-content:center;padding:0 6px;box-shadow:0 1px 5px rgba(0,0,0,.3);line-height:1;"></span>
+                            </span>
                             <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuTee"/></svg></div>
                             <h3 class="text-base font-bold text-gray-900 mb-1" data-i18n="van.nav.teesheet">Tee Sheet</h3>
                             <div id="cubeTeeSheetBody" style="position:relative;z-index:2;margin-top:2px;font-size:10px;font-weight:600;color:#64748b;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" data-i18n="lightview.noupcominground">No upcoming round</div>
@@ -142724,20 +143009,10 @@ class GolferEventsManager {
                 }
             }
 
-            // Check if anyone selected the current user as a preferred partner. v750: resolve through
-            // PlayTogetherUnits (the old bare string compare missed the JSON pref shape entirely), with
-            // ignoreConsent so already-declined pickers still show — that's where the undo lives.
+            // Who chose me for their group on this event — PLAY WITH picks (v750 Accept/Decline) plus
+            // players who registered me into their own group. Same builder as the tee sheet notice
+            // (_partnerPickNoticeHtml), so the two surfaces can never disagree.
             const currentUserId = AppState.currentUser?.lineUserId || localStorage.getItem('line_user_id');
-            const currentUserName = AppState.currentUser?.name;
-            const _ptu = window.PlayTogetherUnits;
-            const selectedByPlayers = registrations.filter(reg => {
-                if (String(reg.playerId) === String(currentUserId)) return false;
-                if (_ptu) return _ptu.targets(reg, registrations, { ignoreConsent: true }).indexOf(String(currentUserId)) !== -1;
-                const prefs = reg.partnerPrefs || [];
-                return prefs.some(p => p === currentUserName || p === currentUserId);
-            });
-
-            // Show notification banner if someone selected you
             let partnerNotifEl = document.getElementById('partnerSelectionNotif');
             if (!partnerNotifEl) {
                 partnerNotifEl = document.createElement('div');
@@ -142745,41 +143020,9 @@ class GolferEventsManager {
                 const playersList = document.getElementById('registeredPlayersList');
                 if (playersList) playersList.parentNode.insertBefore(partnerNotifEl, playersList);
             }
-
-            if (selectedByPlayers.length > 0) {
-                // v750: each picker gets Accept/Decline — consent lives on MY registration row
-                // (special_requests.partnerResponses). No response = grouped as before; a decline
-                // voids the link on every pairing surface. Buttons only render once I'm registered.
-                const _myReg = registrations.find(r => String(r.playerId) === String(currentUserId));
-                const _resp = (_myReg && _myReg.specialRequests && _myReg.specialRequests.partnerResponses) || {};
-                const _escP = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-                const _btn = (pid, resp, solid, label) => '<button onclick="GolferEventsSystem.respondToPartnerPick(\'' + _escP(pid) + '\',\'' + resp + '\')" style="' +
-                    (solid ? 'font-size:11px;font-weight:700;border:none;color:#fff;background:' + (resp === 'accepted' ? '#16a34a' : '#dc2626') + ';'
-                           : 'font-size:10px;font-weight:600;border:1px solid ' + (resp === 'accepted' ? '#86efac;color:#059669' : '#fca5a5;color:#dc2626') + ';background:#fff;') +
-                    'border-radius:6px;padding:3px 10px;cursor:pointer;">' + label + '</button>';
-                const rows = selectedByPlayers.map(r => {
-                    const st = _resp[String(r.playerId)];
-                    let action = '';
-                    if (_myReg) {
-                        if (st === 'accepted') action = '<span style="font-size:10px;font-weight:700;color:#059669;">ACCEPTED</span>' + _btn(r.playerId, 'declined', false, 'Decline');
-                        else if (st === 'declined') action = '<span style="font-size:10px;font-weight:700;color:#dc2626;">DECLINED · not grouped</span>' + _btn(r.playerId, 'accepted', false, 'Accept');
-                        else action = _btn(r.playerId, 'accepted', true, 'Accept') + _btn(r.playerId, 'declined', true, 'Decline');
-                    }
-                    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;">' +
-                        '<span style="font-size:11px;color:#15803d;font-weight:600;">' + _escP(r.playerName) + '</span>' +
-                        '<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">' + action + '</span>' +
-                    '</div>';
-                }).join('');
-                partnerNotifEl.innerHTML = '<div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1px solid #86efac;border-radius:10px;padding:10px 12px;margin-bottom:8px;">' +
-                    '<div style="display:flex;align-items:center;gap:8px;">' +
-                        '<span style="font-size:20px;"><span class="material-symbols-outlined" style="font-size:inherit;vertical-align:middle;line-height:1;">handshake</span></span>' +
-                        '<div style="font-size:12px;font-weight:700;color:#166534;">' + selectedByPlayers.length + ' player' + (selectedByPlayers.length > 1 ? 's' : '') + ' selected you as a partner</div>' +
-                    '</div>' + rows +
-                '</div>';
-                partnerNotifEl.style.display = 'block';
-            } else {
-                partnerNotifEl.style.display = 'none';
-            }
+            const _pickHtml = this._partnerPickNoticeHtml(registrations, currentUserId, this.currentEvent);
+            partnerNotifEl.innerHTML = _pickHtml;
+            partnerNotifEl.style.display = _pickHtml ? 'block' : 'none';
 
             // Store render function for modal
             this._renderPlayerRow = renderPlayerRow;
@@ -142836,6 +143079,8 @@ class GolferEventsManager {
             '</div>' +
             // GTS1b: event pills — hop to another upcoming event's PUBLISHED tee sheet (filled async)
             '<div id="playersModalEvChips" style="display:none;background:#f8fafc;border-bottom:1px solid #e5e7eb;flex-shrink:0;padding:8px 10px;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;"></div>' +
+            // who chose me for this event (_renderSheetPickNotice, filled with the list)
+            '<div id="playersModalPicks" style="flex-shrink:0;"></div>' +
             vanBanner +
             '<div style="padding:8px 12px;border-bottom:1px solid #e5e7eb;flex-shrink:0;">' +
                 '<input type="text" id="playersModalSearch" oninput="GolferEventsSystem.filterPlayersModal()" placeholder="Search players..." style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;">' +
@@ -142925,15 +143170,28 @@ class GolferEventsManager {
                 if (has) pub[p.event_id] = 1;
             });
             const curId = this.currentEvent && this.currentEvent.id;
-            const list = upcoming.filter(e => pub[e.id] || e.id === curId);
+            // Pete 2026-09-19: a sheet where players chose me gets a pill even before it's published —
+            // that's where the Tee Sheet cube's red badge sends me, and the pill carries the count.
+            const W = window.PartnerPickWatch;
+            if (W) { if (!W._ready && !W._p) W.refresh(true); await W.whenReady(); }
+            const list = upcoming.filter(e => pub[e.id] || e.id === curId || (W && W.unseenFor(e.id) > 0));
             if (list.length < 2 || !document.getElementById('playersModalEvChips')) { strip.style.display = 'none'; return; }
             strip.innerHTML = list.map(e => {
                 const on = e.id === curId;
                 const dt = e.event_date ? new Date(e.event_date + 'T00:00:00') : null;
                 const lbl = (dt ? dt.toLocaleDateString(_lvLocale(), { weekday: 'short', day: 'numeric' }).toUpperCase() + ' · ' : '') + (e.course_name || e.title || 'Event');
-                return '<button onclick="GolferEventsSystem.switchSheetEvent(\'' + e.id + '\')" style="display:inline-block;margin-right:8px;font-size:10.5px;font-weight:700;border-radius:999px;padding:7px 12px;cursor:pointer;max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;' + (on ? 'background:#065f46;color:#fff;border:1px solid #065f46;' : 'background:#fff;color:#334155;border:1px solid #d1d5db;') + '">' + String(lbl).replace(/</g, '&lt;') + '</button>';
+                return '<button data-evid="' + e.id + '" onclick="GolferEventsSystem.switchSheetEvent(\'' + e.id + '\')" style="display:inline-flex;align-items:center;gap:6px;margin-right:8px;font-size:10.5px;font-weight:700;border-radius:999px;padding:7px 12px;cursor:pointer;max-width:230px;white-space:nowrap;vertical-align:middle;' + (on ? 'background:#065f46;color:#fff;border:1px solid #065f46;' : 'background:#fff;color:#334155;border:1px solid #d1d5db;') + '">' +
+                    '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;">' + String(lbl).replace(/</g, '&lt;') + '</span>' +
+                    '<span class="ppw-chip-n" style="display:none;flex:none;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#ef4444;color:#fff;font-size:10.5px;font-weight:800;line-height:1;"></span>' +
+                '</button>';
             }).join('');
             strip.style.display = 'block';
+            if (W) {
+                W.paintChips();
+                // a badged pill scrolled out of sight is no badge at all — bring the first one into view
+                const hot = Array.from(strip.querySelectorAll('[data-evid]')).find(b => b.getAttribute('data-evid') !== String(curId) && W.unseenFor(b.getAttribute('data-evid')) > 0);
+                if (hot) { const over = hot.getBoundingClientRect().right - strip.getBoundingClientRect().right; if (over > 0) strip.scrollLeft += over + 10; }
+            }
         } catch (e) { console.warn('[GolferEvents] sheet chips', e); }
     }
 
@@ -142971,6 +143229,7 @@ class GolferEventsManager {
             : this._renderPreferenceGroups(regs, event, currentUserId);
         // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
         if (window._golferChipDecorate) window._golferChipDecorate(listEl, 20);
+        this._renderSheetPickNotice();
     }
 
     // One player row used by the organizer-pairings view.
@@ -144216,6 +144475,62 @@ class GolferEventsManager {
         this.rfv1RenderCaddy();
     }
 
+    // Who chose this golfer for their group on this event: PLAY WITH picks (declined ones stay listed —
+    // that's where the undo lives; Accept/Decline only once I'm registered, v750) + players who put me
+    // in their group via hostId (PartnerPickWatch._hostChoosers — info only, hostId links have no
+    // Accept/Decline). ONE builder for the event detail roster and the tee sheet. '' when nobody chose me.
+    _partnerPickNoticeHtml(regs, uid, ev) {
+        regs = regs || [];
+        const me = String(uid || '');
+        if (!me) return '';
+        const _ptu = window.PlayTogetherUnits;
+        const picks = _ptu ? regs.filter(r => String(r.playerId) !== me && _ptu.targets(r, regs, { ignoreConsent: true }).indexOf(me) !== -1) : [];
+        const _myReg = regs.find(r => String(r.playerId) === me);
+        const added = (_myReg && window.PartnerPickWatch) ? PartnerPickWatch._hostChoosers(regs, _myReg, me, ev).filter(x => picks.indexOf(x.reg) === -1) : [];
+        if (!picks.length && !added.length) return '';
+        const _resp = (_myReg && _myReg.specialRequests && _myReg.specialRequests.partnerResponses) || {};
+        const _escP = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        const _btn = (pid, resp, solid, label) => '<button onclick="GolferEventsSystem.respondToPartnerPick(\'' + _escP(pid) + '\',\'' + resp + '\')" style="' +
+            (solid ? 'font-size:11px;font-weight:700;border:none;color:#fff;background:' + (resp === 'accepted' ? '#16a34a' : '#dc2626') + ';'
+                   : 'font-size:10px;font-weight:600;border:1px solid ' + (resp === 'accepted' ? '#86efac;color:#047857' : '#fca5a5;color:#dc2626') + ';background:#fff;') +
+            'border-radius:6px;padding:4px 10px;cursor:pointer;">' + _escP(label) + '</button>';
+        const row = (r, sub, action) => '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px;">' +
+            '<span style="min-width:0;"><span style="display:block;font-size:12.5px;font-weight:700;color:#14532d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _escP(r.playerName) + '</span>' +
+            '<span style="display:block;font-size:10.5px;font-weight:600;color:#15803d;">' + _escP(sub) + '</span></span>' +
+            (action ? '<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0;">' + action + '</span>' : '') +
+        '</div>';
+        const rows = picks.map(r => {
+            const st = _resp[String(r.playerId)];
+            let action = '';
+            if (_myReg) {
+                if (st === 'accepted') action = '<span style="font-size:10px;font-weight:700;color:#047857;">' + _escP(_lvT('ppw.accepted', 'Accepted')) + '</span>' + _btn(r.playerId, 'declined', false, _lvT('ppw.decline', 'Decline'));
+                else if (st === 'declined') action = '<span style="font-size:10px;font-weight:700;color:#dc2626;">' + _escP(_lvT('ppw.declined', 'Declined · not grouped')) + '</span>' + _btn(r.playerId, 'accepted', false, _lvT('ppw.accept', 'Accept'));
+                else action = _btn(r.playerId, 'accepted', true, _lvT('ppw.accept', 'Accept')) + _btn(r.playerId, 'declined', true, _lvT('ppw.decline', 'Decline'));
+            }
+            return row(r, _lvT('ppw.picked', 'Picked you to play with them'), action);
+        }).concat(added.map(x => row(x.reg, x.kind === 'pick' ? _lvT('ppw.picked', 'Picked you to play with them') : _lvT('ppw.added', 'Added you to their group'), ''))).join('');
+        return '<div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1px solid #86efac;border-radius:10px;padding:10px 12px;margin-bottom:8px;">' +
+            '<div style="display:flex;align-items:center;gap:8px;">' +
+                '<span class="material-symbols-outlined" style="font-size:20px;line-height:1;color:#15803d;">handshake</span>' +
+                '<div style="font-size:12.5px;font-weight:800;color:#166534;">' + _escP(_lvT('ppw.title', 'Players who chose you')) + '</div>' +
+            '</div>' + rows +
+        '</div>';
+    }
+
+    // Pete 2026-09-19: the Tee Sheet cube's red badge (PartnerPickWatch) points HERE — the tee sheet
+    // says who chose me for this event, and showing them is what marks them seen. Runs from
+    // _renderPlayersModalList, so roster reloads and Accept/Decline keep it current.
+    _renderSheetPickNotice() {
+        const el = document.getElementById('playersModalPicks');
+        if (!el) return;
+        const uid = AppState.currentUser?.lineUserId || localStorage.getItem('line_user_id');
+        const regs = this.currentEventRegistrations || [];
+        const ev = this.currentEvent;
+        const html = this._partnerPickNoticeHtml(regs, uid, ev);
+        el.innerHTML = html ? '<div style="padding:8px 12px 0;">' + html + '</div>' : '';
+        if (html && ev && ev.id && window.PartnerPickWatch) PartnerPickWatch.markSeen(ev.id, PartnerPickWatch.choosers(regs, uid, ev));
+    }
+
     // v750: consent write — the PICKED player accepts/declines a picker. Stored on MY registration
     // row: special_requests.partnerResponses[pickerPlayerId] = 'accepted' | 'declined'. Fresh-read
     // then merge (never clobber other special_requests keys), then re-render roster + banner.
@@ -144239,7 +144554,10 @@ class GolferEventsManager {
             sr.partnerResponses = pr;
             await window.SocietyGolfDB.updateRegistration(row.id, { specialRequests: sr });
             if (window.NotificationManager) window.NotificationManager.show(response === 'accepted' ? 'Partner accepted' : 'Declined — you will not be grouped together', 'success');
-            this.loadRegisteredPlayers(evId);
+            await this.loadRegisteredPlayers(evId);
+            // the answer shows on the tee sheet too (its notice), and an answered pick stops badging
+            if (document.getElementById('playersListModal')) this._renderPlayersModalList();
+            try { window.PartnerPickWatch?.refresh(); } catch (e) {}
         } catch (e) {
             console.warn('[GolferEvents] respondToPartnerPick failed', e);
             if (window.NotificationManager) window.NotificationManager.show('Could not save — try again', 'error');
@@ -176094,7 +176412,7 @@ showOrganizerTab = function(tabName) {
     })();
     </script>
     <script src="oo-1on1.js?v=1278"></script>
-    <script src="g3-desk.js?v=1274"></script>
+    <script src="g3-desk.js?v=1280"></script>
     <script src="g3-org.js?v=1108"></script>
 </body>
 

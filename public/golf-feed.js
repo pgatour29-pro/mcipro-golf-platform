@@ -68,9 +68,11 @@
     // "@Name" → a tap-to-profile link, only for golfers the server recorded as mentioned (v1262)
     function linkify(text, mentions) {
         let h = esc(text || '');
-        (mentions || []).slice().sort((a, b) => String(b.name).length - String(a.name).length).forEach(m => {
-            const at = esc('@' + m.name);
-            h = h.split(at).join(`<b class="gfd-at" data-act="profile" data-id="${esc(m.id)}">${at}</b>`);
+        const tags = [];
+        (mentions || []).forEach(m => { tags.push([m.id, '@' + m.name]); if (m.handle) tags.push([m.id, '@' + m.handle]); });
+        tags.sort((a, b) => b[1].length - a[1].length).forEach(([id, t]) => {
+            const at = esc(t);
+            h = h.split(at).join(`<b class="gfd-at" data-act="profile" data-id="${esc(id)}">${at}</b>`);
         });
         return h;
     }
@@ -322,6 +324,28 @@
     .gfd-sheet .it.red,.gfd-sheet .it.red .material-symbols-outlined{color:var(--mkp-red)}
     .gfd-sheet .it .sub{display:block;font:500 12px/1.3 'Instrument Sans',sans-serif;color:var(--mkp-sub)}
     .gfd-at{font-weight:700;color:var(--mkp-greenhi);cursor:pointer}
+    .gfd-head .gfd-wm{font:400 36px/1 'Grand Hotel',cursive;letter-spacing:0;background:linear-gradient(95deg,#15803d,#22c55e 60%,#84cc16);-webkit-background-clip:text;background-clip:text;color:transparent;padding:4px 2px 2px;overflow:visible}
+    .gfd-me{display:flex;align-items:center;gap:10px;margin:0 0 10px;padding:8px 10px;border-radius:14px;background:var(--mkp-glass2);box-shadow:inset 0 0 0 1px var(--mkp-slo)}
+    .gfd-me .gfd-av{width:34px;height:34px}
+    .gfd-me .st{flex:1;display:flex;gap:12px;min-width:0}
+    .gfd-me .st button{border:none;background:none;padding:0;text-align:left;cursor:pointer}
+    .gfd-me .st b{display:block;font:800 17px/1.05 'Instrument Sans',sans-serif;color:var(--mkp-text)}
+    .gfd-me .st span{font:600 9px/1 'JetBrains Mono',monospace;letter-spacing:.06em;color:var(--mkp-sub);text-transform:uppercase}
+    .gfd-me .go{flex:none;border:none;border-radius:10px;padding:8px 6px 8px 9px;background:var(--mkp-greendim);color:var(--mkp-greenhi);font:700 12px/1 'Instrument Sans',sans-serif;display:flex;align-items:center;gap:2px;cursor:pointer}
+    .gfd-me .go .material-symbols-outlined{font-size:16px}
+    /* no magnifier inside search boxes — Pete had those removed app-wide (they overlapped typed text) */
+    .gfd-srch{flex:1;min-width:0;display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border-radius:12px;background:var(--mkp-glass2);box-shadow:inset 0 0 0 1px var(--mkp-slo);color:var(--mkp-sub)}
+    .gfd-srch .material-symbols-outlined{font-size:20px}
+    .gfd-srch input{flex:1;min-width:0;border:none;background:none;outline:none;color:var(--mkp-text);font:500 16px 'Instrument Sans',sans-serif}
+    .gfd-sec{font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:.2em;color:var(--mkp-sub);text-transform:uppercase;margin:14px 2px 6px}
+    .gfd-act .tx .h{color:var(--mkp-sub);font-weight:500;font-size:12.5px}
+    .gfd-act .tx .fy{font-style:normal;color:var(--mkp-greenhi);font-weight:700;font-size:12.5px}
+    .gfd-phandle{font:600 13px/1.3 'Instrument Sans',sans-serif;color:var(--mkp-sub);margin-top:2px}
+    .gfd-hfield{display:flex;align-items:center;gap:6px;border-radius:12px;border:1px solid var(--mkp-slo);background:var(--mkp-glass2);padding:0 12px;height:44px}
+    .gfd-hfield b{color:var(--mkp-sub);font:700 16px 'Instrument Sans',sans-serif}
+    .gfd-hfield input{flex:1;min-width:0;border:none;background:none;outline:none;color:var(--mkp-text);font:600 16px 'Instrument Sans',sans-serif}
+    .gfd-hmsg{font:600 12px/1.3 'Instrument Sans',sans-serif;margin:6px 2px 0;min-height:16px}
+    .gfd-hmsg.ok{color:var(--mkp-greenhi)} .gfd-hmsg.bad{color:var(--mkp-red)}
     .gfd-tile .bl{position:absolute;left:6px;bottom:6px;display:flex;align-items:center;gap:4px}
     .gfd-tile .bl .ok{position:static}
     .gfd-tile .lk{display:flex;align-items:center;gap:3px;height:20px;padding:0 7px 0 5px;border-radius:10px;background:rgba(11,15,20,.72);color:#fff;font:700 11px/1 'Instrument Sans',sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.3)}
@@ -381,6 +405,10 @@
     function injectStyle() {
         if (document.getElementById('gfdStyle')) return;
         const st = document.createElement('style'); st.id = 'gfdStyle'; st.textContent = STYLE; document.head.appendChild(st);
+        if (!document.getElementById('gfdWmFont')) {   // the Tap-In wordmark (Pete picked option A, 2026-09-19)
+            const l = document.createElement('link'); l.id = 'gfdWmFont'; l.rel = 'stylesheet';
+            l.href = 'https://fonts.googleapis.com/css2?family=Grand+Hotel&text=Tap-In&display=swap'; document.head.appendChild(l);
+        }
     }
 
     const KIND = {
@@ -434,7 +462,7 @@
             const r = GF.root(); if (!r) return;
             const top = GF.stack[GF.stack.length - 1] || { s: 'feed' };
             const seq = ++GF._seq;
-            const fn = { feed: GF.rFeed, post: GF.rPost, profile: GF.rProfile, follows: GF.rFollows, saved: GF.rSaved, compose: GF.rCompose, activity: GF.rActivity, likers: GF.rLikers }[top.s] || GF.rFeed;
+            const fn = { feed: GF.rFeed, post: GF.rPost, profile: GF.rProfile, follows: GF.rFollows, saved: GF.rSaved, compose: GF.rCompose, activity: GF.rActivity, likers: GF.rLikers, search: GF.rSearch }[top.s] || GF.rFeed;
             fn.call(GF, top, seq);
         },
         live(seq) { return seq === GF._seq; },
@@ -444,7 +472,8 @@
         // ------------------------------------------------------------ the feed
         head() {
             const n = GF.counts.activity_new || 0;
-            return `<div class="gfd-head"><div class="gfd-title">${esc(tr('gfd.title', 'Tap-In'))}</div>
+            return `<div class="gfd-head"><div class="gfd-title gfd-wm">${esc(tr('gfd.title', 'Tap-In'))}</div>
+                <button class="gfd-ibtn" data-act="search" aria-label="${esc(tr('gfd.search', 'Search'))}">${mi('search')}</button>
                 <button class="gfd-ibtn" data-act="activity" aria-label="${esc(tr('gfd.activity', 'Activity'))}">${mi('favorite')}${n ? `<span class="mkp-bdgr">${n > 99 ? '99+' : n}</span>` : ''}</button>
                 <button class="gfd-post-btn" data-act="compose">${mi('add_a_photo')}${esc(tr('gfd.post', 'Post'))}</button></div>`;
         },
@@ -456,12 +485,23 @@
             return GF._visitPrev[scope];
         },
         isNew(p) { return !p.mine && GF._newSince && new Date(p.created_at) > new Date(GF._newSince); },
+        // under the app's fixed header: me, followers · following · posts (Pete, 2026-09-19)
+        meRow() {
+            const M = GF.me;
+            const n = (k) => M ? (M[k] || 0) : '–';
+            return `<div class="gfd-me">${av(M || { name: '' }, 34)}<div class="st">
+                <button data-act="myfollows" data-v="followers"><b>${n('followers')}</b><span>${esc(tr('gfd.followers.cap', 'Followers'))}</span></button>
+                <button data-act="myfollows" data-v="following"><b>${n('following')}</b><span>${esc(tr('gfd.following.cap', 'Following'))}</span></button>
+                <button data-act="myprofile"><b>${n('posts')}</b><span>${esc(tr('gfd.posts.cap', 'Posts'))}</span></button></div>
+                <button class="go" data-act="myprofile">${esc(tr('gfd.profile', 'Profile'))}${mi('chevron_right')}</button></div>`;
+        },
         async rFeed(top, seq) {
+            if (!GF.me) GF.loadMe().then(() => { const x = document.getElementById('gfdMeRow'); if (x && GF.live(seq)) x.innerHTML = GF.meRow(); });
             if (!GF._countsLoaded) await GF.refreshCounts();
             if (!GF.live(seq)) return;
             GF._newSince = GF.prevSeen(GF.scope);
             const r = GF.root(), wall = GF.view() === 'wall';
-            r.innerHTML = `${GF.head()}
+            r.innerHTML = `${GF.head()}<div id="gfdMeRow">${GF.meRow()}</div>
                 <div class="gfd-bar"><div class="mkp-tabs">
                     <button class="mkp-tab ${GF.scope === 'everyone' ? 'mkp-on' : ''}" data-act="scope" data-v="everyone">${mi('public')}${esc(tr('gfd.everyone', 'Everyone'))}${GF.tabN('feed_new')}</button>
                     <button class="mkp-tab ${GF.scope === 'following' ? 'mkp-on' : ''}" data-act="scope" data-v="following">${mi('group')}${esc(tr('gfd.following', 'Following'))}${GF.tabN('following_new')}</button></div>
@@ -573,9 +613,7 @@
             try { list = await rpc('golf_post_likers', { p_user: uid(), p_post: top.id }); } catch (e) { if (GF.live(seq)) GF.err('gfdLk', e); return; }
             if (!GF.live(seq)) return;
             // names and photos only — never an id on screen (Pete)
-            document.getElementById('gfdLk').innerHTML = (list && list.length) ? `<div class="mkp-card" style="padding:4px 12px">${list.map(p => `
-                <div class="gfd-act" data-act="profile" data-id="${esc(p.id)}">${av(p, 40)}<div class="tx"><b>${esc(p.name)}</b></div>
-                  ${p.is_me ? '' : `<button class="gfd-fbtn ${p.i_follow ? 'ghost' : ''}" data-act="followbtn" data-id="${esc(p.id)}" data-on="${p.i_follow ? '0' : '1'}">${esc(p.i_follow ? tr('gfd.followingbtn', 'Following') : tr('gfd.follow', 'Follow'))}</button>`}</div>`).join('')}</div>`
+            document.getElementById('gfdLk').innerHTML = (list && list.length) ? `<div class="mkp-card" style="padding:4px 12px">${list.map(GF.personRow).join('')}</div>`
                 : `<div class="mkp-card gfd-empty">${mi('favorite')}${esc(tr('gfd.likes.none', 'No likes from golfers yet.'))}</div>`;
         },
         wireCars(scope) {
@@ -627,7 +665,7 @@
             const body = inp.value.trim(); if (!body) return;
             inp.disabled = true;
             try {
-                const ids = (GF._cmMentions || []).filter(m => body.includes('@' + m.name)).map(m => m.id);
+                const ids = (GF._cmMentions || []).filter(m => body.includes('@' + m.name) || (m.handle && body.toLowerCase().includes('@' + m.handle))).map(m => m.id);
                 const r = await rpc('golf_comment_add', { p_user: uid(), p_post: id, p_body: body, p_mentions: ids.length ? ids : null });
                 if (!r || !r.ok) throw new Error(GF.why(r));
                 inp.value = ''; if (GF._cmMentions) GF._cmMentions.length = 0;
@@ -735,6 +773,7 @@
                     <button data-act="follows" data-v="followers"><b>${P.followers || 0}</b><span>${esc(tr('gfd.followers', 'followers'))}</span></button>
                     <button data-act="follows" data-v="following"><b>${P.following || 0}</b><span>${esc(tr('gfd.followinglbl', 'following'))}</span></button></div></div>
                 <div class="gfd-pname">${esc(P.name)} ${hcp ? `<span class="mkp-chip" style="vertical-align:middle">HCP ${esc(hcp)}</span>` : ''}</div>
+                ${P.handle ? `<div class="gfd-phandle">@${esc(P.handle)}</div>` : ''}
                 ${sub ? `<div class="gfd-psub">${esc(sub)}</div>` : ''}
                 ${P.bio ? `<div class="gfd-pbio">${esc(P.bio)}</div>` : ''}
                 <div id="gfdEditBox"></div>
@@ -752,15 +791,40 @@
         },
         editProfile() {
             const P = GF._prof; const box = document.getElementById('gfdEditBox'); if (!P || !box) return;
-            box.innerHTML = `<div class="mkp-card gfd-edit"><div class="gfd-lbl" style="margin-top:0">${esc(tr('gfd.bio', 'About you · 160 characters'))}</div>
+            box.innerHTML = `<div class="mkp-card gfd-edit"><div class="gfd-lbl" style="margin-top:0">${esc(tr('gfd.handle', 'Your Tap-In handle'))}</div>
+                <div class="gfd-hfield"><b>@</b><input id="gfdHandle" maxlength="24" autocomplete="off" autocapitalize="none" spellcheck="false" value="${esc(P.handle || '')}"></div>
+                <div class="gfd-hmsg" id="gfdHMsg"></div>
+                <div class="gfd-lbl">${esc(tr('gfd.bio', 'About you · 160 characters'))}</div>
                 <textarea class="gfd-ta" id="gfdBio" maxlength="160" placeholder="${esc(tr('gfd.bio.ph', 'e.g. Pattaya. Early tee times, fast greens.'))}">${esc(P.bio || '')}</textarea>
-                <p class="mkp-note" style="margin:8px 0 0">${mi('info')}<span>${esc(tr('gfd.photo.line', 'Your photo is your LINE profile picture.'))}</span></p>
+                <p class="mkp-note" style="margin:8px 0 0">${mi('info')}<span>${esc(tr('gfd.photo.line2', 'Your photo is your LINE profile picture. Golfers find you by name or @handle.'))}</span></p>
                 <div class="gfd-pacts" style="margin-bottom:0"><button class="mkp-btn-line" data-act="canceledit">${esc(tr('common.cancel', 'Cancel'))}</button><button class="mkp-btn-solid" data-act="savebio">${esc(tr('common.save', 'Save'))}</button></div></div>`;
         },
         async saveBio() {
             const el = document.getElementById('gfdBio'); if (!el) return;
-            try { const r = await rpc('golf_profile_update', { p_user: uid(), p_bio: el.value }); if (!r || !r.ok) throw new Error(GF.why(r)); GF.render(); }
-            catch (e) { toast(e.message || String(e), 'error'); }
+            const h = (document.getElementById('gfdHandle')?.value || '').trim().toLowerCase().replace(/^@/, '');
+            const P = GF._prof;
+            try {
+                const r = await rpc('golf_profile_update', { p_user: uid(), p_bio: el.value, p_handle: h && (!P || h !== P.handle) ? h : null });
+                if (!r || !r.ok) throw new Error(GF.why(r));
+                GF.me = null; GF.render();
+            } catch (e) { toast(e.message || String(e), 'error'); }
+        },
+        // live "is it free" under the handle box
+        wireHandle() {
+            const inp = document.getElementById('gfdHandle'), msg = document.getElementById('gfdHMsg'); if (!inp || !msg) return;
+            let t = null;
+            const check = async () => {
+                const h = inp.value.trim().toLowerCase().replace(/^@/, '');
+                if (inp.value !== h) inp.value = h;
+                const P = GF._prof;
+                if (P && h === P.handle) { msg.className = 'gfd-hmsg ok'; msg.textContent = tr('gfd.handle.ok', '@{h} is yours · letters, numbers, . and _', { h }); return; }
+                let r = null; try { r = await rpc('golf_handle_available', { p_user: uid(), p_handle: h }); } catch (e) { return; }
+                if (inp.value.trim().toLowerCase() !== h) return;
+                if (r && r.available) { msg.className = 'gfd-hmsg ok'; msg.textContent = tr('gfd.handle.free', '@{h} is free', { h }); }
+                else { msg.className = 'gfd-hmsg bad'; msg.textContent = r && r.reason === 'taken' ? tr('gfd.handle.taken', '@{h} is taken', { h }) : r && r.reason === 'reserved' ? tr('gfd.handle.reserved', 'That handle is reserved') : tr('gfd.handle.format', 'Use 3–24 letters, numbers, . or _'); }
+            };
+            inp.addEventListener('input', () => { clearTimeout(t); t = setTimeout(check, 300); });
+            check();
         },
         async follow(id, on, btn) {
             if (btn) btn.disabled = true;
@@ -769,20 +833,58 @@
                 if (!r || !r.ok) throw new Error(GF.why(r));
                 GF.me = null;
                 const top = GF.stack[GF.stack.length - 1];
-                if (top && (top.s === 'profile' || top.s === 'follows')) GF.render();
+                if (top && top.s === 'profile') GF.render();
                 else if (btn) { btn.disabled = false; btn.classList.toggle('ghost', on); btn.dataset.on = on ? '0' : '1'; btn.textContent = on ? tr('gfd.followingbtn', 'Following') : tr('gfd.follow', 'Follow'); }
             } catch (e) { if (btn) btn.disabled = false; toast(e.message || String(e), 'error'); }
         },
+        personRow(p) {
+            const bits = [];
+            if (p.handle) bits.push(`<span class="h">@${esc(p.handle)}</span>`);
+            if (p.follows_me && !p.is_me) bits.push(`<i class="fy">${esc(tr('gfd.followsyou', 'follows you'))}</i>`);
+            const lbl = p.i_follow ? tr('gfd.followingbtn', 'Following') : (p.follows_me ? tr('gfd.followback', 'Follow back') : tr('gfd.follow', 'Follow'));
+            return `<div class="gfd-act" data-act="profile" data-id="${esc(p.id)}" data-q="${esc(((p.name || '') + ' ' + (p.handle || '')).toLowerCase())}">${av(p, 40)}
+                <div class="tx"><b>${esc(p.name)}</b>${bits.length ? '<br>' + bits.join(' · ') : ''}</div>
+                ${p.is_me ? '' : `<button class="gfd-fbtn ${p.i_follow ? 'ghost' : ''}" data-act="followbtn" data-id="${esc(p.id)}" data-on="${p.i_follow ? '0' : '1'}">${esc(lbl)}</button>`}</div>`;
+        },
         async rFollows(top, seq) {
             const r = GF.root();
-            r.innerHTML = `<div class="gfd-head">${GF.backBtn()}<div class="gfd-title">${esc(top.which === 'following' ? tr('gfd.following', 'Following') : tr('gfd.followers.t', 'Followers'))}</div></div><div id="gfdFl">${GF.spin()}</div>`;
+            const P = GF._prof && GF._prof.id === top.id ? GF._prof : (GF.me && GF.me.id === top.id ? GF.me : null);
+            const cnt = (k) => P && P[k] != null ? P[k] + ' ' : '';
+            r.innerHTML = `<div class="gfd-head">${GF.backBtn()}<div class="gfd-title">${esc(P ? P.name : (top.which === 'following' ? tr('gfd.following', 'Following') : tr('gfd.followers.t', 'Followers')))}</div></div>
+                <div class="gfd-bar"><div class="mkp-tabs"><button class="mkp-tab ${top.which !== 'following' ? 'mkp-on' : ''}" data-act="followtab" data-v="followers">${esc(cnt('followers') + tr('gfd.followers.cap', 'Followers'))}</button>
+                  <button class="mkp-tab ${top.which === 'following' ? 'mkp-on' : ''}" data-act="followtab" data-v="following">${esc(cnt('following') + tr('gfd.following.cap', 'Following'))}</button></div></div>
+                <div class="gfd-srch" style="margin-bottom:10px"><input id="gfdFlQ" autocomplete="off" placeholder="${esc(top.which === 'following' ? tr('gfd.following.search', 'Search following') : tr('gfd.followers.search', 'Search followers'))}"></div>
+                <div id="gfdFl">${GF.spin()}</div>`;
+            document.getElementById('gfdFlQ').addEventListener('input', (e) => {
+                const q = e.target.value.trim().toLowerCase().replace(/^@/, '');
+                document.querySelectorAll('#gfdFl .gfd-act').forEach(row => { row.style.display = !q || (row.dataset.q || '').includes(q) ? '' : 'none'; });
+            });
             let list;
             try { list = await rpc('golf_follow_list', { p_user: uid(), p_target: top.id, p_which: top.which }); } catch (e) { if (GF.live(seq)) GF.err('gfdFl', e); return; }
             if (!GF.live(seq)) return;
-            document.getElementById('gfdFl').innerHTML = (list && list.length) ? `<div class="mkp-card" style="padding:4px 12px">${list.map(p => `
-                <div class="gfd-act" data-act="profile" data-id="${esc(p.id)}">${av(p, 40)}<div class="tx"><b>${esc(p.name)}</b></div>
-                  ${p.is_me ? '' : `<button class="gfd-fbtn ${p.i_follow ? 'ghost' : ''}" data-act="followbtn" data-id="${esc(p.id)}" data-on="${p.i_follow ? '0' : '1'}">${esc(p.i_follow ? tr('gfd.followingbtn', 'Following') : tr('gfd.follow', 'Follow'))}</button>`}</div>`).join('')}</div>`
-                : `<div class="mkp-card gfd-empty">${mi('group')}${esc(tr('gfd.nobody', 'Nobody here yet.'))}</div>`;
+            document.getElementById('gfdFl').innerHTML = (list && list.length) ? `<div class="mkp-card" style="padding:4px 12px">${list.map(GF.personRow).join('')}</div>`
+                : `<div class="mkp-card gfd-empty">${mi('group')}${esc(tr('gfd.nobody', 'Nobody here yet.'))}<br><button class="mkp-btn-solid" data-act="search" style="display:inline-flex">${mi('search', 'font-size:16px')}${esc(tr('gfd.findgolfers', 'Find golfers'))}</button></div>`;
+        },
+        async rSearch(top, seq) {
+            const r = GF.root();
+            r.innerHTML = `<div class="gfd-head">${GF.backBtn()}<div class="gfd-srch"><input id="gfdQ" autocomplete="off" enterkeyhint="search" placeholder="${esc(tr('gfd.search.ph', 'Search golfers by name or @handle'))}" value="${esc(top.q || '')}"></div></div>
+                <div id="gfdSr">${GF.spin()}</div>`;
+            const inp = document.getElementById('gfdQ');
+            let t = null;
+            inp.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { top.q = inp.value; GF.runSearch(top, seq); }, 250); });
+            try { inp.focus(); } catch (e) { }
+            GF.runSearch(top, seq);
+        },
+        async runSearch(top, seq) {
+            const q = (top.q || '').trim(), my = GF._sq = (GF._sq || 0) + 1;
+            let list = [], sug = !q || q.replace(/^@/, '').length < 2;
+            try { list = sug ? await rpc('golf_people_suggest', { p_user: uid() }) : await rpc('golf_people_search', { p_user: uid(), p_q: q }); } catch (e) { if (GF.live(seq)) GF.err('gfdSr', e); return; }
+            if (!GF.live(seq) || my !== GF._sq) return;
+            const box = document.getElementById('gfdSr'); if (!box) return;
+            list = list || [];
+            box.innerHTML = list.length
+                ? `<div class="gfd-sec">${esc(sug ? tr('gfd.suggested', 'Suggested for you') : tr('gfd.golfers', 'Golfers'))}</div><div class="mkp-card" style="padding:0 12px">${list.map(GF.personRow).join('')}</div>`
+                : `<div class="mkp-card gfd-empty">${mi(sug ? 'person_search' : 'search_off')}${esc(sug ? tr('gfd.search.hint', 'Find golfers by name or @handle and follow them.') : tr('gfd.nomatch', 'No golfers found.'))}</div>`;
         },
         async rSaved(top, seq) {
             const r = GF.root();
@@ -797,7 +899,7 @@
         profMenu() {
             const P = GF._prof; if (!P) return;
             if (P.is_me) GF.sheet('', '', [['bookmark', tr('gfd.savedposts', 'Saved posts'), () => GF.go({ s: 'saved' })],
-                ['edit', tr('gfd.editprofile', 'Edit profile'), () => GF.editProfile()],
+                ['edit', tr('gfd.editprofile', 'Edit profile'), () => { GF.editProfile(); GF.wireHandle(); }],
                 ['share', tr('gfd.shareprofile', 'Share profile'), () => GF.shareProfile(P)],
                 ['menu_book', tr('gfd.guidelines', 'Guidelines & FAQ'), () => GF.guidelines()]]);
             else GF.sheet('', '', [['share', tr('gfd.shareprofile', 'Share profile'), () => GF.shareProfile(P)],
@@ -911,17 +1013,17 @@
                     close();
                     if (!list.length) return;
                     const box = document.createElement('div'); box.className = 'gfd-atlist';
-                    box.innerHTML = list.map((p, i) => `<button type="button" data-i="${i}">${av(p, 28)}<span>${esc(p.name)}</span></button>`).join('');
+                    box.innerHTML = list.map((p, i) => `<button type="button" data-i="${i}">${av(p, 28)}<span>${esc(p.name)}${p.handle ? ` <span style="color:var(--mkp-sub);font-weight:500">@${esc(p.handle)}</span>` : ''}</span></button>`).join('');
                     box.addEventListener('mousedown', e => e.preventDefault());   // keep the keyboard up
                     box.addEventListener('click', e => {
                         const b = e.target.closest('button[data-i]'); if (!b) return;
                         e.preventDefault(); e.stopPropagation();
                         const p = list[+b.dataset.i];
                         const pos = el.selectionStart || el.value.length;
-                        const before = el.value.slice(0, pos).replace(/@([^@\n]{2,30})$/, '@' + p.name + ' ');
+                        const before = el.value.slice(0, pos).replace(/@([^@\n]{2,30})$/, '@' + (p.handle || p.name) + ' ');
                         el.value = before + el.value.slice(pos);
                         try { el.setSelectionRange(before.length, before.length); } catch (x) { }
-                        if (!store.some(x => x.id === p.id)) store.push({ id: p.id, name: p.name });
+                        if (!store.some(x => x.id === p.id)) store.push({ id: p.id, name: p.name, handle: p.handle || null });
                         el.dispatchEvent(new Event('input'));
                         close(); el.focus();
                     });
@@ -1015,7 +1117,7 @@
                     ready[i].url = db().storage.from('golf-feed').getPublicUrl(path).data.publicUrl;   // a retry won't upload it twice
                     urls.push(ready[i].url);
                 }
-                const ids = (d.mentions || []).filter(m => (d.caption || '').includes('@' + m.name)).map(m => m.id);
+                const ids = (d.mentions || []).filter(m => (d.caption || '').includes('@' + m.name) || (m.handle && (d.caption || '').toLowerCase().includes('@' + m.handle))).map(m => m.id);
                 const args = { p_user: me, p_kind: d.kind, p_caption: d.caption || '', p_photos: urls,
                     p_round: d.kind === 'round' ? d.round : null, p_audience: d.audience, p_mentions: ids.length ? ids : null,
                     p_video: videoUrl, p_muted: videoUrl ? !!d.muted : false };
@@ -1129,7 +1231,9 @@
                 too_many: tr('gfd.e.toomany', 'That’s a lot of posting — try again later.'), not_found: tr('gfd.gone', 'This post isn’t available any more.'),
                 not_yours: tr('gfd.e.notyours', 'Only the owner can do that.'), length: tr('gfd.e.length', 'That’s too long.'), caption_too_long: tr('gfd.e.length', 'That’s too long.'),
                 not_a_buyer: tr('mkp.e.notbuyer', 'Pick someone who asked about this listing.'),
-                video_not_yours: tr('gfd.e.photo', 'A photo didn’t upload. Try again.'), video_one_cover: tr('gfd.v.onlyone', 'A post is photos or one video, not both.'), not_registered: tr('mkp.e.notreg', 'You’re not registered for that event.') };
+                video_not_yours: tr('gfd.e.photo', 'A photo didn’t upload. Try again.'),
+                handle_taken: tr('gfd.handle.taken2', 'That handle is taken.'), handle_format: tr('gfd.handle.format', 'Use 3–24 letters, numbers, . or _'),
+                handle_reserved: tr('gfd.handle.reserved', 'That handle is reserved'), video_one_cover: tr('gfd.v.onlyone', 'A post is photos or one video, not both.'), not_registered: tr('mkp.e.notreg', 'You’re not registered for that event.') };
             return m[k] || tr('gfd.e.generic', 'Something went wrong. Please try again.');
         },
         err(id, e) {
@@ -1182,6 +1286,10 @@
                 case 'sound': GF.sound(id, el); break;
                 case 'likers': GF.go({ s: 'likers', id }); break;
                 case 'guidelines': GF.guidelines(); break;
+                case 'search': GF.go({ s: 'search', q: '' }); break;
+                case 'myprofile': GF.profile(uid()); break;
+                case 'myfollows': GF.go({ s: 'follows', id: uid(), which: v }); break;
+                case 'followtab': { const t = GF.stack[GF.stack.length - 1]; if (t && t.s === 'follows' && t.which !== v) { t.which = v; GF.render(); } break; }
                 case 'save': GF.save(id); break;
                 case 'comment': GF.addComment(id); break;
                 case 'delcomment': rpc('golf_comment_delete', { p_user: uid(), p_comment: id }).then(() => { const p = GF._posts[el.dataset.post]; if (p) p.comments = Math.max(0, (p.comments || 1) - 1); GF.paintCount(el.dataset.post); GF.loadComments(el.dataset.post); }).catch(x => toast(x.message, 'error')); break;
@@ -1191,7 +1299,7 @@
                 case 'followbtn': GF.follow(id, el.dataset.on === '1', el); break;
                 case 'dm': GF.dm(id); break;
                 case 'profmenu': GF.profMenu(); break;
-                case 'editprofile': GF.editProfile(); break;
+                case 'editprofile': GF.editProfile(); GF.wireHandle(); break;
                 case 'canceledit': { const b = document.getElementById('gfdEditBox'); if (b) b.innerHTML = ''; break; }
                 case 'savebio': GF.saveBio(); break;
                 case 'shareprofile': if (GF._prof) GF.shareProfile(GF._prof); break;

@@ -314,7 +314,7 @@
         back() {
             const sh = document.getElementById('gfdSheet');
             if (sh) { sh.remove(); return true; }
-            if (GF.stack.length > 1) { GF.stack.pop(); GF.render(); return true; }
+            if (GF.stack.length > 1) { const t = GF.stack.pop(); if (t && t.edit) GF._ed = null; GF.render(); return true; }
             return false;
         },
         // open the feed tab on a given screen (profile / post), from anywhere in the app
@@ -450,7 +450,7 @@
                 ${cap ? `<div class="gfd-cap"><b>${esc(a.name)}</b> ${linkify(cap, p.mentions)}</div>` : ''}
                 ${cm ? `<div class="gfd-cms">${cm}</div>` : ''}
                 ${full ? '<div class="gfd-cms" id="gfdComments"></div>' : ''}
-                <div class="gfd-when">${esc(ago(p.created_at))}${p.hidden ? ' · ' + esc(tr('gfd.hiddenlbl', 'Hidden from the feed')) : ''}</div>
+                <div class="gfd-when">${esc(ago(p.created_at))}${p.edited_at ? ' · ' + esc(tr('gfd.edited', 'Edited')) : ''}${p.hidden ? ' · ' + esc(tr('gfd.hiddenlbl', 'Hidden from the feed')) : ''}</div>
                 ${full ? `<div class="gfd-addc"><input id="gfdCmIn" maxlength="1000" autocomplete="off" placeholder="${esc(tr('gfd.addcomment', 'Add a comment…'))}"><button data-act="comment" data-id="${esc(p.id)}">${esc(tr('gfd.send', 'Post'))}</button></div>` : ''}
             </article>`;
         },
@@ -538,6 +538,8 @@
             if (p.kind === 'listing' && p.listing) items.push(['storefront', tr('gfd.menu.listing', 'Open in the 19th Hole'), () => GF.openListing(p.listing.id)]);
             items.push(['share', tr('gfd.menu.share', 'Share'), () => GF.share('/?post=' + encodeURIComponent(id), tr('gfd.title', 'Tap-In'))]);
             if (!p.mine) items.push(['person', tr('gfd.menu.profile', 'View profile'), () => GF.profile(p.author.id)]);
+            if (p.mine && p.kind !== 'listing') items.push(['edit', tr('gfd.menu.edit', 'Edit post'), () => GF.go({ s: 'compose', edit: id })]);
+            if (p.mine && p.kind === 'listing' && p.listing) items.push(['edit', tr('gfd.menu.editlisting', 'Edit listing'), () => { try { MarketplaceSystem.editListing(p.listing.id); } catch (e) { } }]);
             if (p.mine && p.kind !== 'listing') items.push(['delete', tr('gfd.menu.delete', 'Delete post'), () => GF.deletePost(id), 'red']);
             if (!p.mine) items.push(['flag', tr('gfd.menu.report', 'Report'), () => GF.reportMenu(id), 'red']);
             if (GF.me && GF.me.is_admin) items.push([p.hidden ? 'visibility' : 'visibility_off', p.hidden ? tr('gfd.menu.unhide', 'Show on the feed again') : tr('gfd.menu.hide', 'Hide from the feed (admin)'), () => GF.hide(id, !p.hidden)]);
@@ -670,18 +672,32 @@
         },
 
         // ------------------------------------------------------------ new post
+        // the draft on screen: an edit of one of my posts (v1264) or the new post
+        cur() { const top = GF.stack[GF.stack.length - 1]; return top && top.edit ? GF._ed : GF._draft; },
         async rCompose(top, seq) {
-            const d = GF._draft || (GF._draft = { kind: 'round', round: null, photos: [], caption: '', audience: 'everyone', rounds: null, mentions: [] });
+            let d;
+            if (top.edit) {
+                if (!GF._ed || GF._ed.edit !== top.edit) {
+                    const p = GF._posts[top.edit];
+                    if (!p || !p.mine || p.kind === 'listing') { GF.back(); return; }
+                    GF._ed = { edit: p.id, kind: p.kind, round: p.round ? p.round.id : null, caption: p.caption || '', audience: p.audience || 'everyone',
+                        photos: (p.photos || []).map(u => ({ state: 'ok', url: u })), rounds: null, keepRound: p.round || null,
+                        mentions: (p.mentions || []).map(m => ({ id: m.id, name: m.name })) };
+                }
+                d = GF._ed;
+            } else d = GF._draft || (GF._draft = { kind: 'round', round: null, photos: [], caption: '', audience: 'everyone', rounds: null, mentions: [] });
             const r = GF.root();
             if (d.rounds === null) {
                 d.rounds = [];
                 rpc('golf_my_rounds', { p_user: uid() }).then(list => {
                     d.rounds = list || [];
-                    if (!d.round && d.rounds.length) { const f = d.rounds.find(x => !x.posted) || d.rounds[0]; d.round = f.id; }
+                    // an edited post keeps its round even when it is older than the last 8
+                    if (d.keepRound && !d.rounds.some(x => x.id === d.keepRound.id)) d.rounds.push(Object.assign({ posted: true }, d.keepRound));
+                    if (!d.edit && !d.round && d.rounds.length) { const f = d.rounds.find(x => !x.posted) || d.rounds[0]; d.round = f.id; }
                     if (GF.live(seq)) GF.paintRounds();
                 }).catch(() => { });
             }
-            r.innerHTML = `<div class="gfd-head">${GF.backBtn()}<div class="gfd-title">${esc(tr('gfd.newpost', 'New post'))}</div></div>
+            r.innerHTML = `<div class="gfd-head">${GF.backBtn()}<div class="gfd-title">${esc(d.edit ? tr('gfd.editpost', 'Edit post') : tr('gfd.newpost', 'New post'))}</div></div>
                 <div class="gfd-kinds">${Object.keys(KIND).map(k => `<button class="${d.kind === k ? 'on' : ''}" data-act="kind" data-v="${k}">${mi(KIND[k][0])}${esc(tr(KIND[k][1], KIND[k][2]))}</button>`).join('')}</div>
                 <div id="gfdRounds"></div>
                 <div class="gfd-lbl">${esc(tr('gfd.photos10', 'Photos · up to 10'))}</div>
@@ -691,7 +707,7 @@
                 <textarea class="gfd-ta" id="gfdCap" maxlength="2200" placeholder="${esc(tr('gfd.caption.ph2', 'How did it go? Type @ to tag a golfer'))}">${esc(d.caption)}</textarea>
                 <div class="gfd-lbl">${esc(tr('gfd.whosees', 'Who sees it'))}</div>
                 <div class="gfd-seg"><button class="${d.audience === 'everyone' ? 'on' : ''}" data-act="aud" data-v="everyone">${esc(tr('gfd.everyone.s', 'Everyone'))}</button><button class="${d.audience === 'followers' ? 'on' : ''}" data-act="aud" data-v="followers">${esc(tr('gfd.followersonly', 'Followers only'))}</button></div>
-                <button class="gfd-go" id="gfdShare" data-act="share">${esc(tr('gfd.share', 'Share'))}</button>
+                <button class="gfd-go" id="gfdShare" data-act="share">${esc(d.edit ? tr('gfd.savechanges', 'Save changes') : tr('gfd.share', 'Share'))}</button>
                 <p class="mkp-note" style="margin-top:10px">${mi('shield')}<span>${esc(tr('gfd.rules', 'Golf and the course only. Photos are resized on your phone and their location is removed before upload.'))}</span></p>`;
             document.getElementById('gfdCap').addEventListener('input', e => { d.caption = e.target.value; });
             GF.wireMentions(document.getElementById('gfdCap'), d.mentions);
@@ -699,7 +715,7 @@
             GF.paintRounds(); GF.paintPhotos();
         },
         paintRounds() {
-            const d = GF._draft, box = document.getElementById('gfdRounds'); if (!d || !box) return;
+            const d = GF.cur(), box = document.getElementById('gfdRounds'); if (!d || !box) return;
             if (d.kind !== 'round') { box.innerHTML = ''; return; }
             if (!d.rounds || !d.rounds.length) { box.innerHTML = `<div class="gfd-lbl">${esc(tr('gfd.attach', 'Attach a round'))}</div><div class="mkp-card gfd-empty" style="padding:14px">${esc(tr('gfd.norounds', 'Your finished rounds show here — post one with a Verified badge.'))}</div>`; return; }
             // three at a time (the mockup) so the photos stay on screen; the picked one is always shown
@@ -713,8 +729,8 @@
             }).join('') + (shown.length < d.rounds.length ? `<button class="gfd-more" data-act="allrounds" style="padding:2px 2px 4px">${esc(tr('gfd.morerounds', 'More rounds'))}</button>` : '');
         },
         paintPhotos() {
-            const d = GF._draft, box = document.getElementById('gfdPhotos'); if (!d || !box) return;
-            box.innerHTML = d.photos.map((p, i) => `<div class="p"><img src="${p.preview}" alt="">${p.state === 'checking' ? `<span class="ck">${esc(tr('gfd.checking', 'CHECKING'))}</span>` : ''}
+            const d = GF.cur(), box = document.getElementById('gfdPhotos'); if (!d || !box) return;
+            box.innerHTML = d.photos.map((p, i) => `<div class="p"><img src="${p.url ? url(p.url) : (p.preview || '')}" alt="">${p.state === 'checking' ? `<span class="ck">${esc(tr('gfd.checking', 'CHECKING'))}</span>` : ''}
                 <button class="x" data-act="rmphoto" data-v="${i}" aria-label="${esc(tr('common.remove', 'Remove'))}">${mi('close')}</button></div>`).join('')
                 + (d.photos.length < 10 ? `<button class="add" data-act="addphoto" aria-label="${esc(tr('common.add', 'Add'))}">${mi('add_a_photo')}</button>` : '');
             const sh = document.getElementById('gfdShare');
@@ -759,7 +775,7 @@
             });
         },
         async addPhotos(files) {
-            const d = GF._draft; if (!d) return;
+            const d = GF.cur(); if (!d) return;
             const list = Array.from(files || []).filter(f => /^image\//.test(f.type || 'image/')).slice(0, 10 - d.photos.length);
             for (const f of list) {
                 const item = { state: 'checking', preview: '', blob: null };
@@ -779,32 +795,45 @@
             }
         },
         async submit() {
-            const d = GF._draft; if (!d || d.busy) return;
-            const ready = d.photos.filter(p => p.state === 'ok' && p.blob);
+            const d = GF.cur(); if (!d || d.busy) return;
+            const ready = d.photos.filter(p => p.state === 'ok' && (p.blob || p.url));
             if (!ready.length) { toast(tr('gfd.needphoto', 'Add at least one photo.'), 'warning'); return; }
             d.busy = true; GF.paintPhotos();
             const btn = document.getElementById('gfdShare');
             const me = uid(), urls = [];
             try {
+                const nUp = ready.filter(x => !x.url).length; let k = 0;
                 for (let i = 0; i < ready.length; i++) {
-                    if (btn) btn.textContent = tr('gfd.uploading', 'Uploading {i} of {n}…', { i: i + 1, n: ready.length });
+                    if (ready[i].url) { urls.push(ready[i].url); continue; }   // already on the post
+                    if (btn) btn.textContent = tr('gfd.uploading', 'Uploading {i} of {n}…', { i: ++k, n: nUp });
                     const path = `${me}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
                     const up = await db().storage.from('golf-feed').upload(path, ready[i].blob, { contentType: 'image/jpeg', upsert: false });
                     if (up.error) throw up.error;
-                    urls.push(db().storage.from('golf-feed').getPublicUrl(path).data.publicUrl);
+                    ready[i].url = db().storage.from('golf-feed').getPublicUrl(path).data.publicUrl;   // a retry won't upload it twice
+                    urls.push(ready[i].url);
                 }
                 const ids = (d.mentions || []).filter(m => (d.caption || '').includes('@' + m.name)).map(m => m.id);
-                const r = await rpc('golf_post_create', { p_user: me, p_kind: d.kind, p_caption: d.caption || '', p_photos: urls,
-                    p_round: d.kind === 'round' ? d.round : null, p_audience: d.audience, p_mentions: ids.length ? ids : null });
+                const args = { p_user: me, p_kind: d.kind, p_caption: d.caption || '', p_photos: urls,
+                    p_round: d.kind === 'round' ? d.round : null, p_audience: d.audience, p_mentions: ids.length ? ids : null };
+                const r = d.edit ? await rpc('golf_post_update', Object.assign({ p_post: d.edit }, args)) : await rpc('golf_post_create', args);
                 if (!r || !r.ok) throw new Error(GF.why(r));
-                d.photos.forEach(p => { try { URL.revokeObjectURL(p.preview); } catch (e) { } });
+                d.photos.forEach(p => { try { if (p.preview) URL.revokeObjectURL(p.preview); } catch (e) { } });
+                if (d.edit) {
+                    GF._ed = null; delete GF._posts[d.edit];
+                    toast(tr('gfd.updated.toast', 'Post updated'), 'success');
+                    GF.stack.pop();
+                    const t2 = GF.stack[GF.stack.length - 1];
+                    if (!t2 || t2.s !== 'post' || t2.id !== d.edit) GF.stack.push({ s: 'post', id: d.edit });
+                    GF.render();
+                    return;
+                }
                 GF._draft = null; GF.me = null;
                 toast(tr('gfd.posted.toast', 'Posted'), 'success');
                 GF.scope = 'everyone'; GF.pages = [null]; GF.page = 0;
                 GF.stack = [{ s: 'feed' }, { s: 'post', id: r.id }];
                 GF.render();
             } catch (e) {
-                d.busy = false; if (btn) btn.textContent = tr('gfd.share', 'Share'); GF.paintPhotos();
+                d.busy = false; if (btn) btn.textContent = d.edit ? tr('gfd.savechanges', 'Save changes') : tr('gfd.share', 'Share'); GF.paintPhotos();
                 toast(e.message || String(e), 'error');
             }
         },
@@ -958,12 +987,12 @@
                 case 'canceledit': { const b = document.getElementById('gfdEditBox'); if (b) b.innerHTML = ''; break; }
                 case 'savebio': GF.saveBio(); break;
                 case 'shareprofile': if (GF._prof) GF.shareProfile(GF._prof); break;
-                case 'kind': if (GF._draft) { GF._draft.kind = v; GF.render(); } break;
-                case 'allrounds': if (GF._draft) { GF._draft.allRounds = true; GF.paintRounds(); } break;
-                case 'pickround': if (GF._draft) { GF._draft.round = GF._draft.round === id ? null : id; GF.paintRounds(); } break;
+                case 'kind': if (GF.cur()) { GF.cur().kind = v; GF.render(); } break;
+                case 'allrounds': if (GF.cur()) { GF.cur().allRounds = true; GF.paintRounds(); } break;
+                case 'pickround': if (GF.cur()) { const d = GF.cur(); d.round = d.round === id ? null : id; GF.paintRounds(); } break;
                 case 'addphoto': document.getElementById('gfdFile')?.click(); break;
-                case 'rmphoto': if (GF._draft) { const p = GF._draft.photos.splice(+v, 1)[0]; try { URL.revokeObjectURL(p.preview); } catch (x) { } GF.paintPhotos(); } break;
-                case 'aud': if (GF._draft) { GF._draft.audience = v; GF.render(); } break;
+                case 'rmphoto': if (GF.cur()) { const p = GF.cur().photos.splice(+v, 1)[0]; try { if (p.preview) URL.revokeObjectURL(p.preview); } catch (x) { } GF.paintPhotos(); } break;
+                case 'aud': if (GF.cur()) { GF.cur().audience = v; GF.render(); } break;
                 case 'share': GF.submit(); break;
                 case 'actfilter': GF._actFilter = v; GF.paintActivity(); break;
             }

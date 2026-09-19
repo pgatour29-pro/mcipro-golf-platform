@@ -342,7 +342,7 @@
         // ------------------------------------------------------------ the feed
         head() {
             const n = GF.counts.activity_new || 0;
-            return `<div class="gfd-head"><div class="gfd-title">${esc(tr('gfd.title', 'Golf Feed'))}</div>
+            return `<div class="gfd-head"><div class="gfd-title">${esc(tr('gfd.title', 'Tap-In'))}</div>
                 <button class="gfd-ibtn" data-act="activity" aria-label="${esc(tr('gfd.activity', 'Activity'))}">${mi('favorite')}${n ? `<span class="mkp-bdgr">${n > 99 ? '99+' : n}</span>` : ''}</button>
                 <button class="gfd-post-btn" data-act="compose">${mi('add_a_photo')}${esc(tr('gfd.post', 'Post'))}</button></div>`;
         },
@@ -536,7 +536,7 @@
             const p = GF._posts[id]; if (!p) return;
             const items = [];
             if (p.kind === 'listing' && p.listing) items.push(['storefront', tr('gfd.menu.listing', 'Open in the 19th Hole'), () => GF.openListing(p.listing.id)]);
-            items.push(['share', tr('gfd.menu.share', 'Share'), () => GF.share('/?post=' + encodeURIComponent(id), tr('gfd.title', 'Golf Feed'))]);
+            items.push(['share', tr('gfd.menu.share', 'Share'), () => GF.share('/?post=' + encodeURIComponent(id), tr('gfd.title', 'Tap-In'))]);
             if (!p.mine) items.push(['person', tr('gfd.menu.profile', 'View profile'), () => GF.profile(p.author.id)]);
             if (p.mine && p.kind !== 'listing') items.push(['delete', tr('gfd.menu.delete', 'Delete post'), () => GF.deletePost(id), 'red']);
             if (!p.mine) items.push(['flag', tr('gfd.menu.report', 'Report'), () => GF.reportMenu(id), 'red']);
@@ -554,7 +554,7 @@
                 try { const r = await rpc('golf_post_report', { p_user: uid(), p_post: id, p_reason: reason }); if (!r || !r.ok) throw new Error(GF.why(r)); toast(tr('gfd.reported', 'Thanks — we’ll take a look.'), 'success'); }
                 catch (e) { toast(e.message || String(e), 'error'); }
             };
-            GF.sheet(tr('gfd.report.title', 'Report this post'), tr('gfd.report.sub', 'The Golf Feed is for golf and the course only.'), [
+            GF.sheet(tr('gfd.report.title', 'Report this post'), tr('gfd.report.sub', 'Tap-In is for golf and the course only.'), [
                 ['sports_golf', tr('gfd.report.notgolf', 'Not about golf'), go('not_golf')],
                 ['block', tr('gfd.report.offensive', 'Offensive or inappropriate'), go('offensive')],
                 ['report', tr('gfd.report.spam', 'Spam or selling outside the 19th Hole'), go('spam')],
@@ -657,7 +657,7 @@
             else GF.sheet('', '', [['share', tr('gfd.shareprofile', 'Share profile'), () => GF.shareProfile(P)],
                 ['chat', tr('gfd.message', 'Message'), () => GF.dm(P.id)]]);
         },
-        shareProfile(P) { GF.share('/?golfer=' + encodeURIComponent(P.id), P.name + ' · ' + tr('gfd.title', 'Golf Feed')); },
+        shareProfile(P) { GF.share('/?golfer=' + encodeURIComponent(P.id), P.name + ' · ' + tr('gfd.title', 'Tap-In')); },
         async share(path, title) {
             const u = location.origin + path;
             try { if (navigator.share) { await navigator.share({ title, url: u }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }

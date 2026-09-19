@@ -272,7 +272,7 @@
     { tab: 'caddies', icon: 'person_pin_circle', k: 'g3.caddies', fb: 'Caddies' },
     { act: 'oo', icon: 'handshake', k: 'oo.title', fb: '1on1', badge: 'ooCubeBadge' }, /* 1on1 (v1089→v1091): opens the 1on1 dashboard screen; CSS-hidden unless #golferDashboard.oo-on */
     { tab: 'messages', icon: 'chat', k: 'g3.messages', fb: 'Messages', badge: 'messagesBadge' },
-    { tab: 'golffeed', icon: 'photo_camera', k: 'gfd.title', fb: 'Golf Feed', badge: 'gfdRailBadge' },   /* v1261 Golf Feed (golf-feed.js paints the badge) */
+    { tab: 'golffeed', icon: 'photo_camera', k: 'gfd.title', fb: 'Tap-In', badge: 'gfdRailBadge' },   /* v1261 Golf Feed (golf-feed.js paints the badge) */
     { tab: 'marketplace', icon: 'storefront', k: null, fb: '19th Hole', badge: 'marketplaceBadge' },
     { tab: 'food', icon: 'restaurant', k: 'g3.food', fb: 'Food' },
     { tab: 'status', icon: 'receipt_long', k: 'g3.orders', fb: 'Orders' },
@@ -289,7 +289,7 @@
   ];
   var TITLES = { overview: ['g3.today', 'Today'], societyevents: ['g3.societyevents', 'Society events'], scorecard: ['g3.playgolf', 'Play golf'], rounds: ['g3.roundhistory', 'Round history'], golfanalytics: ['g3.analytics', 'Analytics'], schedule: ['g3.schedule', 'Schedule'], caddies: ['g3.caddies', 'Caddies'], messages: ['g3.messages', 'Messages'], marketplace: [null, '19th Hole'], food: ['g3.food', 'Food'], status: ['g3.orders', 'Orders'], booking: ['g3.teetime', 'Tee time'], conditions: ['g3.conditions', 'Conditions'] };
   TITLES.oo = ['oo.title', '1on1'];
-  TITLES.golffeed = ['gfd.title', 'Golf Feed'];
+  TITLES.golffeed = ['gfd.title', 'Tap-In'];
 
   var G3 = {
     _built: false, _tab: 'overview', _mq: null, _timer: null, _seq: 0, _ev: null,

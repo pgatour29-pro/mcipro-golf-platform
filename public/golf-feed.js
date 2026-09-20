@@ -489,6 +489,7 @@
     .gfd-photos .p .vb{position:absolute;left:4px;bottom:4px;padding:2px 5px;border-radius:6px;background:rgba(0,0,0,.65);color:#fff;font:700 9.5px/1 'JetBrains Mono',monospace;display:flex;align-items:center;gap:2px}
     .gfd-photos .p .vb .material-symbols-outlined{font-size:12px}
     .gfd-tabn{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 5px;border-radius:9px;background:#ef4444;color:#fff;font:700 9.5px/1 'JetBrains Mono',monospace;letter-spacing:0;margin-left:5px}
+    .gfd-tabn.q{background:var(--mkp-glass2);color:var(--mkp-sub);box-shadow:inset 0 0 0 1px var(--mkp-slo)}
     .gfd-tile .new{position:absolute;right:6px;top:6px;padding:3px 6px;border-radius:6px;background:#16a34a;color:#fff;text-transform:uppercase;font:800 9px/1 'JetBrains Mono',monospace;letter-spacing:.06em;box-shadow:0 1px 4px rgba(0,0,0,.35)}
     .gfd-tile .new ~ .multi{top:26px}
     .gfd-newtag{display:inline-block;text-transform:uppercase;margin-left:6px;padding:2px 5px;border-radius:5px;background:#16a34a;color:#fff;font:800 8.5px/1.2 'JetBrains Mono',monospace;letter-spacing:.06em;vertical-align:2px}
@@ -1477,37 +1478,40 @@
             const list = GF._actList || [], f = GF._actFilter || 'all';
             const grp = (a) => (a.type === 'enquiry' || a.type === 'offer') ? 'mkp' : a.type;
             const line = GF._actLine;
-            const nNew = (g) => list.filter(a => a.is_new && (g === 'all' || grp(a) === g)).reduce((t, a) => t + (a.type === 'like' ? (a.n || 1) : 1), 0);
             const chips = [['all', tr('gfd.f.all', 'All')], ['mention', tr('gfd.f.mentions', 'Mentions')], ['like', tr('gfd.f.likes', 'Likes')],
                 ['comment', tr('gfd.f.comments', 'Comments')], ['follow', tr('gfd.f.follows', 'Follows')], ['mkp', tr('hole19.title', '19th Hole')]];
-            const shown = list.filter(a => f === 'all' || grp(a) === f);
             // Pete 2026-09-20: a like never names the golfer who gave it — anywhere. The rows
             // collapse to one per post, hearts and a count; comments, mentions and follows keep
-            // their name and face. The chip counts above still count every single like.
-            const rows = [];
+            // their name and face. Group the WHOLE list first, so the chips can count the same
+            // thing the rows show (a post's likes counted once, not once per like row).
+            const all = [];
             const byPost = new Map();
-            shown.forEach(a => {
-                if (a.type !== 'like') { rows.push(a); return; }
+            list.forEach(a => {
+                if (a.type !== 'like') { all.push(a); return; }
                 const add = a.n || 1;   // the server sends the boosted slice as ONE row carrying its count
                 const g = byPost.get(a.post_id || '');
                 if (g) { g.n += add; g.total = Math.max(g.total || 0, a.total || 0); g.window_h = g.window_h || a.window_h; if (a.is_new) g.is_new = true; if (new Date(a.at) > new Date(g.at)) g.at = a.at; return; }
                 const one = { type: 'like', n: add, total: a.total || 0, window_h: a.window_h, at: a.at, is_new: a.is_new, post_id: a.post_id, thumb: a.thumb };
-                byPost.set(a.post_id || '', one); rows.push(one);
+                byPost.set(a.post_id || '', one); all.push(one);
             });
+            // A chip carries what its section adds up to; it goes red only when some of it is new.
+            const size = (r) => r.type === 'like' ? (r.total || r.n || 0) : 1;
+            const tot = (k, onlyNew) => all.reduce((t, r) => t + ((k === 'all' || grp(r) === k) && (!onlyNew || r.is_new) ? size(r) : 0), 0);
+            const rows = all.filter(r => f === 'all' || grp(r) === f);
             const likeRow = (a) => {
                 // Pete 2026-09-20: "keep the count numbers showing at 91" — the headline is the
                 // post's own total, the same number the post shows. The fresh slice goes under it.
-                const tot = a.total || a.n;
+                const cnt = a.total || a.n;
                 const hrs = a.window_h || Math.max(1, Math.round((Date.now() - new Date(a.at).getTime()) / 3600000));
-                const recent = a.n && a.n < tot ? tr('gfd.a.likes.recent', '{n} in the past {h} hours', { n: a.n, h: hrs }) : '';
+                const recent = a.n && a.n < cnt ? tr('gfd.a.likes.recent', '{n} in the past {h} hours', { n: a.n, h: hrs }) : '';
                 return `
                 <div class="gfd-act ${a.is_new ? 'new' : ''}"${a.post_id ? ` data-act="openpost" data-id="${esc(a.post_id)}"` : ' style="cursor:default"'}>
                   <span class="lkm">${mi('favorite')}</span>
-                  <div class="tx"><b>${esc(tot === 1 ? tr('gfd.a.likes.1', '1 like on your post') : tr('gfd.a.likes.n', '{n} likes on your post', { n: tot }))}</b> <span>${esc(agoShort(a.at))}</span>${recent ? `<br><span>${esc(recent)}</span>` : ''}</div>
+                  <div class="tx"><b>${esc(cnt === 1 ? tr('gfd.a.likes.1', '1 like on your post') : tr('gfd.a.likes.n', '{n} likes on your post', { n: cnt }))}</b> <span>${esc(agoShort(a.at))}</span>${recent ? `<br><span>${esc(recent)}</span>` : ''}</div>
                   ${url(a.thumb) ? `<img class="th" src="${url(a.thumb)}" alt="" loading="lazy">` : ''}</div>`;
             };
             const box = document.getElementById('gfdAct'); if (!box) return;
-            box.innerHTML = `<div class="gfd-chips">${chips.map(([k, l]) => { const n = nNew(k); return `<button class="${f === k ? 'on' : ''}" data-act="actfilter" data-v="${k}">${esc(l)}${n ? `<span class="gfd-tabn">${n > 99 ? '99+' : n}</span>` : ''}</button>`; }).join('')}</div>`
+            box.innerHTML = `<div class="gfd-chips">${chips.map(([k, l]) => { const n = tot(k), nw = tot(k, true); return `<button class="${f === k ? 'on' : ''}" data-act="actfilter" data-v="${k}">${esc(l)}${n ? `<span class="gfd-tabn${nw ? '' : ' q'}">${n > 999 ? '999+' : n}</span>` : ''}</button>`; }).join('')}</div>`
                 + (rows.length ? `<div class="mkp-card" style="padding:4px 12px">${rows.map(a => a.type === 'like' ? likeRow(a) : `
                 <div class="gfd-act ${a.is_new ? 'new' : ''}" data-act="${a.post_id ? 'openpost' : a.listing_id ? 'listing' : 'profile'}" data-id="${esc(a.post_id || a.listing_id || a.actor.id)}">
                   <span data-act="profile" data-id="${esc(a.actor.id)}">${av(a.actor, 40)}</span>

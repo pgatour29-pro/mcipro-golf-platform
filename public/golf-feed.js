@@ -349,6 +349,9 @@
     .gfd-act .tx span{color:var(--mkp-sub)}
     .gfd-act .th{flex:none;width:44px;height:44px;border-radius:8px;object-fit:cover;background:#0f2417}
     .gfd-act.new::before{content:'';flex:none;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:-5px}
+    /* a like is anonymous (Pete 2026-09-20): the row wears a heart, never a face or a name */
+    .gfd-act .lkm{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:rgba(239,68,68,.14);color:#ef4444}
+    .gfd-act .lkm .material-symbols-outlined{font-size:22px;font-variation-settings:'FILL' 1}
     .gfd-fbtn{flex:none;border:none;border-radius:10px;padding:8px 12px;background:var(--mkp-green);color:#fff;font:700 12px/1 'Instrument Sans',sans-serif;cursor:pointer}
     .gfd-fbtn.ghost{background:var(--mkp-glass2);color:var(--mkp-text);box-shadow:inset 0 0 0 1px var(--mkp-slo)}
     .gfd-sheet{position:fixed;inset:0;z-index:12000;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.5)}
@@ -440,8 +443,6 @@
     .gfd-tile .bl .ok{position:static}
     .gfd-tile .lk{display:flex;align-items:center;gap:3px;height:20px;padding:0 7px 0 5px;border-radius:10px;background:rgba(11,15,20,.72);color:#fff;font:700 11px/1 'Instrument Sans',sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.3)}
     .gfd-tile .lk .material-symbols-outlined{font-size:13px;color:#ef4444;font-variation-settings:'FILL' 1}
-    .gfd-likedby{padding:4px 12px 0;font:400 13.5px/1.35 'Instrument Sans',sans-serif;color:var(--mkp-text);background:none;border:none;text-align:left;cursor:pointer;display:block;width:100%}
-    .gfd-likedby b{font-weight:700}
     .gfd-car.vid video{display:block;width:100%;aspect-ratio:4/5;object-fit:cover;background:#000}
     .gfd-snd{position:absolute;right:10px;bottom:10px;width:32px;height:32px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;display:grid;place-items:center;cursor:pointer;z-index:2}
     .gfd-snd .material-symbols-outlined{font-size:18px}
@@ -598,7 +599,7 @@
             const r = GF.root(); if (!r) return;
             const top = GF.stack[GF.stack.length - 1] || { s: 'feed' };
             const seq = ++GF._seq;
-            const fn = { feed: GF.rFeed, post: GF.rPost, profile: GF.rProfile, follows: GF.rFollows, saved: GF.rSaved, compose: GF.rCompose, activity: GF.rActivity, likers: GF.rLikers, search: GF.rSearch }[top.s] || GF.rFeed;
+            const fn = { feed: GF.rFeed, post: GF.rPost, profile: GF.rProfile, follows: GF.rFollows, saved: GF.rSaved, compose: GF.rCompose, activity: GF.rActivity, search: GF.rSearch }[top.s] || GF.rFeed;
             fn.call(GF, top, seq);
         },
         live(seq) { return seq === GF._seq; },
@@ -728,31 +729,13 @@
                 <div class="gfd-acts"><button class="${likeCls}" data-act="like" data-id="${esc(p.id)}" aria-label="${esc(tr('gfd.like', 'Like'))}">${mi('favorite')}<span class="n">${p.likes || ''}</span></button>
                   <button data-act="openpost" data-id="${esc(p.id)}" aria-label="${esc(tr('gfd.comments', 'Comments'))}">${mi('chat_bubble')}<span class="n">${p.comments || ''}</span></button><span class="sp"></span>
                   <button class="${p.i_saved ? 'saved' : ''}" data-act="save" data-id="${esc(p.id)}" aria-label="${esc(tr('gfd.save', 'Save'))}">${mi('bookmark')}</button></div>
-                ${GF.likedBy(p)}${GF.verif(p)}${GF.saleBar(p)}
+                ${GF.verif(p)}${GF.saleBar(p)}
                 ${cap ? `<div class="gfd-cap"><b>${esc(a.name)}</b> ${linkify(cap, p.mentions)}</div>` : ''}
                 ${cm ? `<div class="gfd-cms">${cm}</div>` : ''}
                 ${full ? '<div class="gfd-cms" id="gfdComments"></div>' : ''}
                 <div class="gfd-when">${esc(ago(p.created_at))}${p.edited_at ? ' · ' + esc(tr('gfd.edited', 'Edited')) : ''}${p.hidden ? ' · ' + esc(tr('gfd.hiddenlbl', 'Hidden from the feed')) : ''}</div>
                 ${full ? `<div class="gfd-addc"><input id="gfdCmIn" maxlength="1000" autocomplete="off" placeholder="${esc(tr('gfd.addcomment', 'Add a comment…'))}"><button data-act="comment" data-id="${esc(p.id)}">${esc(tr('gfd.send', 'Post'))}</button></div>` : ''}
             </article>`;
-        },
-        likedBy(p) {
-            const L = p.liked_by || []; if (!L.length) return '';
-            const others = Math.max(0, (p.real_likes || 0) - L.length - (p.i_liked ? 1 : 0));
-            const names = L.map(x => `<b>${esc(x.name)}</b>`);
-            const txt = others ? tr('gfd.likedby.n', 'Liked by {a} and {n} others', { a: names.join(', '), n: `<b>${others}</b>` })
-                : L.length === 2 ? tr('gfd.likedby.2', 'Liked by {a} and {b}', { a: names[0], b: names[1] }) : tr('gfd.likedby.1', 'Liked by {a}', { a: names[0] });
-            return `<button class="gfd-likedby" data-act="likers" data-id="${esc(p.id)}">${txt}</button>`;
-        },
-        async rLikers(top, seq) {
-            const r = GF.root();
-            r.innerHTML = `<div class="gfd-head">${GF.backBtn()}<div class="gfd-title">${esc(tr('gfd.likes.t', 'Likes'))}</div></div><div id="gfdLk">${GF.spin()}</div>`;
-            let list;
-            try { list = await rpc('golf_post_likers', { p_user: uid(), p_post: top.id }); } catch (e) { if (GF.live(seq)) GF.err('gfdLk', e); return; }
-            if (!GF.live(seq)) return;
-            // names and photos only — never an id on screen (Pete)
-            document.getElementById('gfdLk').innerHTML = (list && list.length) ? `<div class="mkp-card" style="padding:4px 12px">${list.map(GF.personRow).join('')}</div>`
-                : `<div class="mkp-card gfd-empty">${mi('favorite')}${esc(tr('gfd.likes.none', 'No likes from golfers yet.'))}</div>`;
         },
         wireCars(scope) {
             if (!GF._vio && window.IntersectionObserver) GF._vio = new IntersectionObserver(es => es.forEach(e => {
@@ -1418,7 +1401,6 @@
             const line = GF._actLine = (a) => {
                 switch (a.type) {
                     case 'mention': return tr('gfd.a.mention', 'mentioned you: “{b}”', { b: a.body || '' });
-                    case 'like': return tr('gfd.a.like', 'liked your post.');
                     case 'comment': return tr('gfd.a.comment', 'commented: “{b}”', { b: a.body || '' });
                     case 'follow': return tr('gfd.a.follow', 'started following you.');
                     case 'enquiry': return tr('gfd.a.enquiry', 'asked about your {t}.', { t: a.body || '' });
@@ -1438,9 +1420,26 @@
             const chips = [['all', tr('gfd.f.all', 'All')], ['mention', tr('gfd.f.mentions', 'Mentions')], ['like', tr('gfd.f.likes', 'Likes')],
                 ['comment', tr('gfd.f.comments', 'Comments')], ['follow', tr('gfd.f.follows', 'Follows')], ['mkp', tr('hole19.title', '19th Hole')]];
             const shown = list.filter(a => f === 'all' || grp(a) === f);
+            // Pete 2026-09-20: a like never names the golfer who gave it — anywhere. The rows
+            // collapse to one per post, hearts and a count; comments, mentions and follows keep
+            // their name and face. The chip counts above still count every single like.
+            const rows = [];
+            const byPost = new Map();
+            shown.forEach(a => {
+                if (a.type !== 'like') { rows.push(a); return; }
+                const g = byPost.get(a.post_id || '');
+                if (g) { g.n++; if (a.is_new) g.is_new = true; if (new Date(a.at) > new Date(g.at)) g.at = a.at; return; }
+                const one = { type: 'like', n: 1, at: a.at, is_new: a.is_new, post_id: a.post_id, thumb: a.thumb };
+                byPost.set(a.post_id || '', one); rows.push(one);
+            });
+            const likeRow = (a) => `
+                <div class="gfd-act ${a.is_new ? 'new' : ''}"${a.post_id ? ` data-act="openpost" data-id="${esc(a.post_id)}"` : ' style="cursor:default"'}>
+                  <span class="lkm">${mi('favorite')}</span>
+                  <div class="tx"><b>${esc(a.n === 1 ? tr('gfd.a.likes.1', '1 like on your post') : tr('gfd.a.likes.n', '{n} likes on your post', { n: a.n }))}</b> <span>${esc(agoShort(a.at))}</span></div>
+                  ${url(a.thumb) ? `<img class="th" src="${url(a.thumb)}" alt="" loading="lazy">` : ''}</div>`;
             const box = document.getElementById('gfdAct'); if (!box) return;
             box.innerHTML = `<div class="gfd-chips">${chips.map(([k, l]) => { const n = nNew(k); return `<button class="${f === k ? 'on' : ''}" data-act="actfilter" data-v="${k}">${esc(l)}${n ? `<span class="gfd-tabn">${n > 99 ? '99+' : n}</span>` : ''}</button>`; }).join('')}</div>`
-                + (shown.length ? `<div class="mkp-card" style="padding:4px 12px">${shown.map(a => `
+                + (rows.length ? `<div class="mkp-card" style="padding:4px 12px">${rows.map(a => a.type === 'like' ? likeRow(a) : `
                 <div class="gfd-act ${a.is_new ? 'new' : ''}" data-act="${a.post_id ? 'openpost' : a.listing_id ? 'listing' : 'profile'}" data-id="${esc(a.post_id || a.listing_id || a.actor.id)}">
                   <span data-act="profile" data-id="${esc(a.actor.id)}">${av(a.actor, 40)}</span>
                   <div class="tx"><b>${esc(a.actor.name)}</b>${tick(a.actor)} ${esc(line(a))} ${a.page ? `<i class="pg">${esc(tr('gfd.a.onpage', '· {p}', { p: a.page.name }))}</i> ` : ''}<span>${esc(agoShort(a.at))}</span></div>
@@ -1672,7 +1671,6 @@
                 case 'postmenu': GF.postMenu(id); break;
                 case 'like': GF.like(id); break;
                 case 'sound': GF.sound(id, el); break;
-                case 'likers': GF.go({ s: 'likers', id }); break;
                 case 'guidelines': GF.guidelines(); break;
                 case 'search': GF.go({ s: 'search', q: '' }); break;
                 case 'myprofile': GF.profile(uid()); break;
@@ -1892,7 +1890,7 @@
                     }, 60000);
                     try {
                         const dash = document.getElementById('golferDashboard');
-                        if (dash && window.MutationObserver) new MutationObserver(() => { const w = !dash.classList.contains('oo-on'); if (w !== GF._wasWide) { GF._wasWide = w; GF._stripIds = null; GF.paintCubeStrip(); } })
+                        if (dash && window.MutationObserver) new MutationObserver(() => { const w = !dash.classList.contains('oo-on'), lite = dash.classList.contains('light-mode'); if (w !== GF._wasWide || lite !== GF._wasLite) { GF._wasWide = w; GF._wasLite = lite; GF._stripIds = null; GF.paintCubeStrip(); } })
                             .observe(dash, { attributes: true, attributeFilter: ['class'] });
                     } catch (e) { }
                     GF.openLink();

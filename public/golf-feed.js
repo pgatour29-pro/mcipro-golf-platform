@@ -562,7 +562,7 @@
     const PAGE = 15;
 
     const GF = {
-        stack: [], scope: 'everyone', pages: [null], page: 0, more: false, me: null, counts: { feed_new: 0, activity_new: 0 }, _liking: {},
+        stack: [], scope: 'everyone', pages: [null], page: 0, more: false, me: null, counts: { feed_new: 0, activity_new: 0 }, _liking: {}, _cursor: null,
         _seq: 0, _posts: {}, _draft: null,
 
         // ------------------------------------------------------------ entry / navigation
@@ -704,6 +704,9 @@
             if (!GF.live(seq)) return;
             const posts = (res && res.posts) || [];
             GF.more = !!(res && res.more);
+            // the EVERYONE wall is score-ordered now (v1302), so the last card is no longer the
+            // oldest — the server hands back the window's own min(created_at) to page on
+            GF._cursor = (res && res.cursor) || null;
             posts.forEach(p => { GF._posts[p.id] = p; });
             const body = document.getElementById('gfdFeedBody');
             if (!posts.length && GF.page === 0) {
@@ -2008,7 +2011,7 @@
                 case 'older': {
                     const posts = [...document.querySelectorAll('#gfdFeedBody [data-act="openpost"][data-id], #gfdFeedBody .gfd-post')].map(n => GF._posts[n.dataset.id || n.dataset.post]).filter(Boolean);
                     const last = posts[posts.length - 1]; if (!last) break;
-                    GF.pages[GF.page + 1] = last.created_at; GF.page++; GF.render(); window.scrollTo(0, 0); break;
+                    GF.pages[GF.page + 1] = GF._cursor || last.created_at; GF.page++; GF.render(); window.scrollTo(0, 0); break;
                 }
                 case 'newer': if (GF.page > 0) { GF.page--; GF.render(); GF.toTop(); } break;
                 case 'openpost': if (id) GF.go({ s: 'post', id }); break;

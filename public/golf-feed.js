@@ -1490,15 +1490,15 @@
                 if (a.type !== 'like') { rows.push(a); return; }
                 const add = a.n || 1;   // the server sends the boosted slice as ONE row carrying its count
                 const g = byPost.get(a.post_id || '');
-                if (g) { g.n += add; g.total = Math.max(g.total || 0, a.total || 0); if (a.is_new) g.is_new = true; if (new Date(a.at) > new Date(g.at)) g.at = a.at; return; }
-                const one = { type: 'like', n: add, total: a.total || 0, at: a.at, is_new: a.is_new, post_id: a.post_id, thumb: a.thumb };
+                if (g) { g.n += add; g.total = Math.max(g.total || 0, a.total || 0); g.window_h = g.window_h || a.window_h; if (a.is_new) g.is_new = true; if (new Date(a.at) > new Date(g.at)) g.at = a.at; return; }
+                const one = { type: 'like', n: add, total: a.total || 0, window_h: a.window_h, at: a.at, is_new: a.is_new, post_id: a.post_id, thumb: a.thumb };
                 byPost.set(a.post_id || '', one); rows.push(one);
             });
             const likeRow = (a) => {
                 // Pete 2026-09-20: "keep the count numbers showing at 91" — the headline is the
                 // post's own total, the same number the post shows. The fresh slice goes under it.
                 const tot = a.total || a.n;
-                const hrs = Math.max(1, Math.round((Date.now() - new Date(a.at).getTime()) / 3600000));
+                const hrs = a.window_h || Math.max(1, Math.round((Date.now() - new Date(a.at).getTime()) / 3600000));
                 const recent = a.n && a.n < tot ? tr('gfd.a.likes.recent', '{n} in the past {h} hours', { n: a.n, h: hrs }) : '';
                 return `
                 <div class="gfd-act ${a.is_new ? 'new' : ''}"${a.post_id ? ` data-act="openpost" data-id="${esc(a.post_id)}"` : ' style="cursor:default"'}>

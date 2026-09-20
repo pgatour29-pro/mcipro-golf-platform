@@ -34380,6 +34380,10 @@
                                 const oy = getComputedStyle(n).overflowY;
                                 if (oy === 'auto' || oy === 'scroll') return;
                             }
+                            if (n.scrollWidth > n.clientWidth) {
+                                const ox = getComputedStyle(n).overflowX;
+                                if (ox === 'auto' || ox === 'scroll') return;
+                            }
                             n = n.parentElement;
                         }
                         e.preventDefault();
@@ -85213,7 +85217,7 @@ window.AdminSystem = AdminSystem;
     <script defer src="weather-integration.js"></script>
     <script defer src="manager-dashboard.js?v=750"></script>
     <script defer src="marketing-dashboard.js?v=1258"></script>
-    <script defer src="golf-feed.js?v=1292"></script>
+    <script defer src="golf-feed.js?v=1296"></script>
     <script defer src="handicap-ledger.js?v=1257"></script>
     <script defer src="proshop-dashboard.js?v=548"></script>
 
@@ -89948,6 +89952,11 @@ class LiveScorecardSystem {
                     if (n.scrollHeight > n.clientHeight) {
                         const oy = getComputedStyle(n).overflowY;
                         if (oy === 'auto' || oy === 'scroll') return;
+                    }
+                    // a sideways swipe drifts downward — don't eat a horizontal strip's scroll
+                    if (n.scrollWidth > n.clientWidth) {
+                        const ox = getComputedStyle(n).overflowX;
+                        if (ox === 'auto' || ox === 'scroll') return;
                     }
                     n = n.parentElement;
                 }
@@ -143614,7 +143623,7 @@ class GolferEventsManager {
             const list = (pick ? all.filter(e => e.soc === pick) : all).slice(0, 12);
             if (list.length < 2 || !document.getElementById('playersModalEvChips')) { strip.style.display = 'none'; return; }
             const esc2 = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-            const socRow = socs.length > 1 ? '<div style="display:flex;gap:6px;overflow-x:auto;white-space:nowrap;padding-bottom:7px;">' +
+            const socRow = socs.length > 1 ? '<div style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;scrollbar-width:none;white-space:nowrap;padding-bottom:7px;">' +
                 [['', _lvT('gts.allsocieties', 'All societies')]].concat(socs.map(x => [x, x])).map(([v, l]) => {
                     const on = v === pick;
                     return '<button data-soc="' + esc2(v) + '" style="flex:none;font-size:10px;font-weight:800;letter-spacing:.02em;border-radius:999px;padding:5px 11px;cursor:pointer;max-width:190px;overflow:hidden;text-overflow:ellipsis;' +
@@ -143622,11 +143631,11 @@ class GolferEventsManager {
                 }).join('') + '</div>' : '';
             strip.style.overflowX = 'visible';
             strip.style.whiteSpace = 'normal';
-            strip.innerHTML = socRow + '<div id="tsEvRow" style="display:flex;gap:0;overflow-x:auto;white-space:nowrap;">' + list.map(e => {
+            strip.innerHTML = socRow + '<div id="tsEvRow" style="display:flex;gap:0;overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;scrollbar-width:none;white-space:nowrap;">' + list.map(e => {
                 const on = e.id === String(curId);
                 const dt = e.date ? new Date(e.date + 'T00:00:00') : null;
                 const lbl = (dt && !isNaN(dt.getTime()) ? dt.toLocaleDateString(_lvLocale(), { weekday: 'short', day: 'numeric' }).toUpperCase() + ' · ' : '') + e.label;
-                return '<button data-evid="' + e.id + '" onclick="GolferEventsSystem.switchSheetEvent(\'' + e.id + '\')" style="display:inline-flex;align-items:center;gap:6px;margin-right:8px;font-size:10.5px;font-weight:700;border-radius:999px;padding:7px 12px;cursor:pointer;max-width:230px;white-space:nowrap;vertical-align:middle;' + (on ? 'background:#065f46;color:#fff;border:1px solid #065f46;' : 'background:#fff;color:#334155;border:1px solid #d1d5db;') + '">' +
+                return '<button data-evid="' + e.id + '" onclick="GolferEventsSystem.switchSheetEvent(\'' + e.id + '\')" style="display:inline-flex;flex:none;align-items:center;gap:6px;margin-right:8px;font-size:10.5px;font-weight:700;border-radius:999px;padding:7px 12px;cursor:pointer;max-width:230px;white-space:nowrap;vertical-align:middle;' + (on ? 'background:#065f46;color:#fff;border:1px solid #065f46;' : 'background:#fff;color:#334155;border:1px solid #d1d5db;') + '">' +
                     (e.reg && !on ? '<span style="flex:none;width:6px;height:6px;border-radius:50%;background:#15803d;"></span>' : '') +
                     '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;">' + String(lbl).replace(/</g, '&lt;') + '</span>' +
                     '<span class="ppw-chip-n" style="display:none;flex:none;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#ef4444;color:#fff;font-size:10.5px;font-weight:800;line-height:1;"></span>' +

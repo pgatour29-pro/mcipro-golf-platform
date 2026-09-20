@@ -388,7 +388,7 @@
     :is(#liteCubesGrid,#orgLiteCubesGrid,#dashboardCubesGrid) > .gfdCube.gfd-wide.gfd-live .cube-pill::before{content:'';flex:none;width:7px;height:7px;border-radius:50%;background:#22c55e;animation:gfdPulse 1.6s infinite}
     @keyframes gfdPulse{0%,100%{box-shadow:0 0 0 2px rgba(34,197,94,.35)}50%{box-shadow:0 0 0 6px rgba(34,197,94,0)}}
     @keyframes gfdPop{0%{transform:scale(.4) rotate(-8deg);opacity:0}70%{transform:scale(1.12) rotate(2deg);opacity:1}100%{transform:scale(1) rotate(0);opacity:1}}
-    .gfdCube .gfd-strip{grid-column:2;grid-row:1 / 3;display:flex;gap:6px;padding-top:14px}
+    .gfdCube .gfd-strip{grid-column:2;grid-row:1 / 3;display:flex;gap:6px;padding-top:14px;touch-action:pan-x}
     .gfdCube .gfd-strip .ph{position:relative;flex:none;width:58px;height:58px;border-radius:12px;background:#0f2417;box-shadow:0 3px 10px rgba(15,23,42,.25),0 0 0 2px #fff}
     .gfdCube .gfd-strip .ph > img{width:100%;height:100%;object-fit:cover;border-radius:12px;display:block}
     .gfdCube .gfd-strip .ph.pop{animation:gfdPop .6s cubic-bezier(.2,.9,.3,1.3) both;animation-delay:calc(var(--i,0) * 120ms)}
@@ -493,7 +493,8 @@
     .gfd-tile .new{position:absolute;right:6px;top:6px;padding:3px 6px;border-radius:6px;background:#16a34a;color:#fff;text-transform:uppercase;font:800 9px/1 'JetBrains Mono',monospace;letter-spacing:.06em;box-shadow:0 1px 4px rgba(0,0,0,.35)}
     .gfd-tile .new ~ .multi{top:26px}
     .gfd-newtag{display:inline-block;text-transform:uppercase;margin-left:6px;padding:2px 5px;border-radius:5px;background:#16a34a;color:#fff;font:800 8.5px/1.2 'JetBrains Mono',monospace;letter-spacing:.06em;vertical-align:2px}
-    .gfd-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 -12px 10px;padding:0 12px}
+    .gfd-chips{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;scrollbar-width:none;margin:0 -12px 10px;padding:0 12px}
+    .gfd-chips > button{flex:none}
     .gfd-chips::-webkit-scrollbar{display:none}
     .gfd-chips button{flex:none;border:none;border-radius:999px;padding:8px 12px;background:var(--mkp-glass2);box-shadow:inset 0 0 0 1px var(--mkp-slo);color:var(--mkp-sub);font:700 12px/1 'Instrument Sans',sans-serif;display:flex;align-items:center;cursor:pointer;white-space:nowrap}
     .gfd-chips button.on{background:var(--mkp-greendim);color:var(--mkp-greenhi);box-shadow:inset 0 0 0 1.5px var(--mkp-green)}

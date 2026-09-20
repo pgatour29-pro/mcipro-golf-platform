@@ -375,13 +375,13 @@
     .gfd-addrow button.p .material-symbols-outlined{color:#fff}
     /* v1273 the wide Tap-In cube (Pete picked option A): golfers without 1on1 get the whole bottom row —
        wordmark + live line on the left, the newest posts popping in on the right */
-    :is(#liteCubesGrid,#orgLiteCubesGrid) > .gfdCube.gfd-wide{grid-column:1 / -1 !important;height:auto !important;min-height:104px;padding:12px 14px !important;
+    :is(#liteCubesGrid,#orgLiteCubesGrid,#dashboardCubesGrid) > .gfdCube.gfd-wide{grid-column:1 / -1 !important;height:auto !important;min-height:104px;padding:12px 14px !important;
       display:grid !important;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:10px;row-gap:6px;
       align-items:center !important;justify-items:start;text-align:left !important;overflow:hidden}
-    :is(#liteCubesGrid,#orgLiteCubesGrid) > .gfdCube.gfd-wide .cube-art{display:none !important}
-    :is(#liteCubesGrid,#orgLiteCubesGrid) > .gfdCube.gfd-wide h3{grid-column:1;grid-row:1;align-self:end;margin:0 !important;white-space:nowrap}
-    :is(#liteCubesGrid,#orgLiteCubesGrid) > .gfdCube.gfd-wide .cube-pill{grid-column:1;grid-row:2;align-self:start;position:static !important;display:inline-flex !important;align-items:center;gap:6px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    :is(#liteCubesGrid,#orgLiteCubesGrid) > .gfdCube.gfd-wide.gfd-live .cube-pill::before{content:'';flex:none;width:7px;height:7px;border-radius:50%;background:#22c55e;animation:gfdPulse 1.6s infinite}
+    :is(#liteCubesGrid,#orgLiteCubesGrid,#dashboardCubesGrid) > .gfdCube.gfd-wide .cube-art{display:none !important}
+    :is(#liteCubesGrid,#orgLiteCubesGrid,#dashboardCubesGrid) > .gfdCube.gfd-wide h3{grid-column:1;grid-row:1;align-self:end;margin:0 !important;white-space:nowrap;font-size:30px !important;max-width:none !important}
+    :is(#liteCubesGrid,#orgLiteCubesGrid,#dashboardCubesGrid) > .gfdCube.gfd-wide .cube-pill{grid-column:1;grid-row:2;align-self:start;position:static !important;display:inline-flex !important;align-items:center;gap:6px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    :is(#liteCubesGrid,#orgLiteCubesGrid,#dashboardCubesGrid) > .gfdCube.gfd-wide.gfd-live .cube-pill::before{content:'';flex:none;width:7px;height:7px;border-radius:50%;background:#22c55e;animation:gfdPulse 1.6s infinite}
     @keyframes gfdPulse{0%,100%{box-shadow:0 0 0 2px rgba(34,197,94,.35)}50%{box-shadow:0 0 0 6px rgba(34,197,94,0)}}
     @keyframes gfdPop{0%{transform:scale(.4) rotate(-8deg);opacity:0}70%{transform:scale(1.12) rotate(2deg);opacity:1}100%{transform:scale(1) rotate(0);opacity:1}}
     .gfdCube .gfd-strip{grid-column:2;grid-row:1 / 3;display:flex;gap:6px;padding-top:14px}
@@ -393,8 +393,8 @@
     .gfdCube .gfd-strip .more{flex:none;width:58px;height:58px;border-radius:12px;background:rgba(21,128,61,.12);display:grid;place-items:center;color:#15803d;font:800 15px 'Instrument Sans',sans-serif;box-shadow:inset 0 0 0 1.5px rgba(21,128,61,.35)}
     .gfdCube .gfd-strip .ph.empty{background:rgba(21,128,61,.08);box-shadow:inset 0 0 0 1.5px rgba(21,128,61,.3);display:grid;place-items:center;color:#15803d}
     @media (min-width:768px){
-      :is(#liteCubesGrid,#orgLiteCubesGrid) > .gfdCube.gfd-wide{min-height:0;padding:18px 22px !important}
-      :is(#liteCubesGrid,#orgLiteCubesGrid) > .gfdCube.gfd-wide h3{font-size:40px !important}
+      :is(#liteCubesGrid,#orgLiteCubesGrid,#dashboardCubesGrid) > .gfdCube.gfd-wide{min-height:0;padding:18px 22px !important}
+      :is(#liteCubesGrid,#orgLiteCubesGrid,#dashboardCubesGrid) > .gfdCube.gfd-wide h3{font-size:40px !important}
       .gfdCube .gfd-strip .ph,.gfdCube .gfd-strip .ph > img,.gfdCube .gfd-strip .more{width:96px;height:96px;border-radius:16px}
       .gfdCube .gfd-strip .ph .gfd-av{width:26px;height:26px}
     }
@@ -1481,18 +1481,20 @@
             document.querySelectorAll('.gfdNewChip').forEach(x => { x.style.display = launch ? '' : 'none'; });
         },
         // ---- the wide cube strip (v1273): newest posts from others, green dot while unseen, new arrivals pop in
+        // v1284: BOTH golfer homes — the lite grid and the Full-view grid (#dashboardCubesGrid).
+        // Only one of the two is on screen at a time, but both are in the DOM, so paint both and
+        // whichever view the golfer switches to already has its strip.
         wideCube() {
-            const cube = document.querySelector('#liteCubesGrid > .gfdCube'), dash = document.getElementById('golferDashboard');
-            if (!cube || !dash) return null;
-            const wide = true;   // v1274: 1on1 is gone, so Tap-In takes the whole bottom row for everyone
-            cube.classList.toggle('gfd-wide', wide);
-            if (!wide) { cube.querySelector('.gfd-strip')?.remove(); return null; }
-            return cube;
+            const dash = document.getElementById('golferDashboard');
+            if (!dash) return [];
+            const cubes = [...document.querySelectorAll('#liteCubesGrid > .gfdCube, #dashboardCubesGrid > #gfdCube')];
+            cubes.forEach(c => c.classList.add('gfd-wide'));   // v1274: 1on1 is gone, Tap-In takes the row for everyone
+            return cubes;
         },
         // every Tap-In cube on screen: the golfer home's + the organizer / staff / caddie homes' (v1278)
         cubes() {
-            const out = [], g = GF.wideCube();
-            if (g && uid()) out.push(g);
+            const out = [];
+            if (uid()) GF.wideCube().forEach(c => out.push(c));
             document.querySelectorAll('.gfdCube.gfd-other').forEach(c => out.push(c));
             return out;
         },

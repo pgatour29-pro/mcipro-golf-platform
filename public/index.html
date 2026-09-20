@@ -791,20 +791,30 @@
             }
         }
 
-        /* Mobile compact dashboard cubes — 4-col rectangular tiles, 2 rows */
+        /* Mobile Full-view dashboard cubes — TWO across, the same poster tiles Light uses.
+           v1284 (Pete 2026-09-20: "the full version is lagging behind the light version"): this
+           strip was drawn for 8 cubes in a 4-across row. It now carries ten, so at 360px every
+           tile was 80px wide — the COMING SOON chip is 74px, i.e. it sat ON the title, the
+           two-word titles wrapped over the art, and the Tap-In wordmark clipped. Two across gives
+           163px tiles: chip back in the corner, one-line titles, readable live pills. Geometry
+           mirrors #liteCubesGrid > .cube-compact so Full and Light read the same on a phone. */
         @media (max-width: 767px) {
             #dashboardCubesGrid {
-                grid-template-columns: repeat(4, 1fr) !important;
-                gap: 6px !important;
+                grid-template-columns: repeat(2, 1fr) !important;
+                gap: 10px !important;
                 margin-bottom: 10px !important;
             }
             #dashboardCubesGrid > .metric-card {
-                padding: 8px 4px !important;
-                border-radius: 10px;
+                height: 80px;
+                min-height: 0;
+                padding: 8px 12px !important;
+                border-radius: 16px;
+                overflow: hidden;
                 display: flex !important;
                 flex-direction: column !important;
-                align-items: center !important;
+                align-items: flex-start !important;
                 justify-content: center !important;
+                text-align: left !important;
             }
             #dashboardCubesGrid > .metric-card .w-10,
             #dashboardCubesGrid > .metric-card .w-10.h-10 {
@@ -815,9 +825,13 @@
                 font-size: 16px !important;
             }
             #dashboardCubesGrid > .metric-card h3 {
-                font-size: 11px !important;
+                font-size: 15px !important;
                 margin-bottom: 0 !important;
-                line-height: 1.2 !important;
+                line-height: 1.12 !important;
+                text-align: left;
+                position: relative;
+                z-index: 2;
+                max-width: calc(100% - 46px);   /* the art sits in the bottom-right corner */
             }
             /* Hide status pills and descriptions — only on cube buttons */
             #dashboardCubesGrid > .metric-card .mt-2,
@@ -827,20 +841,34 @@
             #dashboardCubesGrid > .metric-card .mb-2 {
                 margin-bottom: 3px !important;
             }
+            /* Play Golf is the hero action and Tap-In carries the photo strip: both take the whole
+               row, which also leaves the eight info cubes in four clean pairs (no orphan cell). */
+            #dashboardCubesGrid > .cube-playtri {
+                grid-column: 1 / -1;
+                height: 104px;
+                padding: 0 !important;
+            }
+            #dashboardCubesGrid > #gfdCube {
+                grid-column: 1 / -1;
+                height: auto;
+            }
             /* Coming Soon badges on phone. These were 6px — unreadable, which is why golfers
                kept tapping Caddy and trying to book something that isn't live yet (Pete
                2026-09-14). Readable but still a corner chip. */
             #dashboardCubesGrid > .metric-card > span.absolute {
                 font-size: 9px !important;
                 padding: 3px 5px !important;
-                top: 4px !important;
+                top: 3px !important;
                 right: 4px !important;
             }
             /* But DO show the live-info pill on cubes that carry real data (the rest stay compact) */
             #dashboardCubesGrid > .metric-card .mt-2.cube-live {
                 display: block !important;
                 margin-top: 3px !important;
-                font-size: 9px !important;
+                position: relative;
+                z-index: 2;
+                max-width: calc(100% - 46px);
+                font-size: 10px !important;
                 line-height: 1.15 !important;
                 padding: 2px 6px !important;
                 max-width: 100% !important;
@@ -7482,6 +7510,10 @@
         /* v1274: 1on1 is no longer developed (Pete, 2026-09-19: "Remove the 1on1. We are not developing that
            anymore") — its home cubes are hidden for everyone; oo-1on1.js and the oo_* data are kept untouched. */
         .ooCube, #ooCube { display:none !important; }
+        /* v1284: in Full view the mobile rule `#dashboardCubesGrid > .metric-card{display:flex
+           !important}` (id+class) outranks the plain `#ooCube` above, so the 1on1 cube was still
+           on the phone dashboard three versions after Pete removed it. Two ids beats it. */
+        #dashboardCubesGrid > #ooCube { display:none !important; }
         /* v1269: the Tap-In cube wears the Tap-In wordmark (Pete picked option A) — the id-scoped cube
            title rules are stronger than a class, hence the !importants */
         .cube-poster h3.gfd-cube-wm {
@@ -51860,11 +51892,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     // GTS1: stash for the Tee Sheet half-cube + fill its live line (course · date)
                     this._cubeNextEv = e;
                     try {
-                        const tsEl = document.getElementById('cubeTeeSheetBody');
-                        if (tsEl && e) {
+                        // id + class mirror rule: #cubeTeeSheetBody is the lite cube, .cubeTeeSheetBody
+                        // the Full-grid copy (v1284) — one writer, both cubes.
+                        const tsEls = document.querySelectorAll('#cubeTeeSheetBody, .cubeTeeSheetBody');
+                        if (tsEls.length && e) {
                             const _c = e.course_name || e.title || '';
                             const _d2 = e.event_date ? new Date(e.event_date + 'T00:00:00').toLocaleDateString(_lvLocale(), { day: 'numeric', month: 'short' }) : '';
-                            tsEl.textContent = _c + (_d2 ? ' · ' + _d2 : '');
+                            const _txt = _c + (_d2 ? ' · ' + _d2 : '');
+                            tsEls.forEach(el => { el.textContent = _txt; });
                         }
                     } catch (e2) {}
                     // The Tee Time + Caddy cubes are for DIRECT course bookings (no society assistant) —
@@ -56814,10 +56849,28 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                   }
                   @media (max-width:767px){
+                    /* v1284: the art goes back to the Light corner treatment. Stacking it above
+                       the title at 34px was the 4-across strip's compromise; on a 163px tile it
+                       just ate the line the title needs. */
                     #dashboardCubesGrid > .cube-poster .cube-art{
-                      order:-1;width:34px;height:34px;margin:0 auto 3px;
-                      filter:drop-shadow(0 3px 4px rgba(22,35,46,.25));
+                      order:0;position:absolute;right:-12px;bottom:-14px;
+                      width:54px;height:54px;margin:0;transform:rotate(-5deg);z-index:1;
+                      filter:drop-shadow(0 6px 9px rgba(22,35,46,.22));
                     }
+                  }
+                  /* ==== v1284 (Pete 2026-09-20: Full is "lagging behind the light version") ====
+                     DESKTOP Full home. The Play Golf triangle is a viewBox svg with no intrinsic
+                     height, so in a 318px column it measured 318px tall and stretched its whole
+                     row — History / Messages / Event Results came out 318px high and two-thirds
+                     empty. Fixed rows (Light's desktop grid does the same at 156px) put every
+                     cube on its own 168px band, and Tap-In takes the tail of the last row instead
+                     of sitting alone beside three empty cells. */
+                  @media (min-width:768px){
+                    #dashboardCubesGrid{ grid-auto-rows:168px; }
+                    #dashboardCubesGrid > .metric-card{
+                      height:100%; min-height:0 !important; max-height:100%; overflow:hidden;
+                    }
+                    #dashboardCubesGrid > #gfdCube{ grid-column:span 3; }
                   }
                   /* LITE (light-mode) cubes — golfer #liteCubesGrid + organizer #orgLiteCubesGrid.
                      Same poster treatment at EVERY width: both lite grids are 2-across with big
@@ -57074,8 +57127,24 @@ document.addEventListener('DOMContentLoaded', function() {
                         </svg>
                     </button>
 
+                    <!-- Tee Sheet (v1284) — Light has had this cube since GTS1; Full never got it, so a
+                         golfer in Full view had no cube-level route to the sheet AND never saw the
+                         v1280 "players chose you" badge (PartnerPickWatch paints .teeSheetPickBadge,
+                         PairingsWatch paints .teeSheetCubeBadge — both class-based, so this copy is
+                         painted by the same writers as the lite one). Live line mirrors
+                         #cubeTeeSheetBody via the .cubeTeeSheetBody class. -->
+                    <button onclick="GolferCubeInfo.openTeeSheetCube()" class="card-hover metric-card cube-poster text-center group relative order-6" style="--p1:#e2e7ec;--p2:#f5f7f9">
+                        <span class="absolute top-1 right-1 flex gap-1 z-10" style="pointer-events:none;">
+                            <span class="teeSheetCubeBadge" style="display:none;background:#16a34a;color:#fff;font-size:10px;font-weight:800;min-width:18px;height:18px;border-radius:9px;align-items:center;justify-content:center;padding:0 6px;box-shadow:0 1px 5px rgba(0,0,0,.3);line-height:1;"></span>
+                            <span class="teeSheetPickBadge" style="display:none;background:#ef4444;color:#fff;font-size:10px;font-weight:800;min-width:18px;height:18px;border-radius:9px;align-items:center;justify-content:center;padding:0 6px;box-shadow:0 1px 5px rgba(0,0,0,.3);line-height:1;">0</span>
+                        </span>
+                        <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuTee"/></svg></div>
+                        <h3 class="text-sm md:text-base font-bold text-gray-900 mb-1" data-i18n="van.nav.teesheet">Tee Sheet</h3>
+                        <div class="cubeTeeSheetBody mt-2 cube-live text-xs bg-gray-50 text-gray-700 px-2 md:px-3 py-1 rounded-full inline-block" data-i18n="lightview.noupcominground">No upcoming round</div>
+                    </button>
+
                     <!-- History stays visible in LIGHT mode too (Pete 2026-08-09) — light-hide removed -->
-                    <button onclick="showGolferTab('rounds', event)" class="card-hover metric-card cube-poster text-center group relative order-6" style="--p1:#e2e7ec;--p2:#f5f7f9">
+                    <button onclick="showGolferTab('rounds', event)" class="card-hover metric-card cube-poster text-center group relative order-7" style="--p1:#e2e7ec;--p2:#f5f7f9">
                         <span id="historyBadge" class="absolute top-1 right-1 text-[9px] font-bold text-white bg-red-500 min-w-[18px] h-[18px] flex items-center justify-center rounded-full shadow-md z-10" style="display:none;">0</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuCard"/></svg></div>
                         <h3 class="text-sm md:text-base font-bold text-gray-900 mb-1" data-i18n="golfer.history">History</h3>
@@ -57085,7 +57154,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     </button>
 
-                    <button onclick="showGolferTab('messages', event)" class="card-hover metric-card cube-poster text-center group relative light-hide order-7" style="--p1:#d9e6f8;--p2:#f1f6fd">
+                    <button onclick="showGolferTab('messages', event)" class="card-hover metric-card cube-poster text-center group relative light-hide order-8" style="--p1:#d9e6f8;--p2:#f1f6fd">
                         <!-- Unread Badge -->
                         <span id="messagesCubeBadge" class="absolute top-1 right-1 text-[10px] font-bold text-white bg-red-500 min-w-[20px] h-[20px] flex items-center justify-center rounded-full shadow-md animate-pulse z-10" style="display: none;">0</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuChat"/></svg></div>
@@ -57097,10 +57166,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     </button>
 
                     <!-- Event Results — dedicated results.html page (Winners / Full Results / 2s).
-                         order-8: last slot of row 2, i.e. directly under Society Events. The grid is
-                         4-col at EVERY width (id-scoped mobile CSS overrides grid-cols-2 — see ~771),
-                         so one order value works everywhere. Visible in BOTH dashboard modes. -->
-                    <button onclick="SocietyResultsHub.open()" class="card-hover metric-card cube-poster text-center group relative order-8" style="--p1:#f4e6c8;--p2:#fcf6e9">
+                         Visible in BOTH dashboard modes. ORDER MATTERS in two layouts now (v1284):
+                         4-across on desktop and 2-across on phones, with Play Golf (order-5) and
+                         Tap-In (order-12) spanning a full row on the phone. The eight remaining
+                         cubes therefore have to stay an EVEN list or a phone row ends up with an
+                         orphan cell — add cubes in pairs, or give the odd one a full-row span. -->
+                    <button onclick="SocietyResultsHub.open()" class="card-hover metric-card cube-poster text-center group relative order-9" style="--p1:#f4e6c8;--p2:#fcf6e9">
                         <span id="resultsCubeBadge" class="absolute top-1 right-1 text-[9px] font-bold text-white bg-red-500 min-w-[18px] h-[18px] flex items-center justify-center rounded-full shadow-md z-10" style="display:none;">0</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuTrophy"/></svg></div>
                         <h3 class="text-sm md:text-base font-bold text-gray-900 mb-1" data-i18n="golfer.eventresults">Event Results</h3>
@@ -57111,7 +57182,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     </button>
 
                     <!-- Spectate Live — shown in LIGHT mode only (Geekout has it in the header/nav) -->
-                    <button onclick="window.open('/live.html', '_blank')" class="card-hover metric-card cube-poster text-center group relative light-only order-9" style="--p1:#fadde0;--p2:#fdf2f3">
+                    <button onclick="window.open('/live.html', '_blank')" class="card-hover metric-card cube-poster text-center group relative light-only order-10" style="--p1:#fadde0;--p2:#fdf2f3">
                         <span id="liveRoundsBadgeTile" class="absolute top-1 right-1 text-[9px] font-bold text-white bg-red-500 min-w-[18px] h-[18px] flex items-center justify-center rounded-full shadow-md z-10" style="display:none;">0</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuLiveTv"/></svg></div>
                         <h3 class="text-sm md:text-base font-bold text-gray-900 mb-1" data-i18n="golfer.spectatelive">Spectate Live</h3>
@@ -57125,7 +57196,7 @@ document.addEventListener('DOMContentLoaded', function() {
                          or is an oo_admin — OneOnOne.initGolfer() adds .oo-on to #golferDashboard. Pill/badge writers use the
                          id + class mirror rule (lite copy below carries class="ooCube"/"ooCubeBadge"/"cubeInfo1on1").
                          v1091: the cube OPENS the 1on1 dashboard screen (#ooDashboard) — no golfer tab any more. -->
-                    <button id="ooCube" onclick="OneOnOne.open()" class="card-hover metric-card cube-poster text-center group relative order-10" style="--p1:#dbeafe;--p2:#eff6ff">
+                    <button id="ooCube" onclick="OneOnOne.open()" class="card-hover metric-card cube-poster text-center group relative order-11" style="--p1:#dbeafe;--p2:#eff6ff">
                         <span id="ooCubeBadge" class="absolute top-1 right-1 text-[9px] font-bold text-white bg-red-500 min-w-[18px] h-[18px] flex items-center justify-center rounded-full shadow-md z-10" style="display:none;">0</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuPlayers"/></svg></div>
                         <h3 class="text-sm md:text-base font-bold text-gray-900 mb-1" data-i18n="oo.title">1on1</h3>
@@ -57133,12 +57204,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div id="cubeInfo1on1" class="mt-2 text-xs bg-blue-50 text-blue-700 px-2 md:px-3 py-1 rounded-full inline-block" data-i18n="oo.cube.open">Find a partner</div>
                     </button>
                     <!-- Golf Feed (v1261) — golf-feed.js; badge/pill painted by GolfFeed.paintBadges (id + class mirror rule) -->
-                    <button id="gfdCube" onclick="window.GolfFeed ? GolfFeed.cubeTap(event) : showGolferTab('golffeed', event)" class="card-hover metric-card cube-poster text-center group relative order-11" style="--p1:#e2f0d6;--p2:#f4faee">
+                    <button id="gfdCube" onclick="window.GolfFeed ? GolfFeed.cubeTap(event) : showGolferTab('golffeed', event)" class="gfdCube card-hover metric-card cube-poster text-center group relative order-12" style="--p1:#e2f0d6;--p2:#f4faee">
                         <span class="gfd-corner"><span id="gfdCubeBadge" class="text-[9px] font-bold text-white bg-red-500 min-w-[18px] h-[18px] flex items-center justify-center rounded-full shadow-md px-1" style="display:none;">0</span><span class="cube-new gfdNewChip" style="display:none" data-i18n="gfd.new">New</span></span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuFeed"/></svg></div>
                         <h3 class="gfd-cube-wm text-sm md:text-base font-bold text-gray-900 mb-1"><span class="gfd-cubecam" role="button" aria-label="Take a photo or video"><span class="material-symbols-outlined">photo_camera</span></span><span data-i18n="gfd.title">Tap-In</span></h3>
                         <p class="text-xs md:text-sm text-gray-600 hidden sm:block" data-i18n="gfd.cube.desc">Photos from the course</p>
-                        <div id="gfdCubePill" class="mt-2 text-xs bg-green-50 text-green-700 px-2 md:px-3 py-1 rounded-full inline-block" data-i18n="gfd.pill.open">See the feed</div>
+                        <div id="gfdCubePill" class="cube-pill mt-2 text-xs bg-green-50 text-green-700 px-2 md:px-3 py-1 rounded-full inline-block" data-i18n="gfd.pill.open">See the feed</div>
                     </button>
                 </div>
 

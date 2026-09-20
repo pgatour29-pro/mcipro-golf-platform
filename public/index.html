@@ -143613,11 +143613,11 @@ class GolferEventsManager {
             const pick = this._sheetSoc && socs.indexOf(this._sheetSoc) > -1 ? this._sheetSoc : '';
             const list = (pick ? all.filter(e => e.soc === pick) : all).slice(0, 12);
             if (list.length < 2 || !document.getElementById('playersModalEvChips')) { strip.style.display = 'none'; return; }
-            const esc2 = (x) => String(x).replace(/</g, '&lt;').replace(/"/g, '&quot;');
+            const esc2 = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             const socRow = socs.length > 1 ? '<div style="display:flex;gap:6px;overflow-x:auto;white-space:nowrap;padding-bottom:7px;">' +
                 [['', _lvT('gts.allsocieties', 'All societies')]].concat(socs.map(x => [x, x])).map(([v, l]) => {
                     const on = v === pick;
-                    return '<button data-soc="' + esc2(v) + '" onclick="GolferEventsSystem.filterSheetSociety(\'' + esc2(v).replace(/'/g, "\\'") + '\')" style="flex:none;font-size:10px;font-weight:800;letter-spacing:.02em;border-radius:999px;padding:5px 11px;cursor:pointer;max-width:190px;overflow:hidden;text-overflow:ellipsis;' +
+                    return '<button data-soc="' + esc2(v) + '" style="flex:none;font-size:10px;font-weight:800;letter-spacing:.02em;border-radius:999px;padding:5px 11px;cursor:pointer;max-width:190px;overflow:hidden;text-overflow:ellipsis;' +
                         (on ? 'background:#0f172a;color:#fff;border:1px solid #0f172a;' : 'background:#eef2f6;color:#475569;border:1px solid #dbe2ea;') + '">' + esc2(l) + '</button>';
                 }).join('') + '</div>' : '';
             strip.style.overflowX = 'visible';
@@ -143635,6 +143635,15 @@ class GolferEventsManager {
             strip.style.display = 'block';
             // the row now runs to a dozen events, so the sheet you are looking at can start off
             // screen — put its pill in view before anything else scrolls the strip
+            if (!strip.dataset.socWired) {
+                strip.dataset.socWired = '1';
+                strip.addEventListener('click', (ev) => {
+                    const b = ev.target.closest && ev.target.closest('[data-soc]');
+                    if (!b || !strip.contains(b)) return;
+                    ev.preventDefault();
+                    this.filterSheetSociety(b.getAttribute('data-soc') || '');
+                });
+            }
             const evRow = document.getElementById('tsEvRow') || strip;
             const act = strip.querySelector('[data-evid="' + String(curId) + '"]');
             if (act) evRow.scrollLeft = Math.max(0, act.offsetLeft - 10);

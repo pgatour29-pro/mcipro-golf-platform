@@ -552,7 +552,7 @@
     const PAGE = 15;
 
     const GF = {
-        stack: [], scope: 'everyone', pages: [null], page: 0, more: false, me: null, counts: { feed_new: 0, activity_new: 0 },
+        stack: [], scope: 'everyone', pages: [null], page: 0, more: false, me: null, counts: { feed_new: 0, activity_new: 0 }, _liking: {},
         _seq: 0, _posts: {}, _draft: null,
 
         // ------------------------------------------------------------ entry / navigation
@@ -846,6 +846,45 @@
                 const cb = card.querySelector('.gfd-acts [data-act="openpost"] .n'); if (cb) cb.textContent = p.comments || '';
                 const sb = card.querySelector('[data-act="save"]'); if (sb) sb.classList.toggle('saved', !!p.i_saved);
             });
+            // the profile grid shows the same number in its corner — it moves with the card, and a
+            // post that had none has no .bl to write into, so build it (tile() only draws it when likes > 0)
+            document.querySelectorAll(`.gfd-tile[data-id="${CSS.escape(id)}"]`).forEach(t => {
+                let bl = t.querySelector('.bl'), lk = bl && bl.querySelector('.lk');
+                if (!p.likes) { if (lk) lk.remove(); if (bl && !bl.children.length) bl.remove(); return; }
+                if (!bl) { bl = document.createElement('span'); bl.className = 'bl'; t.appendChild(bl); }
+                if (!lk) { lk = document.createElement('span'); lk.className = 'lk'; bl.appendChild(lk); }
+                lk.innerHTML = mi('favorite') + esc(p.likes > 9999 ? Math.round(p.likes / 1000) + 'k' : p.likes);
+            });
+        },
+        // Pete 2026-09-20: "I want it pushed all the time" / "As new likes come". The count used to
+        // sit still until the feed refetched. This moves it while you are looking at it.
+        // It asks golf_post_counts for NUMBERS ONLY — a live endpoint is precisely where the liker
+        // names v1297 took out of the API would creep back in. A number is not a name.
+        async pollCounts() {
+            if (document.visibilityState !== 'visible' || !uid() || !db()) return;
+            const root = document.getElementById('gfdRoot');
+            if (!root || !root.getClientRects().length) return;   // Tap-In is not on screen (the overlay MOVES #gfdRoot)
+            const ids = [...new Set([...root.querySelectorAll('.gfd-post[data-post]')].map(c => c.dataset.post)
+                .concat([...root.querySelectorAll('.gfd-tile[data-id]')].map(t => t.dataset.id)))]
+                .filter(id => id && GF._posts[id] && !GF._liking[id]).slice(0, 60);
+            if (ids.length) {
+                let rows; try { rows = await rpc('golf_post_counts', { p_user: uid(), p_ids: ids }); } catch (e) { return; }
+                (rows || []).forEach(r => {
+                    const p = GF._posts[r.id]; if (!p || GF._liking[r.id]) return;      // a tap mid-flight owns the number
+                    if (p.likes === r.likes && p.comments === r.comments && !!p.i_liked === !!r.i_liked) return;
+                    p.likes = r.likes; p.comments = r.comments; p.i_liked = !!r.i_liked; p.i_saved = !!r.i_saved;
+                    GF.paintCount(r.id);
+                });
+            }
+            // Activity counts the same likes, so it goes live too — but only when something actually
+            // changed: paintActivity rewrites the whole list and a blind repaint eats the scroll.
+            const top = GF.stack[GF.stack.length - 1];
+            if (top && top.s === 'activity' && GF._actList) {
+                try {
+                    const list = await rpc('golf_activity', { p_user: uid() });
+                    if (list && JSON.stringify(list) !== JSON.stringify(GF._actList)) { GF._actList = list; GF.paintActivity(); }
+                } catch (e) { }
+            }
         },
         sound(id, btn) {
             const p = GF._posts[id]; const car = btn && btn.closest('.gfd-car'); const v = car && car.querySelector('video'); if (!v) return;
@@ -861,8 +900,10 @@
             if (car) { const pop = car.querySelector('.pop'); if (pop) { pop.classList.add('go'); setTimeout(() => pop.classList.remove('go'), 600); } }
             if (on === p.i_liked) return;
             p.i_liked = on; p.likes = Math.max(0, (p.likes || 0) + (on ? 1 : -1)); p.real_likes = Math.max(0, (p.real_likes || 0) + (on ? 1 : -1)); GF.paintCount(id);
+            GF._liking[id] = 1;   // the live poll must not stomp a tap that has not landed yet
             try { const r = await rpc('golf_post_like', { p_user: uid(), p_post: id, p_on: on }); if (r && r.ok) { p.likes = r.likes; GF.paintCount(id); } else throw new Error(GF.why(r)); }
             catch (e) { p.i_liked = !on; p.likes = Math.max(0, (p.likes || 0) + (on ? -1 : 1)); GF.paintCount(id); toast(e.message || String(e), 'error'); }
+            finally { delete GF._liking[id]; }
         },
         async save(id) {
             const p = GF._posts[id]; if (!p) return;
@@ -2187,6 +2228,9 @@
                 if (uid() && db() && window.AppState && AppState.currentUser && (AppState.currentUser.lineUserId || AppState.currentUser.id)) {
                     clearInterval(iv);
                     GF.refreshCounts();
+                    // the numbers on screen keep up with the likes coming in (Pete, 2026-09-20)
+                    setInterval(GF.pollCounts, 20000);
+                    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') GF.pollCounts(); });
                     setInterval(() => {
                         if (document.visibilityState !== 'visible') return;
                         const home = document.getElementById('golfer-overview');

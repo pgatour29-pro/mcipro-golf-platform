@@ -47,6 +47,7 @@
     const baht = (n) => '฿' + Number(n || 0).toLocaleString('en-US');
     const hcpTxt = (h) => { if (h == null || h === '' || isNaN(h)) return ''; const v = Number(h); return v < 0 ? '+' + Math.abs(v).toFixed(1) : v.toFixed(1); };
     const dayTxt = (d) => { try { const x = new Date(String(d).length <= 10 ? d + 'T12:00:00' : d); return x.toLocaleDateString(loc(), { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', ''); } catch (e) { return String(d || ''); } };
+    const clockTxt = (d) => { try { return new Date(d).toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } };
     function ago(iso) {
         const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
         try {
@@ -401,6 +402,44 @@
       .gfdCube .gfd-strip .ph,.gfdCube .gfd-strip .ph > img,.gfdCube .gfd-strip .more{width:96px;height:96px;border-radius:16px}
       .gfdCube .gfd-strip .ph .gfd-av{width:26px;height:26px}
     }
+    /* ---- the DM centre (v1289). Tap-In owns the SCREENS; the messages live in direct_messages
+       and travel through SecureDM, the same pipeline the Messages tab uses. Pete picked option A:
+       one list with a folder chip row (players / caddies / courses / societies / vendors). */
+    .gdm-sr{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:0 2px}
+    .gdm-sr input{flex:1;min-width:0;border:none;border-radius:12px;padding:11px 13px;background:var(--mkp-glass2);box-shadow:inset 0 0 0 1px var(--mkp-slo);color:var(--mkp-text);font:500 14px 'Instrument Sans',sans-serif}
+    .gdm-sr input::placeholder{color:var(--mkp-sub)}
+    .gdm-row{display:flex;align-items:center;gap:11px;padding:11px 2px;cursor:pointer}
+    .gdm-row + .gdm-row{border-top:1px solid var(--mkp-slo)}
+    .gdm-row .tx{flex:1;min-width:0}
+    .gdm-row .nm{display:flex;align-items:center;gap:5px;min-width:0;font:700 14px/1.2 'Instrument Sans',sans-serif;color:var(--mkp-text)}
+    .gdm-row .nm .n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gdm-row .pv{margin-top:2px;font:400 13px/1.35 'Instrument Sans',sans-serif;color:var(--mkp-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gdm-row.un .pv{color:var(--mkp-text);font-weight:600}
+    .gdm-row .sd{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+    .gdm-row .tm{font:600 11px/1 'JetBrains Mono',monospace;color:var(--mkp-sub)}
+    .gdm-row .bd{min-width:19px;height:19px;padding:0 6px;border-radius:10px;background:var(--mkp-green);color:#fff;font:800 11px/19px 'Instrument Sans',sans-serif;text-align:center}
+    .gdm-k{flex:none;padding:2px 7px;border-radius:7px;font:800 9.5px/1.5 'Instrument Sans',sans-serif;letter-spacing:.05em;text-transform:uppercase}
+    .gdm-k.player{background:rgba(34,197,94,.16);color:#15803d}
+    .gdm-k.caddy{background:rgba(14,116,144,.16);color:#0e7490}
+    .gdm-k.course{background:rgba(180,83,9,.15);color:#b45309}
+    .gdm-k.society{background:rgba(3,105,161,.15);color:#0369a1}
+    .gdm-k.vendor{background:rgba(219,39,119,.14);color:#be185d}
+    body.theme-dark .gdm-k.player,.mkp-scope:not(.theme-light) .gdm-k.player{color:#4ade80}
+    .gdm-hd{display:flex;align-items:center;gap:9px;margin:0 0 10px}
+    .gdm-hd .who{flex:1;min-width:0}
+    .gdm-hd .n1{font:800 16px/1.15 'Instrument Sans',sans-serif;color:var(--mkp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gdm-hd .n2{margin-top:2px;font:500 12px/1.2 'Instrument Sans',sans-serif;color:var(--mkp-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gdm-th{display:flex;flex-direction:column;gap:8px;padding:6px 2px 4px}
+    .gdm-b{max-width:78%;padding:9px 12px;border-radius:15px;font:400 14px/1.4 'Instrument Sans',sans-serif;word-wrap:break-word;white-space:pre-wrap}
+    .gdm-b.them{align-self:flex-start;background:var(--mkp-glass2);box-shadow:inset 0 0 0 1px var(--mkp-slo);color:var(--mkp-text);border-bottom-left-radius:5px}
+    .gdm-b.me{align-self:flex-end;background:var(--mkp-green);color:#fff;border-bottom-right-radius:5px}
+    .gdm-t{padding:0 4px;font:600 10.5px/1 'JetBrains Mono',monospace;color:var(--mkp-sub)}
+    .gdm-t.me{align-self:flex-end}
+    .gdm-day{align-self:center;padding:8px 0 2px;font:700 10.5px/1 'Instrument Sans',sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--mkp-sub)}
+    .gdm-ctx{display:flex;align-items:center;gap:9px;margin:0 0 8px;padding:9px 11px;border-radius:13px;background:var(--mkp-greendim);box-shadow:inset 0 0 0 1px rgba(34,197,94,.3)}
+    .gdm-ctx .material-symbols-outlined{font-size:19px;color:var(--mkp-greenhi)}
+    .gdm-ctx .t{flex:1;min-width:0;font:400 12.5px/1.35 'Instrument Sans',sans-serif;color:var(--mkp-text)}
+    .gdm-hint{padding:2px 4px 8px;font:600 11px/1 'Instrument Sans',sans-serif;letter-spacing:.09em;text-transform:uppercase;color:var(--mkp-sub)}
     /* the Tap-In intro toast on the home screen (v1271) — the overview canvas is always light */
     #gfdIntro{position:fixed;top:calc(env(safe-area-inset-top,0px) + 62px);left:10px;right:10px;z-index:8100;pointer-events:none}
     #gfdIntro .card{pointer-events:auto;position:relative;max-width:420px;margin:0 auto;display:flex;gap:12px;align-items:flex-start;padding:12px 38px 12px 12px;border-radius:18px;
@@ -599,7 +638,7 @@
             const r = GF.root(); if (!r) return;
             const top = GF.stack[GF.stack.length - 1] || { s: 'feed' };
             const seq = ++GF._seq;
-            const fn = { feed: GF.rFeed, post: GF.rPost, profile: GF.rProfile, follows: GF.rFollows, saved: GF.rSaved, compose: GF.rCompose, activity: GF.rActivity, search: GF.rSearch }[top.s] || GF.rFeed;
+            const fn = { feed: GF.rFeed, post: GF.rPost, profile: GF.rProfile, follows: GF.rFollows, saved: GF.rSaved, compose: GF.rCompose, activity: GF.rActivity, search: GF.rSearch, dm: GF.rDm, dmthread: GF.rDmThread, dmnew: GF.rDmNew }[top.s] || GF.rFeed;
             fn.call(GF, top, seq);
         },
         live(seq) { return seq === GF._seq; },
@@ -611,6 +650,7 @@
             const n = GF.counts.activity_new || 0;
             return `<div class="gfd-head">${GF._ov ? `<button class="gfd-ibtn" data-act="closeov" aria-label="${esc(tr('common.close', 'Close'))}">${mi('close')}</button>` : ''}<div class="gfd-wmwrap"><button class="gfd-wmbtn" data-act="quickcam" aria-label="${esc(tr('gfd.cam.aria', 'Take a photo'))}"><span class="gfd-cambadge">${mi('photo_camera')}</span><span class="gfd-title gfd-wm">${esc(tr('gfd.title', 'Tap-In'))}</span></button></div>
                 <button class="gfd-ibtn" data-act="search" aria-label="${esc(tr('gfd.search', 'Search'))}">${mi('search')}</button>
+                <button class="gfd-ibtn" data-act="dm" aria-label="${esc(tr('gfd.dm.title', 'Messages'))}">${mi('forum')}${GF._dmN ? `<span class="mkp-bdgr">${GF._dmN > 99 ? '99+' : GF._dmN}</span>` : ''}</button>
                 <button class="gfd-ibtn" data-act="activity" aria-label="${esc(tr('gfd.activity', 'Activity'))}">${mi('favorite')}${n ? `<span class="mkp-bdgr">${n > 99 ? '99+' : n}</span>` : ''}</button>
                 <button class="gfd-post-btn" data-act="compose">${mi('add_a_photo')}${esc(tr('gfd.post', 'Post'))}</button></div>`;
         },
@@ -645,6 +685,7 @@
                   <div class="gfd-vsw"><button class="${wall ? 'on' : ''}" data-act="viewmode" data-v="wall" aria-label="${esc(tr('gfd.wall', 'Wall'))}">${mi('grid_view')}</button>
                     <button class="${wall ? '' : 'on'}" data-act="viewmode" data-v="list" aria-label="${esc(tr('gfd.onebyone', 'One by one'))}">${mi('view_agenda')}</button></div></div>
                 <div id="gfdFeedBody">${GF.spin()}</div>`;
+            GF.dmBadge();
             let res;
             try { res = await rpc('golf_feed', { p_user: uid(), p_scope: GF.scope, p_author: null, p_before: GF.pages[GF.page], p_limit: PAGE, p_post: null }); }
             catch (e) { if (GF.live(seq)) GF.err('gfdFeedBody', e); return; }
@@ -1122,10 +1163,30 @@
             try { if (navigator.share) { await navigator.share({ title, url: u }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
             try { await navigator.clipboard.writeText(u); toast(tr('gfd.copied', 'Link copied'), 'success'); } catch (e) { toast(u, 'info'); }
         },
-        dm(id) {   // same path as the 19th Hole's Message seller
-            if (!id || !window.MessagesSystem) return;
+        // v1289: a Message stays INSIDE Tap-In now (Pete: "communicate within tap-in"). Same
+        // direct_messages thread the Messages tab shows — only the screen is Tap-In's.
+        dm(id) {
+            if (!id) return;
+            if (GF.sdm()) { GF.dmOpen(id); return; }
+            if (!window.MessagesSystem) return;   // fallback: the old jump to the Messages tab
             try { window.showGolferTab('messages'); } catch (e) { }
             setTimeout(() => { try { MessagesSystem.showSubTab('direct'); MessagesSystem.openDirectConversation(id); } catch (e) { } }, 200);
+        },
+        // the header's unread count, straight from the one inbox (cached ~45s)
+        async dmBadge() {
+            const me = uid(), S = GF.sdm();
+            if (!me || !S) return;
+            if (GF._dmNAt && Date.now() - GF._dmNAt < 45000) return;
+            GF._dmNAt = Date.now();
+            try {
+                const r = await S.unreadCount(me);
+                const n = r == null ? 0 : (typeof r === 'number' ? r : (r.count != null ? r.count : (r.data != null ? r.data : 0)));
+                GF._dmN = Number(n) || 0;
+            } catch (e) { return; }
+            const b = GF.root() && GF.root().querySelector('[data-act="dm"]:not([data-id])');
+            if (!b) return;
+            const old = b.querySelector('.mkp-bdgr'); if (old) old.remove();
+            if (GF._dmN) b.insertAdjacentHTML('beforeend', `<span class="mkp-bdgr">${GF._dmN > 99 ? '99+' : GF._dmN}</span>`);
         },
 
         // ------------------------------------------------------------ new post
@@ -1449,6 +1510,210 @@
                 : `<div class="mkp-card gfd-empty">${mi('favorite')}${esc(tr('gfd.noactivity', 'Likes, comments and new followers show up here.'))}</div>`);
         },
 
+        // ------------------------------------------------------------ the DM centre (v1289)
+        // Tap-In does NOT own a messages table. Every thread here is `direct_messages`, read and
+        // written through window.SecureDM (edge fn secure-dm) — the same pipeline the Messages tab
+        // uses — so there is ONE inbox, ONE unread count, and the LINE push still fires. Tap-In
+        // adds the screens and the folders, nothing else. Pete picked option A (a chip row).
+        // Folders come from gfd_dm_people: who the other side IS, never anything the golfer files.
+        DMF: [['all', 'gfd.dm.f.all', 'All'], ['player', 'gfd.dm.f.players', 'Players'], ['caddy', 'gfd.dm.f.caddies', 'Caddies'],
+        ['course', 'gfd.dm.f.courses', 'Courses'], ['society', 'gfd.dm.f.societies', 'Societies'], ['vendor', 'gfd.dm.f.vendors', 'Vendors']],
+        dmKindLbl(f) {
+            return { player: tr('gfd.dm.k.player', 'Player'), caddy: tr('gfd.dm.k.caddy', 'Caddy'), course: tr('gfd.dm.k.course', 'Course'), society: tr('gfd.dm.k.society', 'Society'), vendor: tr('gfd.dm.k.vendor', 'Vendor') }[f] || '';
+        },
+        sdm() { return window.SecureDM || null; },
+        _dm: { convs: null, folder: 'all', q: '', who: null },
+        _dmN: 0,
+        dmOpen(id) { if (!uid()) { GF.needLogin(); return; } GF.go(id ? { s: 'dmthread', id } : { s: 'dm' }); },
+
+        // every conversation of mine, newest first, each one told who the other side is
+        async dmLoad() {
+            const me = uid(), S = GF.sdm();
+            if (!me || !S) return [];
+            const r = await S.readAll(me, 200);
+            if (r && r.error) throw new Error(r.error);
+            const msgs = (r && r.data) || [], by = {};
+            msgs.forEach(m => {
+                const pid = m.sender_line_id === me ? m.recipient_line_id : m.sender_line_id;
+                if (!pid) return;
+                let c = by[pid];
+                if (!c) c = by[pid] = { id: pid, last: m, unread: 0 };
+                if (new Date(m.created_at) > new Date(c.last.created_at)) c.last = m;
+                if (m.recipient_line_id === me && !m.is_read) c.unread++;
+            });
+            const list = Object.values(by).sort((a, b) => new Date(b.last.created_at) - new Date(a.last.created_at));
+            if (list.length) {
+                let people = [];
+                try { people = await rpc('gfd_dm_people', { p_user: me, p_ids: list.map(c => c.id) }) || []; } catch (e) { }
+                const map = {}; people.forEach(p => { if (p && p.dm_id) map[p.dm_id] = p; });
+                list.forEach(c => { c.who = map[c.id] || { id: c.id, name: tr('gfd.dm.someone', 'Golfer'), folder: 'player' }; });
+            }
+            return list;
+        },
+        dmUnread() { return (GF._dm.convs || []).reduce((t, c) => t + (c.unread || 0), 0); },
+
+        async rDm(top, seq) {
+            const r = GF.root();
+            r.innerHTML = `<div class="gfd-head">${GF.backBtn()}<div class="gfd-title">${esc(tr('gfd.dm.title', 'Messages'))}</div>
+                <button class="gfd-ibtn" data-act="dmnew" aria-label="${esc(tr('gfd.dm.new', 'New message'))}">${mi('edit_square')}</button></div>
+                <div class="gdm-sr"><input id="gdmQ" maxlength="60" autocomplete="off" placeholder="${esc(tr('gfd.dm.search', 'Search your messages'))}" value="${esc(GF._dm.q || '')}"></div>
+                <div id="gdmChips"></div><div id="gdmList">${GF.spin()}</div>`;
+            const q = document.getElementById('gdmQ');
+            if (q) q.addEventListener('input', () => { GF._dm.q = q.value; GF.dmPaint(); });
+            if (!uid()) { document.getElementById('gdmList').innerHTML = `<div class="mkp-card gfd-empty">${mi('forum')}${esc(tr('gfd.dm.login', 'Sign in to use messages.'))}</div>`; return; }
+            let list;
+            try { list = await GF.dmLoad(); } catch (e) { if (GF.live(seq)) GF.err('gdmList', e); return; }
+            if (!GF.live(seq)) return;
+            GF._dm.convs = list;
+            GF.dmPaint();
+            GF.paintBadges();
+        },
+        dmPaint() {
+            const box = document.getElementById('gdmList'), chips = document.getElementById('gdmChips');
+            if (!box || !chips) return;
+            const all = GF._dm.convs || [], f = GF._dm.folder || 'all';
+            const qq = (GF._dm.q || '').trim().toLowerCase();
+            const nUn = (k) => all.filter(c => (k === 'all' || (c.who && c.who.folder) === k)).reduce((t, c) => t + (c.unread || 0), 0);
+            chips.className = 'gfd-chips';
+            chips.innerHTML = GF.DMF.map(([k, key, fb]) => { const n = nUn(k); return `<button class="${f === k ? 'on' : ''}" data-act="dmfolder" data-v="${k}">${esc(tr(key, fb))}${n ? `<span class="gfd-tabn">${n > 99 ? '99+' : n}</span>` : ''}</button>`; }).join('');
+            const shown = all.filter(c => (f === 'all' || (c.who && c.who.folder) === f)
+                && (!qq || ((c.who && c.who.name) || '').toLowerCase().includes(qq) || String(c.last.message_text || '').toLowerCase().includes(qq)));
+            box.innerHTML = shown.length ? `<div class="mkp-card" style="padding:4px 12px">${shown.map(GF.dmRow).join('')}</div>`
+                : `<div class="mkp-card gfd-empty">${mi('forum')}${esc(all.length ? tr('gfd.dm.nonehere', 'Nothing in this folder yet.')
+                    : tr('gfd.dm.none', 'No messages yet. Tap the pencil to find any golfer, caddy, course or society on MyCaddiPro.'))}</div>`;
+        },
+        dmRow(c) {
+            const w = c.who || {}, me = uid();
+            const mine = c.last.sender_line_id === me;
+            const prev = `${mine ? `<b>${esc(tr('gfd.dm.you', 'You:'))}</b> ` : ''}${esc(String(c.last.message_text || ''))}`;
+            const k = w.folder && w.folder !== 'player' ? w.folder : 'player';
+            return `<div class="gdm-row ${c.unread ? 'un' : ''}" data-act="dmthread" data-id="${esc(c.id)}">${av(w, 44)}
+                <div class="tx"><div class="nm"><span class="n">${esc(w.name || '')}</span>${tick(w)}<span class="gdm-k ${k}">${esc(GF.dmKindLbl(k))}</span></div>
+                  <div class="pv">${prev}</div></div>
+                <div class="sd"><div class="tm">${esc(agoShort(c.last.created_at))}</div>${c.unread ? `<div class="bd">${c.unread > 99 ? '99+' : c.unread}</div>` : ''}</div></div>`;
+        },
+
+        async rDmThread(top, seq) {
+            const r = GF.root(), me = uid(), S = GF.sdm();
+            const known = (GF._dm.convs || []).find(c => c.id === top.id);
+            const w0 = (known && known.who) || GF._dm.who || { id: top.id, name: '…', folder: 'player' };
+            const sub = [w0.handle ? '@' + w0.handle : '', GF.dmKindLbl(w0.folder || 'player')].filter(Boolean).join(' · ');
+            r.innerHTML = `<div class="gdm-hd">${GF.backBtn()}${av(w0, 40)}
+                  <div class="who"><div class="n1">${esc(w0.name || '')}</div><div class="n2">${esc(sub)}</div></div>
+                  <button class="gfd-ibtn" data-act="dmmenu" data-id="${esc(top.id)}" aria-label="${esc(tr('gfd.more', 'More'))}">${mi('more_horiz')}</button></div>
+                <div class="mkp-card" style="padding:10px 12px 12px"><div id="gdmTh">${GF.spin()}</div></div>
+                <div class="gfd-addc" style="margin-top:10px"><input id="gdmIn" maxlength="2000" autocomplete="off" placeholder="${esc(tr('gfd.dm.write', 'Message…'))}"><button data-act="dmsend" data-id="${esc(top.id)}">${esc(tr('gfd.send', 'Post') === 'Post' ? tr('gfd.dm.send', 'Send') : tr('gfd.dm.send', 'Send'))}</button></div>`;
+            const inp = document.getElementById('gdmIn');
+            if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); GF.dmSend(top.id); } });
+            if (!me || !S) { document.getElementById('gdmTh').innerHTML = `<div class="gfd-empty">${mi('forum')}${esc(tr('gfd.dm.login', 'Sign in to use messages.'))}</div>`; return; }
+            // who the other side is, when the thread was opened straight from a profile
+            if (!known) rpc('gfd_dm_people', { p_user: me, p_ids: [top.id] }).then(ps => {
+                const p = ps && ps[0]; if (!p || !GF.live(seq)) return;
+                GF._dm.who = p;
+                const h = GF.root().querySelector('.gdm-hd');
+                if (h) { h.querySelector('.n1').textContent = p.name || ''; h.querySelector('.n2').textContent = [p.handle ? '@' + p.handle : '', GF.dmKindLbl(p.folder)].filter(Boolean).join(' · '); }
+            }, () => { });
+            let res;
+            try { res = await S.readConversation(me, top.id, 200); } catch (e) { if (GF.live(seq)) GF.err('gdmTh', e); return; }
+            if (!GF.live(seq)) return;
+            if (res && res.error) { GF.err('gdmTh', new Error(res.error)); return; }
+            GF.dmPaintThread((res && res.data) || []);
+            try { await S.markRead(me, top.id); } catch (e) { }
+            const c = (GF._dm.convs || []).find(x => x.id === top.id); if (c) c.unread = 0;
+        },
+        dmPaintThread(msgs) {
+            const box = document.getElementById('gdmTh'); if (!box) return;
+            const me = uid();
+            const list = (msgs || []).slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+            if (!list.length) { box.innerHTML = `<div class="gfd-empty">${mi('waving_hand')}${esc(tr('gfd.dm.first', 'Say hello — this is the start of the conversation.'))}</div>`; return; }
+            let out = '<div class="gdm-th">', day = '', lastMine = null;
+            list.forEach((m, i) => {
+                const d = dayTxt(m.created_at);
+                if (d !== day) { day = d; out += `<div class="gdm-day">${esc(d)}</div>`; lastMine = null; }
+                const mine = m.sender_line_id === me;
+                const next = list[i + 1];
+                out += `<div class="gdm-b ${mine ? 'me' : 'them'}">${esc(String(m.message_text || ''))}</div>`;
+                // one clock under a run from the same side, not under every line
+                const runEnds = !next || (next.sender_line_id === me) !== mine || dayTxt(next.created_at) !== day;
+                if (runEnds) out += `<div class="gdm-t ${mine ? 'me' : ''}">${esc(clockTxt(m.created_at))}</div>`;
+                lastMine = mine;
+            });
+            box.innerHTML = out + '</div>';
+            box.scrollIntoView({ block: 'end' });
+        },
+        async dmSend(id) {
+            const inp = document.getElementById('gdmIn'), me = uid(), S = GF.sdm();
+            if (!inp || !me || !S) return;
+            const text = inp.value.trim(); if (!text) return;
+            inp.value = ''; inp.disabled = true;
+            try {
+                const r = await S.send(me, id, text);
+                if (r && r.error) throw new Error(r.error);
+                const res = await S.readConversation(me, id, 200);
+                GF.dmPaintThread((res && res.data) || []);
+                GF._dm.convs = null;   // the list reloads next time it is opened
+            } catch (e) { inp.value = text; toast(e.message || String(e), 'error'); }
+            inp.disabled = false; inp.focus();
+        },
+        dmMenu(id) {
+            GF.sheet(tr('gfd.dm.title', 'Messages'), '', [
+                ['person', tr('gfd.dm.viewprofile', 'View profile'), () => GF.profile(id)],
+                ['delete', tr('gfd.dm.delete', 'Delete this conversation'), async () => {
+                    const ok = window.askConfirm ? await window.askConfirm(tr('gfd.dm.delconfirm', 'Delete this conversation for you?')) : true;
+                    if (!ok) return;
+                    try { await GF.sdm().deleteConversation(uid(), id); } catch (e) { toast(e.message || String(e), 'error'); return; }
+                    GF._dm.convs = null; GF.back();
+                }, 'red']]);
+        },
+
+        // the recipient picker — the SYSTEM directory (SocietyGolfDB.searchPlayers), so everyone on
+        // MyCaddiPro is findable and it is nickname aware ("pete" also finds Peter). Pages are rows
+        // in user_profiles too, so societies and courses come back from the same search.
+        async rDmNew(top, seq) {
+            const r = GF.root();
+            r.innerHTML = `<div class="gfd-head">${GF.backBtn()}<div class="gfd-title">${esc(tr('gfd.dm.new', 'New message'))}</div></div>
+                <div class="gdm-sr"><input id="gdmFind" maxlength="60" autocomplete="off" placeholder="${esc(tr('gfd.dm.find', 'Search anyone on MyCaddiPro'))}"></div>
+                <div id="gdmFound"><div class="mkp-card gfd-empty">${mi('search')}${esc(tr('gfd.dm.findhint', 'Type a name — golfers, caddies, courses and societies.'))}</div></div>`;
+            const inp = document.getElementById('gdmFind'); if (!inp) return;
+            inp.focus();
+            let t = null;
+            inp.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => GF.dmFind(inp.value, seq), 260); });
+        },
+        async dmFind(q, seq) {
+            const box = document.getElementById('gdmFound'); if (!box) return;
+            q = (q || '').trim();
+            if (q.length < 2) { box.innerHTML = `<div class="mkp-card gfd-empty">${mi('search')}${esc(tr('gfd.dm.findhint', 'Type a name — golfers, caddies, courses and societies.'))}</div>`; return; }
+            box.innerHTML = GF.spin();
+            let rows = [];
+            try { rows = (window.SocietyGolfDB ? await window.SocietyGolfDB.searchPlayers(q) : []) || []; } catch (e) { if (GF.live(seq)) GF.err('gdmFound', e); return; }
+            if (!GF.live(seq)) return;
+            const me = uid();
+            // searchPlayers returns {id, name, …} — NOT line_user_id (that key is only the column
+            // it selects internally). Pages come back too: a course page is id 'course:<id>'.
+            rows = rows.map(p => ({ id: p.id || p.line_user_id, name: p.name })).filter(p => p.id && p.id !== me).slice(0, 25);
+            if (!rows.length) { box.innerHTML = `<div class="mkp-card gfd-empty">${mi('person_off')}${esc(tr('gfd.dm.nofind', 'Nobody by that name.'))}</div>`; return; }
+            let people = [];
+            try { people = await rpc('gfd_dm_people', { p_user: me, p_ids: rows.map(p => p.id) }) || []; } catch (e) { }
+            if (!GF.live(seq)) return;
+            const map = {}; people.forEach(p => { if (p && p.dm_id) map[p.dm_id] = p; });
+            // A society can sit in user_profiles TWICE — its page row and an older sender profile
+            // under a different id (TRGG has two ids). Same name, so the page row wins and the
+            // plain one drops; otherwise the picker offers the same society twice.
+            const nmOf = (r) => String((map[r.id] && map[r.id].name) || r.name || '').trim().toLowerCase();
+            const paged = new Set(rows.filter(r => map[r.id] && map[r.id].folder !== 'player').map(nmOf));
+            rows = rows.filter(r => (map[r.id] && map[r.id].folder !== 'player') || !paged.has(nmOf(r)));
+            box.innerHTML = `<div class="gdm-hint">${esc(tr('gfd.dm.everyone', 'Everyone on MyCaddiPro'))}</div>
+                <div class="mkp-card" style="padding:4px 12px">${rows.map(p => {
+                const w = map[p.id] || { id: p.id, name: p.name, folder: 'player' };
+                const k = w.folder || 'player';
+                const sub = [w.handle ? '@' + w.handle : '', w.caddy && w.caddy.course ? w.caddy.course : ''].filter(Boolean).join(' · ');
+                return `<div class="gdm-row" data-act="dmthread" data-id="${esc(p.id)}">${av(w, 44)}
+                    <div class="tx"><div class="nm"><span class="n">${esc(w.name || p.name || '')}</span>${tick(w)}<span class="gdm-k ${k}">${esc(GF.dmKindLbl(k))}</span></div>
+                      <div class="pv">${esc(sub)}</div></div>
+                    <div class="sd"><button class="gfd-fbtn ghost" data-act="dmthread" data-id="${esc(p.id)}">${esc(tr('gfd.dm.message', 'Message'))}</button></div></div>`;
+            }).join('')}</div>`;
+        },
+
         // ------------------------------------------------------------ counts + badges
         async refreshCounts() {
             if (!uid() || !db()) return;
@@ -1690,6 +1955,12 @@
                 case 'sound': GF.sound(id, el); break;
                 case 'guidelines': GF.guidelines(); break;
                 case 'search': GF.go({ s: 'search', q: '' }); break;
+                case 'dm': GF.dmOpen(id); break;
+                case 'dmnew': if (!uid()) { GF.needLogin(); break; } GF.go({ s: 'dmnew' }); break;
+                case 'dmthread': if (id) GF.dmOpen(id); break;
+                case 'dmfolder': GF._dm.folder = v; GF.dmPaint(); break;
+                case 'dmsend': GF.dmSend(id); break;
+                case 'dmmenu': GF.dmMenu(id); break;
                 case 'myprofile': GF.profile(uid()); break;
                 case 'myfollows': GF.go({ s: 'follows', id: uid(), which: v }); break;
                 case 'followtab': { const t = GF.stack[GF.stack.length - 1]; if (t && t.s === 'follows' && t.which !== v) { t.which = v; GF.render(); } break; }

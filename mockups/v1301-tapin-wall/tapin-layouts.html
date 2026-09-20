@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tap-In wall layouts</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Grand+Hotel&text=Tap-In&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link rel="stylesheet" href="real-gfd.css">
+<style>
+  /* the app's own light-mode tokens, copied from #mkpV1Style */
+  :root, .mkp-scope{
+    --mkp-sheet:#F4F7F9; --mkp-glass:rgba(255,255,255,.62); --mkp-glass2:rgba(255,255,255,.9);
+    --mkp-shi:rgba(255,255,255,.95); --mkp-slo:rgba(15,23,42,.08);
+    --mkp-text:#0F141A; --mkp-sub:#5A6672; --mkp-faint:#98A3AE;
+    --mkp-green:#16a34a; --mkp-greenhi:#16a34a; --mkp-greendim:rgba(22,163,74,.13);
+    --mkp-amber:#b45309; --mkp-red:#dc2626;
+    font-family:'Instrument Sans',-apple-system,sans-serif; -webkit-font-smoothing:antialiased;
+  }
+  body{margin:0;background:var(--mkp-sheet);color:var(--mkp-text)}
+  .page{max-width:640px;margin:0 auto;padding:10px 12px 26px}
+  .gfd-ttl{font-family:'Grand Hotel',cursive;font-size:30px;color:var(--mkp-green);line-height:1.1}
+  .bar{display:flex;align-items:center;gap:8px;margin:2px 0 12px}
+  .seg{display:flex;gap:2px;padding:4px;border-radius:13px;background:var(--mkp-glass2);box-shadow:inset 0 0 0 1px var(--mkp-slo);margin-left:auto}
+  .seg b{width:34px;height:26px;border-radius:9px;display:grid;place-items:center;color:var(--mkp-sub);font-weight:400}
+  .seg b.on{background:var(--mkp-green);color:#fff}
+  .scopes{display:flex;gap:6px;margin:0 0 10px}
+  .scopes span{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;border-radius:12px;background:var(--mkp-glass2);
+    box-shadow:inset 0 0 0 1px var(--mkp-slo);font:600 12px/1 'Instrument Sans';color:var(--mkp-sub);letter-spacing:.04em}
+  .scopes span.on{background:var(--mkp-green);color:#fff;box-shadow:none}
+  .scopes .material-symbols-outlined{font-size:17px}
+  h2.cap{font:700 12px/1.3 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--mkp-sub);margin:0 0 4px}
+  p.sub{font:400 12px/1.5 'Instrument Sans';color:var(--mkp-sub);margin:0 0 10px}
+  .note{font:400 11px/1.5 'Instrument Sans';color:var(--mkp-faint);margin:10px 0 0}
+  .rank{position:absolute;left:6px;top:6px;padding:3px 6px;border-radius:7px;background:rgba(11,15,20,.78);
+    color:#4ade80;font:700 9px/1 'JetBrains Mono',monospace;letter-spacing:.06em;z-index:2}
+
+  /* ---------------- A: rank-weighted Explore mosaic ---------------- */
+  .wall-a{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;gap:2px;margin:0 -12px}
+  .wall-a .gfd-tile:nth-child(11n+1){grid-column:span 2;grid-row:span 2}
+  .wall-a .gfd-tile:nth-child(22n+12){grid-column:2/span 2}
+
+  /* ---------------- B: magazine ---------------- */
+  .wall-b{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;margin:0 -12px}
+  .wall-b .gfd-tile{aspect-ratio:1}
+  .wall-b .gfd-tile.hero{grid-column:1/-1;aspect-ratio:16/10}
+  /* a tile's img is position:absolute, so a span with aspect-ratio:auto collapses to 0 height */
+  .wall-b .gfd-tile.wide{grid-column:span 2;aspect-ratio:2/1}
+  .wall-b .gfd-tile.tall{grid-row:span 2;aspect-ratio:1/2}
+
+  /* ---------------- C: masonry ---------------- */
+  .wall-c{columns:2;column-gap:2px;margin:0 -12px}
+  .wall-c .gfd-tile{aspect-ratio:auto;width:100%;margin:0 0 2px;break-inside:avoid}
+  .wall-c .gfd-tile img{position:static;height:auto}
+</style></head>
+<body class="mkp-scope theme-light">
+<div class="page">
+  <div class="bar"><span class="gfd-ttl">Tap-In</span>
+    <span class="seg"><b class="on"><span class="material-symbols-outlined">grid_view</span></b><b><span class="material-symbols-outlined">view_agenda</span></b></span>
+  </div>
+  <div class="scopes"><span class="on">EVERYONE</span><span>FOLLOWING</span></div>
+
+  <div id="slot"></div>
+  <p class="note" id="note"></p>
+</div>
+
+<script>
+const PHOTOS = ['p2','p11','p5','p10','p4','p14','p7','p15','p1','p12','p9','p17','p3','p2','p5','p11'];
+// a plausible spread of counts — the ranking is what decides the sizes in A
+const LIKES  = [412, 268, 191, 165, 140, 122, 98, 91, 77, 64, 52, 41, 33, 28, 21, 14];
+
+function tile(i, extra, rank) {
+  const ph = PHOTOS[i % PHOTOS.length], n = LIKES[i % LIKES.length];
+  return `<button class="gfd-tile ${extra || ''}">
+    <img src="${ph}.jpg" alt="" loading="lazy">
+    ${rank ? `<span class="rank">#${rank}</span>` : ''}
+    ${i % 5 === 2 ? '<span class="multi"><span class="material-symbols-outlined">filter_none</span></span>' : ''}
+    ${i % 7 === 3 ? '<span class="ok"><span class="material-symbols-outlined">check</span></span>' : ''}
+    <span class="bl"><span class="lk"><span class="material-symbols-outlined">favorite</span>${n}</span></span>
+  </button>`;
+}
+
+const V = (new URLSearchParams(location.search).get('v') || 'a');
+const slot = document.getElementById('slot'), note = document.getElementById('note');
+
+if (V === 'a') {
+  document.title = 'A — rank mosaic';
+  slot.innerHTML = `<h2 class="cap">A · Rank mosaic</h2>
+    <p class="sub">Size is earned. The block's top post takes a 2&times;2 pane, the rest stay square. The big pane alternates side so the wall never looks striped.</p>
+    <div class="wall-a">${Array.from({length: 16}, (_, i) => tile(i, '', i === 0 ? 1 : (i === 11 ? 2 : 0))).join('')}</div>`;
+  note.textContent = 'Same tile markup and same CSS as today — only grid-column / grid-row span change.';
+} else if (V === 'b') {
+  document.title = 'B — magazine';
+  slot.innerHTML = `<h2 class="cap">B · Magazine</h2>
+    <p class="sub">A full-width hero for the day's best post, then a rhythm of wide and tall panes under it.</p>
+    <div class="wall-b">
+      ${tile(0, 'hero', 1)}
+      ${tile(1, 'wide')}${tile(2, 'tall')}
+      ${tile(3, '')}${tile(4, '')}
+      ${tile(5, 'tall')}${tile(6, 'wide')}
+      ${tile(7, '')}${tile(8, '')}
+      ${tile(9, 'wide')}${tile(10, 'tall')}
+      ${tile(11, '')}${tile(12, '')}
+    </div>`;
+  note.textContent = 'Strongest single image, but it burns a lot of screen on one post.';
+} else {
+  document.title = 'C — masonry';
+  slot.innerHTML = `<h2 class="cap">C · Masonry</h2>
+    <p class="sub">Two columns, every photo keeps its own shape — portrait stays portrait, landscape stays landscape. Nothing is cropped.</p>
+    <div class="wall-c">${Array.from({length: 14}, (_, i) => tile(i)).join('')}</div>`;
+  note.textContent = 'Size comes from the photo, not from how the post is doing.';
+}
+</script>
+</body></html>

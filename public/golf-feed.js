@@ -203,6 +203,16 @@
     .gfd-vsw button .material-symbols-outlined{font-size:19px}
     .gfd-vsw button.on{background:var(--mkp-green);color:#fff}
     .gfd-wall{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;margin:0 -12px}
+    /* Magazine wall (v1301, Pete picked mockup B): the page opens on a full-width hero, then a
+       rhythm of wide and tall panes — 8-tile cycle, so every screenful has a different shape.
+       Pure nth-child: the tile markup is untouched and the pattern can never desync from the data.
+       A .gfd-tile's img is position:absolute, so a spanning tile MUST carry its own aspect-ratio
+       or it collapses to zero height. */
+    .gfd-wall.mag .gfd-tile:first-child{grid-column:1/-1;aspect-ratio:16/10}
+    .gfd-wall.mag .gfd-tile:nth-child(8n+2),
+    .gfd-wall.mag .gfd-tile:nth-child(8n+7){grid-column:span 2;aspect-ratio:2/1}
+    .gfd-wall.mag .gfd-tile:nth-child(8n+3),
+    .gfd-wall.mag .gfd-tile:nth-child(8n+6){grid-row:span 2;aspect-ratio:1/2}
     .gfd-tile{position:relative;aspect-ratio:1;background:#0f2417;display:block;border:none;padding:0;overflow:hidden;cursor:pointer}
     .gfd-tile img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
     .gfd-tile .ok{position:absolute;left:6px;bottom:6px;width:20px;height:20px;border-radius:50%;background:#22c55e;color:#fff;display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.35)}
@@ -701,7 +711,7 @@
                     ? `<div class="mkp-card gfd-empty">${mi('group_add')}${esc(tr('gfd.empty.following', 'Follow golfers to see their posts here. Tap anyone’s name to see their profile.'))}</div>`
                     : `<div class="mkp-card gfd-empty">${mi('add_a_photo')}${esc(tr('gfd.empty.all', 'No posts yet. Share a round, a great shot or the course.'))}<br><button class="mkp-btn-solid" data-act="compose" style="display:inline-flex">${mi('add_a_photo', 'font-size:16px')}${esc(tr('gfd.post', 'Post'))}</button></div>`;
             } else {
-                body.innerHTML = (wall ? `<div class="gfd-wall">${posts.map(GF.tile).join('')}</div>` : posts.map(p => GF.postCard(p, false)).join(''))
+                body.innerHTML = (wall ? `<div class="gfd-wall mag">${posts.map(GF.tile).join('')}</div>` : posts.map(p => GF.postCard(p, false)).join(''))
                     + `<div class="gfd-pager"><button class="gfd-pbtn" data-act="newer" ${GF.page === 0 ? 'disabled' : ''}>← ${esc(tr('gfd.newer', 'Newer'))}</button>
                        <span>${esc(tr('gfd.page', 'Page {n}', { n: GF.page + 1 }))}</span>
                        <button class="gfd-pbtn" data-act="older" ${GF.more ? '' : 'disabled'}>${esc(tr('gfd.older', 'Older'))} →</button></div>`;

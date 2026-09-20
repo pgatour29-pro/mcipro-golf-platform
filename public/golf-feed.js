@@ -1490,15 +1490,22 @@
                 if (a.type !== 'like') { rows.push(a); return; }
                 const add = a.n || 1;   // the server sends the boosted slice as ONE row carrying its count
                 const g = byPost.get(a.post_id || '');
-                if (g) { g.n += add; if (a.is_new) g.is_new = true; if (new Date(a.at) > new Date(g.at)) g.at = a.at; return; }
-                const one = { type: 'like', n: add, at: a.at, is_new: a.is_new, post_id: a.post_id, thumb: a.thumb };
+                if (g) { g.n += add; g.total = Math.max(g.total || 0, a.total || 0); if (a.is_new) g.is_new = true; if (new Date(a.at) > new Date(g.at)) g.at = a.at; return; }
+                const one = { type: 'like', n: add, total: a.total || 0, at: a.at, is_new: a.is_new, post_id: a.post_id, thumb: a.thumb };
                 byPost.set(a.post_id || '', one); rows.push(one);
             });
-            const likeRow = (a) => `
+            const likeRow = (a) => {
+                // Pete 2026-09-20: "keep the count numbers showing at 91" — the headline is the
+                // post's own total, the same number the post shows. The fresh slice goes under it.
+                const tot = a.total || a.n;
+                const hrs = Math.max(1, Math.round((Date.now() - new Date(a.at).getTime()) / 3600000));
+                const recent = a.n && a.n < tot ? tr('gfd.a.likes.recent', '{n} in the past {h} hours', { n: a.n, h: hrs }) : '';
+                return `
                 <div class="gfd-act ${a.is_new ? 'new' : ''}"${a.post_id ? ` data-act="openpost" data-id="${esc(a.post_id)}"` : ' style="cursor:default"'}>
                   <span class="lkm">${mi('favorite')}</span>
-                  <div class="tx"><b>${esc(a.n === 1 ? tr('gfd.a.likes.1', '1 like on your post') : tr('gfd.a.likes.n', '{n} likes on your post', { n: a.n }))}</b> <span>${esc(agoShort(a.at))}</span></div>
+                  <div class="tx"><b>${esc(tot === 1 ? tr('gfd.a.likes.1', '1 like on your post') : tr('gfd.a.likes.n', '{n} likes on your post', { n: tot }))}</b> <span>${esc(agoShort(a.at))}</span>${recent ? `<br><span>${esc(recent)}</span>` : ''}</div>
                   ${url(a.thumb) ? `<img class="th" src="${url(a.thumb)}" alt="" loading="lazy">` : ''}</div>`;
+            };
             const box = document.getElementById('gfdAct'); if (!box) return;
             box.innerHTML = `<div class="gfd-chips">${chips.map(([k, l]) => { const n = nNew(k); return `<button class="${f === k ? 'on' : ''}" data-act="actfilter" data-v="${k}">${esc(l)}${n ? `<span class="gfd-tabn">${n > 99 ? '99+' : n}</span>` : ''}</button>`; }).join('')}</div>`
                 + (rows.length ? `<div class="mkp-card" style="padding:4px 12px">${rows.map(a => a.type === 'like' ? likeRow(a) : `

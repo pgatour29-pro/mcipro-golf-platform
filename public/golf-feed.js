@@ -28,6 +28,16 @@
     const db = () => window.SupabaseDB && window.SupabaseDB.client;
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
     const url = (s) => { const v = String(s == null ? '' : s).trim(); return /^https:\/\//i.test(v) ? esc(v) : ''; };
+    // Supabase storage can resize on the way out. A 114px tile was pulling the full-size original
+    // (203KB for one photo, ~900ms on the wire) — width=400 brings the same tile down to ~62KB.
+    // Anything not in our own storage bucket is handed back untouched.
+    const thumb = (s, w) => {
+        const v = String(s == null ? '' : s).trim();
+        if (!/^https:\/\//i.test(v)) return '';
+        if (v.indexOf('/storage/v1/object/public/') < 0) return esc(v);
+        const u = v.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/');
+        return esc(u + (u.indexOf('?') < 0 ? '?' : '&') + 'width=' + w + '&quality=72');
+    };
     const tr = (k, fb, vars) => {
         let v = fb;
         try { const x = (typeof t === 'function') ? t(k) : k; if (x && x !== k) v = x; } catch (e) { }
@@ -667,6 +677,11 @@
                 <button class="gfd-post-btn" data-act="compose">${mi('add_a_photo')}${esc(tr('gfd.post', 'Post'))}</button></div>`;
         },
         tabN(k) { const n = GF.counts[k] || 0; return n ? `<span class="gfd-tabn">${n > 99 ? '99+' : n}</span>` : ''; },
+        feedTabs() {
+            return `<button class="mkp-tab ${GF.scope === 'everyone' ? 'mkp-on' : ''}" data-act="scope" data-v="everyone">${mi('public')}${esc(tr('gfd.everyone', 'Everyone'))}${GF.tabN('feed_new')}</button>
+                    <button class="mkp-tab ${GF.scope === 'following' ? 'mkp-on' : ''}" data-act="scope" data-v="following">${mi('group')}${esc(tr('gfd.following', 'Following'))}${GF.tabN('following_new')}</button>`;
+        },
+        paintFeedTabs() { const b = document.querySelector('#gfdRoot .gfd-bar .mkp-tabs'); if (b) b.innerHTML = GF.feedTabs(); },
         // what counts as NEW on the wall this visit: anything newer than the stamp from BEFORE this visit
         prevSeen(scope) {
             GF._visitPrev = GF._visitPrev || {};
@@ -684,19 +699,20 @@
                 <button data-act="myprofile"><b>${n('posts')}</b><span>${esc(tr('gfd.posts.cap', 'Posts'))}</span></button></div>
                 <button class="go" data-act="myprofile">${esc(tr('gfd.profile', 'Profile'))}${mi('chevron_right')}</button></div>`;
         },
+        bodyKey() { return GF.scope + '|' + GF.page + '|' + GF.view(); },
         async rFeed(top, seq) {
             if (!GF.me && uid()) GF.loadMe().then(() => { const x = document.getElementById('gfdMeRow'); if (x && GF.live(seq)) x.innerHTML = GF.meRow(); });
-            if (!GF._countsLoaded) await GF.refreshCounts();
-            if (!GF.live(seq)) return;
+            // Pete 2026-09-20 "why is the desktop tap-in running so slow": this used to AWAIT a counts
+            // RPC before a single pixel of the wall was drawn. Fire it, paint, and patch the two
+            // scope pills when it lands.
+            if (!GF._countsLoaded) GF.refreshCounts().then(() => { if (GF.live(seq)) GF.paintFeedTabs(); });
             GF._newSince = GF.prevSeen(GF.scope);
             const r = GF.root(), wall = GF.view() === 'wall';
             r.innerHTML = `${GF.head()}<div id="gfdMeRow">${uid() ? GF.meRow() : ''}</div>
-                <div class="gfd-bar"><div class="mkp-tabs">
-                    <button class="mkp-tab ${GF.scope === 'everyone' ? 'mkp-on' : ''}" data-act="scope" data-v="everyone">${mi('public')}${esc(tr('gfd.everyone', 'Everyone'))}${GF.tabN('feed_new')}</button>
-                    <button class="mkp-tab ${GF.scope === 'following' ? 'mkp-on' : ''}" data-act="scope" data-v="following">${mi('group')}${esc(tr('gfd.following', 'Following'))}${GF.tabN('following_new')}</button></div>
+                <div class="gfd-bar"><div class="mkp-tabs">${GF.feedTabs()}</div>
                   <div class="gfd-vsw"><button class="${wall ? 'on' : ''}" data-act="viewmode" data-v="wall" aria-label="${esc(tr('gfd.wall', 'Wall'))}">${mi('grid_view')}</button>
                     <button class="${wall ? '' : 'on'}" data-act="viewmode" data-v="list" aria-label="${esc(tr('gfd.onebyone', 'One by one'))}">${mi('view_agenda')}</button></div></div>
-                <div id="gfdFeedBody">${GF.spin()}</div>`;
+                <div id="gfdFeedBody">${GF._body && GF._body.key === GF.bodyKey() ? GF._body.html : GF.spin()}</div>`;
             GF.dmBadge();
             let res;
             try { res = await rpc('golf_feed', { p_user: uid(), p_scope: GF.scope, p_author: null, p_before: GF.pages[GF.page], p_limit: PAGE, p_post: null }); }
@@ -710,23 +726,28 @@
             posts.forEach(p => { GF._posts[p.id] = p; });
             const body = document.getElementById('gfdFeedBody');
             if (!posts.length && GF.page === 0) {
+                GF._body = null;
                 body.innerHTML = GF.scope === 'following'
                     ? `<div class="mkp-card gfd-empty">${mi('group_add')}${esc(tr('gfd.empty.following', 'Follow golfers to see their posts here. Tap anyone’s name to see their profile.'))}</div>`
                     : `<div class="mkp-card gfd-empty">${mi('add_a_photo')}${esc(tr('gfd.empty.all', 'No posts yet. Share a round, a great shot or the course.'))}<br><button class="mkp-btn-solid" data-act="compose" style="display:inline-flex">${mi('add_a_photo', 'font-size:16px')}${esc(tr('gfd.post', 'Post'))}</button></div>`;
             } else {
-                body.innerHTML = (wall ? `<div class="gfd-wall mag">${posts.map(GF.tile).join('')}</div>` : posts.map(p => GF.postCard(p, false)).join(''))
+                const html = (wall ? `<div class="gfd-wall mag">${posts.map(GF.tile).join('')}</div>` : posts.map(p => GF.postCard(p, false)).join(''))
                     + `<div class="gfd-pager"><button class="gfd-pbtn" data-act="newer" ${GF.page === 0 ? 'disabled' : ''}>← ${esc(tr('gfd.newer', 'Newer'))}</button>
                        <span>${esc(tr('gfd.page', 'Page {n}', { n: GF.page + 1 }))}</span>
                        <button class="gfd-pbtn" data-act="older" ${GF.more ? '' : 'disabled'}>${esc(tr('gfd.older', 'Older'))} →</button></div>`;
+                body.innerHTML = html;
+                // keep it so the next visit paints instantly instead of a spinner, then refreshes
+                GF._body = { key: GF.bodyKey(), html };
                 if (!wall) GF.wireCars(body);
             }
             if (GF.page === 0) GF.markSeen(GF.scope === 'following' ? 'following' : 'feed');
         },
-        tile(p) {
+        tile(p, i) {
             const ph = (p.photos || [])[0];
+            const pw = i ? 400 : 900;   // v1301: the first tile is the magazine hero, the rest are squares
             const sale = p.kind === 'listing' && p.listing ? (p.listing.price ? baht(p.listing.price) : tr('gfd.forsale', 'For sale')) : '';
             return `<button class="gfd-tile" data-act="openpost" data-id="${esc(p.id)}" aria-label="${esc((p.author || {}).name || '')}">
-                ${url(ph) ? `<img src="${url(ph)}" alt="" loading="lazy">` : ''}
+                ${thumb(ph, pw) ? `<img src="${thumb(ph, pw)}" alt="" loading="lazy" decoding="async">` : ''}
                 ${sale ? `<span class="sale">${esc(sale)}</span>` : ''}
                 ${GF.isNew(p) ? `<span class="new">${esc(tr('gfd.new', 'NEW'))}</span>` : ''}
                 ${p.video ? `<span class="multi">${mi('play_arrow')}</span>` : (p.photos || []).length > 1 ? `<span class="multi">${mi('filter_none')}</span>` : ''}
@@ -769,7 +790,7 @@
         },
         postCard(p, full) {
             const a = p.author || {};
-            const photos = (p.photos || []).map(url).filter(Boolean);
+            const photos = (p.photos || []).map(u => thumb(u, 1000)).filter(Boolean);
             const likeCls = p.i_liked ? 'liked' : '';
             const cap = p.kind === 'listing' ? '' : (p.caption || '');
             const cm = full ? '' : ((p.comments > 2 ? `<button class="gfd-more" data-act="openpost" data-id="${esc(p.id)}">${esc(tr('gfd.viewall', 'View all {n} comments', { n: p.comments }))}</button>` : '')
@@ -1563,7 +1584,7 @@
                 <div class="gfd-act ${a.is_new ? 'new' : ''}"${a.post_id ? ` data-act="openpost" data-id="${esc(a.post_id)}"` : ' style="cursor:default"'}>
                   <span class="lkm">${mi('favorite')}</span>
                   <div class="tx"><b>${esc(cnt === 1 ? tr('gfd.a.likes.1', '1 like on your post') : tr('gfd.a.likes.n', '{n} likes on your post', { n: cnt }))}</b> <span>${esc(agoShort(a.at))}</span>${recent ? `<br><span>${esc(recent)}</span>` : ''}</div>
-                  ${url(a.thumb) ? `<img class="th" src="${url(a.thumb)}" alt="" loading="lazy">` : ''}</div>`;
+                  ${url(a.thumb) ? `<img class="th" src="${thumb(a.thumb, 160)}" alt="" loading="lazy">` : ''}</div>`;
             };
             const box = document.getElementById('gfdAct'); if (!box) return;
             box.innerHTML = `<div class="gfd-chips">${chips.map(([k, l]) => { const n = tot(k), nw = tot(k, true); return `<button class="${f === k ? 'on' : ''}" data-act="actfilter" data-v="${k}">${esc(l)}${n ? `<span class="gfd-tabn${nw ? '' : ' q'}">${n > 999 ? '999+' : n}</span>` : ''}</button>`; }).join('')}</div>`
@@ -1572,7 +1593,7 @@
                   <span data-act="profile" data-id="${esc(a.actor.id)}">${av(a.actor, 40)}</span>
                   <div class="tx"><b>${esc(a.actor.name)}</b>${tick(a.actor)} ${esc(line(a))} ${a.page ? `<i class="pg">${esc(tr('gfd.a.onpage', '· {p}', { p: a.page.name }))}</i> ` : ''}<span>${esc(agoShort(a.at))}</span></div>
                   ${a.type === 'follow' ? `<button class="gfd-fbtn ${a.i_follow ? 'ghost' : ''}" data-act="followbtn" data-id="${esc(a.actor.id)}" data-on="${a.i_follow ? '0' : '1'}">${esc(a.i_follow ? tr('gfd.followingbtn', 'Following') : tr('gfd.follow', 'Follow'))}</button>`
-                    : (url(a.thumb) ? `<img class="th" src="${url(a.thumb)}" alt="" loading="lazy">` : '')}</div>`).join('')}</div>`
+                    : (url(a.thumb) ? `<img class="th" src="${thumb(a.thumb, 160)}" alt="" loading="lazy">` : '')}</div>`).join('')}</div>`
                 : `<div class="mkp-card gfd-empty">${mi('favorite')}${esc(tr('gfd.noactivity', 'Likes, comments and new followers show up here.'))}</div>`);
         },
 
@@ -1858,6 +1879,15 @@
             // with only his own posts the others-only strip was empty); others' unseen posts go first
             try { const r = await rpc('golf_feed', { p_user: uid() || null, p_scope: 'everyone', p_author: null, p_before: null, p_limit: 12, p_post: null }); posts = (r && r.posts) || []; }
             catch (e) { return; }   // the ghost strip above stays — never a cube with nothing in it
+            // The cube strip and the wall's first page are the SAME query. Keep what we just paid
+            // for, so the first tap on Tap-In paints instantly instead of staring at a spinner
+            // while an identical request goes out again (Pete: "why is the desktop tap-in so slow").
+            try {
+                if (!GF._body && posts.length && GF.view() === 'wall' && GF.scope === 'everyone' && GF.page === 0) {
+                    posts.forEach(p => { GF._posts[p.id] = p; });
+                    GF._body = { key: 'everyone|0|wall', html: `<div class="gfd-wall mag">${posts.map(GF.tile).join('')}</div>` };
+                }
+            } catch (e) { }
             const cubes = GF.cubes(); if (!cubes.length) return;
             const seen = GF.counts.feed_seen_at ? new Date(GF.counts.feed_seen_at) : new Date(Date.now() - 7 * 864e5);
             const fresh = (p) => !p.mine && new Date(p.created_at) > seen;
@@ -1868,7 +1898,7 @@
             const html = show.length ? show.map((p, i) => {
                 const isNew = fresh(p);
                 const pop = prev ? !prev.has(p.id) : isNew;   // first paint: the unseen ones pop; later: only fresh arrivals
-                const img = url((p.photos || [])[0]);
+                const img = thumb((p.photos || [])[0], 200);
                 return `<span class="ph ${pop ? 'pop' : ''}" style="--i:${i}" data-gfdpost="${esc(p.id)}">${img ? `<img src="${img}" alt="" loading="lazy">` : ''}${isNew ? '<i class="nd"></i>' : ''}${av(p.author, 22)}</span>`;
             }).join('') + (window.innerWidth >= 768 && extra ? `<span class="more">+${extra > 99 ? '99' : extra}</span>` : '')
                 : GF.stripGhost();

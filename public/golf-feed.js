@@ -1416,7 +1416,7 @@
             const list = GF._actList || [], f = GF._actFilter || 'all';
             const grp = (a) => (a.type === 'enquiry' || a.type === 'offer') ? 'mkp' : a.type;
             const line = GF._actLine;
-            const nNew = (g) => list.filter(a => a.is_new && (g === 'all' || grp(a) === g)).length;
+            const nNew = (g) => list.filter(a => a.is_new && (g === 'all' || grp(a) === g)).reduce((t, a) => t + (a.type === 'like' ? (a.n || 1) : 1), 0);
             const chips = [['all', tr('gfd.f.all', 'All')], ['mention', tr('gfd.f.mentions', 'Mentions')], ['like', tr('gfd.f.likes', 'Likes')],
                 ['comment', tr('gfd.f.comments', 'Comments')], ['follow', tr('gfd.f.follows', 'Follows')], ['mkp', tr('hole19.title', '19th Hole')]];
             const shown = list.filter(a => f === 'all' || grp(a) === f);
@@ -1427,9 +1427,10 @@
             const byPost = new Map();
             shown.forEach(a => {
                 if (a.type !== 'like') { rows.push(a); return; }
+                const add = a.n || 1;   // the server sends the boosted slice as ONE row carrying its count
                 const g = byPost.get(a.post_id || '');
-                if (g) { g.n++; if (a.is_new) g.is_new = true; if (new Date(a.at) > new Date(g.at)) g.at = a.at; return; }
-                const one = { type: 'like', n: 1, at: a.at, is_new: a.is_new, post_id: a.post_id, thumb: a.thumb };
+                if (g) { g.n += add; if (a.is_new) g.is_new = true; if (new Date(a.at) > new Date(g.at)) g.at = a.at; return; }
+                const one = { type: 'like', n: add, at: a.at, is_new: a.is_new, post_id: a.post_id, thumb: a.thumb };
                 byPost.set(a.post_id || '', one); rows.push(one);
             });
             const likeRow = (a) => `
@@ -1491,20 +1492,41 @@
             return cubes;
         },
         // every Tap-In cube on screen: the golfer home's + the organizer / staff / caddie homes' (v1278)
+        // v1288: no uid() gate. The wide layout IS the cube's layout — gating it on a login meant a
+        // session where uid() was still null when the strip was painted kept the compact cube forever.
         cubes() {
             const out = [];
-            if (uid()) GF.wideCube().forEach(c => out.push(c));
+            GF.wideCube().forEach(c => out.push(c));
             document.querySelectorAll('.gfdCube.gfd-other').forEach(c => out.push(c));
             return out;
         },
+        // what a cube wears before the feed answers — and if it never answers
+        stripGhost() { return `<span class="ph empty">${mi('add_a_photo')}</span><span class="ph empty">${mi('sports_golf')}</span>`; },
+        putStrip(cubes, html) {
+            cubes.forEach(cube => {
+                let strip = cube.querySelector('.gfd-strip');
+                if (!strip) { strip = document.createElement('span'); strip.className = 'gfd-strip'; cube.appendChild(strip); }
+                if (html != null) strip.innerHTML = html;
+                else if (!strip.innerHTML) strip.innerHTML = GF.stripGhost();
+                cube.classList.toggle('gfd-live', !!((GF.counts.feed_new || 0) + (GF.counts.activity_new || 0)));
+            });
+        },
         async paintCubeStrip() {
             injectStyle();
-            if (!db() || !GF.cubes().length) return;
+            // Lay the cube out FIRST. Pete 2026-09-20 sent a Full-view home where the Tap-In cube was a
+            // bare green band — wordmark clipped, no pill, cube art still showing, no photos. Every early
+            // return below used to happen BEFORE .gfd-wide was added, so a session that lost the feed read
+            // (or hadn't a uid yet) kept the compact cube for the rest of its life. The layout and a ghost
+            // strip now land before anything that can fail.
+            const ready = GF.cubes();
+            if (!ready.length) return;
+            GF.putStrip(ready, null);
+            if (!db()) return;
             let posts = [];
             // the newest posts on Tap-In, mine included (Pete: "why isn't the images showing up on the cube" —
             // with only his own posts the others-only strip was empty); others' unseen posts go first
             try { const r = await rpc('golf_feed', { p_user: uid() || null, p_scope: 'everyone', p_author: null, p_before: null, p_limit: 12, p_post: null }); posts = (r && r.posts) || []; }
-            catch (e) { return; }
+            catch (e) { return; }   // the ghost strip above stays — never a cube with nothing in it
             const cubes = GF.cubes(); if (!cubes.length) return;
             const seen = GF.counts.feed_seen_at ? new Date(GF.counts.feed_seen_at) : new Date(Date.now() - 7 * 864e5);
             const fresh = (p) => !p.mine && new Date(p.created_at) > seen;
@@ -1518,13 +1540,8 @@
                 const img = url((p.photos || [])[0]);
                 return `<span class="ph ${pop ? 'pop' : ''}" style="--i:${i}" data-gfdpost="${esc(p.id)}">${img ? `<img src="${img}" alt="" loading="lazy">` : ''}${isNew ? '<i class="nd"></i>' : ''}${av(p.author, 22)}</span>`;
             }).join('') + (window.innerWidth >= 768 && extra ? `<span class="more">+${extra > 99 ? '99' : extra}</span>` : '')
-                : `<span class="ph empty">${mi('add_a_photo')}</span><span class="ph empty">${mi('sports_golf')}</span>`;
-            cubes.forEach(cube => {
-                let strip = cube.querySelector('.gfd-strip');
-                if (!strip) { strip = document.createElement('span'); strip.className = 'gfd-strip'; cube.appendChild(strip); }
-                strip.innerHTML = html;
-                cube.classList.toggle('gfd-live', !!((GF.counts.feed_new || 0) + (GF.counts.activity_new || 0)));
-            });
+                : GF.stripGhost();
+            GF.putStrip(cubes, html);
             GF._stripIds = new Set(show.map(p => p.id));
         },
         // start the audio engine on a tap — a clip's sound can only be recorded through a context started by a tap
@@ -1858,6 +1875,11 @@
         // ------------------------------------------------------------ boot: badges + share links
         boot() {
             injectStyle();
+            // v1288: the cube wears its layout from the moment this script runs. Pete's Full-view home
+            // (2026-09-20) showed a bare green band — clipped wordmark, no pill, cube art still on, no
+            // photos — because .gfd-wide and the strip were only ever added inside paintCubeStrip, behind
+            // db(), a uid and the feed RPC. Layout is not data: it lands here, photos fill in after.
+            try { GF.putStrip(GF.cubes(), null); } catch (e) { }
             // ?golfer= / ?post= / ?listing= links (shareListing made ?listing= links that nothing opened)
             try {
                 const q = new URLSearchParams(location.search);

@@ -115,11 +115,18 @@ on conflict (course_name, code) do update set
 -- WHICH caddies belong to a programme is the course's call — these are starting assignments
 -- Pete can move with one update. Nothing else on the roster is touched.
 
+-- Pete 2026-09-21: "Bangpakong only 243" — #91 and #161 are standard caddies.
 update public.caddy_profiles
    set tier_code = 'buddy', updated_at = now()
  where course_name ilike 'Bangpakong Riverside%'
    and is_active
-   and caddy_number in ('91','243','161');
+   and caddy_number = '243';
+
+update public.caddy_profiles
+   set tier_code = null, updated_at = now()
+ where course_name ilike 'Bangpakong Riverside%'
+   and tier_code = 'buddy'
+   and caddy_number <> '243';
 
 update public.caddy_profiles
    set tier_code = 'pretty', updated_at = now()

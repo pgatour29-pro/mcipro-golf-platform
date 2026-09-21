@@ -491,6 +491,18 @@
             background-color: #94a3b8;
         }
 
+        /* Horizontal chip strip. Touch pans it and keeps the scrollbar out of the way; a mouse
+           gets a slim bar it can SEE and grab. The drag itself is global — see [HStrip] in boot. */
+        .hstrip { scrollbar-width: none; }
+        .hstrip::-webkit-scrollbar { display: none; }
+        @media (min-width: 900px) {
+            .hstrip { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; cursor: grab; }
+            .hstrip::-webkit-scrollbar { display: block; height: 6px; }
+            .hstrip::-webkit-scrollbar-track { background: transparent; }
+            .hstrip::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 3px; }
+            .hstrip::-webkit-scrollbar-thumb:hover { background-color: #94a3b8; }
+        }
+
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background-color: var(--gray-50);
@@ -34394,6 +34406,106 @@
                     }
                 }, { passive: false });
                 console.log('[PullRefresh] Global pull-to-refresh block active');
+            })();
+
+            // Desktop side-to-side on every horizontal strip (Pete 2026-09-22): "Tee modal in the
+            // mobile has tee sheets which can be scrolled using the finger in both side to side
+            // directions, you forgot to add dragging or side to side in the desktop". Every chip
+            // strip in this app was built touch-first — `touch-action:pan-x` plus a hidden
+            // scrollbar — so a finger pans them and a mouse has NOTHING: no drag, no scrollbar to
+            // grab, and a vertical wheel over a row that does not scroll vertically does nothing at
+            // all. GLOBAL, like the pull-to-refresh guard above and for the same reason: three
+            // dozen strips share the problem, so the fix belongs in one place, not in one modal.
+            (function () {
+                // gestures that already mean something else
+                const SKIP = 'input,textarea,select,canvas,video,[contenteditable=""],[contenteditable="true"],[draggable="true"],.no-hdrag';
+
+                // the SAME walk the pull-to-refresh guard does: nearest ancestor that really
+                // scrolls sideways (a strip whose pills all fit has nothing to drag)
+                function hStrip(node) {
+                    let n = node;
+                    while (n && n.nodeType === 1 && n !== document.body && n !== document.documentElement) {
+                        if (n.scrollWidth - n.clientWidth > 2) {
+                            const ox = getComputedStyle(n).overflowX;
+                            if (ox === 'auto' || ox === 'scroll') return n;
+                        }
+                        n = n.parentElement;
+                    }
+                    return null;
+                }
+
+                let el = null, pid = null, startX = 0, startLeft = 0, moved = false, kill = null;
+
+                function stop() {
+                    if (!el) return;
+                    const dragged = moved;
+                    try { el.releasePointerCapture(pid); } catch (e) {}
+                    if (kill) {
+                        document.removeEventListener('selectstart', kill, true);
+                        document.removeEventListener('dragstart', kill, true);
+                        kill = null;
+                    }
+                    el.style.cursor = ''; el.style.userSelect = '';
+                    el = null; pid = null; moved = false;
+                    // a drag that ends on top of a pill must not ALSO fire that pill's onclick.
+                    // Capture + stopPropagation is what beats an inline (target-phase) handler.
+                    if (dragged) {
+                        const eat = (ev) => { ev.stopPropagation(); ev.preventDefault(); document.removeEventListener('click', eat, true); };
+                        document.addEventListener('click', eat, true);
+                        setTimeout(() => document.removeEventListener('click', eat, true), 60);
+                    }
+                }
+
+                document.addEventListener('pointerdown', (e) => {
+                    if (e.pointerType !== 'mouse' || e.button !== 0) return;   // touch already pans
+                    if (e.target && e.target.closest && e.target.closest(SKIP)) return;
+                    const s = hStrip(e.target);
+                    if (!s) return;
+                    // the native scrollbar is already a drag handle — don't scroll it twice
+                    if (e.clientY > s.getBoundingClientRect().top + s.clientHeight) return;
+                    el = s; pid = e.pointerId; startX = e.clientX; startLeft = s.scrollLeft; moved = false;
+                }, true);
+
+                document.addEventListener('pointermove', (e) => {
+                    if (!el || e.pointerId !== pid) return;
+                    const dx = e.clientX - startX;
+                    if (!moved) {
+                        if (Math.abs(dx) < 5) return;   // a click with a twitch in it stays a click
+                        moved = true;
+                        try { el.setPointerCapture(pid); } catch (err) {}
+                        el.style.cursor = 'grabbing';
+                        el.style.userSelect = 'none';
+                        kill = (ev) => ev.preventDefault();
+                        document.addEventListener('selectstart', kill, true);
+                        document.addEventListener('dragstart', kill, true);
+                    }
+                    el.scrollLeft = startLeft - dx;
+                }, true);
+
+                document.addEventListener('pointerup', stop, true);
+                document.addEventListener('pointercancel', stop, true);
+
+                // A wheel over a chip row did nothing at all: the row scrolls sideways only, so the
+                // browser hands deltaY to the page. Map it onto the row — but ONLY for a short
+                // strip (a chip rail, never a wide table), and only while the row still has
+                // somewhere to go, so hitting the end gives the wheel straight back to the page.
+                document.addEventListener('wheel', (e) => {
+                    if (e.ctrlKey || !e.deltaY || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+                    const s = hStrip(e.target);
+                    if (!s || s.clientHeight > 200) return;
+                    if (s.scrollHeight - s.clientHeight > 2) {
+                        const oy = getComputedStyle(s).overflowY;
+                        if (oy === 'auto' || oy === 'scroll') return;   // the wheel is its own axis
+                    }
+                    const step = e.deltaMode === 1 ? e.deltaY * 16 : (e.deltaMode === 2 ? e.deltaY * s.clientWidth : e.deltaY);
+                    const max = s.scrollWidth - s.clientWidth;
+                    const next = Math.max(0, Math.min(max, s.scrollLeft + step));
+                    if (next === s.scrollLeft) return;
+                    s.scrollLeft = next;
+                    e.preventDefault();
+                }, { passive: false, capture: true });
+
+                console.log('[HStrip] Desktop drag + wheel on horizontal strips active');
             })();
 
             // v619: html (not body) is the page scroller now. 11+ modals lock background
@@ -144021,7 +144133,7 @@ class GolferEventsManager {
             const list = (pick ? all.filter(e => e.soc === pick) : all).slice(0, 12);
             if (list.length < 2 || !document.getElementById('playersModalEvChips')) { strip.style.display = 'none'; return; }
             const esc2 = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-            const socRow = socs.length > 1 ? '<div style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;scrollbar-width:none;white-space:nowrap;padding-bottom:7px;">' +
+            const socRow = socs.length > 1 ? '<div id="tsSocRow" class="hstrip" style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;white-space:nowrap;padding-bottom:7px;">' +
                 [['', _lvT('gts.allsocieties', 'All societies')]].concat(socs.map(x => [x, x])).map(([v, l]) => {
                     const on = v === pick;
                     return '<button data-soc="' + esc2(v) + '" style="flex:none;font-size:10px;font-weight:800;letter-spacing:.02em;border-radius:999px;padding:5px 11px;cursor:pointer;max-width:190px;overflow:hidden;text-overflow:ellipsis;' +
@@ -144029,7 +144141,7 @@ class GolferEventsManager {
                 }).join('') + '</div>' : '';
             strip.style.overflowX = 'visible';
             strip.style.whiteSpace = 'normal';
-            strip.innerHTML = socRow + '<div id="tsEvRow" style="display:flex;gap:0;overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;scrollbar-width:none;white-space:nowrap;">' + list.map(e => {
+            strip.innerHTML = socRow + '<div id="tsEvRow" class="hstrip" style="display:flex;gap:0;overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;white-space:nowrap;">' + list.map(e => {
                 const on = e.id === String(curId);
                 const dt = e.date ? new Date(e.date + 'T00:00:00') : null;
                 const lbl = (dt && !isNaN(dt.getTime()) ? dt.toLocaleDateString(_lvLocale(), { weekday: 'short', day: 'numeric' }).toUpperCase() + ' · ' : '') + e.label;

@@ -88244,12 +88244,17 @@ class SocietyGolfSupabase {
         // takeover / crash-resume continues the same card. Do NOT reuse abandoned/completed cards —
         // those are finished, so starting a new round must create a FRESH card (otherwise "Start
         // Round" resumes an ended round at the last hole instead of starting over).
-        const { data: existing } = await window.SupabaseDB.client
+        // ...and never reuse one from an EARLIER CALENDAR DAY: a round ends with its day, so a
+        // leftover card from yesterday's event must start over, not resume at yesterday's hole.
+        const _todayStart = window.RoundDay?.todayStartUtc?.();
+        let _existingQ = window.SupabaseDB.client
             .from('scorecards')
             .select('id, player_id, created_at')
             .eq('event_id', eventId)
             .eq('player_id', playerId)
-            .eq('status', 'in_progress')
+            .eq('status', 'in_progress');
+        if (_todayStart) _existingQ = _existingQ.gte('created_at', _todayStart);
+        const { data: existing } = await _existingQ
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
@@ -89038,6 +89043,39 @@ window.LateRegNotify = {
     // LIVE SCORECARD MANAGER
     // ============================================
 
+// A ROUND BELONGS TO ONE CALENDAR DAY (Asia/Bangkok). A round can be started, and once it is the
+// next calendar day it is finished — nothing may resume it, reuse its card, or keep it "live".
+// Bangkok, never UTC: UTC rolls over at 07:00 local and would end Thai afternoon rounds mid-play.
+// The hourly DB sweep public.sweep_stale_scorecards is the backstop that runs whether or not any
+// phone re-opens; these client checks are the same rule, applied first.
+window.RoundDay = {
+    TZ: 'Asia/Bangkok',
+    // 'YYYY-MM-DD' in Bangkok for a Date, an epoch ms, an ISO string, or a NAIVE UTC timestamp
+    // ('2026-09-21 03:34:33' — how scorecards.started_at / scores.created_at come back).
+    day(ts) {
+        if (ts === null || ts === undefined || ts === '') return null;
+        let d;
+        if (ts instanceof Date) d = ts;
+        else if (typeof ts === 'number') d = new Date(ts);
+        else {
+            const str = String(ts);
+            d = new Date(/[zZ]|[+-]\d{2}:?\d{2}$/.test(str) ? str : str.replace(' ', 'T') + 'Z');
+        }
+        if (isNaN(d.getTime())) return null;
+        return new Intl.DateTimeFormat('en-CA', { timeZone: this.TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    },
+    today() { return this.day(new Date()); },
+    // True once the Bangkok day has rolled past the day this timestamp belongs to.
+    isPastDay(ts) { const d = this.day(ts); return !!d && d < this.today(); },
+    // The instant today's Bangkok day began, as a NAIVE UTC string — for filtering the naive-UTC
+    // timestamp columns (scorecards.created_at). Thailand is a fixed +07:00, no DST.
+    todayStartUtc() {
+        const d = this.today();
+        if (!d) return null;
+        return new Date(d + 'T00:00:00+07:00').toISOString().slice(0, 19);
+    }
+};
+
 class LiveScorecardSystem {
     constructor() {
         window.liveScorecardInstance = this;  // Expose for game config panels
@@ -89559,13 +89597,16 @@ class LiveScorecardSystem {
 
             const state = JSON.parse(saved);
 
-            // Check if state is stale (more than 24 hours old)
-            if (state.savedAt) {
-                const savedTime = new Date(state.savedAt).getTime();
-                const now = Date.now();
-                const hoursSince = (now - savedTime) / (1000 * 60 * 60);
-                if (hoursSince > 24) {
-                    console.log('[LiveScorecard] Saved round is more than 24 hours old, clearing');
+            // A round ends with its calendar day. This used to be "more than 24 hours old", which
+            // kept a morning round resumable until the following morning — and because the purge
+            // only ever ran on the phone that started it, a round nobody re-opened stayed
+            // in_progress for ever, holding the organizer board and Spectate Live (Paul Robertson,
+            // 2026-09-17 and again 2026-09-21). Date the round by its START, not by the last save.
+            const roundDayTs = state.roundStartTime || state.savedAt;
+            if (roundDayTs) {
+                if (window.RoundDay.isPastDay(roundDayTs)) {
+                    console.log('[LiveScorecard] Saved round is from ' + window.RoundDay.day(roundDayTs) +
+                        ' — a round ends with its calendar day, clearing');
                     // Also retire the DB cards (same rule as Discard: whole group when nobody scored,
                     // only MY card when scores exist) — this purge used to be localStorage-only, so
                     // dead false-start cards sat in_progress on the organizer board and Spectate for good.
@@ -89574,8 +89615,15 @@ class LiveScorecardSystem {
                         if (sb && state.scorecards) {
                             const anyScores = Object.values(state.scoresCache || {}).some(ph => ph && Object.keys(ph).length > 0);
                             const me = this._deviceUser();
-                            const ids = anyScores ? [state.scorecards?.[me]] : Object.values(state.scorecards || {});
-                            const dbIds = ids.filter(id => id && !String(id).startsWith('local_'));
+                            // A card carrying a COMPLETE round is a round that was played and never
+                            // got its FINISH tap — the DB sweep posts it to history. Abandoning it
+                            // here would destroy it, and this path can beat the sweep to the phone
+                            // (cron runs hourly). Leave every complete card alone; only dead ones go.
+                            const nHoles = (state.holeOrder && state.holeOrder.length) || 18;
+                            const isComplete = (pid) => Object.keys(state.scoresCache?.[pid] || {}).length >= nHoles;
+                            const ids = (anyScores ? [state.scorecards?.[me]] : Object.values(state.scorecards || {}))
+                                .filter(id => id && !Object.keys(state.scorecards || {}).some(pid => state.scorecards[pid] === id && isComplete(pid)));
+                            const dbIds = ids.filter(id => !String(id).startsWith('local_'));
                             if (dbIds.length) {
                                 sb.from('scorecards').update({ status: 'abandoned' }).in('id', dbIds).eq('status', 'in_progress')
                                     .then(() => console.log('[LiveScorecard] Stale cards marked abandoned:', dbIds.length), () => {});
@@ -90185,7 +90233,9 @@ class LiveScorecardSystem {
             try { await window.SupabaseDB?.waitForReady?.(); } catch (e) {}
             const sb = window.SupabaseDB?.client;
             if (!me || !sb) return null;
-            const since = new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString();
+            // TODAY only (Bangkok). An 18h rolling window still reached back into yesterday, so a
+            // card the sweep had not caught yet could pull the golfer back into a dead round.
+            const since = window.RoundDay.todayStartUtc();
             const { data: mineRows } = await sb.from('scorecards')
                 .select('group_id, created_at')
                 .eq('player_id', me).eq('status', 'in_progress')

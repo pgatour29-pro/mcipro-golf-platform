@@ -7960,6 +7960,10 @@
         /* the page wrapper keeps ~66px of bottom clearance for the nav — while the card owns
            the screen that is the difference between fitting and a pointless 30px scroll. */
         #golferDashboard.pcv-frame .max-w-7xl { padding-bottom:6px !important; }
+        /* Both float over the foot at the screen edges — scroll-to-top is meaningless on a
+           card that never scrolls, and the round's own way out is END / Finish. */
+        body.pcv-frame #globalScrollToTopBtn,
+        body.pcv-frame #dashboardBackBtn { display:none !important; }
         /* the tab carries min-height:100vh so short tabs still fill the screen — with the card
            that is 31px of empty page below the foot, i.e. a scroll with nothing in it. */
         #golferDashboard.pcv-frame #golfer-scorecard { min-height:0 !important; padding-bottom:0 !important; }
@@ -8242,7 +8246,12 @@
             flex:1; min-width:0; border:1px solid var(--pcv-line) !important; background:var(--pcv-card) !important;
             border-radius:11px; padding:8px 2px; font:700 9.5px/1 'Instrument Sans',sans-serif;
             color:var(--pcv-ink) !important; display:flex; align-items:center; justify-content:center; gap:4px;
-            cursor:pointer; white-space:nowrap; }
+            cursor:pointer; white-space:nowrap; overflow:hidden; }
+        /* a label can never push its pill wider than its share of the row */
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-foot button > span:not(.material-symbols-outlined) {
+            min-width:0; overflow:hidden; text-overflow:ellipsis; color:var(--pcv-ink) !important; }
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-foot button.pcv-fin > span { color:#ffffff !important; }
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-foot button > .material-symbols-outlined { flex:none; }
         #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-foot button .material-symbols-outlined {
             font-size:16px; color:var(--pcv-ink) !important; }
         #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-foot button.pcv-fin {
@@ -12774,6 +12783,7 @@
                 'scorecard.pcv.pause': 'Pause',
                 'scorecard.pcv.resume': 'Resume',
                 'scorecard.pcv.more': 'More',
+                'scorecard.pcv.board': 'Board',
                 'scorecard.pcv.theme': 'Theme',
                 'scorecard.pcv.pace': 'Pace',
                 'scorecard.pcv.map': 'Hole',
@@ -16093,6 +16103,7 @@
                 'scorecard.pcv.pause': 'หยุด',
                 'scorecard.pcv.resume': 'เล่นต่อ',
                 'scorecard.pcv.more': 'เพิ่มเติม',
+                'scorecard.pcv.board': 'อันดับ',
                 'scorecard.pcv.theme': 'ธีม',
                 'scorecard.pcv.pace': 'จังหวะ',
                 'scorecard.pcv.map': 'หลุม',
@@ -19281,6 +19292,7 @@
                 'scorecard.pcv.pause': '일시정지',
                 'scorecard.pcv.resume': '재개',
                 'scorecard.pcv.more': '더보기',
+                'scorecard.pcv.board': '순위',
                 'scorecard.pcv.theme': '테마',
                 'scorecard.pcv.pace': '페이스',
                 'scorecard.pcv.map': '홀',
@@ -22651,6 +22663,7 @@
                 'scorecard.pcv.pause': '一時停止',
                 'scorecard.pcv.resume': '再開',
                 'scorecard.pcv.more': 'その他',
+                'scorecard.pcv.board': '順位',
                 'scorecard.pcv.theme': 'テーマ',
                 'scorecard.pcv.pace': 'ペース',
                 'scorecard.pcv.map': 'ホール',
@@ -63148,7 +63161,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             </div>
                             <div id="pcvBody"></div>
                             <div class="pcv-foot">
-                                <button onclick="toggleLiveLeaderboard()"><span class="material-symbols-outlined">emoji_events</span><span data-i18n="scorecard.leaderboard">Leaderboard</span></button>
+                                <button onclick="toggleLiveLeaderboard()" aria-label="Leaderboard"><span class="material-symbols-outlined">emoji_events</span><span data-i18n="scorecard.pcv.board">Board</span></button>
                                 <button onclick="LiveScorecardManager.showJoinGamesModal()"><span class="material-symbols-outlined">casino</span><span data-i18n="scorecard.games">Games</span></button>
                                 <button id="pcvMoreBtn" onclick="LiveScorecardManager.pcvToggleMore()"><span class="material-symbols-outlined">more_horiz</span><span data-i18n="scorecard.pcv.more">More</span></button>
                                 <button class="pcv-fin" onclick="LiveScorecardManager.completeRound('finish')"><span class="material-symbols-outlined">check</span><span data-i18n="scorecard.pcv.finish">Finish</span></button>
@@ -104659,7 +104672,9 @@ class LiveScorecardSystem {
         // live on the strip and in MORE). Only while a round is actually on screen.
         try {
             const dash = document.getElementById('golferDashboard');
-            if (dash) dash.classList.toggle('pcv-frame', wantPaper && sec.offsetParent !== null);
+            const on = wantPaper && sec.offsetParent !== null;
+            if (dash) dash.classList.toggle('pcv-frame', on);
+            document.body.classList.toggle('pcv-frame', on);   // the floating buttons live on body
         } catch (e) { /* cosmetic */ }
         if (sec.classList.contains('trad-on') !== want) sec.classList.toggle('trad-on', want);
         const pill = document.getElementById('tradViewPill');

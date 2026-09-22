@@ -373,6 +373,7 @@
     /* a like is anonymous (Pete 2026-09-20): the row wears a heart, never a face or a name */
     .gfd-act .lkm{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:rgba(239,68,68,.14);color:#ef4444}
     .gfd-act .lkm .material-symbols-outlined{font-size:22px;font-variation-settings:'FILL' 1}
+    .gfd-act .lkm.tu{background:rgba(34,197,94,.16);color:#16a34a}
     .gfd-fbtn{flex:none;border:none;border-radius:10px;padding:8px 12px;background:var(--mkp-green);color:#fff;font:700 12px/1 'Instrument Sans',sans-serif;cursor:pointer}
     .gfd-fbtn.ghost{background:var(--mkp-glass2);color:var(--mkp-text);box-shadow:inset 0 0 0 1px var(--mkp-slo)}
     .gfd-sheet{position:fixed;inset:0;z-index:12000;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.5)}
@@ -1555,6 +1556,7 @@
             const grp = (a) => (a.type === 'enquiry' || a.type === 'offer') ? 'mkp' : a.type;
             const line = GF._actLine;
             const chips = [['all', tr('gfd.f.all', 'All')], ['mention', tr('gfd.f.mentions', 'Mentions')], ['like', tr('gfd.f.likes', 'Likes')],
+                ['thumb', tr('gfd.f.thumbs', 'Thumbs up')],
                 ['comment', tr('gfd.f.comments', 'Comments')], ['follow', tr('gfd.f.follows', 'Follows')], ['mkp', tr('hole19.title', '19th Hole')]];
             // Pete 2026-09-20: a like never names the golfer who gave it — anywhere. The rows
             // collapse to one per post, hearts and a count; comments, mentions and follows keep
@@ -1562,7 +1564,16 @@
             // thing the rows show (a post's likes counted once, not once per like row).
             const all = [];
             const byPost = new Map();
+            // v1325: 👍 on a Results page — one row per EVENT, and unlike likes the givers ARE named
+            // (Pete: "show the user id unlike Tap-in").
+            const byEvent = new Map();
             list.forEach(a => {
+                if (a.type === 'thumb') {
+                    const g = byEvent.get(a.event_id || '');
+                    if (g) { g.n += 1; if (a.actor) g.actors.push(a.actor); if (a.is_new) g.is_new = true; if (new Date(a.at) > new Date(g.at)) g.at = a.at; return; }
+                    const one = { type: 'thumb', n: 1, actors: a.actor ? [a.actor] : [], at: a.at, is_new: a.is_new, event_id: a.event_id, body: a.body };
+                    byEvent.set(a.event_id || '', one); all.push(one); return;
+                }
                 if (a.type !== 'like') { all.push(a); return; }
                 const add = a.n || 1;   // the server sends the boosted slice as ONE row carrying its count
                 const g = byPost.get(a.post_id || '');
@@ -1571,7 +1582,7 @@
                 byPost.set(a.post_id || '', one); all.push(one);
             });
             // A chip carries what its section adds up to; it goes red only when some of it is new.
-            const size = (r) => r.type === 'like' ? (r.total || r.n || 0) : 1;
+            const size = (r) => r.type === 'like' ? (r.total || r.n || 0) : r.type === 'thumb' ? (r.n || 1) : 1;
             const tot = (k, onlyNew) => all.reduce((t, r) => t + ((k === 'all' || grp(r) === k) && (!onlyNew || r.is_new) ? size(r) : 0), 0);
             const rows = all.filter(r => f === 'all' || grp(r) === f);
             const likeRow = (a) => {
@@ -1589,9 +1600,19 @@
                   <div class="tx"><b>${esc(cnt === 1 ? tr('gfd.a.likes.1', '1 like on your post') : tr('gfd.a.likes.n', '{n} likes on your post', { n: cnt }))}</b> <span>${esc(agoShort(a.at))}</span>${recent ? `<br><span>${esc(recent)}</span>` : ''}</div>
                   ${url(a.thumb) ? `<img class="th" src="${thumb(a.thumb, 160)}" alt="" loading="lazy">` : ''}</div>`;
             };
+            const thumbRow = (a) => {
+                const place = String(a.body || '').replace(/^[A-Z0-9]{2,6}\s*-\s*/, '');   // "TRGG - Laem Chabang" → "Laem Chabang"
+                const nm = (a.actors || []).map(x => x.name).filter(Boolean);
+                const who = nm.length <= 2 ? nm.join(' · ') : tr('gfd.a.thumbs.more', '{names} and {k} more', { names: nm.slice(0, 2).join(' · '), k: nm.length - 2 });
+                return `
+                <div class="gfd-act ${a.is_new ? 'new' : ''}"${a.event_id ? ` data-act="results" data-id="${esc(a.event_id)}"` : ' style="cursor:default"'}>
+                  <span class="lkm tu">${mi('thumb_up')}</span>
+                  <div class="tx"><b>${esc(a.n === 1 ? tr('gfd.a.thumbs.1', '1 thumbs up on your {e} result', { e: place }) : tr('gfd.a.thumbs.n', '{n} thumbs up on your {e} result', { n: a.n, e: place }))}</b> <span>${esc(agoShort(a.at))}</span>${who ? `<br><span>${esc(who)}</span>` : ''}</div>
+                  ${a.actors && a.actors[0] ? av(a.actors[0], 36) : ''}</div>`;
+            };
             const box = document.getElementById('gfdAct'); if (!box) return;
             box.innerHTML = `<div class="gfd-chips">${chips.map(([k, l]) => { const n = tot(k), nw = tot(k, true); return `<button class="${f === k ? 'on' : ''}" data-act="actfilter" data-v="${k}">${esc(l)}${n ? `<span class="gfd-tabn${nw ? '' : ' q'}">${n > 999 ? '999+' : n}</span>` : ''}</button>`; }).join('')}</div>`
-                + (rows.length ? `<div class="mkp-card" style="padding:4px 12px">${rows.map(a => a.type === 'like' ? likeRow(a) : `
+                + (rows.length ? `<div class="mkp-card" style="padding:4px 12px">${rows.map(a => a.type === 'like' ? likeRow(a) : a.type === 'thumb' ? thumbRow(a) : `
                 <div class="gfd-act ${a.is_new ? 'new' : ''}" data-act="${a.post_id ? 'openpost' : a.listing_id ? 'listing' : 'profile'}" data-id="${esc(a.post_id || a.listing_id || a.actor.id)}">
                   <span data-act="profile" data-id="${esc(a.actor.id)}">${av(a.actor, 40)}</span>
                   <div class="tx"><b>${esc(a.actor.name)}</b>${tick(a.actor)} ${esc(line(a))} ${a.page ? `<i class="pg">${esc(tr('gfd.a.onpage', '· {p}', { p: a.page.name }))}</i> ` : ''}<span>${esc(agoShort(a.at))}</span></div>
@@ -1826,6 +1847,7 @@
             add(c.mentions || 0, '{n} mention', '{n} mentions', 'gfd.c.mention', 'gfd.c.mentions');
             add(c.comments || 0, '{n} comment', '{n} comments', 'gfd.c.comment', 'gfd.c.comments');
             add(c.likes || 0, '{n} like', '{n} likes', 'gfd.c.like', 'gfd.c.likes');
+            add(c.thumbs || 0, '{n} thumbs up', '{n} thumbs up', 'gfd.c.thumb', 'gfd.c.thumbs');
             add(c.follows || 0, '{n} new follower', '{n} new followers', 'gfd.c.follow', 'gfd.c.follows');
             add(c.mkp || 0, '{n} 19th Hole', '{n} 19th Hole', 'gfd.c.mkp', 'gfd.c.mkp');
             // the approved cube line: new posts first, then the most important interaction ("3 new posts · 1 mention")
@@ -1975,7 +1997,7 @@
             if (what === 'intro') return;
             if (what === 'feed') { GF.counts.feed_new = 0; GF.counts.feed_seen_at = now; if (GF.counts.intro) { GF.counts.intro = false; } document.getElementById('gfdIntro')?.remove(); }
             else if (what === 'following') { GF.counts.following_new = 0; GF.counts.following_seen_at = now; }
-            else { GF.counts.activity_new = 0; ['mentions', 'likes', 'comments', 'follows', 'mkp'].forEach(k => { GF.counts[k] = 0; }); }
+            else { GF.counts.activity_new = 0; ['mentions', 'likes', 'comments', 'follows', 'mkp', 'thumbs'].forEach(k => { GF.counts[k] = 0; }); }
             GF.paintBadges();
             const hb = document.querySelector('#gfdRoot [data-act="activity"] .mkp-bdgr'); if (hb && what === 'activity') hb.remove();
         },
@@ -2019,6 +2041,13 @@
                 MarketplaceSystem.openDetailModal(id);
                 if (GF._ov) { const m = document.getElementById('listingDetailModal'); if (m) m.style.zIndex = '11600'; }   // above the dashboard overlay
             } catch (e) { }
+        },
+        // v1325: a 👍 row opens that event's Results in-app (the page the thumbs up was given on)
+        openResults(eventId) {
+            if (!eventId) return;
+            try { if (GF._ov) GF.closeOverlay(); } catch (e) { }
+            try { if (window.SocietyResultsHub) { SocietyResultsHub.showEvent(eventId); return; } } catch (e) { }
+            location.href = 'results.html?event=' + encodeURIComponent(eventId);
         },
         needLogin() { toast(tr('gfd.signin', 'Sign in with LINE to post on Tap-In.'), 'info'); },
 
@@ -2067,6 +2096,7 @@
                 case 'comment': GF.addComment(id); break;
                 case 'delcomment': rpc('golf_comment_delete', { p_user: uid(), p_comment: id }).then(() => { const p = GF._posts[el.dataset.post]; if (p) p.comments = Math.max(0, (p.comments || 1) - 1); GF.paintCount(el.dataset.post); GF.loadComments(el.dataset.post); }).catch(x => toast(x.message, 'error')); break;
                 case 'listing': GF.openListing(id); break;
+                case 'results': GF.openResults(id); break;
                 case 'follows': if (GF._prof) GF.go({ s: 'follows', id: GF._prof.id, which: v }); break;
                 case 'follow': GF.follow(id, el.dataset.on === '1', el); break;
                 case 'followbtn': GF.follow(id, el.dataset.on === '1', el); break;

@@ -174203,6 +174203,13 @@ window.PaperCardEntry = {
     courseData: null, groupOf: {}, posted: {}, count: 0, _dirHits: [], _dirSeq: 0,
     _oneTimer: null, _keyBound: null, nineSel: null, nineF: '', nineB: '', comboName: null,
     _esc: function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
+    // HARD RULE (Pete 2026-08-23, again 2026-09-22): every "who are you scoring" list on the
+    // paper card is A–Z by SURNAME — never tee-sheet group, ranking or registration order.
+    // "Bacon, Randy" sorts on Bacon, "Billy Shepley" on Shepley; full name breaks ties.
+    _nameCmp: function(a, b){
+        var sn = function(n){ n = String(n || '').trim(); var c = n.indexOf(','); if (c > 0) return n.slice(0, c).trim(); var w = n.split(/\s+/); return w[w.length - 1] || ''; };
+        return sn(a).localeCompare(sn(b), undefined, { sensitivity: 'base' }) || String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base' });
+    },
 
     open: async function(){
         var OSS = window.OrganizerScoringSystem;
@@ -174309,8 +174316,7 @@ window.PaperCardEntry = {
             // auto-advance walks the same alphabetical order. "Bacon, Randy" sorts on Bacon,
             // "Billy Shepley" on Shepley (same rule as the hole-by-hole grid).
             players: Array.isArray(opts.players) ? opts.players.map(function(p){ return { id: p.id, name: p.name, hcp: p.hcp, posted: !!p.posted, gross: p.gross }; }).sort(function(a, b){
-                var sn = function(n){ n = String(n || '').trim(); var c = n.indexOf(','); if (c > 0) return n.slice(0, c).trim(); var w = n.split(/\s+/); return w[w.length - 1] || ''; };
-                return sn(a.name).localeCompare(sn(b.name), undefined, { sensitivity: 'base' }) || String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+                return PaperCardEntry._nameCmp(a.name, b.name);
             }) : null,
             activeId: opts.activeId != null ? opts.activeId : null,
             onPick: opts.onPick || null,
@@ -175062,8 +175068,10 @@ window.PaperCardEntry = {
             if (term && String(p.player_name || '').toLowerCase().indexOf(term) < 0) return;
             if (self.posted[String(p.player_id)]) done.push(p); else un.push(p);
         });
-        var gnum = function(p){ var g = self.groupOf[String(p.player_id)]; return g ? parseInt(g.slice(1)) : 999; };
-        un.sort(function(a, b){ return gnum(a) - gnum(b) || String(a.player_name).localeCompare(String(b.player_name)); });
+        // v1330: A–Z by surname, BOTH lists (was tee-sheet group order + first name; posted unsorted).
+        // The G# badge still shows on each row — it just no longer drives the order.
+        var byName = function(a, b){ return self._nameCmp(a.player_name, b.player_name); };
+        un.sort(byName); done.sort(byName);
         var rows = '';
         var pinPts = (this._cardHcpVal() != null && this._filled()) ? this._cardPtsTots().tot : null;
         rows += '<div class="pce-sum"><span>' + (t.out || 0) + ' + ' + (t.inn || 0) + ' = ' + (t.tot || 0) + ' ' + this._esc(_lvT('pce.gross','GROSS')) + (pinPts != null ? ' · ' + pinPts + ' ' + this._esc(_lvT('pce.pts','PTS')) : '') + '</span><span style="font:600 9px/1.3 \'JetBrains Mono\',monospace;color:#64748b;">' + this._esc(_lvT('pce.autocalc','NET & PTS AUTO')) + '</span></div>';

@@ -28,12 +28,18 @@ const COURSE_MAP: Record<string, string> = {
   "khao kheow": "Khao Kheow Country Club",
   "burapha": "Burapha Golf Club",
   "siam country club": "Siam Country Club",
+  "siam plantation": "Siam Plantation Golf Club",
 };
 
 function mapCourseName(raw: string): string {
   const lower = raw.trim().toLowerCase();
   return COURSE_MAP[lower] || raw.trim();
 }
+
+// Annotations the site writes INTO the course cell: "LAEM CHABANG (Max 15)" is a player
+// cap, "PHOENIX 4 GROUPS" a wave size. Neither is part of the course name.
+const MAX_RE = /\(\s*max\.?\s*(\d+)\s*\)/i;
+const GROUPS_RE = /\b(\d+)\s*groups?\b/i;
 
 interface ParsedEvent {
   date: string; // YYYY-MM-DD
@@ -45,6 +51,8 @@ interface ParsedEvent {
   green_fee: number;
   event_type: string;
   nine_info: string; // e.g. "S-E", "N-W" for Plutaluang
+  max_participants: number | null; // "(Max 15)" in the course cell; null = the site set no cap
+  groups: number | null;           // "4 GROUPS" in the course cell
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -143,38 +151,79 @@ function parseScheduleHTML(html: string): { events: ParsedEvent[]; warnings: str
 
       const dateFormatted = `${year}-${pad2(month)}-${pad2(day)}`;
 
-      // Parse nine info from course name (e.g., "Plutaluang S-E")
-      let nineInfo = '';
-      const nineMatch = courseStr.match(/([NS])-([EW])/i);
-      if (nineMatch) nineInfo = nineMatch[0].toUpperCase();
-
       // Parse times — handles both "09:00" and "09.00" formats
       const parseTime = (s: string) => {
         const m = s.match(/(\d{1,2})[:.:](\d{2})/);
         return m ? `${m[1].padStart(2, '0')}:${m[2]}` : '';
       };
 
-      // Parse green fee
-      const feeMatch = feeStr.match(/(\d[\d,]*)/);
-      const greenFee = feeMatch ? parseInt(feeMatch[1].replace(/,/g, '')) : 0;
-
-      // Determine event type from course name (e.g., "ST ANDREWS FREE FOOD FRIDAY")
-      let eventType = 'Regular';
-      if (courseStr.match(/scramble|stroke|stableford|medal|competition|championship|cup|trophy/i)) {
-        eventType = courseStr;
+      // TWO EVENTS IN ONE ROW. The site stacks a second event into the same <tr> with a
+      // <br /> in every cell — 22 Sep 2026: "LAEM CHABANG (Max 15)<br />SIAM PLANTATION",
+      // departures "10.00<br />08.15", tees "11.00<br />09.15", fees "3950<br />4050".
+      // Stripping the tags glued the two courses into one name and kept only the first
+      // time and fee, so Siam Plantation never existed in the app. (Pete: "sometimes trgg
+      // will have 2 events for the same day".) The TIME cells decide: two times = two
+      // events. One time under a two-line course cell is ONE event with a label on its
+      // second line ("GREEN VALLEY<br />TWO MAN SCRAMBLE") — that stays exactly as before.
+      const lines = (s: string) => s.split(/<br\s*\/?>/i).map(clean).filter(Boolean);
+      const courseLines = lines(cells[2]);
+      const depLines = lines(cells[3]);
+      const teeLines = lines(cells[4]);
+      const feeLines = cells[5] ? lines(cells[5]) : [];
+      const waves = Math.max(depLines.length, teeLines.length);
+      let slots = [{ course: courseStr, dep: departureStr, tee: teeTimeStr, fee: feeStr }];
+      if (waves > 1) {
+        if (courseLines.length === waves || courseLines.length === 1) {
+          // one course line + two times = two waves at the same course
+          slots = Array.from({ length: waves }, (_, i) => ({
+            course: courseLines[i] ?? courseLines[0],
+            dep: depLines[i] ?? depLines[0] ?? '',
+            tee: teeLines[i] ?? teeLines[0] ?? '',
+            fee: feeLines[i] ?? feeLines[0] ?? '',
+          }));
+        } else {
+          warnings.push(`"${dateStr} ${dayStr}": ${courseLines.length} course lines but ${waves} times — read as ONE event, check the site`);
+        }
       }
 
-      events.push({
-        date: dateFormatted,
-        day: dayStr,
-        course_raw: courseStr,
-        course_name: mapCourseName(courseStr),
-        departure_time: parseTime(departureStr),
-        tee_time: parseTime(teeTimeStr),
-        green_fee: greenFee,
-        event_type: eventType,
-        nine_info: nineInfo,
-      });
+      for (const slot of slots) {
+        const maxMatch = slot.course.match(MAX_RE);
+        const groupsMatch = slot.course.match(GROUPS_RE);
+        // Only an annotated cell is rewritten: any other change to the course text renames an
+        // existing event, and a course_name change fires a LINE message to every member.
+        const courseText = (maxMatch || groupsMatch)
+          ? slot.course.replace(MAX_RE, ' ').replace(GROUPS_RE, ' ').replace(/\s+/g, ' ').trim()
+          : slot.course;
+
+        // Parse nine info from course name (e.g., "Plutaluang S-E")
+        let nineInfo = '';
+        const nineMatch = courseText.match(/([NS])-([EW])/i);
+        if (nineMatch) nineInfo = nineMatch[0].toUpperCase();
+
+        // Parse green fee
+        const feeMatch = slot.fee.match(/(\d[\d,]*)/);
+        const greenFee = feeMatch ? parseInt(feeMatch[1].replace(/,/g, '')) : 0;
+
+        // Determine event type from course name (e.g., "ST ANDREWS FREE FOOD FRIDAY")
+        let eventType = 'Regular';
+        if (courseText.match(/scramble|stroke|stableford|medal|competition|championship|cup|trophy/i)) {
+          eventType = courseText;
+        }
+
+        events.push({
+          date: dateFormatted,
+          day: dayStr,
+          course_raw: courseText,
+          course_name: mapCourseName(courseText),
+          departure_time: parseTime(slot.dep),
+          tee_time: parseTime(slot.tee),
+          green_fee: greenFee,
+          event_type: eventType,
+          nine_info: nineInfo,
+          max_participants: maxMatch ? parseInt(maxMatch[1]) : null,
+          groups: groupsMatch ? parseInt(groupsMatch[1]) : null,
+        });
+      }
     }
 
     // Now apply any month header found in this chunk — it governs the FOLLOWING rows
@@ -210,6 +259,7 @@ interface ExistingRow {
   created_at: string;
   sync_source: string | null;
   organizer_override: boolean | null;
+  max_participants: number | null;
 }
 
 // Provenance stamp on rows this sync creates or adopts. Website-primary rule
@@ -278,7 +328,7 @@ Deno.serve(async (req) => {
     // UUIDs, so society_id alone misses rows and re-inserts them as duplicates.
     const { data: existingEvents, error: existErr } = await supabase
       .from('society_events')
-      .select('id, society_id, event_date, course_name, title, start_time, departure_time, entry_fee, transport_fee, format, status, description, created_at, sync_source, organizer_override')
+      .select('id, society_id, event_date, course_name, title, start_time, departure_time, entry_fee, transport_fee, format, status, description, created_at, sync_source, organizer_override, max_participants')
       .or(`society_id.eq.${TRGG_SOCIETY_ID},title.ilike.TRGG*`)
       .gte('event_date', todayBkk);
 
@@ -326,6 +376,8 @@ Deno.serve(async (req) => {
     // registrations can follow the schedule change.
     const canonicalByDate = new Map<string, string>();
     const organizerKept: Array<{ date: string; id: string; title: string }> = [];
+    // Rows already taken as some website event's canonical row in this run.
+    const claimedIds = new Set<string>();
 
     const normTime = (t: string | null | undefined) => (t || '').slice(0, 5); // HH:MM vs HH:MM:SS
 
@@ -361,7 +413,16 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const rows = (byDate.get(evt.date) || []).filter(r => matchesEvent(r, evt));
+      // Same-course waves (8 Oct: PHOENIX 4 GROUPS 11.28 / PHOENIX 6 GROUPS 11.45): each
+      // website event gets its OWN row. A row another event on this date already took, or
+      // whose tee time IS another same-course event's, is that event's row — grabbing it
+      // would re-time it (a LINE message) and leave the other wave to insert a second one.
+      const siblingTees = new Set(events
+        .filter(o => o !== evt && o.date === evt.date && o.course_name === evt.course_name)
+        .map(o => normTime(o.tee_time)));
+      const rows = (byDate.get(evt.date) || []).filter(r =>
+        matchesEvent(r, evt) && !claimedIds.has(r.id) &&
+        !(siblingTees.has(normTime(r.start_time)) && normTime(r.start_time) !== normTime(evt.tee_time)));
       for (const r of rows) matchedIds.add(r.id);
 
       // Build title
@@ -380,7 +441,7 @@ Deno.serve(async (req) => {
         start_time: evt.tee_time,
         departure_time: evt.departure_time,
         course_name: evt.course_name,
-        description: `Green Fee: ฿${evt.green_fee} (incl. caddy & cart)${evt.nine_info ? ` | Nines: ${evt.nine_info}` : ''}`,
+        description: `Green Fee: ฿${evt.green_fee} (incl. caddy & cart)${evt.nine_info ? ` | Nines: ${evt.nine_info}` : ''}${evt.groups ? ` | ${evt.groups} groups` : ''}`,
         format: evt.event_type === 'Monthly Medal Stroke' ? 'medal_stroke'
               : evt.event_type === 'Two Man Scramble' ? 'scramble'
               : 'stableford',
@@ -389,6 +450,8 @@ Deno.serve(async (req) => {
         // Far course = ฿400 bus; locals store 0 (the ฿300 fallback governs)
         transport_fee: isFarCourse(`${evt.course_name} ${title}`) ? 400 : 0,
         sync_source: SYNC_SOURCE,
+        // "(Max 15)" on the site = the cap. No tag = leave whatever the organizer set.
+        ...(evt.max_participants != null ? { max_participants: evt.max_participants } : {}),
       };
 
       if (rows.length === 0) {
@@ -404,7 +467,7 @@ Deno.serve(async (req) => {
           errors.push(`Insert ${evt.date} ${evt.course_name}: ${error.message}`);
         } else {
           inserted++;
-          if (ins?.id) canonicalByDate.set(evt.date, String(ins.id));
+          if (ins?.id) { canonicalByDate.set(evt.date, String(ins.id)); claimedIds.add(String(ins.id)); }
         }
         continue;
       }
@@ -418,6 +481,7 @@ Deno.serve(async (req) => {
         a.created_at.localeCompare(b.created_at)
       )[0];
       canonicalByDate.set(evt.date, canonical.id);
+      claimedIds.add(canonical.id);
 
       // An organizer cancellation wins over the website — never resurrect
       if ((canonical.status || '') === 'cancelled') {
@@ -443,6 +507,7 @@ Deno.serve(async (req) => {
           (canonical.description || '') !== eventData.description ||
           (canonical.format || '') !== eventData.format ||
           (canonical.status || '') !== eventData.status ||
+          (evt.max_participants != null && Number(canonical.max_participants || 0) !== evt.max_participants) ||
           (canonical.society_id || '') !== TRGG_SOCIETY_ID ||
           // Adopt: stamp provenance on rows that match the website but were
           // written by another path (scheduler/legacy). LINE-silent — the

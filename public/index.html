@@ -8115,6 +8115,10 @@
         #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-g td.hn s {
             display:block; text-decoration:none; font:600 9.5px/1.4 'JetBrains Mono',monospace; color:var(--pcv-mut) !important; }
         #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-g tr.cur td { background:var(--pcv-grnS) !important; }
+        /* the live 3-hole window, marked on the card (pace = every 3 holes) */
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-g tr.blk td { background:var(--pcv-grnS) !important; }
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-g tr.blk td.hn { box-shadow:inset 3px 0 0 var(--pcv-grnB) !important; }
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-hrow.blk { background:var(--pcv-grnS) !important; }
         #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-g tr.cur td.hn {
             box-shadow:inset 3px 0 0 var(--pcv-grn) !important; }
         #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-g tr.cur td.hn b { color:var(--pcv-grnD) !important; }
@@ -103691,7 +103695,11 @@ class LiveScorecardSystem {
         return !(this.scoringFormats || []).includes('scramble');
     }
     _paceOn() {
-        return this.paceMode === 3 && this._paceAllowed() && !this._tradOn() && !this._paperOn();
+        // v1312: the paper card honours the 3-hole window too. It was excluded here, so the
+        // pace rotation (_paceAdvanceAfterSave, which is what walks one player's three holes
+        // before moving to the next player) never ran there — the card fell back to the
+        // per-hole group rotation, which is exactly what Pete called counter-intuitive.
+        return this.paceMode === 3 && this._paceAllowed() && !this._tradOn();
     }
     // The cards this device actually enters — the SAME set the keypad rotates through.
     // Solo, a team, or the whole group all fall out of ownership, so there is nothing to
@@ -103923,6 +103931,7 @@ class LiveScorecardSystem {
         this.currentPlayerId = pid;
         this.currentScore = '';
         try { this._applyPaceBlock(); } catch (e) { /* cosmetic */ }
+        try { if (this._paperOn()) this.renderPaperCard(); } catch (e) { /* cosmetic */ }
         try { this._paintEntryPreview(); } catch (e) { /* cosmetic */ }
         try { this.updateGoToCurrentButton(); } catch (e) {}
         this.debouncedSaveRoundState();
@@ -103971,7 +103980,9 @@ class LiveScorecardSystem {
         if (!sec) return;
         this._paceSyncRail();
         const old = document.getElementById('paceBlockPanel');
-        const idxs = (this._paceOn() && (this.players || []).length) ? this._paceBlockIdxs() : [];
+        // The paper card draws the block on the card itself; the keypad's panel would just be
+        // built and then hidden by the .paper-on blanket rule.
+        const idxs = (this._paceOn() && !this._paperOn() && (this.players || []).length) ? this._paceBlockIdxs() : [];
         if (!idxs.length) {
             sec.classList.remove('pace-on');
             if (old) old.remove();
@@ -104951,6 +104962,18 @@ class LiveScorecardSystem {
                 + _lvT('scorecard.own.theirphone2', 'scoring on their own phone — flip the switch above their name to take the card back'), 'info');
             return;
         }
+        if (this._paceOn()) {
+            // In the 3-hole window every cell of the block IS a rotation stop, so a tap moves
+            // the pace cursor (which sets currentHole + currentPlayerId) rather than opening a
+            // one-off edit — otherwise the next key would land back in the engine's cell.
+            const block = this._paceCells();
+            if (block.some(c => String(c.pid) === String(pid) && Number(c.hole) === hole)) {
+                this._pcvSel = null;
+                this._paceMoveCursor(pid, hole);
+                this.renderPaperCard();
+                return;
+            }
+        }
         if (hole === this.currentHole) {
             // The current hole is the live rotation — ride the engine's own selection.
             this._pcvSel = null;
@@ -104977,11 +105000,13 @@ class LiveScorecardSystem {
         const t = this._pcvTarget();
         if (!t.pid) { window.NotificationManager?.show(_lvT('scorecard.selectplayer', 'Select a player'), 'warning'); return; }
         if (!this._ownsCard(t.pid)) { this._pcvSel = null; this.renderPaperCard(); return; }   // fail closed
-        const down = this._pcvFlow() === 'down';
+        const pace = this._paceOn();
+        const down = !pace && this._pcvFlow() === 'down';
         if (t.cur) {
             this.enterDigit(n);   // engine path: rotation, pace window, pools, toasts
             // ACROSS is the engine's own rotation, so it keeps the cursor. DOWN parks it on
-            // the same player's next hole, which from there rides the edit writer.
+            // the same player's next hole, which from there rides the edit writer. In PACE the
+            // engine walks one player's three holes then the next player — never override it.
             this._pcvSel = (down && t.hole < 18) ? { pid: t.pid, hole: t.hole + 1 } : null;
             this.renderPaperCard();
             return;
@@ -104989,8 +105014,8 @@ class LiveScorecardSystem {
         const prev = this.scoresCache?.[t.pid]?.[t.hole];
         this._scEdit = { playerId: t.pid, hole: t.hole, value: n, prev: (typeof prev === 'number' ? prev : null) };
         this.saveScorecardEdit();   // v763 path — writes, repaints, never moves the hole
-        this._pcvSel = down
-            ? (t.hole < 18 ? { pid: t.pid, hole: t.hole + 1 } : null)
+        this._pcvSel = pace ? null
+            : down ? (t.hole < 18 ? { pid: t.pid, hole: t.hole + 1 } : null)
             : this._pcvNextAcross(t);
         this.renderPaperCard();
     }
@@ -105069,6 +105094,7 @@ class LiveScorecardSystem {
         const shots = this._pcvShotMap(p);
         const hcpNum = (p.handicap !== undefined && p.handicap !== null && p.handicap !== ''
             && Number.isFinite(Number(p.handicap))) ? Math.round(Number(p.handicap)) : null;
+        const blk = this._pcvBlockHoles();
         const col = (from, cap) => {
             let rows = '', parSum = 0;
             for (let h = from; h < from + 9; h++) {
@@ -105076,7 +105102,8 @@ class LiveScorecardSystem {
                 const par = g.par || 4, si = g.stroke_index || g.strokeIndex || h;
                 parSum += par;
                 const pv = pts ? this._pcvHolePts(p, h, shots) : null;
-                rows += '<div class="pcv-hrow"><span class="h">' + h + '</span>'
+                const inBlk = blk && blk.indexOf(h) >= 0;
+                rows += '<div class="pcv-hrow' + (inBlk ? ' blk' : '') + '"><span class="h">' + h + '</span>'
                     + '<span class="p">P' + par + '&middot;S' + si + '</span>'
                     + '<span class="pts">' + (pv == null ? '' : pv) + '</span>'
                     + this._pcvCellHTML(p, h, mine, shots[h]) + '</div>';
@@ -105098,6 +105125,15 @@ class LiveScorecardSystem {
             + '<div class="pcv-tot g"><div class="k">TOTAL</div><div class="v">' + (out + inn) + '</div></div>'
             + '<div class="pcv-tot g"><div class="k">' + (pts ? 'PTS' : 'NET') + '</div><div class="v">' + (total || 0) + '</div></div>'
             + '</div>';
+    }
+    // The holes in the live 3-hole window, so the card can show the block it is working.
+    _pcvBlockHoles() {
+        if (!this._paceOn()) return null;
+        try {
+            const order = this.holeOrder || [];
+            const hs = this._paceBlockIdxs().map(i => order[i]).filter(h => h != null);
+            return hs.length ? hs : null;
+        } catch (e) { return null; }
     }
     _pcvGroupHTML() {
         const players = this.players || [];
@@ -105122,11 +105158,13 @@ class LiveScorecardSystem {
         });
         html += '</tr></thead><tbody>';
         let parSum = 0;
+        const blk = this._pcvBlockHoles();
         for (let h = from; h < from + 9; h++) {
             const g = this.getHoleData(h) || {};
             const par = g.par || 4, si = g.stroke_index || g.strokeIndex || h;
             parSum += par;
-            html += '<tr class="' + (h === this.currentHole ? 'cur' : '') + '">'
+            const rowCls = (h === this.currentHole) ? 'cur' : ((blk && blk.indexOf(h) >= 0) ? 'blk' : '');
+            html += '<tr class="' + rowCls + '">'
                 + '<td class="hn"><b>' + h + '</b><s>P' + par + '&middot;S' + si + '</s></td>';
             players.forEach(p => {
                 html += '<td>' + this._pcvCellHTML(p, h, this._ownsCard(p.id), (shotMaps[p.id] || {})[h]) + '</td>';
@@ -105156,10 +105194,22 @@ class LiveScorecardSystem {
         const shTxt = sh > 0 ? (sh + ' ' + _lvT('scorecard.pcv.shot', 'SHOT') + (sh > 1 ? 'S' : ''))
                              : _lvT('scorecard.pcv.noshot', 'NO SHOT');
         // ONE line: the card has to fit one screen, and two lines here cost 14px of it.
+        const blk = this._pcvBlockHoles();
+        let sub;
+        if (blk) {
+            // In the 3-hole window what matters is where you are IN the block.
+            const cards = this._paceCards();
+            const pi = Math.max(0, cards.findIndex(p => String(p.id) === String(t.pid)));
+            const done = blk.filter(h => typeof this.scoresCache?.[t.pid]?.[h] === 'number').length;
+            sub = this._pcvEsc(_lvT('scorecard.pace.block', 'BLOCK')) + ' ' + blk[0] + '-' + blk[blk.length - 1]
+                + ' &middot; <b>' + done + '/' + blk.length + '</b>'
+                + (cards.length > 1 ? '<br>P<b>' + (pi + 1) + '</b>/' + cards.length + ' &middot; ' + this._pcvEsc(shTxt) : '');
+        } else {
+            sub = this._pcvEsc(shTxt) + ' &middot; ' + this._pcvEsc(_lvT('scorecard.trad.netpar', 'NET PAR')) + ' <b>' + (par + sh) + '</b>';
+        }
         return '<div class="pcv-now"><span class="k">' + this._pcvEsc(_lvT('scorecard.pcv.nextkey', 'NEXT')) + '</span>'
             + '<span class="nm">' + this._pcvEsc(first) + ' &middot; H' + t.hole + '</span>'
-            + '<span class="sub">' + this._pcvEsc(shTxt) + ' &middot; '
-            + this._pcvEsc(_lvT('scorecard.trad.netpar', 'NET PAR')) + ' <b>' + (par + sh) + '</b></span></div>';
+            + '<span class="sub">' + sub + '</span></div>';
     }
     _pcvPadHTML() {
         const key = (n, cls) => '<button type="button" class="pcv-key' + (cls || '') + '"'

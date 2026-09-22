@@ -38592,6 +38592,8 @@ Sent from Login Page`;
                 try { KitchenQueue.close(); } catch (e) {}
                 return;
             }
+            // v1321: the payout formula sheet is body-mounted over the organizer Scoring page — back closes it first.
+            if (window.PayoutFormula && PayoutFormula.canBack()) { try { if (PayoutFormula.back()) return; } catch (e) {} }
             // v1255: the post-round caddy review sheet is body-mounted — back closes it first.
             if (window.CaddyReview && CaddyReview.canBack()) { try { if (CaddyReview.back()) return; } catch (e) {} }
             // CMV2 (v1250): caddy master sheets (assign / new job / caddy / course) are body-mounted — back closes them first.
@@ -71762,6 +71764,103 @@ document.addEventListener('DOMContentLoaded', function() {
                             </button>
                         </div>
                     </div>
+
+                    <!-- PAYOUTS (v1321) — the society's payout formula applied live to this board.
+                         ORGANIZERS ONLY: window.PayoutFormula hides it in golfer mode. Winners see just
+                         their own amount, in Chips, once the organizer publishes. -->
+                    <style>
+                    #orgPayoutCard{border:1px solid #e5e7eb;border-radius:14px;background:#fff;overflow:hidden;margin:2px 0 14px;}
+                    #orgPayoutCard .po-hd{display:flex;align-items:center;gap:7px;padding:10px 10px 10px 12px;background:#fffbeb;border-bottom:1px solid #fde68a;}
+                    #orgPayoutCard .po-hd .ic{color:#ca8a04;font-size:19px;}
+                    #orgPayoutCard .po-hd .tt{display:flex;flex-direction:column;gap:4px;min-width:0;}
+                    #orgPayoutCard .po-hd .t{font:800 11px/1 system-ui,sans-serif;letter-spacing:.08em;color:#92400e;}
+                    #orgPayoutCard .po-hd .band{font:600 10px/1.2 ui-monospace,monospace;color:#92400e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+                    #orgPayoutCard .po-hd .gear{margin-left:auto;flex:0 0 auto;display:flex;align-items:center;gap:4px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;padding:6px 9px;font:700 11px/1 system-ui,sans-serif;color:#374151;cursor:pointer;}
+                    #orgPayoutCard .po-hd .gear .material-symbols-outlined{font-size:16px;color:#4b5563;}
+                    #orgPayoutCard .po-dh{display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:#f0f9ff;border-bottom:1px solid #e0f2fe;font:800 11px/1 system-ui,sans-serif;color:#0369a1;letter-spacing:.03em;}
+                    #orgPayoutCard .po-dh .n{font:600 10.5px/1 ui-monospace,monospace;color:#0369a1;}
+                    #orgPayoutCard .po-row{display:flex;align-items:center;gap:9px;padding:8px 12px;border-bottom:1px solid #f3f4f6;}
+                    #orgPayoutCard .po-pl{flex:0 0 auto;width:34px;text-align:center;border-radius:7px;padding:4px 0;font:800 10.5px/1 ui-monospace,monospace;background:#f8fafc;color:#475569;border:1px solid #e2e8f0;}
+                    #orgPayoutCard .po-pl.p1{background:#fef3c7;color:#92400e;border-color:#fef3c7;}
+                    #orgPayoutCard .po-pl.p2{background:#f1f5f9;color:#334155;border-color:#f1f5f9;}
+                    #orgPayoutCard .po-pl.p3{background:#ffedd5;color:#9a3412;border-color:#ffedd5;}
+                    #orgPayoutCard .po-nm{min-width:0;flex:1 1 auto;}
+                    #orgPayoutCard .po-nm .nm{font:700 12.5px/1.2 system-ui,sans-serif;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+                    #orgPayoutCard .po-nm .nm.wait{color:#6b7280;font-weight:600;}
+                    #orgPayoutCard .po-nm .sub{font:600 10px/1.2 ui-monospace,monospace;color:#6b7280;margin-top:2px;}
+                    #orgPayoutCard .po-amt{margin-left:auto;font:800 14px/1 ui-monospace,monospace;color:#111827;white-space:nowrap;}
+                    #orgPayoutCard .po-amt.g{color:#16a34a;}
+                    #orgPayoutCard .po-2h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;background:#f0fdf4;border-top:1px solid #bbf7d0;border-bottom:1px solid #bbf7d0;}
+                    #orgPayoutCard .po-2h .t{font:800 11px/1 system-ui,sans-serif;letter-spacing:.08em;color:#16a34a;}
+                    #orgPayoutCard .po-2h .calc{margin-left:auto;font:600 10.5px/1 ui-monospace,monospace;color:#15803d;}
+                    #orgPayoutCard .n2{flex:0 0 auto;width:34px;height:24px;border-radius:7px;background:#22c55e;color:#fff;display:flex;align-items:center;justify-content:center;font:800 13px/1 ui-monospace,monospace;}
+                    #orgPayoutCard .po-empty{padding:12px;font:500 12px/1.45 system-ui,sans-serif;color:#4b5563;}
+                    #orgPayoutCard .po-tot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;background:#fafafa;font:700 12px/1 system-ui,sans-serif;color:#374151;}
+                    #orgPayoutCard .po-tot b{font:800 16px/1 ui-monospace,monospace;color:#111827;}
+                    #orgPayoutCard .po-tot .split{font:600 10.5px/1.3 ui-monospace,monospace;color:#6b7280;margin-top:3px;}
+                    #orgPayoutCard .po-note{padding:0 12px 10px;background:#fafafa;font:500 10.5px/1.45 system-ui,sans-serif;color:#6b7280;}
+                    #orgPayoutCard .po-note .live{color:#16a34a;font-weight:800;}
+                    #orgPayoutCard .po-setup{display:inline-flex;align-items:center;gap:5px;margin-top:9px;background:#16a34a;color:#fff;border:none;border-radius:10px;padding:9px 13px;font:800 12.5px/1 system-ui,sans-serif;cursor:pointer;}
+                    /* Formula sheet — body-mounted by PayoutFormula.openSheet() */
+                    #pfSheetBack{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100000;}
+                    #pfSheet{position:fixed;left:0;right:0;bottom:0;margin:0 auto;max-width:520px;max-height:92vh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;background:#fff;border-radius:18px 18px 0 0;z-index:100001;box-shadow:0 -8px 30px rgba(0,0,0,.18);font-family:system-ui,sans-serif;color:#111827;}
+                    #pfSheet button{font-family:inherit;cursor:pointer;}
+                    #pfSheet input{font-family:ui-monospace,monospace;color:#111827;outline:none;-moz-appearance:textfield;}
+                    #pfSheet input::-webkit-inner-spin-button,#pfSheet input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+                    #pfSheet .grab{width:38px;height:4px;border-radius:4px;background:#d1d5db;margin:8px auto 4px;}
+                    #pfSheet .sh-hd{display:flex;align-items:flex-start;gap:10px;padding:6px 16px 12px;border-bottom:1px solid #f3f4f6;}
+                    #pfSheet .sh-hd .ic{color:#ca8a04;font-size:22px;margin-top:1px;}
+                    #pfSheet .sh-hd h3{font:800 17px/1.2 system-ui,sans-serif;color:#111827;margin:0;}
+                    #pfSheet .sh-hd p{font:500 11.5px/1.35 system-ui,sans-serif;color:#4b5563;margin:3px 0 0;}
+                    #pfSheet .sh-hd .x{margin-left:auto;width:32px;height:32px;border-radius:9px;background:#f3f4f6;border:none;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+                    #pfSheet .sh-hd .x .material-symbols-outlined{font-size:19px;color:#374151;}
+                    #pfSheet .pf-starter{margin:10px 16px 0;padding:8px 10px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;font:600 11.5px/1.4 system-ui,sans-serif;color:#92400e;}
+                    #pfSheet .sec{padding:12px 16px 4px;}
+                    #pfSheet .sec-t{font:800 11px/1 system-ui,sans-serif;letter-spacing:.08em;color:#374151;}
+                    #pfSheet .sec-n{font:500 11px/1.4 system-ui,sans-serif;color:#6b7280;margin:5px 0 10px;}
+                    #pfSheet .tier{border:1px solid #e5e7eb;border-radius:12px;padding:9px 10px 10px;margin-bottom:8px;background:#fff;}
+                    #pfSheet .tier.now{border-color:#22c55e;box-shadow:0 0 0 1px #22c55e inset;}
+                    #pfSheet .tier .th{display:flex;align-items:center;gap:6px;margin-bottom:7px;flex-wrap:wrap;}
+                    #pfSheet .tier .rng{display:flex;align-items:center;gap:4px;}
+                    #pfSheet .tier .rng .in{width:44px;text-align:center;border:1px solid #d1d5db;border-radius:7px;padding:5px 4px;font-size:14px;font-weight:800;background:#fff;}
+                    #pfSheet .tier .rng .to{font:700 13px/1 ui-monospace,monospace;color:#111827;white-space:nowrap;}
+                    #pfSheet .tier .dv{font:600 10.5px/1 system-ui,sans-serif;color:#0369a1;background:#f0f9ff;border-radius:999px;padding:4px 7px;white-space:nowrap;}
+                    #pfSheet .tier .today{margin-left:auto;font:800 10px/1 system-ui,sans-serif;color:#fff;background:#22c55e;border-radius:999px;padding:4px 7px;white-space:nowrap;}
+                    #pfSheet .tier .del{margin-left:auto;border:none;background:none;padding:2px;color:#6b7280;display:flex;}
+                    #pfSheet .tier .today + .del{margin-left:2px;}
+                    #pfSheet .tier .del .material-symbols-outlined{font-size:19px;}
+                    #pfSheet .tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) 34px;gap:6px;}
+                    #pfSheet .tile{border:1px solid #e5e7eb;border-radius:9px;padding:5px 6px;background:#fafafa;display:block;min-width:0;}
+                    #pfSheet .tile .pos{display:block;font:800 9.5px/1 ui-monospace,monospace;color:#6b7280;letter-spacing:.04em;}
+                    #pfSheet .tile input{width:100%;border:none;background:transparent;font-size:15px;font-weight:800;padding:3px 0 0;}
+                    #pfSheet .tile.ctl{grid-column:5;grid-row:1;padding:0;border-style:dashed;background:#fff;display:flex;flex-direction:column;overflow:hidden;}
+                    #pfSheet .tile.ctl button{flex:1;border:none;background:none;color:#4b5563;display:flex;align-items:center;justify-content:center;padding:0;min-height:20px;}
+                    #pfSheet .tile.ctl button + button{border-top:1px dashed #e5e7eb;}
+                    #pfSheet .tile.ctl .material-symbols-outlined{font-size:17px;}
+                    #pfSheet .addband{width:100%;display:flex;align-items:center;justify-content:center;gap:5px;border:1px dashed #d1d5db;background:#fff;border-radius:12px;padding:10px;font:700 12px/1 system-ui,sans-serif;color:#374151;margin-bottom:6px;}
+                    #pfSheet .addband .material-symbols-outlined{font-size:17px;}
+                    #pfSheet .twos{margin:6px 16px 12px;border:1px solid #bbf7d0;background:#f0fdf4;border-radius:12px;padding:10px 12px;}
+                    #pfSheet .twos .t{font:800 11px/1 system-ui,sans-serif;letter-spacing:.08em;color:#16a34a;}
+                    #pfSheet .seg{display:flex;background:#fff;border:1px solid #bbf7d0;border-radius:10px;padding:3px;margin:9px 0 10px;}
+                    #pfSheet .seg button{flex:1;border:none;background:none;font:700 12px/1 system-ui,sans-serif;color:#374151;padding:9px 4px;border-radius:8px;}
+                    #pfSheet .seg button.on{background:#22c55e;color:#fff;}
+                    #pfSheet .twos .row{display:flex;gap:10px;align-items:end;flex-wrap:wrap;}
+                    #pfSheet .twos .fld{flex:0 0 96px;}
+                    #pfSheet .twos .fld label{display:block;font:700 10px/1 system-ui,sans-serif;letter-spacing:.05em;color:#4b5563;margin-bottom:4px;}
+                    #pfSheet .twos .fld input{width:100%;border:1px solid #d1d5db;border-radius:9px;padding:7px 9px;font-size:15px;font-weight:800;background:#fff;}
+                    #pfSheet .twos .calc{flex:1 1 140px;background:#fff;border:1px dashed #bbf7d0;border-radius:9px;padding:7px 9px;font:500 11px/1.35 system-ui,sans-serif;color:#4b5563;}
+                    #pfSheet .twos .calc b{color:#16a34a;font-family:ui-monospace,monospace;}
+                    #pfSheet .twos .note{font:500 10.5px/1.4 system-ui,sans-serif;color:#4b5563;margin-top:8px;}
+                    #pfSheet .ft{position:sticky;bottom:0;background:#fff;border-top:1px solid #e5e7eb;padding:10px 16px calc(14px + env(safe-area-inset-bottom, 0px));}
+                    #pfSheet .ft .scope{display:flex;gap:6px;align-items:flex-start;font:500 11px/1.4 system-ui,sans-serif;color:#374151;margin-bottom:9px;}
+                    #pfSheet .ft .scope .material-symbols-outlined{font-size:16px;color:#16a34a;}
+                    #pfSheet .ft .btns{display:flex;gap:8px;}
+                    #pfSheet .ft .b{flex:1;text-align:center;border:none;border-radius:11px;padding:12px;font:800 13px/1 system-ui,sans-serif;}
+                    #pfSheet .ft .b.c{background:#f3f4f6;color:#374151;flex:0 0 96px;}
+                    #pfSheet .ft .b.s{background:#16a34a;color:#fff;}
+                    #pfSheet .ft .b.s:disabled{opacity:.6;}
+                    </style>
+                    <div id="orgPayoutCard" style="display:none;"></div>
 
                     <!-- Format Selector for Multi-Format Events -->
                     <div class="mb-4" id="formatSelectorDiv">
@@ -157397,6 +157496,308 @@ window.WinningsWallet = {
     }
 };
 
+// ===== PAYOUT FORMULA (v1321) =====
+// Pete 2026-09-22: "a payout formula for the winners … with certain number of players along with the
+// payout for the Par 3 birdies … a settings so that once entered with those amounts its global moving
+// forward". The society sets it ONCE (society_payout_templates.payout_formula); the organizer Scoring
+// page applies it live to the board (#orgPayoutCard) and Publish pays it out.
+// ORGANIZERS ONLY: the card + sheet never render in golfer mode (GolferScoring adopts
+// #organizerTab-scoring) or for the score assistant. Publish writes one event_winnings row per paid
+// place / Par-3 birdie, keyed to that winner — Chips reads by player_id, so a winner sees ONLY their
+// own amount. No ฿ on prizes (Thai gambling law — see WinningsWallet._baht).
+window.PayoutFormula = {
+    STARTER: {
+        bands: [ { min: 4, places: [500, 300] }, { min: 10, places: [600, 400, 200] },
+                 { min: 20, places: [800, 500, 300] }, { min: 30, places: [1000, 600, 400, 200] } ],
+        birdies: { mode: 'pot', perPlayer: 100, fixed: 200 }
+    },
+    formula: null, _sid: null, _loadedSid: null, _loadSeq: 0, _draft: null, _draftIsStarter: false, _sheetSid: null, _saving: false,
+
+    _S() { return window.OrganizerScoringSystem; },
+    _esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); },
+    _n(v) { return (parseFloat(v) || 0).toLocaleString('en-US'); },
+    _ord(n) { n = parseInt(n, 10) || 0; var s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); },
+    _event() { var S = this._S(); return (S && S.allEvents && S.currentEventId) ? (S.allEvents.find(function (e) { return e.id === S.currentEventId; }) || null) : null; },
+    societyIdFor(ev) {
+        if (!ev || ev.creator_type === 'golfer') return null;   // golfer-created events have no society formula
+        return ev.society_id || (window.AppState && AppState.selectedSociety && AppState.selectedSociety.id) || null;
+    },
+    _orgView() { var S = this._S(); return !!(S && !S._golferMode && !S._assistant); },
+    _teamEvent(ev) { var S = this._S(); try { return !!(S._isWaltzEvent(ev) || S._isScramble2Event(ev)); } catch (e) { return false; } },
+    _isTRGG(sid) { return !!(window.TRGGMembership && sid && sid === TRGGMembership.SOCIETY_ID); },
+
+    async load(ev) {
+        var sid = this.societyIdFor(ev);
+        var seq = ++this._loadSeq;
+        this._sid = sid; this.formula = null; this._loadedSid = null;
+        if (!sid || !this._orgView()) { this.render(); return; }
+        try {
+            var r = await window.SupabaseDB.client.from('society_payout_templates').select('payout_formula').eq('society_id', sid).maybeSingle();
+            if (seq !== this._loadSeq) return;
+            var f = r && r.data && r.data.payout_formula;
+            this.formula = (f && Array.isArray(f.bands) && f.bands.length) ? f : null;
+        } catch (e) { console.warn('[PayoutFormula] load', e); }
+        if (seq !== this._loadSeq) return;
+        this._loadedSid = sid;
+        this.render();
+    },
+
+    _sorted(f) {
+        return ((f && f.bands) || []).map(function (b) { return { min: parseInt(b.min, 10) || 0, places: (b.places || []).map(function (a) { return parseFloat(a) || 0; }) }; })
+            .filter(function (b) { return b.min > 0; }).sort(function (a, b) { return a.min - b.min; });
+    },
+    // A band runs from its min players up to the next band's min - 1 (the top band is open-ended).
+    bandFor(f, n) {
+        var bs = this._sorted(f), idx = -1;
+        bs.forEach(function (b, i) { if (n >= b.min) idx = i; });
+        if (idx < 0) return null;
+        var next = bs[idx + 1];
+        return { min: bs[idx].min, max: next ? next.min - 1 : null, places: bs[idx].places };
+    },
+    bandLabel(b) { return b.max == null ? (b.min + '+') : (b.min + '–' + b.max); },
+
+    // The board → payouts. Places come from the same ranking Publish writes (_rankedForResults:
+    // per division, countback), so the card, the published results and the Chips always agree.
+    // A true dead heat after countback shares the tied places' amounts equally.
+    compute(f) {
+        var S = this._S(); f = f || this.formula; if (!S || !f) return null;
+        var players = (S.leaderboardData || []).length;
+        var band = this.bandFor(f, players);
+        var places = band ? band.places : [];
+        var ranked = []; try { ranked = S._rankedForResults() || []; } catch (e) {}
+        var buckets = [], byName = {};
+        var addB = function (name) { var k = name || ''; if (!byName[k]) { byName[k] = { name: name || null, list: [] }; buckets.push(byName[k]); } return byName[k]; };
+        if (Array.isArray(S.divisions) && S.divisions.length) S.divisions.forEach(function (d) { addB(d.name || ''); });
+        ranked.forEach(function (r) { addB(r.division).list.push(r); });
+        if (!buckets.length) addB(null);
+        var self = this;
+        var divs = buckets.map(function (b) {
+            var list = b.list, rows = [], i = 0, next = 1;
+            list.forEach(function (r, k) { r._cb = k > 0 && r.score === list[k - 1].score && r.position !== list[k - 1].position; });
+            while (i < list.length) {
+                var pos = list[i].position, grp = [];
+                while (i < list.length && list[i].position === pos) { grp.push(list[i]); i++; }
+                if (pos > places.length) break;
+                var pot = 0; for (var p = pos; p < pos + grp.length && p <= places.length; p++) pot += places[p - 1] || 0;
+                var each = Math.floor(pot / grp.length);
+                grp.forEach(function (r) { rows.push({ pos: pos, tie: grp.length > 1, cb: r._cb, player_id: r.player_id, name: r.player_name, score: r.score, amount: each }); });
+                next = pos + grp.length;
+            }
+            for (var q = next; q <= places.length; q++) rows.push({ pos: q, player_id: null, name: null, amount: places[q - 1] || 0 });
+            return { name: b.name, count: list.length, rows: rows };
+        });
+        var bc = f.birdies || {}, mode = bc.mode === 'fixed' ? 'fixed' : 'pot';
+        var list2 = (S.twosList || []).filter(function (t) { return !t.par || parseInt(t.par, 10) === 3; });
+        var pot2 = mode === 'pot' ? (parseFloat(bc.perPlayer) || 0) * players : 0;
+        var share = mode === 'fixed' ? (parseFloat(bc.fixed) || 0) : (list2.length ? Math.floor(pot2 / list2.length) : 0);
+        var bRows = [], byP = {};
+        list2.forEach(function (t) {
+            var k = String(t.playerId);
+            if (!byP[k]) { byP[k] = { player_id: t.playerId, name: t.name, holes: [], amount: 0 }; bRows.push(byP[k]); }
+            byP[k].holes.push(t.hole); byP[k].amount += share;
+        });
+        bRows.sort(function (a, b) { return b.amount - a.amount; });
+        var placesTotal = 0; divs.forEach(function (d) { d.rows.forEach(function (r) { if (r.player_id) placesTotal += r.amount; }); });
+        var birdTotal = share * list2.length;
+        return { players: players, band: band, lowest: (self._sorted(f)[0] || {}).min || null, fmt: S.currentFormat, divisions: divs,
+                 birdies: { mode: mode, perPlayer: parseFloat(bc.perPlayer) || 0, fixed: parseFloat(bc.fixed) || 0, pot: pot2, share: share, count: list2.length, rows: bRows, list: list2 },
+                 placesTotal: placesTotal, birdTotal: birdTotal, total: placesTotal + birdTotal };
+    },
+
+    render() {
+        var el = document.getElementById('orgPayoutCard'); if (!el) return;
+        var ev = this._event(), sid = this.societyIdFor(ev);
+        var show = !!(ev && this._orgView() && sid && this._loadedSid === sid && !this._teamEvent(ev) && (this.formula || this._isTRGG(sid)));
+        if (!show) { el.style.display = 'none'; el.innerHTML = ''; return; }
+        el.style.display = '';
+        var esc = this._esc, n = this._n, self = this;
+        var head = function (sub) {
+            return '<div class="po-hd"><span class="material-symbols-outlined ic">payments</span><div class="tt"><span class="t">PAYOUTS</span>' +
+                (sub ? '<span class="band">' + esc(sub) + '</span>' : '') + '</div>' +
+                '<button type="button" class="gear" onclick="PayoutFormula.openSheet()"><span class="material-symbols-outlined">tune</span>Formula</button></div>';
+        };
+        if (!this.formula) {
+            el.innerHTML = head('') + '<div class="po-empty">No payout formula yet. Set the amounts once — every event after that pays out by the number of players, Par-3 birdies included.<br>' +
+                '<button type="button" class="po-setup" onclick="PayoutFormula.openSheet()"><span class="material-symbols-outlined" style="font-size:17px;">tune</span>Set up the formula</button></div>';
+            return;
+        }
+        var c = this.compute(); if (!c) { el.style.display = 'none'; return; }
+        var sub = c.players + ' players · ' + (c.band ? 'band ' + this.bandLabel(c.band) : 'under ' + c.lowest);
+        var h = head(sub);
+        if (!c.band) {
+            h += '<div class="po-empty">Under ' + esc(c.lowest) + ' players — no places are paid. Change the bands with Formula.</div>';
+        } else {
+            var multi = c.divisions.length > 1;
+            c.divisions.forEach(function (d) {
+                if (multi) h += '<div class="po-dh"><span>' + esc(d.name || 'Division') + '</span><span class="n">' + d.count + ' players</span></div>';
+                d.rows.forEach(function (r) {
+                    var cls = r.pos <= 3 ? ' p' + r.pos : '';
+                    var nm = r.player_id ? '<div class="nm">' + esc(r.name) + '</div>' : '<div class="nm wait">Waiting for scores</div>';
+                    var subl = r.player_id ? (esc(r.score) + (c.fmt === 'stableford' ? ' pts' : '') + (r.tie ? ' · tied' : (r.cb ? ' · countback' : ''))) : '';
+                    h += '<div class="po-row"><span class="po-pl' + cls + '">' + self._ord(r.pos) + '</span><div class="po-nm">' + nm +
+                        (subl ? '<div class="sub">' + subl + '</div>' : '') + '</div><span class="po-amt">' + n(r.amount) + '</span></div>';
+                });
+            });
+        }
+        var b = c.birdies;
+        var calc = b.mode === 'fixed' ? (n(b.fixed) + ' per birdie') : ('pot ' + n(b.pot) + ' · ' + b.count + ' birdie' + (b.count === 1 ? '' : 's'));
+        h += '<div class="po-2h"><span class="t">PAR-3 BIRDIES</span><span class="calc">' + esc(calc) + '</span></div>';
+        if (!b.rows.length) h += '<div class="po-empty">No Par-3 birdies yet — they appear here as they are carded.</div>';
+        b.rows.forEach(function (r) {
+            var holes = r.holes.map(function (x) { return 'Hole ' + x; }).join(' · ') + (r.holes.length > 1 ? ' — ' + r.holes.length + ' birdies' : '');
+            h += '<div class="po-row"><span class="n2">2</span><div class="po-nm"><div class="nm">' + esc(r.name) + '</div><div class="sub">' + esc(holes) + '</div></div><span class="po-amt g">' + n(r.amount) + '</span></div>';
+        });
+        h += '<div class="po-tot"><div>Total paid out<div class="split">Winners ' + n(c.placesTotal) + ' · Birdies ' + n(c.birdTotal) + '</div></div><b>' + n(c.total) + '</b></div>';
+        h += '<div class="po-note"><span class="live">● LIVE</span> — follows the board until you Publish; ties go on countback. Only organizers see this card — each winner sees just their own amount in Chips.</div>';
+        el.innerHTML = h;
+    },
+
+    // Publish: one owed event_winnings row per paid place + one per Par-3 birdie, keyed to the winner.
+    activeFor(ev) { return !!(this.formula && ev && this._orgView() && this._loadedSid && this._loadedSid === this.societyIdFor(ev) && !this._teamEvent(ev)); },
+    ledgerRows(ev, socId, org) {
+        var c = this.compute(); if (!c) return [];
+        var rows = [], self = this;
+        c.divisions.forEach(function (d) {
+            d.rows.forEach(function (r) {
+                if (!r.player_id || !(r.amount > 0)) return;
+                rows.push({ society_id: socId, event_id: ev.id, division: d.name || null, player_id: r.player_id, player_name: r.name,
+                    category: 'award', label: self._ord(r.pos) + ' place', amount: r.amount, status: 'owed', created_by: org });
+            });
+        });
+        if (c.birdies.share > 0) c.birdies.list.forEach(function (t) {
+            if (!t.playerId) return;
+            rows.push({ society_id: socId, event_id: ev.id, division: null, player_id: t.playerId, player_name: t.name,
+                category: '2s_pot', label: 'Par-3 birdie — Hole ' + t.hole, amount: c.birdies.share, status: 'owed', notes: 'Hole ' + t.hole, created_by: org });
+        });
+        return rows;
+    },
+
+    // ---------- Formula sheet (body-mounted; back button closes it — dashboardGoBack intercept) ----------
+    canBack() { return !!document.getElementById('pfSheet'); },
+    back() { if (!this.canBack()) return false; this.closeSheet(); return true; },
+    openSheet() {
+        if (!this._orgView()) return;
+        var sid = this.societyIdFor(this._event()) || this._sid;
+        if (!sid) { window.NotificationManager.show('Pick an event first', 'info'); return; }
+        this._sheetSid = sid;
+        var src = (this.formula && this._loadedSid === sid) ? this.formula : this.STARTER;
+        this._draftIsStarter = src === this.STARTER;
+        this._draft = {
+            bands: this._sorted(src).map(function (b) { return { min: b.min, places: b.places.slice() }; }),
+            birdies: Object.assign({ mode: 'pot', perPlayer: 100, fixed: 200 }, JSON.parse(JSON.stringify(src.birdies || {})))
+        };
+        this.closeSheet(true);
+        var back = document.createElement('div'); back.id = 'pfSheetBack';
+        back.addEventListener('click', function () { PayoutFormula.closeSheet(); });
+        var sh = document.createElement('div'); sh.id = 'pfSheet';   // own sticky footer — NOT .sheet-safe-bottom (its 92px padding lifts a sticky footer mid-sheet)
+        document.body.appendChild(back); document.body.appendChild(sh);
+        this._renderSheet();
+    },
+    closeSheet(keepDraft) {
+        ['pfSheet', 'pfSheetBack'].forEach(function (id) { var e = document.getElementById(id); if (e) e.remove(); });
+        if (!keepDraft) this._draft = null;
+    },
+    _players() { var S = this._S(); return (S && S.leaderboardData || []).length; },
+    _renderSheet() {
+        var sh = document.getElementById('pfSheet'); if (!sh || !this._draft) return;
+        var d = this._draft, esc = this._esc, n = this._n, self = this;
+        var players = this._players();
+        var mins = d.bands.map(function (b) { return parseInt(b.min, 10) || 0; }).filter(function (x) { return x > 0; }).sort(function (a, b) { return a - b; });
+        var today = players ? this.bandFor(d, players) : null;
+        var trgg = this._isTRGG(this._sheetSid);
+        var split = (window.GolfDivisions && GolfDivisions.MIN_FOR_SPLIT) || 10, dcount = (window.GolfDivisions && GolfDivisions.COUNT) || 2;
+        var socName = (window.AppState && AppState.selectedSociety && AppState.selectedSociety.name) || 'Your society';
+        var h = '<div class="grab"></div>' +
+            '<div class="sh-hd"><span class="material-symbols-outlined ic">payments</span><div><h3>Payout formula</h3><p>' + esc(socName) + ' · set once, used for every event</p></div>' +
+            '<button type="button" class="x" onclick="PayoutFormula.closeSheet()" aria-label="Close"><span class="material-symbols-outlined">close</span></button></div>';
+        if (this._draftIsStarter) h += '<div class="pf-starter">These are starter amounts — change them to yours, then Save.</div>';
+        h += '<div class="sec"><div class="sec-t">WINNERS — BY NUMBER OF PLAYERS</div><div class="sec-n">Amounts are paid in each division.' + (trgg ? ' Under ' + split + ' players the field plays as one division.' : '') + '</div>';
+        d.bands.forEach(function (b, i) {
+            var mn = parseInt(b.min, 10) || 0;
+            var nx = mins.filter(function (m) { return m > mn; })[0];
+            var mx = nx ? nx - 1 : null;
+            var isToday = today && mn === today.min;
+            var tag = !trgg ? '' : ((mx != null && mx < split) ? '1 division' : (mn >= split ? dcount + ' divisions' : '1–' + dcount + ' divisions'));
+            h += '<div class="tier' + (isToday ? ' now' : '') + '"><div class="th"><span class="rng"><input class="in" type="number" inputmode="numeric" min="1" value="' + (mn || '') + '" onchange="PayoutFormula._setMin(' + i + ',this.value)" aria-label="From players">' +
+                '<span class="to">' + (mx == null ? 'or more' : '– ' + mx) + '</span></span>' + (tag ? '<span class="dv">' + tag + '</span>' : '') +
+                (isToday ? '<span class="today">TODAY · ' + players + '</span>' : '') +
+                '<button type="button" class="del" onclick="PayoutFormula._delBand(' + i + ')" aria-label="Delete band"><span class="material-symbols-outlined">delete</span></button></div><div class="tiles">';
+            b.places.forEach(function (a, j) {
+                h += '<label class="tile"><span class="pos">' + self._ord(j + 1) + '</span><input type="number" inputmode="numeric" min="0" value="' + (parseFloat(a) || 0) + '" oninput="PayoutFormula._setPlace(' + i + ',' + j + ',this.value)"></label>';
+            });
+            h += '<div class="tile ctl"><button type="button" onclick="PayoutFormula._addPlace(' + i + ')" aria-label="Add a place"><span class="material-symbols-outlined">add</span></button>' +
+                (b.places.length > 1 ? '<button type="button" onclick="PayoutFormula._delPlace(' + i + ')" aria-label="Remove last place"><span class="material-symbols-outlined">remove</span></button>' : '') + '</div>';
+            h += '</div></div>';
+        });
+        h += '<button type="button" class="addband" onclick="PayoutFormula._addBand()"><span class="material-symbols-outlined">add</span>Add a player band</button></div>';
+        var bd = d.birdies, pot = bd.mode === 'pot';
+        h += '<div class="twos"><div class="t">PAR-3 BIRDIES</div>' +
+            '<div class="seg"><button type="button" class="' + (pot ? 'on' : '') + '" onclick="PayoutFormula._setMode(\'pot\')">Split a pot</button><button type="button" class="' + (!pot ? 'on' : '') + '" onclick="PayoutFormula._setMode(\'fixed\')">Fixed per birdie</button></div>' +
+            '<div class="row"><div class="fld"><label for="pfBirdAmt">' + (pot ? 'PER PLAYER' : 'PER BIRDIE') + '</label><input id="pfBirdAmt" type="number" inputmode="numeric" min="0" value="' + (parseFloat(pot ? bd.perPlayer : bd.fixed) || 0) + '" oninput="PayoutFormula._setBird(this.value)"></div>' +
+            '<div class="calc" id="pfBirdCalc">' + this._birdCalc() + '</div></div>' +
+            '<div class="note">Found automatically from the scores — a 2 on a par 3. Two birdies = two shares.' + (pot ? ' Nobody makes one → nothing is paid.' : '') + '</div></div>';
+        h += '<div class="ft"><div class="scope"><span class="material-symbols-outlined">public</span><span>Saved for ' + esc(socName) + '. Every event from now on uses this — events you already published keep their payouts.</span></div>' +
+            '<div class="btns"><button type="button" class="b c" onclick="PayoutFormula.closeSheet()">Cancel</button><button type="button" class="b s" id="pfSaveBtn" onclick="PayoutFormula.save()">Save formula</button></div></div>';
+        var st = sh.scrollTop; sh.innerHTML = h; sh.scrollTop = st;
+    },
+    _birdCalc() {
+        var bd = this._draft.birdies, players = this._players(), n = this._n;
+        if (bd.mode === 'fixed') return 'Every Par-3 birdie pays <b>' + n(bd.fixed) + '</b>';
+        return players ? ('This event: ' + players + ' players → pot <b>' + n((parseFloat(bd.perPlayer) || 0) * players) + '</b>, shared per birdie') : 'Pot = players × this amount, shared per birdie';
+    },
+    _setMin(i, v) { if (!this._draft) return; this._draft.bands[i].min = parseInt(v, 10) || 0; this._renderSheet(); },
+    _setPlace(i, j, v) { if (!this._draft) return; this._draft.bands[i].places[j] = parseFloat(v) || 0; },
+    _addPlace(i) { if (!this._draft) return; var p = this._draft.bands[i].places; if (p.length < 8) p.push(0); this._renderSheet(); },
+    _delPlace(i) { if (!this._draft) return; var p = this._draft.bands[i].places; if (p.length > 1) p.pop(); this._renderSheet(); },
+    _delBand(i) { if (!this._draft) return; this._draft.bands.splice(i, 1); this._renderSheet(); },
+    _addBand() {
+        if (!this._draft) return;
+        var bs = this._draft.bands, top = bs.reduce(function (m, b) { return Math.max(m, parseInt(b.min, 10) || 0); }, 0);
+        var last = bs.length ? bs[bs.length - 1].places.slice() : [0];
+        bs.push({ min: top ? top + 10 : 4, places: last });
+        this._renderSheet();
+    },
+    _setMode(m) { if (!this._draft) return; this._draft.birdies.mode = m === 'fixed' ? 'fixed' : 'pot'; this._renderSheet(); },
+    _setBird(v) {
+        if (!this._draft) return;
+        var bd = this._draft.birdies; if (bd.mode === 'fixed') bd.fixed = parseFloat(v) || 0; else bd.perPlayer = parseFloat(v) || 0;
+        var c = document.getElementById('pfBirdCalc'); if (c) c.innerHTML = this._birdCalc();
+    },
+    async save() {
+        if (this._saving || !this._draft || !this._sheetSid) return;
+        var d = this._draft, byMin = {};
+        d.bands.forEach(function (b) {
+            var mn = parseInt(b.min, 10) || 0; if (mn < 1) return;
+            var pl = (b.places || []).map(function (a) { return Math.max(0, parseFloat(a) || 0); });
+            while (pl.length && !pl[pl.length - 1]) pl.pop();   // an emptied last box = that place removed
+            byMin[mn] = pl;
+        });
+        var bands = Object.keys(byMin).map(Number).sort(function (a, b) { return a - b; }).map(function (mn) { return { min: mn, places: byMin[mn] }; });
+        if (!bands.length) { window.NotificationManager.show('Add at least one player band', 'warning'); return; }
+        var bd = d.birdies;
+        var formula = { bands: bands, birdies: { mode: bd.mode === 'fixed' ? 'fixed' : 'pot', perPlayer: Math.max(0, parseFloat(bd.perPlayer) || 0), fixed: Math.max(0, parseFloat(bd.fixed) || 0) } };
+        var org = (window.AppState && AppState.currentUser && AppState.currentUser.lineUserId) || localStorage.getItem('line_user_id') || null;
+        this._saving = true;
+        var btn = document.getElementById('pfSaveBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+        try {
+            // Upsert ONLY society_id + payout_formula — never clobber the template's places/divisions/pots.
+            var r = await window.SupabaseDB.client.from('society_payout_templates')
+                .upsert({ society_id: this._sheetSid, payout_formula: formula, updated_at: new Date().toISOString(), updated_by: org }, { onConflict: 'society_id' })
+                .select('society_id');
+            if (r.error) throw r.error;
+            if (!r.data || !r.data.length) throw new Error('nothing was saved');
+            this.formula = formula; this._loadedSid = this._sheetSid;
+            this.closeSheet();
+            this.render();
+            window.NotificationManager.show('Payout formula saved — every event uses it from now on', 'success');
+        } catch (e) {
+            console.error('[PayoutFormula] save', e);
+            window.NotificationManager.show('Could not save the formula: ' + (e.message || e), 'error');
+            if (btn) { btn.disabled = false; btn.textContent = 'Save formula'; }
+        } finally { this._saving = false; }
+    }
+};
+
 // ===== Player Van List (READ-ONLY) =====
 // The golfer's view of who's in which van for their upcoming events. Organizer assigns; this just
 // shows it so a player knows their van ("you're in Van 3").
@@ -168217,6 +168618,7 @@ class OrganizerScoringSystem {
         this.updatePointsTable();
         await this._loadTwosDefaults(_ev);
         await this._loadHioDefaults(_ev);
+        try { if (window.PayoutFormula) await window.PayoutFormula.load(_ev); } catch (e) { console.warn('[OrganizerScoring] payout formula', e); }
 
         // 3-Man Waltz: the main board ranks TEAMS — handicap divisions and the format picker
         // don't apply (Waltz is always team Stableford). Hide both, force stableford sorting.
@@ -168383,6 +168785,7 @@ class OrganizerScoringSystem {
             this._renderTwosPanel();
             this._renderHioBand();
             this._renderHioPanel();
+            try { if (window.PayoutFormula) window.PayoutFormula.render(); } catch (e) { console.warn('[OrganizerScoring] payouts', e); }
 
             console.log(`[OrganizerScoring] ✅ Leaderboard updated with ${leaderboardData.length} scores`);
         } catch (error) {
@@ -169195,6 +169598,7 @@ class OrganizerScoringSystem {
         this._resortLeaderboard();  // countback is format-specific — re-order ties for the new format
         this.renderLeaderboard();
         this.updateStats(); // FIX: Update stats when format changes so avgScore matches
+        try { if (window.PayoutFormula) window.PayoutFormula.render(); } catch (e) {}
     }
 
     // ============================================
@@ -171133,7 +171537,16 @@ class OrganizerScoringSystem {
             return;
         }
 
-        if (!confirm(_lvT('orgscore.publishconfirm', 'Publish final results?\n\nThis will:\n• Calculate final rankings with countback\n• Save results to database\n• Award championship points\n• Show winners summary\n\nContinue?'))) {
+        // v1321: with a payout formula saved, Publish also pays the winners (PayoutFormula). askConfirm,
+        // not confirm() — native dialogs are dead inside the LINE browser (Publish silently did nothing).
+        const _pubEv = this.allEvents.find(e => e.id === this.currentEventId);
+        const _payFormula = !!(window.PayoutFormula && _pubEv && window.PayoutFormula.activeFor(_pubEv));
+        const _pubMsg = _lvT('orgscore.publishconfirm', 'Publish final results?\n\nThis will:\n• Calculate final rankings with countback\n• Save results to database\n• Award championship points\n• Show winners summary\n\nContinue?') +
+            (_payFormula ? '\n\n• Pay the winners by the payout formula — each winner sees only their own amount, in Chips' : '');
+        const _pubOk = window.askConfirm
+            ? await window.askConfirm({ title: 'Publish final results?', message: _pubMsg.replace(/^Publish final results\?\s*/, ''), confirmText: 'Publish' })
+            : confirm(_pubMsg);
+        if (!_pubOk) {
             return;
         }
 
@@ -171141,7 +171554,7 @@ class OrganizerScoringSystem {
             console.log('[OrganizerScoring] Publishing results for event:', this.currentEventId);
 
             // Get event details
-            const event = this.allEvents.find(e => e.id === this.currentEventId);
+            const event = _pubEv;
             if (!event) {
                 throw new Error('Event not found');
             }
@@ -171202,10 +171615,13 @@ class OrganizerScoringSystem {
                     ? (event.society_id || null)
                     : ((window.AppState && AppState.selectedSociety && AppState.selectedSociety.id) || event.society_id || event.societyId || null);
                 const _ord = (n) => { n = parseInt(n,10)||0; const s2=['th','st','nd','rd'], v=n%100; return n+(s2[(v-20)%10]||s2[v]||s2[0]); };
+                // v1321 payout formula: the places are paid the FORMULA amounts (not the points) and every
+                // Par-3 birdie gets its share — both re-written on re-publish (owed rows only; anything a
+                // player already used stays). Each row belongs to one winner → Chips shows only their own.
                 const _delAw = await window.SupabaseDB.client.from('event_winnings')
-                    .delete().eq('event_id', this.currentEventId).eq('category', 'award').eq('status', 'owed').select('id');
+                    .delete().eq('event_id', this.currentEventId).in('category', _payFormula ? ['award', '2s_pot'] : ['award']).eq('status', 'owed').select('id');
                 if (_delAw.error) throw _delAw.error;
-                const awardRows = resultsToSave
+                const awardRows = _payFormula ? window.PayoutFormula.ledgerRows(event, socId, org) : resultsToSave
                     .filter(r => (parseFloat(r.points_earned) || 0) > 0)
                     .map(r => ({
                         society_id: socId,
@@ -171220,8 +171636,12 @@ class OrganizerScoringSystem {
                         created_by: org
                     }));
                 if (awardRows.length) {
-                    const { error: awErr } = await window.SupabaseDB.client.from('event_winnings').insert(awardRows);
-                    if (awErr) console.warn('[OrganizerScoring] award ledger insert failed:', awErr);
+                    const { data: awIns, error: awErr } = await window.SupabaseDB.client.from('event_winnings').insert(awardRows).select('id');
+                    if (awErr || !awIns || awIns.length !== awardRows.length) {
+                        console.warn('[OrganizerScoring] award ledger insert failed:', awErr);
+                        // Payouts are money owed to real winners — never fail silently.
+                        if (_payFormula) window.NotificationManager.show('Results published, but the payouts did not save' + (awErr ? ': ' + awErr.message : '') + '. Publish again.', 'error');
+                    }
                     else console.log('[OrganizerScoring] created', awardRows.length, 'award credits in ledger');
                 }
             } catch (e) { console.warn('[OrganizerScoring] award ledger error', e); }

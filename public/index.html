@@ -12268,6 +12268,7 @@
                 'golfer.eventresults': 'Event Results',
                 'golfer.eventresults.desc': 'Winners & scorecards',
                 'golfer.eventresults.view': 'View Results',
+                'golfer.thumbsnew': '👍 {n} new',
                 'golfer.orders.desc': 'Track your orders',
                 'golfer.orders.viewstatus': 'View Status',
                 'golfer.stats': 'Stats',
@@ -15609,6 +15610,7 @@
                 'golfer.eventresults': 'ผลการแข่งขัน',
                 'golfer.eventresults.desc': 'ผู้ชนะและสกอร์การ์ด',
                 'golfer.eventresults.view': 'ดูผล',
+                'golfer.thumbsnew': '👍 ใหม่ {n}',
                 'golfer.orders.desc': 'ติดตามคำสั่งซื้อของคุณ',
                 'golfer.orders.viewstatus': 'ดูสถานะ',
                 'golfer.stats': 'สถิติ',
@@ -18819,6 +18821,7 @@
                 'golfer.eventresults': '이벤트 결과',
                 'golfer.eventresults.desc': '우승자·스코어카드',
                 'golfer.eventresults.view': '결과 보기',
+                'golfer.thumbsnew': '👍 새 {n}',
                 'golfer.orders.desc': '주문 추적',
                 'golfer.orders.viewstatus': '상태 보기',
                 'golfer.stats': '통계',
@@ -22211,6 +22214,7 @@
                 'golfer.eventresults': 'イベント結果',
                 'golfer.eventresults.desc': '入賞者とスコアカード',
                 'golfer.eventresults.view': '結果を見る',
+                'golfer.thumbsnew': '👍 新着{n}',
                 'golfer.orders.desc': '注文を追跡',
                 'golfer.orders.viewstatus': 'ステータス表示',
                 'golfer.stats': '統計',
@@ -53706,6 +53710,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     // Event Results cube — not user-scoped, own method so it also runs w/o a user id
                     await this.updateResultsBadge();
+                    this.updateThumbsBadge();   // v1326: 👍 received since this device last opened Results
 
                     // Messages — handled by existing message badge system
 
@@ -53754,6 +53759,38 @@ document.addEventListener('DOMContentLoaded', function() {
                 } catch(e) { console.warn('[DashboardBadges] results badge', e); }
             },
 
+            // v1326 — Pete: "On the golfer dashboard where do they see the thumbs up notification" → the Event
+            // Results cube says "👍 N new" (pill swapped, both grids) and the desktop rail's Results item carries
+            // a 👍 count. Seen = this device opening Results (mcipro_thumbs_seen, stamped by the showGolferTab
+            // wrapper) — its OWN stamp, so it never clears the golfer's unread Tap-In likes/comments.
+            // result_thumbs is RPC-only, so there's no realtime: overview re-entry + a 90s poll.
+            _thumbsEvent: null,
+            async updateThumbsBadge() {
+                const sb = window.SupabaseDB?.client;
+                const uid = (window.AppState && AppState.currentUser && AppState.currentUser.lineUserId) || localStorage.getItem('line_user_id');
+                if (!sb || !uid) { this.paintThumbs(0); return; }
+                try {
+                    const since = localStorage.getItem('mcipro_thumbs_seen') || new Date(Date.now() - 7*24*60*60*1000).toISOString();
+                    const { data, error } = await sb.rpc('result_thumbs_mine', { p_user: uid, p_since: since });
+                    if (error) throw error;
+                    this._thumbsEvent = (data && data.event_id) || null;
+                    this.paintThumbs((data && data.n) || 0);
+                } catch (e) { console.warn('[DashboardBadges] thumbs', e); }
+            },
+            paintThumbs(n) {
+                const txt = n > 0 ? _lvT('golfer.thumbsnew', '👍 {n} new').replace('{n}', n > 99 ? '99+' : n) : '';
+                document.querySelectorAll('.resultsThumbsPill').forEach(el => { el.textContent = txt; el.style.display = n > 0 ? (el.classList.contains('cube-pill') ? '' : 'inline-block') : 'none'; });
+                document.querySelectorAll('.resultsViewPill').forEach(el => { el.style.display = n > 0 ? 'none' : ''; });
+                document.querySelectorAll('.thumbsNewBadge').forEach(el => { el.textContent = n > 0 ? '👍 ' + (n > 99 ? '99+' : n) : ''; el.style.display = n > 0 ? 'flex' : 'none'; });
+                if (!n) this._thumbsEvent = null;
+            },
+            // The cube (and the rail item) open straight onto the event the newest 👍 came from.
+            openResultsCube() {
+                const ev = this._thumbsEvent;
+                if (!window.SocietyResultsHub) return;
+                if (ev) SocietyResultsHub.showEvent(ev); else SocietyResultsHub.open();
+            },
+
             setBadge(id, count, threshold) {
                 // v1015: id copy + class-based mirrors (lite-grid cubes carry class="<id>", no id reuse)
                 const els = new Set([document.getElementById(id), ...document.querySelectorAll('.' + id)]);
@@ -53769,6 +53806,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         };
         window.DashboardBadges = DashboardBadges;
+        // v1326: 👍 has no realtime (RPC-only table) — re-read while the golfer home is on screen
+        setInterval(function () {
+            try {
+                const gd = document.getElementById('golferDashboard');
+                if (document.visibilityState === 'visible' && gd && gd.classList.contains('active')) DashboardBadges.updateThumbsBadge();
+            } catch (e) {}
+        }, 90000);
 
         // Update last seen timestamp when user interacts with cubes
         const origShowGolferTab = window.showGolferTab;
@@ -53782,6 +53826,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (tab === 'results') {
                     localStorage.setItem('mcipro_results_seen', new Date().toISOString());
                     if (window.DashboardBadges) DashboardBadges.setBadge('resultsCubeBadge', 0);
+                    localStorage.setItem('mcipro_thumbs_seen', new Date().toISOString());   // v1326 👍
+                    if (window.DashboardBadges && DashboardBadges.paintThumbs) DashboardBadges.paintThumbs(0);
                 }
                 // v1078: 19th Hole — entering stamps "seen" (outer badges clear) but keeps the
                 // in-page chip counts for this visit (_sessionSeen); leaving drops them.
@@ -57137,11 +57183,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     <!-- Lite gets ALL main cubes (Pete 2026-08-08) — the 6 below mirror #dashboardCubesGrid
                          minus History (the Handicap cube above already opens round history). No id reuse:
                          id-based badges stay on the main grid copies; lite badges would need class hooks. -->
-                    <button onclick="SocietyResultsHub.open()" class="card-hover metric-card cube-poster cube-compact" style="--p1:#f4e6c8;--p2:#fcf6e9">
+                    <button onclick="DashboardBadges.openResultsCube()" class="card-hover metric-card cube-poster cube-compact" style="--p1:#f4e6c8;--p2:#fcf6e9">
                         <span class="resultsCubeBadge" style="display:none;position:absolute;top:8px;right:8px;background:#ef4444;color:#fff;font-size:11px;font-weight:800;min-width:20px;height:20px;border-radius:10px;align-items:center;justify-content:center;padding:0 6px;box-shadow:0 1px 5px rgba(0,0,0,.3);z-index:3;line-height:1;">0</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuTrophy"/></svg></div>
                         <h3 class="text-base font-bold text-gray-900 mb-1" data-i18n="golfer.eventresults">Event Results</h3>
-                        <div class="cube-pill" data-i18n="golfer.eventresults.view">View Results</div>
+                        <div class="cube-pill resultsViewPill" data-i18n="golfer.eventresults.view">View Results</div>
+                        <!-- v1326: shown INSTEAD of the pill while the golfer has unseen 👍 (DashboardBadges.updateThumbsBadge) -->
+                        <div class="cube-pill resultsThumbsPill" style="display:none;background:#dcfce7;color:#166534;font-weight:800;"></div>
                     </button>
                     <button onclick="showGolferTab('messages', event)" class="card-hover metric-card cube-poster cube-compact" style="--p1:#dbe4f0;--p2:#f2f6fb">
                         <span class="messagesCubeBadge" style="display:none;position:absolute;top:8px;right:8px;background:#ef4444;color:#fff;font-size:11px;font-weight:800;min-width:20px;height:20px;border-radius:10px;align-items:center;justify-content:center;padding:0 6px;box-shadow:0 1px 5px rgba(0,0,0,.3);z-index:3;line-height:1;">0</span>
@@ -58145,14 +58193,15 @@ document.addEventListener('DOMContentLoaded', function() {
                          Tap-In (order-12) spanning a full row on the phone. The eight remaining
                          cubes therefore have to stay an EVEN list or a phone row ends up with an
                          orphan cell — add cubes in pairs, or give the odd one a full-row span. -->
-                    <button onclick="SocietyResultsHub.open()" class="card-hover metric-card cube-poster text-center group relative order-9" style="--p1:#f4e6c8;--p2:#fcf6e9">
+                    <button onclick="DashboardBadges.openResultsCube()" class="card-hover metric-card cube-poster text-center group relative order-9" style="--p1:#f4e6c8;--p2:#fcf6e9">
                         <span id="resultsCubeBadge" class="absolute top-1 right-1 text-[9px] font-bold text-white bg-red-500 min-w-[18px] h-[18px] flex items-center justify-center rounded-full shadow-md z-10" style="display:none;">0</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuTrophy"/></svg></div>
                         <h3 class="text-sm md:text-base font-bold text-gray-900 mb-1" data-i18n="golfer.eventresults">Event Results</h3>
                         <p class="text-xs md:text-sm text-gray-600 hidden sm:block" data-i18n="golfer.eventresults.desc">Winners & scorecards</p>
-                        <div class="mt-2 text-xs bg-amber-50 text-amber-700 px-2 md:px-3 py-1 rounded-full inline-block" data-i18n="golfer.eventresults.view">
+                        <div class="mt-2 text-xs bg-amber-50 text-amber-700 px-2 md:px-3 py-1 rounded-full inline-block resultsViewPill" data-i18n="golfer.eventresults.view">
                             View Results
                         </div>
+                        <div class="mt-2 text-xs px-2 md:px-3 py-1 rounded-full resultsThumbsPill" style="display:none;background:#dcfce7;color:#166534;font-weight:800;"></div>
                     </button>
 
                     <!-- Spectate Live — shown in LIGHT mode only (Geekout has it in the header/nav) -->
@@ -179461,7 +179510,7 @@ showOrganizerTab = function(tabName) {
     })();
     </script>
     <script src="oo-1on1.js?v=1278"></script>
-    <script src="g3-desk.js?v=1283"></script>
+    <script src="g3-desk.js?v=1326"></script>
     <script src="g3-org.js?v=1323"></script>
 </body>
 

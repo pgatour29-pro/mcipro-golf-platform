@@ -7946,7 +7946,7 @@
            (Pete 2026-09-22). Whose cell the next key fills is stated in the
            black NEXT KEY bar instead.
            ================================================================ */
-        #scorecardActiveSection.paper-on > *:not(#paperCardView):not(#demoRoundBanner) { display:none !important; }
+        #scorecardActiveSection.paper-on > *:not(#paperCardView):not(#roundTimerBar):not(#demoRoundBanner) { display:none !important; }
         #scorecardActiveSection.paper-on #paperCardView { display:block !important; }
         #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView {
             background:#f1f5f9 !important; border-radius:14px; padding:10px 10px 14px;
@@ -8156,6 +8156,32 @@
         #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-fixed {
             text-align:center; font:700 8.5px/1.4 'JetBrains Mono',monospace; letter-spacing:.1em;
             color:#94a3b8 !important; margin-top:7px; }
+
+        /* --- on-course actions carried over from the keypad screen --- */
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-acts {
+            display:flex; gap:6px; margin-top:8px; }
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-act {
+            flex:1; min-width:0; border:1px solid #e2e8f0 !important; background:#ffffff !important;
+            border-radius:11px; padding:8px 2px; display:flex; flex-direction:column; align-items:center;
+            gap:2px; cursor:pointer; }
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-act span:not(.material-symbols-outlined) {
+            font:700 8.5px/1 'JetBrains Mono',monospace; letter-spacing:.04em; color:#475569 !important;
+            white-space:nowrap; }
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-act .material-symbols-outlined {
+            font-size:17px; color:#475569 !important; }
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-act.on {
+            background:#f0fdf4 !important; border-color:#bbf7d0 !important; }
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-act.on span,
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-act.on .material-symbols-outlined {
+            color:#15803d !important; }
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-act.panic {
+            background:#fef2f2 !important; border-color:#fecaca !important; }
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-act.panic span,
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-act.panic .material-symbols-outlined {
+            color:#dc2626 !important; }
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView #pcvStatsRow:not(:empty) {
+            margin-top:8px; background:#ffffff !important; border:1px solid #e2e8f0 !important;
+            border-radius:12px; padding:8px; }
 
         /* --- foot --- */
         #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-foot {
@@ -12623,6 +12649,11 @@
                 'scorecard.trad.keypad': 'Keypad',
                 'scorecard.trad.card': 'Card',
                 'scorecard.pcv.paper': 'Paper',
+                'scorecard.pcv.map': 'Hole',
+                'scorecard.pcv.stats': 'Stats',
+                'scorecard.pcv.bits': 'Bits',
+                'scorecard.pcv.panic': 'Panic',
+                'scorecard.yardage': 'Yardage',
                 'scorecard.pcv.finish': 'Finish',
                 'scorecard.pcv.view': 'View',
                 'scorecard.pcv.yourcard': 'YOUR CARD',
@@ -15931,6 +15962,11 @@
                 'scorecard.trad.keypad': 'แป้นตัวเลข',
                 'scorecard.trad.card': 'การ์ด',
                 'scorecard.pcv.paper': 'กระดาษ',
+                'scorecard.pcv.map': 'หลุม',
+                'scorecard.pcv.stats': 'สถิติ',
+                'scorecard.pcv.bits': 'บิทส์',
+                'scorecard.pcv.panic': 'แพนิค',
+                'scorecard.yardage': 'ระยะ',
                 'scorecard.pcv.finish': 'จบรอบ',
                 'scorecard.pcv.view': 'มุมมอง',
                 'scorecard.pcv.yourcard': 'การ์ดของคุณ',
@@ -19108,6 +19144,11 @@
                 'scorecard.trad.keypad': '키패드',
                 'scorecard.trad.card': '카드',
                 'scorecard.pcv.paper': '종이',
+                'scorecard.pcv.map': '홀',
+                'scorecard.pcv.stats': '기록',
+                'scorecard.pcv.bits': '비츠',
+                'scorecard.pcv.panic': '패닉',
+                'scorecard.yardage': '야디지',
                 'scorecard.pcv.finish': '종료',
                 'scorecard.pcv.view': '보기',
                 'scorecard.pcv.yourcard': '내 카드',
@@ -22467,6 +22508,11 @@
                 'scorecard.trad.keypad': 'キーパッド',
                 'scorecard.trad.card': 'カード',
                 'scorecard.pcv.paper': 'ペーパー',
+                'scorecard.pcv.map': 'ホール',
+                'scorecard.pcv.stats': 'スタッツ',
+                'scorecard.pcv.bits': 'ビッツ',
+                'scorecard.pcv.panic': 'パニック',
+                'scorecard.yardage': 'ヤーデージ',
                 'scorecard.pcv.finish': '終了',
                 'scorecard.pcv.view': '表示',
                 'scorecard.pcv.yourcard': 'あなたのカード',
@@ -101408,7 +101454,14 @@ class LiveScorecardSystem {
     // ============================================
 
     renderStatsInput() {
-        const container = document.getElementById('statsInputRow');
+        // v1308: the paper card is the default view and the classic host is hidden inside it,
+        // so the row renders into the paper view's own host while that view is on. Blank the
+        // other host first — both must never hold the same ids at once.
+        const paperHost = (this._paperOn && this._paperOn()) ? document.getElementById('pcvStatsRow') : null;
+        const classicHost = document.getElementById('statsInputRow');
+        if (paperHost && classicHost) classicHost.innerHTML = '';
+        else if (!paperHost && classicHost) { const ph = document.getElementById('pcvStatsRow'); if (ph) ph.innerHTML = ''; }
+        const container = paperHost || classicHost;
         if (!container) return;
 
         // Sync in-round toggle button appearance
@@ -104845,6 +104898,7 @@ class LiveScorecardSystem {
 
         body.innerHTML = (solo ? this._pcvSoloHTML() : this._pcvGroupHTML())
             + this._pcvNowHTML() + this._pcvPadHTML();
+        try { this.renderStatsInput(); } catch (e) { /* stats row is optional */ }
     }
     _pcvSoloHTML() {
         const p = this.players[0];
@@ -104962,7 +105016,9 @@ class LiveScorecardSystem {
                 + this._pcvEsc(_lvT('scorecard.trad.pickup', 'No Point · Pickup')) + '</button></div>';
         }
         html += '</div>'
-            + '<div class="pcv-fixed">' + this._pcvEsc(_lvT('scorecard.pcv.fixed', 'KEYS NEVER MOVE · SAME PLACE FOR EVERY PLAYER')) + '</div>';
+            + '<div class="pcv-fixed">' + this._pcvEsc(_lvT('scorecard.pcv.fixed', 'KEYS NEVER MOVE · SAME PLACE FOR EVERY PLAYER')) + '</div>'
+            + '<div id="pcvStatsRow"></div>'
+            + this._pcvActionsHTML();
         if ((this.players || []).length > 1) {
             html += '<div class="pcv-flow"><span class="lbl">' + this._pcvEsc(_lvT('scorecard.pcv.afterscore', 'AFTER A SCORE')) + '</span>'
                 + '<span class="seg">'
@@ -104973,6 +105029,24 @@ class LiveScorecardSystem {
                 + '</span></div>';
         }
         return html;
+    }
+    // The keypad screen's on-course actions, carried into the default view. Each one is a
+    // plain call into the existing feature — no logic is duplicated here.
+    _pcvActionsHTML() {
+        const act = (fn, icon, label, cls) =>
+            '<button type="button" class="pcv-act' + (cls || '') + '" onclick="' + fn + '">'
+            + '<span class="material-symbols-outlined">' + icon + '</span>'
+            + '<span>' + this._pcvEsc(label) + '</span></button>';
+        let html = '<div class="pcv-acts">';
+        html += act('LiveScorecardManager.openYardageBook()', 'menu_book', _lvT('scorecard.yardage', 'Yardage'));
+        html += act('LiveScorecardManager.viewHolePreview()', 'map', _lvT('scorecard.pcv.map', 'Hole'));
+        html += act('LiveScorecardManager.toggleStatsTracking()', 'analytics',
+            _lvT('scorecard.pcv.stats', 'Stats') + (this.trackStats ? ' ✓' : ''), this.trackStats ? ' on' : '');
+        if (this.bitsGame && this.bitsGame.enabled) {
+            html += act('window.liveScorecardInstance.openBitsModal()', 'casino', _lvT('scorecard.pcv.bits', 'Bits'));
+        }
+        html += act('PanicButton.open()', 'sentiment_very_dissatisfied', _lvT('scorecard.pcv.panic', 'Panic'), ' panic');
+        return html + '</div>';
     }
     // ==================== END PAPER CARD VIEW ====================
 

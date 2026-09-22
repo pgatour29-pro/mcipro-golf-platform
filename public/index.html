@@ -157235,10 +157235,28 @@ window.OrgLiteRegistrations = {
         return owed.reduce(function(s, w){ return s + (parseFloat(w.amount) || 0); }, 0);
     },
 
+    // v1324 — Pete: "turn off the chips deduction from the next events until the organizers tell they want
+    // it activated". Per society, OFF by default: society_payout_templates.chips_to_fees. While off the
+    // Settle sheet has no "Apply to fees" and _applyToFees refuses; Chips still show and can be paid in cash.
+    // Fail CLOSED — no row / no society / a failed read all mean off.
+    _chipsToFees: false,
+    async _loadChipsToFees() {
+        var sid = this._societyIdForEvent(), on = false;
+        if (sid) {
+            try {
+                var r = await window.SupabaseDB.client.from('society_payout_templates').select('chips_to_fees').eq('society_id', String(sid)).maybeSingle();
+                on = !!(r && !r.error && r.data && r.data.chips_to_fees === true);
+            } catch (e) { on = false; }
+        }
+        this._chipsToFees = on;
+        return on;
+    },
+
     openSettle(playerId) {
         var owed = (this._owedByPlayer && this._owedByPlayer[playerId]) || [];
         if (!owed.length) return;
         this._settleFor = playerId;
+        this._chipsToFees = false;   // closed until the society's switch is read (below)
         var old = document.getElementById('orgSettle'); if (old) old.remove();
         var el = document.createElement('div');
         el.id = 'orgSettle';
@@ -157247,6 +157265,8 @@ window.OrgLiteRegistrations = {
         el.addEventListener('click', function(e){ if (e.target === el) OrgLiteRegistrations.closeSettle(); });
         document.body.appendChild(el);
         this._renderSettle();
+        var self = this;
+        this._loadChipsToFees().then(function (on) { if (on && self._settleFor === playerId) self._renderSettle(); });
     },
 
     closeSettle() { var el = document.getElementById('orgSettle'); if (el) el.remove(); this._settleFor = null; },
@@ -157276,8 +157296,9 @@ window.OrgLiteRegistrations = {
             '<div style="display:flex;align-items:center;justify-content:space-between;margin:12px 0 16px;"><span style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">'+_lvT('settle.total','Total owed')+'</span><span style="font-size:20px;font-weight:800;color:#16a34a;">'+total.toLocaleString()+'</span></div>'+
             '<div style="display:flex;gap:10px;">'+
                 '<button onclick="OrgLiteRegistrations._settleAll(\'cash\')" style="flex:1;padding:13px;border:none;background:#16a34a;color:#fff;border-radius:12px;font-weight:800;font-size:14px;cursor:pointer;"><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px;">payments</span> '+_lvT('settle.cash','Pay cash')+'</button>'+
-                '<button onclick="OrgLiteRegistrations._applyToFees()" style="flex:1;padding:13px;border:1px solid #2563eb;background:#eff6ff;color:#2563eb;border-radius:12px;font-weight:800;font-size:14px;cursor:pointer;">'+_lvT('settle.fees','Apply to fees')+'</button>'+
+                (this._chipsToFees ? '<button onclick="OrgLiteRegistrations._applyToFees()" style="flex:1;padding:13px;border:1px solid #2563eb;background:#eff6ff;color:#2563eb;border-radius:12px;font-weight:800;font-size:14px;cursor:pointer;">'+_lvT('settle.fees','Apply to fees')+'</button>' : '')+
             '</div>'+
+            (this._chipsToFees ? '' : '<div style="font-size:11.5px;color:#64748b;margin-top:9px;line-height:1.4;">'+_lvT('settle.feesoff','Chips are not taken off event fees — that is switched off for now.')+'</div>')+
             '<button onclick="OrgLiteRegistrations.closeSettle()" style="width:100%;margin-top:10px;padding:11px;border:1px solid #e2e8f0;background:#fff;color:#64748b;border-radius:12px;font-weight:700;font-size:13px;cursor:pointer;">'+_lvT('common.cancel','Cancel')+'</button>';
     },
 
@@ -157287,6 +157308,7 @@ window.OrgLiteRegistrations = {
         var pid = this._settleFor;
         var owed = (this._owedByPlayer && this._owedByPlayer[pid]) || [];
         if (!owed.length) return;
+        if (method === 'fees' && !(await this._loadChipsToFees())) return;   // v1324: fees route switched off per society
         var total = this._owedTotalFor(pid);
         var verb = method === 'cash' ? _lvT('settle.cash','Pay cash') : _lvT('settle.fees','Apply to fees');
         if (!confirm(verb+' — '+total.toLocaleString()+'?')) return;
@@ -157315,6 +157337,11 @@ window.OrgLiteRegistrations = {
         var pid = this._settleFor;
         var owed = (this._owedByPlayer && this._owedByPlayer[pid]) || [];
         if (!owed.length) return;
+        if (!(await this._loadChipsToFees())) {   // v1324: switched off per society until its organizers ask
+            if (window.NotificationManager) NotificationManager.show(_lvT('settle.feesoff','Chips are not taken off event fees — that is switched off for now.'), 'info');
+            this._renderSettle();
+            return;
+        }
         var reg = (this.regs || []).find(function(r){ return String(r.playerId) === String(pid); });
         if (!reg) { if (window.NotificationManager) NotificationManager.show(_lvT('settle.noreg','Not registered for this event — use Pay cash'), 'info'); return; }
         var totalFee = parseFloat(reg.totalFee) || 0;

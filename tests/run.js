@@ -267,6 +267,24 @@ eq('relativeMatchHandicaps: four-ball 12/18/6/20 → [6,12,0,14]', E.relativeMat
     const rFull = E.calculateMatchPlay1v1(sc(Array(18).fill(4)), sc(Array(18).fill(4)), H, true, 10, 10, false, 18, 1);
     eq('1v1 equal handicaps: all square (no strokes either way)', rFull.player1Up, 0);
 }
+
+// =========================================================
+// Results listings must count PAPER-CARD rounds (v1331/v1332)
+// TRGG Siam 2026-09-22 was scored entirely by paper card → rounds rows only. The Results strip
+// ignored rounds, so the event vanished at midnight. Every "which events have results" probe
+// must union event_results + scorecards + ROUNDS. Do not remove a source without updating this.
+// =========================================================
+{
+    const fs = require('fs'), path = require('path');
+    const res = fs.readFileSync(path.join(__dirname, '..', 'public', 'results.html'), 'utf8');
+    const strip = (res.match(/async function selectSociety[\s\S]*?state\.events = /) || [''])[0];
+    check('Results strip probes event_results', /from\('event_results'\)/.test(strip));
+    check('Results strip probes scorecards', /from\('scorecards'\)/.test(strip));
+    check('Results strip probes ROUNDS (paper cards)', /from\('rounds'\)[\s\S]*society_event_id/.test(strip) && /listed\.add\(x\.society_event_id\)/.test(strip));
+    const idx = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+    const badge = (idx.match(/async updateResultsBadge\(\)[\s\S]*?setBadge\('resultsCubeBadge'/) || [''])[0];
+    check('Results cube badge probes ROUNDS (paper cards)', /from\('rounds'\)/.test(badge) && /resEvents\.add\(r\.society_event_id\)/.test(badge));
+}
 // ---- report ----
 console.log(`\nScoring engine tests: ${pass} passed, ${fail} failed`);
 if (fail) { console.log('\n' + failures.join('\n')); process.exit(1); }

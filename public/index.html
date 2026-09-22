@@ -53784,15 +53784,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (!sb) return;
                 try {
                     const resultsSeen = localStorage.getItem('mcipro_results_seen') || new Date(Date.now() - 7*24*60*60*1000).toISOString();
-                    const [scRes, erRes] = await Promise.all([
+                    const [scRes, erRes, rdRes] = await Promise.all([
                         sb.from('scorecards').select('event_id')
                             .eq('status', 'completed').gt('total_gross', 0).not('event_id', 'is', null)
                             .gt('completed_at', resultsSeen).limit(1000),
-                        sb.from('event_results').select('event_id').gt('created_at', resultsSeen).limit(1000)
+                        sb.from('event_results').select('event_id').gt('created_at', resultsSeen).limit(1000),
+                        // v1332 — PAPER CARDS write ROUNDS only (no scorecard). Without this a paper-card-only
+                        // event (TRGG Siam 2026-09-22) never lit the badge. Same sources as the Results strip.
+                        sb.from('rounds').select('society_event_id')
+                            .eq('status', 'completed').gt('total_gross', 0).not('society_event_id', 'is', null)
+                            .gt('completed_at', resultsSeen).limit(1000)
                     ]);
                     const resEvents = new Set();
                     (scRes.data || []).forEach(r => { if (r.event_id) resEvents.add(r.event_id); });
                     (erRes.data || []).forEach(r => { if (r.event_id) resEvents.add(r.event_id); });
+                    (rdRes.data || []).forEach(r => { if (r.society_event_id) resEvents.add(r.society_event_id); });
                     this.setBadge('resultsCubeBadge', resEvents.size);
                 } catch(e) { console.warn('[DashboardBadges] results badge', e); }
             },

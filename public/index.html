@@ -3516,7 +3516,10 @@
             animation: none !important;
         }
         /* Hide fixed FAB buttons during active round - they block keypad taps */
-        body.round-active-mode #dashboardBackBtn,
+        /* v1319: back stands down only while the live card itself is on screen. This rule used to hide
+           it on EVERY page for the whole round — step off the card to the tee sheet or Tap-In and the
+           hamburger was the only way back. */
+        body.round-active-mode:has(#golferDashboard.active #golfer-scorecard.active) #dashboardBackBtn,
         body.round-active-mode #scrollToTopBtn,
         body.round-active-mode [id$="BackToTop"] {
             display: none !important;
@@ -7959,11 +7962,14 @@
         #golferDashboard.pcv-frame #paceStation { display:none !important; }
         /* the page wrapper keeps ~66px of bottom clearance for the nav — while the card owns
            the screen that is the difference between fitting and a pointless 30px scroll. */
-        #golferDashboard.pcv-frame .max-w-7xl { padding-bottom:6px !important; }
+        /* v1319: pcv-frame is only re-decided on renderHole, so it outlives the card (another tab,
+           a finished round) — every rule that reaches outside the card is gated on the card tab
+           being the one on screen, or back vanished from the whole app. */
+        #golferDashboard.pcv-frame:has(#golfer-scorecard.active) .max-w-7xl { padding-bottom:6px !important; }
         /* Both float over the foot at the screen edges — scroll-to-top is meaningless on a
            card that never scrolls, and the round's own way out is END / Finish. */
-        body.pcv-frame #globalScrollToTopBtn,
-        body.pcv-frame #dashboardBackBtn { display:none !important; }
+        body.pcv-frame:has(#golferDashboard.active #golfer-scorecard.active) #globalScrollToTopBtn,
+        body.pcv-frame:has(#golferDashboard.active #golfer-scorecard.active) #dashboardBackBtn { display:none !important; }
         /* the tab carries min-height:100vh so short tabs still fill the screen — with the card
            that is 31px of empty page below the foot, i.e. a scroll with nothing in it. */
         #golferDashboard.pcv-frame #golfer-scorecard { min-height:0 !important; padding-bottom:0 !important; }
@@ -38522,12 +38528,21 @@ Sent from Login Page`;
         // Tab-specific functions (will be expanded in later phases)
         // Navigation history stack for back button
         const NavHistory = {
-            stack: [{ screen: 'golferDashboard', tab: 'overview' }], // seed with overview
+            // v1319: no golfer seed — the first screen shown IS the root. The seed made back from a
+            // staff home land on the golfer dashboard.
+            stack: [],
             maxSize: 20,
             _navigating: false,
 
             push(entry) {
                 if (this._navigating) return;
+                // v1319: the login / sign-up pages are never a back target — reaching one starts history
+                // over (so back after a logout can't walk into the previous user's screens).
+                if (entry.screen === 'loginScreen' || entry.screen === 'createProfileScreen') {
+                    this.stack = [];
+                    this.updateBtn();
+                    return;
+                }
                 const last = this.stack[this.stack.length - 1];
                 if (last && last.screen === entry.screen && last.tab === entry.tab) return;
                 this.stack.push(entry);
@@ -38550,11 +38565,15 @@ Sent from Login Page`;
             },
 
             updateBtn() {
+                // v1319: the button is CONSTANT (Pete: "no way back unless I use the hamburger menu").
+                // It used to vanish whenever THIS stack was empty — but dashboardGoBack also closes the
+                // caddy module, overlays, sheets and the drawer through its own intercepts, which this
+                // stack never sees, so backing out to the home and opening any of those left no button.
+                // Where it must not show (login page, the live card, desktop) is decided in CSS.
                 const btn = document.getElementById('dashboardBackBtn');
                 if (!btn) return;
-                const can = this.canGoBack();
-                btn.style.opacity = can ? '1' : '0';
-                btn.style.pointerEvents = can ? 'auto' : 'none';
+                btn.style.opacity = '1';
+                btn.style.pointerEvents = 'auto';
             }
         };
 
@@ -38619,6 +38638,11 @@ Sent from Login Page`;
                 try { EventDayMode.close(); } catch (e) {}
                 return;
             }
+            // v1319: the tee sheet is a body-mounted full-screen overlay (z 11000, above the org lite
+            // pages it can open from) — back popped the organizer tabs UNDER it and finally dropped the
+            // organizer on the golfer dashboard with the sheet still on top. Close it first, exactly as
+            // its own header arrow does.
+            if (document.getElementById('teeSheetOverlay') && window.TeeSheet) { try { TeeSheet.close(); } catch (e) {} return; }
             // Same inline-display trap as Event Day Mode: these organizer overlays are shown via inline
             // display (not the .active screen system), so the back logic didn't see them and fell through
             // to NavHistory — leaving the modal stuck on top of a new screen, or ejecting the organizer to
@@ -38640,6 +38664,10 @@ Sent from Login Page`;
                 const _el = document.getElementById(_ovl[i][0]);
                 if (_el && _el.style.display && _el.style.display !== 'none') { try { _ovl[i][1](); } catch (e) {} return; }
             }
+            // v1319: the golfer's Registered Players / tee sheet modal (Tee Sheet cube, event pills) is
+            // created on <body> and removed on close — back closes it like its X does.
+            const _plm = document.getElementById('playersListModal');
+            if (_plm) { _plm.remove(); return; }
             const _drawer = document.getElementById('mobileDrawer');
             if (_drawer && _drawer.classList.contains('open')) { try { closeMobileDrawer(); } catch (e) {} return; }
             // If mainContent overlay is visible (caddie booking module etc), close it first.
@@ -91021,6 +91049,10 @@ class LiveScorecardSystem {
         const golferDash = document.getElementById('golferDashboard');
         if (golferDash) golferDash.classList.remove('round-active');
         document.body.classList.remove('round-active-mode');
+        // v1319: the paper card's one-screen frame is only re-decided on renderHole — nothing renders
+        // after the round, so it stayed on (and hid back / the page's bottom clearance) until a reload.
+        if (golferDash) golferDash.classList.remove('pcv-frame');
+        document.body.classList.remove('pcv-frame');
         // v1132: round over -- drop the lock and repaint, which retires the sun layer
         // (the preference is remembered for the next round, it just stops rendering).
         try { window.RoundWakeLock && window.RoundWakeLock.release(); } catch (e) {}
@@ -178811,6 +178843,15 @@ showOrganizerTab = function(tabName) {
     })();
     </script>
 
+    <!-- v1319: full-screen pages that dashboardGoBack() closes sat ABOVE the button (z 10000-11000), so
+         it looked gone. It rides on top of them; on the players modal it lifts clear of the full-width
+         Edit My Registration bar. Dialogs (askConfirm 12050, tee-sheet popups 100000+) still cover it. -->
+    <style>
+        body:has(#teeSheetOverlay) #dashboardBackBtn,
+        body:has(#orgLiteRegModal[style*="display: block"]) #dashboardBackBtn,
+        body:has(#arrivalsModal[style*="display: block"]) #dashboardBackBtn { z-index: 11001 !important; }
+        body:has(#playersListModal) #dashboardBackBtn { z-index: 10001 !important; bottom: 84px !important; }
+    </style>
     <!-- Floating Back Button (mobile only, always in DOM) -->
     <button id="dashboardBackBtn" onclick="dashboardGoBack()" class="md:hidden" style="
         position: fixed;

@@ -87894,12 +87894,27 @@ class SocietyGolfSupabase {
         // Get organizer IDs to fetch society profiles
         const organizerIds = [...new Set(events.map(e => e.organizer_id).filter(id => id))];
 
+        // v1317: EVERY row, not the first 1000. PostgREST caps a query at 1000 rows and TRGG
+        // alone has 1,741 registrations across its events — everything past the cap vanished, so
+        // the newest events read empty on the organizer card (2026-09-22 Laem Chabang: 21
+        // registered, card said 0/15). Ordered by id so the pages never overlap or skip.
+        const _allRows = async (mk) => {
+            let rows = [];
+            for (let from = 0, i = 0; i < 25; i++, from += 1000) {
+                const r = await mk().order('id', { ascending: true }).range(from, from + 999);
+                if (r.error) return { data: rows, error: r.error };
+                rows = rows.concat(r.data || []);
+                if (!r.data || r.data.length < 1000) break;
+            }
+            return { data: rows, error: null };
+        };
+
         // Parallel queries for all events' data with error handling
         const [regsResult, waitlistResult, societyProfilesResult] = await Promise.all([
-            window.SupabaseDB.client
+            _allRows(() => window.SupabaseDB.client
                 .from('event_registrations')
                 .select('event_id, want_transport, want_competition')
-                .in('event_id', eventIds)
+                .in('event_id', eventIds))
                 .then(result => {
                     if (result.error) {
                         console.error('[SocietyGolfDB] ❌ Error loading registrations:');
@@ -87912,10 +87927,10 @@ class SocietyGolfSupabase {
                     }
                     return result;
                 }),
-            window.SupabaseDB.client
+            _allRows(() => window.SupabaseDB.client
                 .from('event_waitlist')
                 .select('event_id')
-                .in('event_id', eventIds)
+                .in('event_id', eventIds))
                 .then(result => {
                     if (result.error) {
                         console.error('[SocietyGolfDB] Error loading waitlist:', result.error);

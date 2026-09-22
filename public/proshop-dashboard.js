@@ -74,12 +74,29 @@
             const ok = await PS.resolveCourse();
             if (!ok) return; // picker shown; init re-runs after pick
             PS.paintHeader();
+            PS.linkTeeSheet();
             PS.onTab('pos');
             PS.subscribeRealtime();
             PS.updateMsgBadge();
         },
 
         // ================= COURSE CONTEXT =================
+        /* v1334: the Tee Sheet tab opens on THIS course. It used to load /proshop-teesheet.html bare, so a
+           sheet that had never picked a course showed every society's events for the date, unfiltered.
+           courses-table ids (pattaya_county) ≠ tee-sheet slugs (pattaya-golf) — CourseLink maps by name and
+           keeps a slug the sheet already uses when it is the same venue (Burapha A+C vs C+D). */
+        linkTeeSheet() {
+            try {
+                const f = document.getElementById('teesheet-iframe');
+                if (!f || !PS.course) return;
+                let saved = '';
+                try { saved = (JSON.parse(localStorage.getItem('teesheet.settings') || '{}').golfCourse) || ''; } catch (e) { }
+                const slug = window.CourseLink ? window.CourseLink.slugForCourse(PS.course.name, saved) : saved;
+                if (!slug) return;
+                const want = '/proshop-teesheet.html?course=' + encodeURIComponent(slug);
+                if (f.getAttribute('src') !== want) f.setAttribute('src', want);
+            } catch (e) { console.warn('[PS] tee sheet course link', e); }
+        },
         stemOf(name) {
             const stop = ['golf', 'club', 'country', 'county', 'course', 'resort', 'international', 'the', 'spa', 'cc', 'and', '&', 'gc'];
             const toks = String(name || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/)

@@ -86399,7 +86399,8 @@ window.AdminSystem = AdminSystem;
     <script defer src="marketing-dashboard.js?v=1258"></script>
     <script defer src="golf-feed.js?v=1325"></script>
     <script defer src="handicap-ledger.js?v=1257"></script>
-    <script defer src="proshop-dashboard.js?v=548"></script>
+    <script defer src="course-society-link.js?v=1334"></script>
+    <script defer src="proshop-dashboard.js?v=1334"></script>
 
     <!-- Course Data & Handicap Calculations -->
     <script defer src="course-data-manager.js"></script>
@@ -159484,7 +159485,28 @@ window.TeeSheet = {
         try { await window.GolferEventsBridge.load(); } catch(e){ console.warn('[TeeSheet] golfer events', e); }
         this._mount(); this._loadEvents();
     },
-    close: function(){ var el=document.getElementById('teeSheetOverlay'); if(el) el.remove(); },
+    close: function(){ var el=document.getElementById('teeSheetOverlay'); if(el) el.remove(); try { if (window.CourseLink) CourseLink.closePanel(); } catch(e){} },
+    // v1334 COURSE LINK — this event as the golf course sees it: slots the course holds for it, requests for
+    // more (or giving some back), and a live thread with the pro shop. Shared module: course-society-link.js.
+    _linkCourse: function(eventId){
+        try {
+            var CLk = window.CourseLink, sb = window.SupabaseDB && SupabaseDB.client;
+            var btn = document.getElementById('tsCourseBtn');
+            if (!CLk || !sb || !btn) return;
+            if (CLk.state.openId && CLk.state.openId !== eventId) CLk.closePanel();
+            CLk.sb = sb; CLk.onJump = null; CLk.onChange = null;
+            CLk.lang = (typeof currentLanguage !== 'undefined' && currentLanguage === 'th') ? 'th' : 'en';
+            var self = this;
+            CLk.watchEvent({ eventId: eventId, me: { id: null, name: this.societyName || 'Society' }, badgeEl: btn }).then(function(evs){
+                if (String(self.eventId) !== String(eventId)) return;
+                var ev = evs && evs[0], b2 = document.getElementById('tsCourseBtn') || btn;   // the overlay may have been rebuilt
+                CLk.state.badgeEl = b2; CLk.paintBadge();
+                // messages carry the SOCIETY (id + name), never a person's login id
+                if (ev) CLk.state.me = { id: ev.societyId || null, name: ev.societyName || self.societyName || CLk.shortName(ev) };
+                b2.style.display = (ev && ev.slug) ? '' : 'none';
+            }).catch(function(e){ console.warn('[TeeSheet] course link', e); });
+        } catch(e){ console.warn('[TeeSheet] course link', e); }
+    },
     _mount: function(){
         var old=document.getElementById('teeSheetOverlay'); if(old) old.remove();
         var el=document.createElement('div'); el.id='teeSheetOverlay';
@@ -159718,6 +159740,7 @@ window.TeeSheet = {
               '#teeSheetOverlay .ts2-head{flex-wrap:wrap;}#teeSheetOverlay .ts2-hbtns{flex:1 1 100%;min-width:0;justify-content:flex-end;}#teeSheetOverlay .ts2-evrow{flex:1 1 auto;min-width:0;}'+
               /* REGULARS tray on phones: top 8 chips + "＋N MORE" expander (space is tight) */
               '#teeSheetOverlay .ts2-rpool:not(.open) .ts2-rchip.xtra{display:none;}#teeSheetOverlay .ts2-rpool:not(.open) .ts2-rchip.xtra.sel{display:inline-flex;}#teeSheetOverlay .ts2-rpool:not(.open) .ts2-rmore{display:inline-flex;}}'+
+            '#tsCourseBtn .cl-badge{position:absolute;top:-6px;right:-6px;margin:0;}'+
           '</style>'+
           '<div class="ts2-shell">'+
             '<div class="ts2-head">'+
@@ -159729,6 +159752,8 @@ window.TeeSheet = {
               '<div class="ts2-hbtns">'+
                 '<div id="tsEvChips" class="ts2-evrow"></div>'+
                 '<button data-theme-toggle onclick="ThemeMode.toggle()" class="ts2-hbtn" title="Light / Dark"><span class="theme-toggle-icon material-symbols-outlined">light_mode</span></button>'+
+                /* v1334: the golf course for this event — slots it holds, requests, messages (CourseLink) */
+                '<button id="tsCourseBtn" onclick="window.CourseLink&&CourseLink.openPanel()" class="ts2-hbtn" title="Golf course: slots &amp; messages" style="display:none;position:relative;"><span class="material-symbols-outlined">golf_course</span></button>'+
                 '<button id="tsRefreshBtn" onclick="TeeSheet.refresh()" class="ts2-hbtn" title="Refresh handicaps &amp; sheet"><span class="material-symbols-outlined">refresh</span></button>'+
                 '<button onclick="TeeSheet.close()" class="ts2-hbtn" title="Back"><span class="material-symbols-outlined">arrow_back</span></button>'+
               '</div>'+
@@ -159905,6 +159930,7 @@ window.TeeSheet = {
         this.societyName = ev.societyName || ev.society_name || null;
         this.eventTee = ((ev.startTime||ev.start_time||'07:00')+'').slice(0,5) || '07:00';
         this.eventDeparture = String(ev.departureTime||ev.departure_time||'').slice(0,5);   // van departure — shown on the sheet + print
+        this._linkCourse(eventId);   // v1334: live link to the golf course (slots held + messages)
         var body=document.getElementById('teeSheetBody'); if(body) body.innerHTML='<div style="text-align:center;padding:40px;color:#94a3b8;">Loading…</div>';
         // Refresh this event's registration handicaps to the CURRENT system handicap BEFORE loading —
         // a player's HCP may have changed between when they registered and now (tee-sheet generation).

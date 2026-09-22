@@ -112,6 +112,7 @@
     { act: 'teesheet', icon: 'view_list', k: 'g3o.teesheet', fb: 'Tee sheet' },
     { act: 'arrivals', icon: 'airport_shuttle', k: 'g3o.arrivals', fb: 'Arrivals' },
     { tab: 'scoring', icon: 'sports_score', k: 'g3o.scoring', fb: 'Scoring' },
+    { act: 'payouts', icon: 'payments', k: 'g3o.payouts', fb: 'Payout formula', trgg: true },
     { grp: 'g3o.society', fb: 'Society' },
     { tab: 'accounting', icon: 'payments', k: 'g3o.money', fb: 'Money' },
     { tab: 'players', icon: 'badge', k: 'g3o.players', fb: 'Players' },
@@ -219,6 +220,7 @@
         if (act === 'arrivals') { if (window.ArrivalsPage) ArrivalsPage.open(); return; }
         if (act === 'trgg') { if (typeof TRGGDirectory !== 'undefined') TRGGDirectory.open(); return; }
         if (act === 'dups') { if (window.DuplicateManager) DuplicateManager.open(); return; }
+        if (act === 'payouts') { if (window.PayoutFormula) PayoutFormula.openSheet(); return; }   // v1323: one society-wide formula
         if (tab) window.showOrganizerTab(tab);
       } catch (e) { console.warn('[G3Org] go', e); }
     },

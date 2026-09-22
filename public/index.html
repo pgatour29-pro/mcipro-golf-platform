@@ -70609,6 +70609,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             <span class="material-symbols-outlined text-sm">add</span>
                             <span data-i18n="organizer.addevent">New Event</span>
                         </button>
+                        <!-- v1323: same society-wide payout formula as the Scoring page -->
+                        <button onclick="PayoutFormula.openSheet()" data-trgg-only style="display:none;" class="btn-secondary">
+                            <span class="material-symbols-outlined text-sm">payments</span>
+                            Payout formula
+                        </button>
                         <button onclick="SpecialEventCreator.open()" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;padding:8px 16px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;" title="Create / manage a multi-round Order of Merit special event">
                             <span class="material-symbols-outlined text-sm">flag</span>
                             Special Event
@@ -72906,6 +72911,26 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="flex justify-between items-center mb-6">
                         <div class="text-sm text-gray-600">
                             Manage dashboard security, user roles, and access settings.
+                        </div>
+                    </div>
+
+                    <!-- v1323: Payout formula — one society-wide setting, same sheet as Scoring / Events / menu -->
+                    <div data-trgg-only style="display:none;" class="bg-gradient-to-r from-amber-50 to-yellow-50 rounded-2xl shadow-lg border border-amber-200 p-6 mb-6">
+                        <div class="flex items-center justify-between gap-3 flex-wrap">
+                            <div class="flex items-center space-x-4">
+                                <div class="bg-amber-100 rounded-full p-3">
+                                    <span class="material-symbols-outlined text-2xl text-amber-600">payments</span>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium text-gray-600">Payout formula</p>
+                                    <p class="text-lg font-bold text-gray-900">Places by number of players + Par-3 birdies</p>
+                                    <p class="text-xs text-gray-600 mt-1">Set once — every event uses it. Only organizers see it.</p>
+                                </div>
+                            </div>
+                            <button onclick="PayoutFormula.openSheet()" class="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold transition-colors flex items-center gap-2">
+                                <span class="material-symbols-outlined text-sm">tune</span>
+                                Edit formula
+                            </button>
                         </div>
                     </div>
 
@@ -157616,11 +157641,11 @@ window.PayoutFormula = {
         var head = function (sub) {
             return '<div class="po-hd"><span class="material-symbols-outlined ic">payments</span><div class="tt"><span class="t">PAYOUTS</span>' +
                 (sub ? '<span class="band">' + esc(sub) + '</span>' : '') + '</div>' +
-                '<button type="button" class="gear" onclick="PayoutFormula.openSheet()"><span class="material-symbols-outlined">tune</span>Formula</button></div>';
+                '<button type="button" class="gear" onclick="PayoutFormula.openSheet(\'scoring\')"><span class="material-symbols-outlined">tune</span>Formula</button></div>';
         };
         if (!this.formula) {
             el.innerHTML = head('') + '<div class="po-empty">No payout formula yet. Set the amounts once — every event after that pays out by the number of players, Par-3 birdies included.<br>' +
-                '<button type="button" class="po-setup" onclick="PayoutFormula.openSheet()"><span class="material-symbols-outlined" style="font-size:17px;">tune</span>Set up the formula</button></div>';
+                '<button type="button" class="po-setup" onclick="PayoutFormula.openSheet(\'scoring\')"><span class="material-symbols-outlined" style="font-size:17px;">tune</span>Set up the formula</button></div>';
             this._syncPlaces(null);
             return;
         }
@@ -157708,12 +157733,31 @@ window.PayoutFormula = {
     // ---------- Formula sheet (body-mounted; back button closes it — dashboardGoBack intercept) ----------
     canBack() { return !!document.getElementById('pfSheet'); },
     back() { if (!this.canBack()) return false; this.closeSheet(); return true; },
-    openSheet() {
+    // v1323 — Pete: "setting formular from any page or event section is set globally". Opens from the
+    // Scoring card, the Events section, Society settings, the phone menu and the desktop rail; every
+    // one edits the SAME society row. Only the Scoring card passes ctx 'scoring' — that's the one place
+    // an event's field is on screen, so only there does the sheet show "TODAY · N" and this event's pot.
+    async openSheet(ctx) {
         if (!this._orgView()) return;
-        var sid = this.societyIdFor(this._event()) || this._sid;
-        if (!sid) { window.NotificationManager.show('Pick an event first', 'info'); return; }
+        var sel = window.AppState && AppState.selectedSociety;
+        var sid = (ctx === 'scoring' && this.societyIdFor(this._event())) || (sel && sel.id) || this.societyIdFor(this._event()) || this._sid;
+        if (!sid) { window.NotificationManager.show('Open your society dashboard first', 'info'); return; }
+        this._ctxScoring = ctx === 'scoring';
+        if (this._loadedSid !== sid) {
+            try {
+                var r = await window.SupabaseDB.client.from('society_payout_templates').select('payout_formula').eq('society_id', sid).maybeSingle();
+                if (r && r.error) throw r.error;
+                var f = r && r.data && r.data.payout_formula;
+                this.formula = (f && Array.isArray(f.bands) && f.bands.length) ? f : null;
+                this._loadedSid = sid; this._sid = sid;
+            } catch (e) {
+                console.warn('[PayoutFormula] open', e);
+                window.NotificationManager.show('Could not load the payout formula — try again', 'error');
+                return;
+            }
+        }
         this._sheetSid = sid;
-        var src = (this.formula && this._loadedSid === sid) ? this.formula : this.STARTER;
+        var src = this.formula || this.STARTER;
         this._draftIsStarter = src === this.STARTER;
         this._draft = {
             bands: this._sorted(src).map(function (b) { return { min: b.min, places: b.places.slice() }; }),
@@ -157730,7 +157774,7 @@ window.PayoutFormula = {
         ['pfSheet', 'pfSheetBack'].forEach(function (id) { var e = document.getElementById(id); if (e) e.remove(); });
         if (!keepDraft) this._draft = null;
     },
-    _players() { var S = this._S(); return (S && S.leaderboardData || []).length; },
+    _players() { var S = this._S(); return this._ctxScoring ? (S && S.leaderboardData || []).length : 0; },
     _renderSheet() {
         var sh = document.getElementById('pfSheet'); if (!sh || !this._draft) return;
         var d = this._draft, esc = this._esc, n = this._n, self = this;
@@ -176339,6 +176383,9 @@ showOrganizerTab = function(tabName) {
 
                 <button class="drawer-link" onclick="showOrganizerTab('scoring'); closeMobileDrawer();"><span class="material-symbols-outlined">emoji_events</span><span data-i18n="organizer.scoring">Scoring</span></button>
 
+                <!-- v1323: the payout formula is ONE society-wide setting — reachable from every page -->
+                <button class="drawer-link" data-trgg-only style="display:none;" onclick="closeMobileDrawer(); PayoutFormula.openSheet();"><span class="material-symbols-outlined">payments</span><span>Payout formula</span></button>
+
                 <button class="drawer-link" onclick="showOrganizerTab('rounds'); closeMobileDrawer();"><span class="material-symbols-outlined">history</span><span data-i18n="organizer.roundhistory">Round History</span></button>
 
                 <button class="drawer-link" onclick="showOrganizerTab('players'); closeMobileDrawer();"><span class="material-symbols-outlined">group</span><span data-i18n="organizer.players">Players</span></button>
@@ -179384,7 +179431,7 @@ showOrganizerTab = function(tabName) {
     </script>
     <script src="oo-1on1.js?v=1278"></script>
     <script src="g3-desk.js?v=1283"></script>
-    <script src="g3-org.js?v=1108"></script>
+    <script src="g3-org.js?v=1323"></script>
 </body>
 
 

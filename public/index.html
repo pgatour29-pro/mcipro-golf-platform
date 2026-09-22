@@ -62714,6 +62714,17 @@ document.addEventListener('DOMContentLoaded', function() {
                             </div>
                         </div>
                         <script>
+                        // v1313: the paper card is THE default scoring view. Devices that had
+                        // picked Keypad or Card before v1308 kept that pick and never saw it, so
+                        // reset them ONCE — after this, an explicit pick is honoured for good.
+                        window._pcvMigrateView = function () {
+                            try {
+                                if (localStorage.getItem('mcipro_scorecardView_v1313') === '1') return;
+                                localStorage.setItem('mcipro_scorecardView', 'paper');
+                                localStorage.setItem('mcipro_scorecardView_v1313', '1');
+                            } catch (e) { /* private mode: paper is the fallback anyway */ }
+                        };
+                        window._pcvMigrateView();
                         // Seed the scorecard-style chips from the stored preference
                         (function() {
                             const v = localStorage.getItem('mcipro_scorecardView');
@@ -104869,7 +104880,12 @@ class LiveScorecardSystem {
     _paperPref() {
         // No stored preference = paper. It is the default scoring mechanism now;
         // 'trad' and 'classic' are only ever set by an explicit choice.
+        // v1313: anyone who had used the Card or Keypad view BEFORE v1308 was still carrying
+        // that stored pick, so the paper card was the default only for new devices — Pete
+        // opened to the Card view on his own phone. One-time reset to paper; explicit picks
+        // made from here on still stick.
         try {
+            window._pcvMigrateView && window._pcvMigrateView();
             const v = localStorage.getItem('mcipro_scorecardView');
             return !v || v === 'paper';
         } catch (e) { return true; }

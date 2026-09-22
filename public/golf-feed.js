@@ -1566,8 +1566,8 @@
                 if (a.type !== 'like') { all.push(a); return; }
                 const add = a.n || 1;   // the server sends the boosted slice as ONE row carrying its count
                 const g = byPost.get(a.post_id || '');
-                if (g) { g.n += add; g.total = Math.max(g.total || 0, a.total || 0); g.window_h = g.window_h || a.window_h; if (a.is_new) g.is_new = true; if (new Date(a.at) > new Date(g.at)) g.at = a.at; return; }
-                const one = { type: 'like', n: add, total: a.total || 0, window_h: a.window_h, at: a.at, is_new: a.is_new, post_id: a.post_id, thumb: a.thumb };
+                if (g) { g.n += add; g.ev.push({ n: add, at: a.at }); g.total = Math.max(g.total || 0, a.total || 0); g.window_h = g.window_h || a.window_h; if (a.is_new) g.is_new = true; if (new Date(a.at) > new Date(g.at)) g.at = a.at; return; }
+                const one = { type: 'like', n: add, ev: [{ n: add, at: a.at }], total: a.total || 0, window_h: a.window_h, at: a.at, is_new: a.is_new, post_id: a.post_id, thumb: a.thumb };
                 byPost.set(a.post_id || '', one); all.push(one);
             });
             // A chip carries what its section adds up to; it goes red only when some of it is new.
@@ -1579,7 +1579,10 @@
                 // post's own total, the same number the post shows. The fresh slice goes under it.
                 const cnt = a.total || a.n;
                 const hrs = a.window_h || Math.max(1, Math.round((Date.now() - new Date(a.at).getTime()) / 3600000));
-                const recent = a.n && a.n < cnt ? tr('gfd.a.likes.recent', '{n} in the past {h} hours', { n: a.n, h: hrs }) : '';
+                // "N in the past 6 hours" counts only the likes that came in inside those 6 hours —
+                // a real like from two days ago is in the post's total, never in its recent line.
+                const inWin = a.window_h ? (a.ev || []).reduce((t, e) => t + (Date.now() - new Date(e.at).getTime() <= a.window_h * 3600000 ? e.n : 0), 0) : a.n;
+                const recent = inWin && inWin < cnt ? tr('gfd.a.likes.recent', '{n} in the past {h} hours', { n: inWin, h: hrs }) : '';
                 return `
                 <div class="gfd-act ${a.is_new ? 'new' : ''}"${a.post_id ? ` data-act="openpost" data-id="${esc(a.post_id)}"` : ' style="cursor:default"'}>
                   <span class="lkm">${mi('favorite')}</span>

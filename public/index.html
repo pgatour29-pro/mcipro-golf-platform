@@ -71645,11 +71645,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <option value="winner-heavy">Winner Heavy (100-50-25-15-10...)</option>
                             </select>
                         </div>
-                        <div style="width:86px;">
-                            <label class="block text-xs font-bold text-gray-500 mb-1" style="letter-spacing:.05em;">PLACES</label>
+                        <div style="min-width:86px;">
+                            <label class="block text-xs font-bold text-gray-500 mb-1" style="letter-spacing:.05em;white-space:nowrap;">PLACES <span id="scoringPlacesAuto" style="display:none;font-size:9px;font-weight:800;color:#92400e;background:#fef3c7;border-radius:999px;padding:1px 5px;margin-left:2px;letter-spacing:.04em;">AUTO</span></label>
                             <input type="number" id="scoringPlacesCount" min="1" max="20" value="3"
                                 onchange="window.OrganizerScoringSystem.updatePointsTable()"
                                 class="w-full rounded-lg border px-3 py-2 text-sm">
+                            <!-- v1322: filled by PayoutFormula._syncPlaces while the payout formula sets the places -->
+                            <div id="scoringPlacesNote" style="display:none;font:600 10px/1.2 ui-monospace,monospace;color:#92400e;margin-top:3px;white-space:nowrap;"></div>
                         </div>
                         <button onclick="window.OrganizerScoringSystem.savePointAllocation()" class="btn-secondary" style="margin-left:auto;">
                             <span class="material-symbols-outlined text-sm mr-1">save</span>Save
@@ -157511,7 +157513,7 @@ window.PayoutFormula = {
                  { min: 20, places: [800, 500, 300] }, { min: 30, places: [1000, 600, 400, 200] } ],
         birdies: { mode: 'pot', perPlayer: 100, fixed: 200 }
     },
-    formula: null, _sid: null, _loadedSid: null, _loadSeq: 0, _draft: null, _draftIsStarter: false, _sheetSid: null, _saving: false,
+    formula: null, _sid: null, _loadedSid: null, _loadSeq: 0, _draft: null, _draftIsStarter: false, _sheetSid: null, _saving: false, _lockedPlaces: 0,
 
     _S() { return window.OrganizerScoringSystem; },
     _esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); },
@@ -157608,7 +157610,7 @@ window.PayoutFormula = {
         var el = document.getElementById('orgPayoutCard'); if (!el) return;
         var ev = this._event(), sid = this.societyIdFor(ev);
         var show = !!(ev && this._orgView() && sid && this._loadedSid === sid && !this._teamEvent(ev) && (this.formula || this._isTRGG(sid)));
-        if (!show) { el.style.display = 'none'; el.innerHTML = ''; return; }
+        if (!show) { el.style.display = 'none'; el.innerHTML = ''; this._syncPlaces(null); return; }
         el.style.display = '';
         var esc = this._esc, n = this._n, self = this;
         var head = function (sub) {
@@ -157619,9 +157621,11 @@ window.PayoutFormula = {
         if (!this.formula) {
             el.innerHTML = head('') + '<div class="po-empty">No payout formula yet. Set the amounts once — every event after that pays out by the number of players, Par-3 birdies included.<br>' +
                 '<button type="button" class="po-setup" onclick="PayoutFormula.openSheet()"><span class="material-symbols-outlined" style="font-size:17px;">tune</span>Set up the formula</button></div>';
+            this._syncPlaces(null);
             return;
         }
-        var c = this.compute(); if (!c) { el.style.display = 'none'; return; }
+        var c = this.compute(); if (!c) { el.style.display = 'none'; this._syncPlaces(null); return; }
+        this._syncPlaces(c);
         var sub = c.players + ' players · ' + (c.band ? 'band ' + this.bandLabel(c.band) : 'under ' + c.lowest);
         var h = head(sub);
         if (!c.band) {
@@ -157650,6 +157654,35 @@ window.PayoutFormula = {
         h += '<div class="po-tot"><div>Total paid out<div class="split">Winners ' + n(c.placesTotal) + ' · Birdies ' + n(c.birdTotal) + '</div></div><b>' + n(c.total) + '</b></div>';
         h += '<div class="po-note"><span class="live">● LIVE</span> — follows the board until you Publish; ties go on countback. Only organizers see this card — each winner sees just their own amount in Chips.</div>';
         el.innerHTML = h;
+    },
+
+    // v1322 — Pete: "use the payout formula as the default places so what ever the number of players in
+    // that event is the number of places automatically set". While a formula applies to this event, the
+    // PLACES box (points tiles, 🏆 winners per division, results_config) = the band's paid places, locked;
+    // the organizer changes places by changing the bands (Formula). No formula / under the lowest band /
+    // golfer mode → the box is the organizer's again, untouched.
+    _syncPlaces(c) {
+        var S = this._S(), el = document.getElementById('scoringPlacesCount');
+        if (!S || !el) return;
+        var chip = document.getElementById('scoringPlacesAuto'), note = document.getElementById('scoringPlacesNote');
+        var n = (c && c.band && this.activeFor(this._event())) ? c.band.places.length : 0;
+        this._lockedPlaces = n;
+        // The formula owns the Par-3 birdies too — hide the old 2s pot band so the page never shows two
+        // different birdie splits (Publish writes the birdie rows from the formula).
+        var tb = document.getElementById('twosPotBand');
+        if (tb) tb.style.display = (c && this.activeFor(this._event())) ? 'none' : '';
+        if (n > 0) {
+            el.readOnly = true; el.title = 'Set by the payout formula — change the bands with Formula';
+            el.style.background = '#fffbeb'; el.style.borderColor = '#fde68a'; el.style.color = '#92400e'; el.style.fontWeight = '800';
+            if (chip) chip.style.display = '';
+            if (note) { note.textContent = c.players + ' players'; note.style.display = ''; }
+            if (parseInt(el.value, 10) !== n) { el.value = n; try { S.updatePointsTable(); } catch (e) { console.warn('[PayoutFormula] places', e); } }
+        } else if (el.readOnly) {
+            el.readOnly = false; el.title = '';
+            el.style.background = ''; el.style.borderColor = ''; el.style.color = ''; el.style.fontWeight = '';
+            if (chip) chip.style.display = 'none';
+            if (note) note.style.display = 'none';
+        }
     },
 
     // Publish: one owed event_winnings row per paid place + one per Par-3 birdie, keyed to the winner.
@@ -168858,6 +168891,14 @@ class OrganizerScoringSystem {
     // Number of winners marked per division (and overall) = the number of point-paying PLACES,
     // so "3 places for points" highlights the top 3 in each division. Single source of truth,
     // driven by the Places field above the points tiles.
+    // v1322: while the payout formula sets the places, only those places earn championship points — a
+    // saved allocation can carry deeper stale keys (a real one had Linear points to 10th + zeros to 19th).
+    _pointsFor(pos) {
+        const lock = (window.PayoutFormula && window.PayoutFormula._lockedPlaces) || 0;
+        if (lock > 0 && pos > lock) return 0;
+        return this.pointAllocation[pos] || 0;
+    }
+
     _winnerCount() {
         const el = document.getElementById('scoringPlacesCount');
         const p = el ? parseInt(el.value, 10) : NaN;
@@ -171456,7 +171497,7 @@ class OrganizerScoringSystem {
                 position: entry.position,
                 score: entry.score,
                 score_type: this.currentFormat,
-                points_earned: this.pointAllocation[entry.position] || 0,
+                points_earned: this._pointsFor(entry.position),
                 status: 'completed',
                 is_counted: true,
                 event_date: event?.event_date?.split('T')[0] || new Date().toISOString().split('T')[0]
@@ -171577,7 +171618,7 @@ class OrganizerScoringSystem {
                 position: entry.position,
                 score: entry.score,
                 score_type: this.currentFormat,
-                points_earned: this.pointAllocation[entry.position] || 0,
+                points_earned: this._pointsFor(entry.position),
                 status: 'completed',
                 is_counted: true,
                 event_date: event.event_date?.split('T')[0] || new Date().toISOString().split('T')[0]

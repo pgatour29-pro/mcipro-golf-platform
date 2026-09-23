@@ -11865,6 +11865,10 @@
                 'gts.st.locked': 'Groups are locked by the organizer',
                 'gts.choseyou': 'chose you',
                 'gts.addedyou': 'added you',
+                'gts.register': 'Register',
+                'gts.st.set.s': 'Set by organizer',
+                'gts.st.draft.s': 'Not final',
+                'gts.st.move.s': 'Move / Swap in yourself',
                 'gts.noplayers': 'No one has registered for this one yet.',
                 'gfd.dm.title': 'Messages',
                 'gfd.dm.new': 'New message',
@@ -15214,6 +15218,10 @@
                 'gts.st.locked': 'ผู้จัดล็อกกลุ่มแล้ว',
                 'gts.choseyou': 'เลือกคุณ',
                 'gts.addedyou': 'เพิ่มคุณ',
+                'gts.register': 'ลงทะเบียน',
+                'gts.st.set.s': 'ผู้จัดจัดกลุ่มแล้ว',
+                'gts.st.draft.s': 'ยังไม่เป็นทางการ',
+                'gts.st.move.s': 'ย้าย / สลับ ได้เอง',
                 'gts.noplayers': 'ยังไม่มีใครลงทะเบียนรายการนี้',
                 'gfd.dm.title': 'ข้อความ',
                 'gfd.dm.new': 'ข้อความใหม่',
@@ -18432,6 +18440,10 @@
                 'gts.st.locked': '주최자가 조를 잠갔어요',
                 'gts.choseyou': '나를 선택',
                 'gts.addedyou': '나를 추가',
+                'gts.register': '등록',
+                'gts.st.set.s': '주최자 편성',
+                'gts.st.draft.s': '확정 아님',
+                'gts.st.move.s': '직접 이동 / 교체',
                 'gts.noplayers': '아직 이 대회에 등록한 사람이 없어요.',
                 'gfd.dm.title': '메시지',
                 'gfd.dm.new': '새 메시지',
@@ -21832,6 +21844,10 @@
                 'gts.st.locked': '主催者が組を確定しました',
                 'gts.choseyou': 'あなたを選択',
                 'gts.addedyou': 'あなたを追加',
+                'gts.register': '登録',
+                'gts.st.set.s': '主催者が設定',
+                'gts.st.draft.s': '未確定',
+                'gts.st.move.s': '自分で移動 / 交換',
                 'gts.noplayers': 'まだ誰も登録していません。',
                 'gfd.dm.title': 'メッセージ',
                 'gfd.dm.new': '新規メッセージ',
@@ -145576,19 +145592,14 @@ class GolferEventsManager {
         const currentUserId = AppState.currentUser?.lineUserId;
         const currentReg = regs.find(r => r.playerId === currentUserId);
 
-        // Prominent "your transport" banner for the current player (desktop: a chip in the header bar).
-        let vanBanner = '', vanChip = '';
+        // "Your transport" — a chip in the desktop header bar / on the phone's status line (v1336).
+        let vanChip = '';
         if (currentReg && currentReg.wantTransport) {
             // Derive from the tee-group order (earlier group = lower van #) so it shows even before assignment.
             const _vanMap = this._computeGroupVans(this.currentEventPairings && this.currentEventPairings.groups, regs).vanByPlayer;
             const myVan = this._resolveVan(currentReg, _vanMap);
             const vanTxt = myVan === 'own' ? 'Your own vehicle' : (myVan ? 'Van ' + myVan : 'Not assigned yet');
             const vanIcon = myVan === 'own' ? 'directions_car' : 'airport_shuttle';
-            vanBanner = '<div style="margin:8px 12px 0;padding:12px 14px;border-radius:12px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;display:flex;align-items:center;gap:10px;">' +
-                '<span class="material-symbols-outlined" style="font-size:26px;">' + vanIcon + '</span>' +
-                '<div><div style="font-size:11px;opacity:.85;text-transform:uppercase;letter-spacing:.5px;">Your transport</div>' +
-                '<div style="font-size:18px;font-weight:800;line-height:1.1;">' + vanTxt + '</div></div>' +
-            '</div>';
             vanChip = '<span style="flex:none;display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:800;background:#1d4ed8;color:#fff;border-radius:999px;padding:3px 10px 3px 8px;"><span class="material-symbols-outlined" style="font-size:15px;">' + vanIcon + '</span>' + vanTxt + '</span>';
         }
 
@@ -145601,7 +145612,7 @@ class GolferEventsManager {
         // v1329 DESKTOP (Pete: "the top banner is too large… players who selected me… unnecessary… the search is
         // too long and big"): ONE slim bar — event · players · van · short search · Edit · close. The search row
         // and the footer bar are gone, the pick banner becomes a "chose you" tag on the row (.pm-wide checks in
-        // _renderSheetPickNotice / _renderOrgPairingGroups / _paintSheetChips). Decided at open; phone untouched.
+        // _renderSheetPickNotice / _renderOrgPairingGroups / _paintSheetChips). Decided at open.
         var wide = !!(window.matchMedia && window.matchMedia('(min-width: 900px)').matches);
         if (wide) modal.innerHTML = '<div class="pm-wide" style="background:#ffffff;flex:1;display:flex;flex-direction:column;max-height:100vh;">' +
             '<div style="padding:8px 10px 8px 18px;background:linear-gradient(135deg,#059669,#047857);color:#fff;display:flex;align-items:center;gap:10px;flex-shrink:0;">' +
@@ -145622,30 +145633,39 @@ class GolferEventsManager {
                 '</button>' +
             '</div>' +
             '<div id="playersModalEvChips" style="display:none;background:#f8fafc;border-bottom:1px solid #e5e7eb;flex-shrink:0;padding:7px 12px;"></div>' +
-            '<div id="playersModalPicks" style="display:none;"></div>' +
+            '<div id="playersModalPicks" style="flex-shrink:0;"></div>' +
             '<div id="playersModalList" style="flex:1;overflow-y:auto;padding:8px 12px;"></div>' +
         '</div>';
-        else modal.innerHTML = '<div style="background:#ffffff;flex:1;display:flex;flex-direction:column;max-height:100vh;">' +
-            '<div style="padding:14px 16px;background:linear-gradient(135deg,#059669,#047857);color:white;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">' +
-                '<div>' +
-                    '<div style="font-size:16px;font-weight:700;">Registered Players</div>' +
-                    '<div style="font-size:12px;opacity:0.85;">' + eventName + ' · ' + regs.length + ' ' + playerWord + '</div>' +
+        // PHONE (Pete 2026-09-23: "just like the tee sheet on the desktop… the top banner and players selection
+        // request is taking up too much real-estate"): the same rebuild on a 360px bar — event · count · search
+        // (an icon that opens the field in the bar) · Edit · close. No search row, no footer bar, no pick banner,
+        // the van banner is a chip on the status line. Groups start ~130px down instead of 483px.
+        else modal.innerHTML = '<div class="pm-slim" style="background:#ffffff;flex:1;display:flex;flex-direction:column;max-height:100vh;">' +
+            '<div style="padding:6px 6px 6px 14px;background:linear-gradient(135deg,#059669,#047857);color:#fff;display:flex;align-items:center;gap:6px;flex-shrink:0;min-height:44px;box-sizing:border-box;">' +
+                '<div id="pmTitle" style="flex:1;min-width:0;display:flex;align-items:center;gap:6px;">' +
+                    '<div style="font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;">' + eventName + '</div>' +
+                    '<div style="flex:none;display:inline-flex;align-items:center;gap:2px;font-size:12px;font-weight:700;opacity:.9;"><span class="material-symbols-outlined" style="font-size:15px;">group</span>' + regs.length + '</div>' +
                 '</div>' +
-                '<button onclick="document.getElementById(\'playersListModal\').remove()" style="background:rgba(255,255,255,0.2);border:none;color:white;border-radius:8px;padding:6px;cursor:pointer;">' +
-                    '<span class="material-symbols-outlined">close</span>' +
+                '<div id="pmSearchWrap" style="display:none;flex:1;min-width:0;">' +
+                    '<input type="text" id="playersModalSearch" oninput="GolferEventsSystem.filterPlayersModal()" autocomplete="off" placeholder="' + _lvT('gts.search', 'Search players') + '" style="width:100%;height:32px;padding:0 10px;border:none;border-radius:8px;font-size:14px;color:#0f172a;background:#fff;outline:none;box-sizing:border-box;">' +
+                '</div>' +
+                '<button id="pmSearchBtn" onclick="GolferEventsSystem._pmToggleSearch()" aria-label="' + _lvT('gts.search', 'Search players') + '" style="flex:none;width:32px;height:32px;background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;">' +
+                    '<span class="material-symbols-outlined" style="font-size:19px;">search</span>' +
+                '</button>' +
+                '<button onclick="GolferEventsSystem.editFromPlayersModal()" aria-label="' + editLbl + '" style="flex:none;height:32px;padding:0 ' + (currentReg ? '0' : '10px') + ';' + (currentReg ? 'width:32px;' : '') + 'background:#fff;color:#047857;border:none;border-radius:8px;font-size:12.5px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap;">' +
+                    '<span class="material-symbols-outlined" style="font-size:17px;">' + (currentReg ? 'edit' : 'how_to_reg') + '</span>' + (currentReg ? '' : _lvT('gts.register', 'Register')) +
+                '</button>' +
+                '<button onclick="document.getElementById(\'playersListModal\').remove()" aria-label="Close" style="flex:none;width:32px;height:32px;background:rgba(255,255,255,0.2);border:none;color:white;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;">' +
+                    '<span class="material-symbols-outlined" style="font-size:20px;">close</span>' +
                 '</button>' +
             '</div>' +
-            // GTS1b: event pills — hop to another upcoming event's PUBLISHED tee sheet (filled async)
-            '<div id="playersModalEvChips" style="display:none;background:#f8fafc;border-bottom:1px solid #e5e7eb;flex-shrink:0;padding:8px 10px;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;"></div>' +
-            // who chose me for this event (_renderSheetPickNotice, filled with the list)
+            // GTS1b: event pills — hop to another sheet this week (filled async); societies | events on one line
+            '<div id="playersModalEvChips" style="display:none;background:#f8fafc;border-bottom:1px solid #e5e7eb;flex-shrink:0;padding:6px 10px;"></div>' +
+            // who chose me — only when the list can't tag the rows (partner-preference sheet, no pairings yet)
             '<div id="playersModalPicks" style="flex-shrink:0;"></div>' +
-            vanBanner +
-            '<div style="padding:8px 12px;border-bottom:1px solid #e5e7eb;flex-shrink:0;">' +
-                '<input type="text" id="playersModalSearch" oninput="GolferEventsSystem.filterPlayersModal()" placeholder="Search players..." style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;">' +
-            '</div>' +
-            '<div id="playersModalList" style="flex:1;overflow-y:auto;padding:8px 12px;"></div>' +
-            '<div id="playersModalFooter"></div>' +
+            '<div id="playersModalList" style="flex:1;overflow-y:auto;padding:6px 10px;"></div>' +
         '</div>';
+        this._pmVanChip = wide ? '' : vanChip;
         document.body.appendChild(modal);
 
         // Render the player list. Prefers the organizer's tee-sheet pairings when they exist,
@@ -145663,18 +145683,6 @@ class GolferEventsManager {
                 if (document.getElementById('playersListModal')) this._renderPlayersModalList();
             }).catch(() => {});
         }
-
-
-        // Footer — routes into the ONE real registration form (RGE1). The old inline mini-form
-        // (showRegFormInModal) was a second dated editor that couldn't touch extras/guests and
-        // whose save reset transport/competition to false.
-        var footerEl = document.getElementById('playersModalFooter');
-        if (footerEl) {
-            footerEl.innerHTML = '<div style="padding:10px 12px;border-top:1px solid #e5e7eb;flex-shrink:0;background:#f9fafb;">' +
-                '<button onclick="GolferEventsSystem.editFromPlayersModal()" style="width:100%;padding:10px;background:#059669;color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">' +
-                    '<span class="material-symbols-outlined" style="font-size:16px;">edit</span> ' + editLbl +
-                '</button></div>';
-        }
     }
 
     // RGE1 (Pete 2026-08-09): tee-sheet/players modal → the ONE real registration form, one tap.
@@ -145688,6 +145696,19 @@ class GolferEventsManager {
         const mine = (this.currentEventRegistrations || []).find(r => String(r.playerId) === String(uid));
         if (mine || this._myRegId) return this.editMyRegistration();
         return this.openEventDetail(ev.id);
+    }
+
+    // Phone bar (v1336): the search is an icon until tapped — then the field takes the title's place.
+    // Closing it clears the filter so no rows stay hidden behind a search nobody can see.
+    _pmToggleSearch() {
+        const wrap = document.getElementById('pmSearchWrap'), title = document.getElementById('pmTitle');
+        const inp = document.getElementById('playersModalSearch'), btn = document.getElementById('pmSearchBtn');
+        if (!wrap || !title || !inp) return;
+        const open = wrap.style.display === 'none';
+        wrap.style.display = open ? 'block' : 'none';
+        title.style.display = open ? 'none' : 'flex';
+        if (btn) btn.querySelector('.material-symbols-outlined').textContent = open ? 'search_off' : 'search';
+        if (open) inp.focus(); else { inp.value = ''; this.filterPlayersModal(); }
     }
 
     // GTS1b (Pete 2026-08-09): pills at the top of the tee-sheet modal to hop between the
@@ -145797,8 +145818,8 @@ class GolferEventsManager {
             const list = (pick ? all.filter(e => e.soc === pick) : all).slice(0, 12);
             if (list.length < 2 || !document.getElementById('playersModalEvChips')) { strip.style.display = 'none'; return; }
             const esc2 = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-            // desktop (v1329): societies | events on ONE line — societies hug the left behind a divider
-            const wide = !!strip.closest('.pm-wide');
+            // desktop (v1329) + phone (v1336): societies | events on ONE line — societies hug the left behind a divider
+            const wide = !!strip.closest('.pm-wide, .pm-slim');
             const socRow = socs.length > 1 ? '<div id="tsSocRow" class="hstrip" style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;white-space:nowrap;' + (wide ? 'flex:none;max-width:40%;align-items:center;padding-right:12px;margin-right:12px;border-right:1px solid #e2e8f0;' : 'padding-bottom:7px;') + '">' +
                 [['', _lvT('gts.allsocieties', 'All societies')]].concat(socs.map(x => [x, x])).map(([v, l]) => {
                     const on = v === pick;
@@ -145890,9 +145911,12 @@ class GolferEventsManager {
         const orgGroups = (pairing && Array.isArray(pairing.groups)) ? pairing.groups : [];
         const hasOrgPairings = orgGroups.some(g => Array.isArray(g) ? g.length > 0 : (g && g.players && g.players.length > 0));
 
+        this._pmTagged = false;   // set by _renderOrgPairingGroups when it marks the choosers' rows
         listEl.innerHTML = hasOrgPairings
             ? this._renderOrgPairingGroups(orgGroups, regs, event, currentUserId)
             : this._renderPreferenceGroups(regs, event, currentUserId);
+        // phone: no status line on a preference sheet, so the van chip gets its own
+        if (!hasOrgPairings && this._pmVanChip) listEl.insertAdjacentHTML('afterbegin', '<div style="margin:2px 0 8px;">' + this._pmVanChip + '</div>');
         // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
         if (window._golferChipDecorate) window._golferChipDecorate(listEl, 20);
         this._renderSheetPickNotice();
@@ -145990,23 +146014,26 @@ class GolferEventsManager {
         const _esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
         const myGroupIdx = canSwitch ? orgGroups.findIndex(g => (Array.isArray(g) ? g : (g.players || [])).some(p => _pid(p) === currentUserId)) : -1;
 
-        // Desktop (v1329): the three boxed notices become ONE line of text, and the players who chose me
-        // get a tag on their own row instead of the banner above the sheet.
+        // Desktop (v1329) + phone (v1336): the three boxed notices become ONE line of text, and the players
+        // who chose me get a tag on their own row instead of the banner above the sheet.
         const wide = !!document.querySelector('#playersListModal .pm-wide');
+        const slim = wide || !!document.querySelector('#playersListModal .pm-slim');
         const _chose = {};
-        if (wide) this._pickChoosers(regs, currentUserId, event).forEach(x => { _chose[String(x.reg.playerId)] = x.kind; });
+        if (slim) { this._pmTagged = true; this._pickChoosers(regs, currentUserId, event).forEach(x => { _chose[String(x.reg.playerId)] = x.kind; }); }
         // icon-sized so a row stays one line; the status line carries the legend
         const _choseDot = (title) => '<span' + (title ? ' title="' + _esc(title) + '"' : '') + ' style="display:inline-flex;align-items:center;justify-content:center;margin-left:4px;width:18px;height:18px;border-radius:50%;background:#dcfce7;color:#15803d;vertical-align:middle;flex:none;"><span class="material-symbols-outlined" style="font-size:13px;">handshake</span></span>';
         const _choseTag = (pid) => _chose[String(pid)] ? _choseDot(_chose[String(pid)] === 'pick' ? _lvT('gts.choseyou', 'chose you') : _lvT('gts.addedyou', 'added you')) : '';
         let html;
-        if (wide) {
+        if (slim) {
+            // the phone gets the short wording (.s keys) so the line stays one line at 360px
             const seg = (icon, color, text) => '<span style="display:inline-flex;align-items:center;gap:4px;color:' + color + ';"><span class="material-symbols-outlined" style="font-size:15px;">' + icon + '</span>' + text + '</span>';
-            const segs = [seg('event_available', '#047857', '<b>' + _esc(_lvT('gts.st.set', 'Tee groups set by organizer')) + '</b>')];
-            if (!isLocked) segs.push(seg('hourglass_top', '#b45309', _esc(_lvT('gts.st.draft', 'Not final — groups can change until the organizer publishes'))));
-            if (canSwitch) segs.push(seg('swap_horiz', '#1d4ed8', _esc(_lvT('gts.st.move', 'Move here for an open spot, or Swap in to trade — no organizer needed'))));
+            const segs = [seg('event_available', '#047857', '<b>' + _esc(wide ? _lvT('gts.st.set', 'Tee groups set by organizer') : _lvT('gts.st.set.s', 'Set by organizer')) + '</b>')];
+            if (!wide && this._pmVanChip) segs.unshift(this._pmVanChip);
+            if (!isLocked) segs.push(seg('hourglass_top', '#b45309', _esc(wide ? _lvT('gts.st.draft', 'Not final — groups can change until the organizer publishes') : _lvT('gts.st.draft.s', 'Not final'))));
+            if (canSwitch) segs.push(seg('swap_horiz', '#1d4ed8', _esc(wide ? _lvT('gts.st.move', 'Move here for an open spot, or Swap in to trade — no organizer needed') : _lvT('gts.st.move.s', 'Move / Swap in yourself'))));
             else if (isRegistered && isLocked) segs.push(seg('lock', '#b45309', _esc(_lvT('gts.st.locked', 'Groups are locked by the organizer'))));
-            if (Object.keys(_chose).length) segs.push('<span style="display:inline-flex;align-items:center;gap:5px;color:#15803d;">' + _choseDot('').replace('margin-left:4px;', '') + _esc(_lvT('ppw.title', 'Players who chose you')) + '</span>');
-            html = '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 20px;font-size:11.5px;font-weight:600;margin:2px 2px 10px;">' + segs.join('') + '</div>';
+            if (Object.keys(_chose).length) segs.push('<span style="display:inline-flex;align-items:center;gap:5px;color:#15803d;">' + _choseDot('').replace('margin-left:4px;', '') + _esc(wide ? _lvT('ppw.title', 'Players who chose you') : _lvT('gts.choseyou', 'chose you')) + '</span>');
+            html = '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px ' + (wide ? '20px' : '12px') + ';font-size:' + (wide ? '11.5px' : '11px') + ';font-weight:600;margin:' + (wide ? '2px 2px 10px' : '0 2px 8px') + ';">' + segs.join('') + '</div>';
         } else {
         html = '<div class="pm-notes"><div style="margin:0 0 8px;font-size:11px;color:#059669;font-weight:700;display:flex;align-items:center;gap:5px;"><span class="material-symbols-outlined" style="font-size:14px;">event_available</span> Tee groups set by organizer</div>';
         // Disclaimer (Pete 2026-07-25): until the organizer LOCKS (publishes) the pairings, what
@@ -147212,7 +147239,7 @@ class GolferEventsManager {
         const regs = this.currentEventRegistrations || [];
         const ev = this.currentEvent;
         const html = this._partnerPickNoticeHtml(regs, uid, ev);
-        el.innerHTML = (html && !el.closest('.pm-wide')) ? '<div style="padding:8px 12px 0;">' + html + '</div>' : '';
+        el.innerHTML = (html && !(el.closest('.pm-wide, .pm-slim') && this._pmTagged)) ? '<div style="padding:8px 12px 0;">' + html + '</div>' : '';
         if (html && ev && ev.id && window.PartnerPickWatch) PartnerPickWatch.markSeen(ev.id, PartnerPickWatch.choosers(regs, uid, ev));
     }
 

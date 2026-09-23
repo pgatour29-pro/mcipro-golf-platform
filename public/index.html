@@ -11858,6 +11858,7 @@
                 'gfd.uploading': 'Uploading {i} of {n}…',
                 'gfd.posted.toast': 'Posted',
                 'gts.allsocieties': 'All societies',
+                'gts.society': 'Society',
                 'gts.search': 'Search players',
                 'gts.st.set': 'Tee groups set by organizer',
                 'gts.st.draft': 'Not final — groups can change until the organizer publishes',
@@ -15211,6 +15212,7 @@
                 'gfd.uploading': 'กำลังอัปโหลด {i} จาก {n}…',
                 'gfd.posted.toast': 'โพสต์แล้ว',
                 'gts.allsocieties': 'ทุกสมาคม',
+                'gts.society': 'สมาคม',
                 'gts.search': 'ค้นหาผู้เล่น',
                 'gts.st.set': 'ผู้จัดจัดกลุ่มทีออฟแล้ว',
                 'gts.st.draft': 'ยังไม่เป็นทางการ — กลุ่มอาจเปลี่ยนได้จนกว่าผู้จัดจะประกาศ',
@@ -18433,6 +18435,7 @@
                 'gfd.uploading': '{n}장 중 {i}장 업로드 중…',
                 'gfd.posted.toast': '게시되었어요',
                 'gts.allsocieties': '모든 소사이어티',
+                'gts.society': '소사이어티',
                 'gts.search': '선수 검색',
                 'gts.st.set': '주최자가 조 편성 완료',
                 'gts.st.draft': '확정 아님 — 주최자가 발표하기 전까지 조가 바뀔 수 있어요',
@@ -21837,6 +21840,7 @@
                 'gfd.uploading': '{n}枚中{i}枚をアップロード中…',
                 'gfd.posted.toast': '投稿しました',
                 'gts.allsocieties': 'すべてのソサエティ',
+                'gts.society': 'ソサエティ',
                 'gts.search': '選手を検索',
                 'gts.st.set': '主催者が組み合わせを設定済み',
                 'gts.st.draft': '未確定 — 主催者が公開するまで組は変わることがあります',
@@ -145823,11 +145827,15 @@ class GolferEventsManager {
             // v1337 (Pete: "selecting societies is terrible… use drop downs"): ONE society dropdown at the head of
             // the line instead of a squeezed pill strip — a styled pill with the phone's own picker (a transparent
             // <select>) over it. Dark when a society is picked, so a narrowed row never looks like the full week.
-            const socLbl = pick || _lvT('gts.allsocieties', 'All societies');
-            const socRow = socs.length > 1 ? '<div id="tsSocRow" style="flex:none;display:flex;align-items:center;' + (wide ? 'padding-right:8px;margin-right:8px;border-right:1px solid #e2e8f0;' : 'padding-bottom:7px;') + '">' +
-                '<label style="position:relative;display:inline-flex;align-items:center;gap:4px;height:30px;box-sizing:border-box;padding:0 8px 0 10px;border-radius:999px;font-size:10.5px;font-weight:800;cursor:pointer;max-width:' + (wide ? '220px' : '150px') + ';' +
+            // phone (v1338, Pete: "selecting tee sheet side scrolling is too narrow"): the dropdown rides INSIDE the
+            // event scroller as its first item ("Society ▾" / the picked name cut at 110px) so the swipe area is
+            // the full 340px, and the pills are capped at 170px — two and a bit on screen instead of one
+            const phone = !strip.closest('.pm-wide');
+            const socLbl = pick || (phone ? _lvT('gts.society', 'Society') : _lvT('gts.allsocieties', 'All societies'));
+            const socRow = socs.length > 1 ? '<div id="tsSocRow" style="flex:none;display:flex;align-items:center;' + (wide ? (phone ? 'padding-right:6px;margin-right:6px;' : 'padding-right:8px;margin-right:8px;') + 'border-right:1px solid #e2e8f0;' : 'padding-bottom:7px;') + '">' +
+                '<label style="position:relative;display:inline-flex;align-items:center;gap:4px;height:30px;box-sizing:border-box;padding:0 ' + (phone ? '4px 0 8px' : '8px 0 10px') + ';border-radius:999px;font-size:10.5px;font-weight:800;cursor:pointer;max-width:' + (phone ? '110px' : '220px') + ';' +
                     (pick ? 'background:#0f172a;color:#fff;border:1px solid #0f172a;' : 'background:#eef2f6;color:#334155;border:1px solid #cbd5e1;') + '">' +
-                    '<span class="material-symbols-outlined" style="font-size:15px;flex:none;">filter_list</span>' +
+                    (phone ? '' : '<span class="material-symbols-outlined" style="font-size:15px;flex:none;">filter_list</span>') +
                     '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc2(socLbl) + '</span>' +
                     '<span class="material-symbols-outlined" style="font-size:17px;flex:none;">expand_more</span>' +
                     '<select id="tsSocSel" aria-label="' + esc2(_lvT('gts.allsocieties', 'All societies')) + '" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:16px;">' +
@@ -145837,11 +145845,11 @@ class GolferEventsManager {
                 '</label></div>' : '';
             strip.style.overflowX = 'visible';
             strip.style.whiteSpace = 'normal';
-            strip.innerHTML = socRow + '<div id="tsEvRow" class="hstrip" style="display:flex;gap:0;' + (wide ? 'flex:1;min-width:0;' : '') + 'overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;white-space:nowrap;">' + list.map(e => {
+            strip.innerHTML = (phone ? '' : socRow) + '<div id="tsEvRow" class="hstrip" style="display:flex;gap:0;align-items:center;' + (wide ? 'flex:1;min-width:0;' : '') + 'overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;white-space:nowrap;">' + (phone ? socRow : '') + list.map(e => {
                 const on = e.id === String(curId);
                 const dt = e.date ? new Date(e.date + 'T00:00:00') : null;
                 const lbl = (dt && !isNaN(dt.getTime()) ? dt.toLocaleDateString(_lvLocale(), { weekday: 'short', day: 'numeric' }).toUpperCase() + ' · ' : '') + e.label;
-                return '<button data-evid="' + e.id + '" onclick="GolferEventsSystem.switchSheetEvent(\'' + e.id + '\')" style="display:inline-flex;flex:none;align-items:center;gap:6px;margin-right:8px;font-size:10.5px;font-weight:700;border-radius:999px;padding:7px 12px;cursor:pointer;max-width:230px;white-space:nowrap;vertical-align:middle;' + (on ? 'background:#065f46;color:#fff;border:1px solid #065f46;' : 'background:#fff;color:#334155;border:1px solid #d1d5db;') + '">' +
+                return '<button data-evid="' + e.id + '" onclick="GolferEventsSystem.switchSheetEvent(\'' + e.id + '\')" style="display:inline-flex;flex:none;align-items:center;gap:6px;margin-right:8px;font-size:10.5px;font-weight:700;border-radius:999px;padding:7px 12px;cursor:pointer;max-width:' + (phone ? '170px' : '230px') + ';white-space:nowrap;vertical-align:middle;' + (on ? 'background:#065f46;color:#fff;border:1px solid #065f46;' : 'background:#fff;color:#334155;border:1px solid #d1d5db;') + '">' +
                     (e.reg && !on ? '<span style="flex:none;width:6px;height:6px;border-radius:50%;background:#15803d;"></span>' : '') +
                     '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;">' + String(lbl).replace(/</g, '&lt;') + '</span>' +
                     '<span class="ppw-chip-n" style="display:none;flex:none;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#ef4444;color:#fff;font-size:10.5px;font-weight:800;line-height:1;"></span>' +
@@ -145861,7 +145869,8 @@ class GolferEventsManager {
             const act = strip.querySelector('[data-evid="' + String(curId) + '"]');
             // measured against the row itself — offsetLeft counts from the modal, which over-scrolled
             // by the row's own left offset and cut the start off the active pill ("3 WED · …")
-            if (act) evRow.scrollLeft = Math.max(0, evRow.scrollLeft + act.getBoundingClientRect().left - evRow.getBoundingClientRect().left - 10);
+            // phone: the Society dropdown heads this row, so only scroll when the active pill is actually cut off
+            if (act && !(phone && act.getBoundingClientRect().right <= evRow.getBoundingClientRect().right)) evRow.scrollLeft = Math.max(0, evRow.scrollLeft + act.getBoundingClientRect().left - evRow.getBoundingClientRect().left - 10);
             if (W) {
                 W.paintChips();
                 // a badged pill scrolled out of sight is no badge at all — bring the first one into view

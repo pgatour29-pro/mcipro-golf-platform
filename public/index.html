@@ -8055,6 +8055,8 @@
             width:12px; height:5px; border-radius:3px; }
         #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-dot.three {
             width:18px; height:5px; border-radius:3px; }
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-dot.minus {
+            background:var(--pcv-red) !important; }
         #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-dot.none {
             background:transparent !important; }
 
@@ -105381,10 +105383,13 @@ class LiveScorecardSystem {
             return engine.allocHandicapShots(this.courseData.holes, hcp) || {};
         } catch (e) { return {}; }
     }
+    // Plus handicaps (Pete 2026-09-23): the allocator stores a shot GIVEN BACK as a negative (+1 gives one
+    // on SI 18, +2 on SI 17 and 18) — that hole gets a RED dot, same sizes as the green ones.
     _pcvDotHTML(n) {
         n = n || 0;
-        if (n <= 0) return '<span class="pcv-dot none"></span>';
-        return '<span class="pcv-dot' + (n >= 3 ? ' three' : (n === 2 ? ' two' : '')) + '"></span>';
+        if (n === 0) return '<span class="pcv-dot none"></span>';
+        const m = Math.abs(n);
+        return '<span class="pcv-dot' + (n < 0 ? ' minus' : '') + (m >= 3 ? ' three' : (m === 2 ? ' two' : '')) + '"></span>';
     }
     // Same ladder the save paths store (net-to-par -> points), so the card's PTS column
     // is the stored number, not a second opinion.
@@ -105661,7 +105666,7 @@ class LiveScorecardSystem {
         const par = hd.par || 4;
         const sh = (this._pcvShotMap(pl) || {})[t.hole] || 0;
         const first = String(pl.name || '').split(' ')[0] || '?';
-        const shTxt = sh > 0 ? (sh + ' ' + _lvT('scorecard.pcv.shot', 'SHOT') + (sh > 1 ? 'S' : ''))
+        const shTxt = sh !== 0 ? ((sh < 0 ? '\u2212' : '') + Math.abs(sh) + ' ' + _lvT('scorecard.pcv.shot', 'SHOT') + (Math.abs(sh) > 1 ? 'S' : ''))
                              : _lvT('scorecard.pcv.noshot', 'NO SHOT');
         // ONE line: the card has to fit one screen, and two lines here cost 14px of it.
         const blk = this._pcvBlockHoles();

@@ -111,6 +111,11 @@ building, not after.
   `sql/manual_trgg_edit_syncs_globally_20260901.sql` (supersedes the 20260818/20260824 files —
   those contain a regressed scramble gate, see FUCKUPS #37; never author a DB function from a
   repo .sql file, pull live prosrc). Never re-add independent universal drift for TRGG members.
+  2026-09-23: the 09-12 "universal = LOWEST" ratchet had silently frozen every TRGG golfer whose
+  number ROSE (HCP ledger, Round History, profile stuck). A locked TRGG row now ASSIGNS the
+  universal both ways (`sql/trgg_update_assigns_universal_20260923.sql`); LEAST applies only to
+  computed values from other societies. Every society's NOT-STARTED rosters follow any change
+  (`sql/all_societies_upcoming_rosters_follow_hcp_20260923.sql`); a started/played round is frozen.
 
 ## Deploy ritual (every `public/` change)
 1. `npm test` — must pass.

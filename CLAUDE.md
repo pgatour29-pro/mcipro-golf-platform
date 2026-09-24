@@ -14,7 +14,8 @@ post-mortems — read before touching anything you recognize from a title), date
 `CATALOG.md` (where-things-live lookup). `INDEX.md` at repo root maps the monolith.
 
 ## Stack (facts, don't rediscover them)
-- Frontend: vanilla JS + HTML **monolith** — `public/index.html` (~142K lines). Tailwind via CDN.
+- Frontend: vanilla JS + HTML **monolith** — `public/index.html` (~142K lines). Tailwind = prebuilt
+  `public/tw-static.css` (v1352; NOT the CDN — see Frontend rules).
   No build step, no framework. Other pages: `poy.html`, `classic.html`, `admin-trgg-handicaps.html`.
 - Backend: Supabase (Postgres + RLS + Edge Functions in `supabase/functions/`). Browser uses the
   publishable ANON key; RLS is the only guard.
@@ -140,7 +141,11 @@ building, not after.
 - Design: NO purple — and pink/magenta/fuchsia/indigo COUNT AS PURPLE (Pete, 2026-08-14; v906 purge left zero in public/*.html — keep it that way). Green `#22c55e` for highlights. Contrast floor: no gray-on-gray under
   Tailwind 400 for text. Compact chrome globally: 1-line header, one-band hero, content starts
   ≤~250px on phone, full width on monitor. Every theme-aware page header ships `[data-theme-toggle]`.
-  Stock Tailwind via CDN only — no custom design tokens.
+  Stock Tailwind only — no custom design tokens. Since v1352 it is a PREBUILT stylesheet
+  (`public/tw-static.css`, `tailwind.static.config.js`), NOT cdn.tailwindcss.com — the CDN compiled
+  CSS in the browser on every open (~4s per app open). Added a Tailwind class? `npm run build:tw`
+  and commit the css (`npm test` fails when it's stale). Classes built at runtime from a variable
+  (`bg-${color}-50`) only exist if the safelist covers them — extend it, never bring the CDN back.
 - CSS/DOM traps: `.screen` transforms trap `position:fixed` modals — mount modals on `<body>`.
   Inline styles beat classes — toggle via `element.style`. Do CSS layout changes BEFORE scroll
   calls on mobile. Global touch handlers (pull-to-refresh) can eat modal scroll — check them first.

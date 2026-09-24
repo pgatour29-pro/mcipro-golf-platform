@@ -95,7 +95,7 @@
   };
 
   var CL = window.CourseLink = {
-    _v: 1349,
+    _v: 1350,
     KEYS: KEYS,
     sb: null,
     lang: 'en',
@@ -933,7 +933,7 @@
         '#clPanel .cl-pk.out,#clPanel .cl-pk.off,#clPanel .cl-pk.grp{opacity:.8}',
         '#clPanel .cl-pk.busy{opacity:.5;pointer-events:none}',
         '#clPanel .cl-pk.none{color:var(--cl-muted);justify-content:center;border-top:1px solid var(--cl-line);margin-top:2px}',
-        '@media (max-width:420px){#clPanel .cl-st{width:9px;height:9px;padding:0;border-radius:50%;font-size:0;background:#f59e0b}#clPanel .cl-st.conf{background:var(--cl-green)}#clPanel .cl-g-n{font-size:10px}#clPanel .cl-pk{flex-wrap:wrap}#clPanel .cl-pk.out em,#clPanel .cl-pk.off em,#clPanel .cl-pk.grp em{flex:1 1 100%;text-align:left;padding-left:34px;margin-top:-3px}}',
+        '@media (max-width:420px){#clPanel .cl-st{width:9px;height:9px;padding:0;border-radius:50%;font-size:0;background:#f59e0b}#clPanel .cl-st.conf{background:var(--cl-green)}#clPanel .cl-g-n{font-size:10px}#clPanel .cl-p-n{flex-basis:56px}#clPanel .cl-ic{width:28px}#clPanel .cl-acts{gap:3px}#clPanel .cl-pk{flex-wrap:wrap}#clPanel .cl-pk.out em,#clPanel .cl-pk.off em,#clPanel .cl-pk.grp em{flex:1 1 100%;text-align:left;padding-left:34px;margin-top:-3px}}',
         // thread
         '#clPanel .cl-thread{margin-top:10px}',
         '#clPanel .cl-msgs{max-height:42vh;overflow:auto;display:flex;flex-direction:column;gap:6px;margin:6px 0 8px;padding-right:2px}',

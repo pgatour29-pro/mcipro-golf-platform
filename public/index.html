@@ -120275,17 +120275,16 @@ class SocietyOrganizerManager {
 
     async addPlayerToDirectory(playerId, playerName, handicap) {
         try {
-            if (!this.societyProfile) {
-                NotificationManager.show('Society profile not loaded', 'error');
-                return;
-            }
-
-            const societyName = this.societyProfile.societyName;
+            // v1345: the society profile can still be loading (or absent) while the directory itself is
+            // already on screen — resolve the name like loadPlayerDirectory does (profile, then the
+            // selected society) instead of bailing with "Society profile not loaded".
+            const societyName = (this.societyProfile && (this.societyProfile.societyName || this.societyProfile.society_name))
+                || (window.AppState && AppState.selectedSociety && AppState.selectedSociety.name) || null;
 
             // Validate society name
             if (!societyName) {
                 console.error('[PlayerDirectory] Society name is missing from profile:', this.societyProfile);
-                NotificationManager.show('Society name not found in profile', 'error');
+                window.NotificationManager.show('Society not loaded yet — reopen the Players tab and try again', 'error', 5000);
                 return;
             }
 
@@ -123115,9 +123114,12 @@ This action cannot be undone.`);
             if (isNaN(v) || v < -10 || v > 54) { window.NotificationManager.show(_lvT('pce.hcp.bad', 'Enter a handicap number'), 'warning'); return; }
             hcp = isP ? -v : v;
         }
+        // Resolve the society BEFORE creating anything — a missing society must not leave a half-added
+        // player (profile + handicap rows, no directory row) behind an error toast.
+        const societyName = (this.societyProfile && (this.societyProfile.societyName || this.societyProfile.society_name)) || (window.AppState && AppState.selectedSociety && AppState.selectedSociety.name) || null;
+        if (!societyName) { window.NotificationManager.show('Society not loaded yet — reopen the Players tab and try again', 'error', 5000); return; }
         const btn = document.querySelector('#dirInlineAdd button'); if (btn) { btn.disabled = true; btn.textContent = '…'; }
         try {
-            const societyName = (this.societyProfile && (this.societyProfile.society_name || this.societyProfile.societyName)) || (window.AppState && AppState.selectedSociety && AppState.selectedSociety.name) || null;
             const pid = await SocietyGolfDB.createOrFindManualPlayer(term, hcp, societyName);
             if (!pid) throw new Error('no player id');
             if (hcp != null && window.OrganizerScoringSystem && window.OrganizerScoringSystem.setSocietyHandicap) {

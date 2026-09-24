@@ -13753,6 +13753,7 @@
                 'orgscore.noscores': 'No scores yet',
                 'orgscore.notstarted': 'Not started',
                 'orgscore.complete': '✓ Complete',
+                'orgscore.medaloverall': 'Monthly Medal — overall winner (best net)',
                 'orgscore.inprogress': 'In Progress',
                 'orgscore.live': 'Live',
                 'orgscore.removetitle': 'Remove player from this event',
@@ -17102,6 +17103,7 @@
                 'orgscore.noscores': 'ยังไม่มีสกอร์',
                 'orgscore.notstarted': 'ยังไม่เริ่ม',
                 'orgscore.complete': '✓ เสร็จสิ้น',
+                'orgscore.medaloverall': 'เหรียญประจำเดือน — ผู้ชนะรวม (เน็ตต่ำสุด)',
                 'orgscore.inprogress': 'กำลังเล่น',
                 'orgscore.live': 'สด',
                 'orgscore.removetitle': 'นำผู้เล่นออกจากกิจกรรมนี้',
@@ -20687,6 +20689,7 @@
                 'orgscore.noscores': '아직 스코어 없음',
                 'orgscore.notstarted': '시작 전',
                 'orgscore.complete': '✓ 완료',
+                'orgscore.medaloverall': '먼슬리 메달 — 종합 우승 (최저 네트)',
                 'orgscore.inprogress': '진행 중',
                 'orgscore.live': '라이브',
                 'orgscore.removetitle': '이 이벤트에서 플레이어 제거',
@@ -23840,6 +23843,7 @@
                 'orgscore.noscores': 'まだスコアがありません',
                 'orgscore.notstarted': '未開始',
                 'orgscore.complete': '✓ 完了',
+                'orgscore.medaloverall': 'マンスリーメダル — 総合優勝（ベストネット）',
                 'orgscore.inprogress': '進行中',
                 'orgscore.live': 'ライブ',
                 'orgscore.removetitle': 'このイベントからプレイヤーを削除',
@@ -170258,7 +170262,12 @@ class OrganizerScoringSystem {
         const _isTeamScored = _isWaltzEv || _isScr2Ev;
         document.getElementById('scoringDivisionsCard').style.display = _isTeamScored ? 'none' : 'block';
         var _fmtSel = document.getElementById('formatSelectorDiv'); if (_fmtSel) _fmtSel.style.display = _isWaltzEv ? 'none' : '';
-        if (_isWaltzEv) this.currentFormat = 'stableford';
+        // Format follows the EVENT: a Monthly Medal / stroke-play event ranks by NET (lowest wins) the
+        // moment it opens — the board used to open EVERY event in Stableford and the organizer had to
+        // notice the dropdown (Bangpra Monthly Medal 2026-09-23 ranked a 42-pt / net-66 card first).
+        // Waltz is always team Stableford. The organizer can still switch the dropdown afterwards.
+        this.currentFormat = _isWaltzEv ? 'stableford' : (this._isMedalEvent(_ev) ? 'strokeplay' : 'stableford');
+        var _fmtPick = document.getElementById('leaderboardFormatSelect'); if (_fmtPick) _fmtPick.value = this.currentFormat;
         // Collapse a 2-man scramble that was previously auto-split into 2 handicap divisions back to ONE.
         if (_isScr2Ev && (this.divisions || []).length) { this.divisions = []; try { await this.saveDivisions(); } catch (e) {} }
 
@@ -170546,31 +170555,10 @@ class OrganizerScoringSystem {
     }
 
     renderSingleLeaderboard(data) {
-        // Sort based on current format
-        const sorted = [...data];
-        switch (this.currentFormat) {
-            case 'stableford':
-                sorted.sort((a, b) => (b.total_stableford || 0) - (a.total_stableford || 0));
-                break;
-            case 'strokeplay':
-            case 'scramble':
-                sorted.sort((a, b) => (a.total_gross || 999) - (b.total_gross || 999));
-                break;
-            case 'nassau':
-                sorted.sort((a, b) => {
-                    const aTotal = a.format_scores?.nassau?.total || 999;
-                    const bTotal = b.format_scores?.nassau?.total || 999;
-                    return aTotal - bTotal;
-                });
-                break;
-            case 'skins':
-                sorted.sort((a, b) => {
-                    const aHoles = a.format_scores?.skins?.holes_won || 0;
-                    const bHoles = b.format_scores?.skins?.holes_won || 0;
-                    return bHoles - aHoles;
-                });
-                break;
-        }
+        // Sort based on current format — ONE comparator for every format (_cmpFull: net for medal,
+        // points for Stableford, countback for ties). The old per-format sort ranked stroke play by
+        // GROSS while the score column showed NET.
+        const sorted = [...data].sort((a, b) => this._cmpFull(a, b));
 
         return sorted.map((round, index) => {
             const notStarted = !!round._notStarted;
@@ -170627,6 +170615,16 @@ class OrganizerScoringSystem {
     renderDivisionLeaderboards(data, divisions) {
         let html = '';
 
+        // Monthly Medal: the overall winner (best net in the whole field) heads the board on a gold band
+        // of their own and is lifted OUT of the division places below (same rule as Publish).
+        const _ovr = this._overallWinnerRow(data);
+        if (_ovr) {
+            html += `<tr><td colspan="9" class="py-3 px-3 font-bold text-lg" style="background:linear-gradient(90deg,#fbbf24,#f59e0b);color:#3b2604;">🏅 ${_lvT('orgscore.medaloverall', 'Monthly Medal — overall winner (best net)')}</td></tr>`;
+            html += this.renderSingleLeaderboard([_ovr]);
+            html += '<tr class="bg-gray-100"><td colspan="9" class="py-2"></td></tr>';
+            data = data.filter(r => r !== _ovr);
+        }
+
         // Assign each player to EXACTLY ONE division. A handicap that falls in NO division's range —
         // a plus/scratch handicap below the lowest min (e.g. Pete Park's -0.1 vs a "min 0" division) or
         // anything in a gap between divisions — must NOT be silently dropped. Clamp it into the nearest
@@ -170658,31 +170656,10 @@ class OrganizerScoringSystem {
 
             if (divisionPlayers.length === 0) return; // Skip empty divisions
 
-            // Sort players within this division
-            let sorted = [...divisionPlayers];
-            switch (this.currentFormat) {
-                case 'stableford':
-                    sorted.sort((a, b) => (b.total_stableford || 0) - (a.total_stableford || 0));
-                    break;
-                case 'strokeplay':
-                case 'scramble':
-                    sorted.sort((a, b) => (a.total_gross || 999) - (b.total_gross || 999));
-                    break;
-                case 'nassau':
-                    sorted.sort((a, b) => {
-                        const aTotal = a.format_scores?.nassau?.total || 999;
-                        const bTotal = b.format_scores?.nassau?.total || 999;
-                        return aTotal - bTotal;
-                    });
-                    break;
-                case 'skins':
-                    sorted.sort((a, b) => {
-                        const aHoles = a.format_scores?.skins?.holes_won || 0;
-                        const bHoles = b.format_scores?.skins?.holes_won || 0;
-                        return bHoles - aHoles;
-                    });
-                    break;
-            }
+            // Sort players within this division — ONE comparator for every format (_cmpFull: net for
+            // medal, points for Stableford, countback for ties). The old per-format sort ranked stroke
+            // play by GROSS while the score column showed NET.
+            let sorted = [...divisionPlayers].sort((a, b) => this._cmpFull(a, b));
 
             // Division header row
             html += `
@@ -170780,6 +170757,31 @@ class OrganizerScoringSystem {
             default:
                 return round.total_stableford || 0;
         }
+    }
+
+    // ===== Monthly Medal (stroke play) =====
+    // Medal = NET stroke play. society_events.format stays 'stableford' for TRGG's synced events, so
+    // the TITLE / course decides too — same regex as the golfer live board and results.html
+    // ("TRGG - BANGPRA MONTHLY MEDAL STROKE" → medal).
+    _isMedalEvent(ev) {
+        const e = ev || (this.allEvents || []).find(x => x.id === this.currentEventId);
+        if (!e) return false;
+        const f = String(e.format || e.eventFormat || '').toLowerCase();
+        if (f === 'stroke_play' || f === 'strokeplay' || f === 'medal') return true;
+        return /\bmedal\b|stroke ?play/i.test(String(e.title || e.name || '') + ' ' + String(e.course_name || ''));
+    }
+    // event_results.division carried by the medal's overall winner (results.html reads the same word).
+    get OVERALL_DIV() { return 'Overall'; }
+    // A flighted medal carries ONE overall winner ABOVE the divisions (Pete 2026-09-24: "the main
+    // monthly winner comes from all divisions with the best NET score"). That player takes the medal
+    // only — the division places rank without them (no double prize). Only while the board is in
+    // stroke play AND flighted: a single-division board's 1st place already IS the overall winner.
+    _overallWinnerRow(rows) {
+        if (this.currentFormat !== 'strokeplay' || !this._isMedalEvent()) return null;
+        if (!Array.isArray(this.divisions) || this.divisions.length < 2) return null;
+        const scored = (rows || []).filter(r => r && !r._notStarted && r.golfer_id && (r.total_gross || 0) > 0);
+        if (scored.length < 2) return null;
+        return scored.slice().sort((a, b) => this._cmpFull(a, b))[0] || null;
     }
 
     // ===== 3-Man Waltz (1-2-3) team leaderboard =====
@@ -173404,7 +173406,7 @@ class OrganizerScoringSystem {
     }
 
     showResultsSummary(leaderboard, event) {
-        const unit = this.currentFormat === 'stableford' ? 'points' : 'strokes';
+        const unit = this.currentFormat === 'stableford' ? 'points' : (this.currentFormat === 'strokeplay' ? 'net' : 'strokes');
 
         // Group by division so each flight shows its own podium (leaderboard is already
         // ranked per-division). Preserve first-seen order → Division 1, Division 2, …
@@ -173438,7 +173440,7 @@ class OrganizerScoringSystem {
             const top3 = byDiv.get(k).filter(p => p.position >= 1 && p.position <= 3)
                                     .sort((a, b) => a.position - b.position);
             const header = multiDiv && k
-                ? `<div style="font-size:15px;font-weight:800;color:#1e40af;margin:18px 0 10px;padding-bottom:6px;border-bottom:2px solid #dbeafe;">${k}</div>`
+                ? `<div style="font-size:15px;font-weight:800;color:#1e40af;margin:18px 0 10px;padding-bottom:6px;border-bottom:2px solid #dbeafe;">${k === this.OVERALL_DIV ? '🏅 ' + _lvT('orgscore.medaloverall', 'Monthly Medal — overall winner (best net)') : k}</div>`
                 : '';
             return header + top3.map(p => podium(p, p.position)).join('');
         }).join('');
@@ -175241,6 +175243,10 @@ class OrganizerScoringSystem {
             (fmt === 'stableford' ? (r.total_stableford != null && (r.holes_played || 0) > 0 || (r.total_gross || 0) > 0)
                                   : (r.total_gross != null && r.total_gross > 0));
         const rows = (this.leaderboardData || []).filter(scored);
+        // Monthly Medal: ONE overall winner (best net across every division) leads the results as its
+        // own band ('Overall', position 1) and is excluded from the division placings (no double prize).
+        const ovr = this._overallWinnerRow(rows);
+        const rowsForDivs = ovr ? rows.filter(r => r !== ovr) : rows;
         const divs = (Array.isArray(this.divisions) && this.divisions.length) ? this.divisions : null;
         const buckets = [];
         if (divs) {
@@ -175252,7 +175258,7 @@ class OrganizerScoringSystem {
             }));
             const lowest = meta.reduce((bi, m, i) => (m.min < meta[bi].min ? i : bi), 0);
             const highest = meta.reduce((bi, m, i) => (m.max > meta[bi].max ? i : bi), 0);
-            rows.forEach(r => {
+            rowsForDivs.forEach(r => {
                 const h = parseFloat(r.handicap_used);
                 const hcp = isFinite(h) ? h : 0;
                 let idx = meta.findIndex(m => hcp >= m.min && hcp <= m.max);
@@ -175269,7 +175275,7 @@ class OrganizerScoringSystem {
             });
             meta.forEach(m => buckets.push({ name: m.name, rows: m.rows }));
         } else {
-            buckets.push({ name: null, rows });
+            buckets.push({ name: null, rows: rowsForDivs });
         }
         const out = [];
         buckets.forEach(b => {
@@ -175292,6 +175298,19 @@ class OrganizerScoringSystem {
                 });
             });
         });
+        if (ovr) {
+            out.unshift({
+                round_id: ovr.is_live ? null : (ovr.id || null),
+                player_id: ovr.golfer_id,
+                player_name: ovr.player_name || this.getPlayerName(ovr.golfer_id, ovr),
+                position: 1,
+                score: this.getScoreForFormat(ovr, fmt),
+                gross: ovr.total_gross || 0,
+                handicap: window.toPlayingHandicap(ovr.handicap_used),
+                division: this.OVERALL_DIV,
+                status: ovr.status || 'completed'
+            });
+        }
         return out;
     }
 

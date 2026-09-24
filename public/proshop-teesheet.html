@@ -3167,7 +3167,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="golfer-avatar.js?v=20260830a"></script>
   <script src="name-search.js?v=20260917a"></script>
-  <script src="course-society-link.js?v=1334"></script>
+  <script src="course-society-link.js?v=1349"></script>
   <script>
   (function() {
     'use strict';
@@ -3414,7 +3414,15 @@
               groupTotal: numSlots,
               startTime: startTime,
               endTime: endTime || hhmm(startMins + numSlots * step),
-              golfers: paired[i] ? paired[i].players.map(n => ({ name: n })) : [],
+              // v1347: each paired player carries their caddy (registration number / caddy_bookings row) —
+              // the pill's caddy count, the print sheet and the panel all read the same thing
+              golfers: paired[i] ? paired[i].players.map(p => ({
+                name: p.name, odoo_id: p.id || '',
+                caddyId: (p.caddy && p.caddy.id) || null,
+                caddyNumber: (p.caddy && p.caddy.num) || '',
+                caddyName: (p.caddy && p.caddy.name && !/^caddy #/i.test(p.caddy.name)) ? p.caddy.name : '',
+                caddyStatus: (p.caddy && p.caddy.status) || ''
+              })) : [],
               status: 'confirmed',
               createdAt: new Date().toISOString()
             });
@@ -5561,6 +5569,13 @@
           const caddyBookings = caddyBookingsCache[currentDate] || [];
           const slotTime = b.time; // This slot's time (e.g., 11:40)
           const slotMins = minutes(slotTime);
+          // v1347: a golfer already paired into ANY slot of this event keeps their group — their caddy
+          // row rides that group now (by player), never a second copy in whichever slot shares the time
+          const evKeys = new Set();
+          if (b.eventId) filteredBookings.forEach(x => {
+            if (x.eventId !== b.eventId) return;
+            (x.golfers || []).forEach(g => { if (g.odoo_id) evKeys.add('id:' + g.odoo_id); if (g.name) evKeys.add('nm:' + String(g.name).trim().toLowerCase()); });
+          });
 
           caddyBookings.forEach(cb => {
             if (!cb.time) return;
@@ -5569,6 +5584,7 @@
             if (cbMins !== slotMins) return;
 
             const golfer = cb.golfers?.[0];
+            if (golfer && (evKeys.has('id:' + golfer.odoo_id) || evKeys.has('nm:' + String(golfer.name || '').trim().toLowerCase()))) return;
             if (golfer) {
               // Check if golfer already in this slot
               const existingGolfer = (b.golfers || []).find(g =>
@@ -8948,7 +8964,19 @@
       $('societies-btn').style.display = slug ? '' : 'none';
       if (!slug) return;
       const label = (courseDisplayNames && courseDisplayNames[slug]) || slug;
-      CLk.watchCourse({ slug, me: { id: 'course:' + slug, name: label }, badgeEl: $('societies-btn') })
+      // v1347: the panel's caddy picker = THIS sheet's roster + day state (4:15 block, day-offs), the
+      // same rules the booking dialog applies; jobs it writes carry the canonical course name.
+      CLk.onRoster = async (date, time) => {
+        if (!allCaddies.length) { try { allCaddies = await fetchCaddiesFromDb(el.courseSelect.value); } catch (e) {} }
+        const st = await loadCaddyDayState(date, time, null);
+        return allCaddies.map(c => ({
+          number: c.number, name: c.name, photoUrl: c.photoUrl || null, id: c.id,
+          state: st.off[c.number] ? 'off' : st.out[c.number] ? 'out' : 'free',
+          at: st.out[c.number] ? st.out[c.number].at : '', until: st.out[c.number] ? st.out[c.number].until : '',
+          golfer: st.out[c.number] ? st.out[c.number].golfer : ''
+        }));
+      };
+      CLk.watchCourse({ slug, me: { id: 'course:' + slug, name: label }, courseName: courseCtx().name, badgeEl: $('societies-btn') })
         .catch(e => console.warn('[TeeSheet] CourseLink watch failed', e));
     }
     $('societies-btn').addEventListener('click', () => window.CourseLink && CourseLink.openPanel());

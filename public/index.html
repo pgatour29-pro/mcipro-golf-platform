@@ -89564,7 +89564,14 @@ class SocietyGolfSupabase {
             query = query.eq('organizer_id', organizerId);
         }
 
-        const { data: societyData, error: societyError } = await query.single();
+        let { data: societyData, error: societyError } = await query.maybeSingle();
+
+        // v1345: the caller's organizerId (AppState.selectedSociety.organizerId / the login id) can differ
+        // from society_profiles.organizer_id — fall back to the society NAME alone before giving up.
+        if ((societyError || !societyData) && organizerId) {
+            const retry = await window.SupabaseDB.client.from('society_profiles').select('id').eq('society_name', societyName).limit(1).maybeSingle();
+            societyData = retry.data; societyError = retry.error;
+        }
 
         if (societyError || !societyData) {
             console.error('[SocietyGolfDB] Error loading society for member insert:', societyError);
@@ -120287,23 +120294,26 @@ class SocietyOrganizerManager {
             // Generate member number
             const memberNumber = await this.generateMemberNumber(societyName);
 
-            // Add to society members table
-            await SocietyGolfDB.addSocietyMember(societyName, organizerId, playerId, {
+            // Add to society members table — check the row really landed (RLS/upsert can "succeed" with 0 rows)
+            const saved = await SocietyGolfDB.addSocietyMember(societyName, organizerId, playerId, {
                 memberNumber: memberNumber,
                 status: 'active'
             });
+            if (!saved || !saved.length) throw new Error('directory row not saved (0 rows)');
 
-            NotificationManager.show(micon('task_alt') + ' ' + playerName + ' added as member ' + memberNumber, 'success');
+            // v1345: the bare NotificationManager only surfaces errors — the success toast never showed,
+            // and any hiccup in the refresh below used to report "Failed to add" AFTER the row was in.
+            window.NotificationManager.show('✓ ' + playerName + ' added to the directory as member ' + memberNumber + (handicap != null && handicap !== '' ? ' · HCP ' + window.formatHandicapDisplay(handicap) : ''), 'success', 3500);
 
-            // Close modal and refresh
             document.getElementById('manualPlayerModal').style.display = 'none';
             this.directoryAddMode = false;
-            await this.loadPlayerDirectory();
-
         } catch (error) {
             console.error('[PlayerDirectory] Error adding player:', error);
-            NotificationManager.show('Failed to add player to directory', 'error');
+            window.NotificationManager.show('Failed to add player to directory: ' + ((error && error.message) || ''), 'error', 5000);
+            return;
         }
+        // Refresh OUTSIDE the add — a list refresh problem is not an add failure.
+        try { await this.loadPlayerDirectory(); } catch (e) { console.warn('[PlayerDirectory] refresh after add', e); }
     }
 
     async generateMemberNumber(societyName) {
@@ -123217,8 +123227,11 @@ This action cannot be undone.`);
 
         try {
             // Determine society name based on mode (use societyName, not organizerName)
+            // v1345: societyProfile is camelCase (societyName) — the old snake_case read was always
+            // undefined in directory mode, so addSocietyMember threw 'Society not found' AFTER the profile
+            // had been created ("Failed to add player" toast, player half-added).
             const societyName = this.directoryAddMode
-                ? (this.societyProfile?.society_name || null)
+                ? ((this.societyProfile && (this.societyProfile.societyName || this.societyProfile.society_name)) || (window.AppState && AppState.selectedSociety && AppState.selectedSociety.name) || null)
                 : (this.currentRosterEvent?.societyName || null);
 
             // IMPORTANT: Create or find player in user_profiles so they can be found in future searches
@@ -123240,7 +123253,7 @@ This action cannot be undone.`);
                     status: 'active'
                 });
 
-                NotificationManager.show(`${name} added to directory as member ${memberNumber}`, 'success');
+                window.NotificationManager.show(`✓ ${name} added to the directory as member ${memberNumber}`, 'success', 3500);
 
                 // Close modal and refresh directory
                 this.closeManualPlayerModal();

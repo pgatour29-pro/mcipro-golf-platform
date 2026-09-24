@@ -13690,6 +13690,8 @@
                 'gsheet.unlinkQ': 'Take {name} off your team? They stay registered on their own.',
                 'gsheet.keep': 'Keep',
                 'gsheet.added': '{name} added',
+                'gsheet.grouped': '{name} is in your group — you are now a new group at {tee}. The organizer can still adjust it.',
+                'gsheet.joined': '{name} joined your group',
                 'gsheet.removed': '{name} removed',
                 'gsheet.already': '{name} is already registered for this event',
                 'gsheet.nameReq': 'Enter a name first',
@@ -17044,6 +17046,8 @@
                 'gsheet.unlinkQ': 'นำ {name} ออกจากทีมของคุณ? เขายังลงทะเบียนอยู่ด้วยตัวเอง',
                 'gsheet.keep': 'เก็บไว้',
                 'gsheet.added': 'เพิ่ม {name} แล้ว',
+                'gsheet.grouped': '{name} อยู่ในกลุ่มของคุณแล้ว — ตอนนี้คุณเป็นกลุ่มใหม่ เวลา {tee} ผู้จัดยังปรับได้',
+                'gsheet.joined': '{name} เข้ากลุ่มของคุณแล้ว',
                 'gsheet.removed': 'ลบ {name} แล้ว',
                 'gsheet.already': '{name} ลงทะเบียนกิจกรรมนี้แล้ว',
                 'gsheet.nameReq': 'กรุณาใส่ชื่อก่อน',
@@ -20638,6 +20642,8 @@
                 'gsheet.unlinkQ': '{name}을(를) 내 팀에서 빼시겠습니까? 본인 등록은 유지됩니다.',
                 'gsheet.keep': '유지',
                 'gsheet.added': '{name} 추가됨',
+                'gsheet.grouped': '{name}이(가) 내 조에 들어왔습니다 — 이제 {tee}에 새 조입니다. 주최자가 조정할 수 있습니다.',
+                'gsheet.joined': '{name}이(가) 내 조에 합류했습니다',
                 'gsheet.removed': '{name} 삭제됨',
                 'gsheet.already': '{name}은(는) 이미 이 이벤트에 등록되어 있습니다',
                 'gsheet.nameReq': '먼저 이름을 입력하세요',
@@ -23792,6 +23798,8 @@
                 'gsheet.unlinkQ': '{name}をチームから外しますか？本人の登録は残ります。',
                 'gsheet.keep': '残す',
                 'gsheet.added': '{name}を追加しました',
+                'gsheet.grouped': '{name}があなたの組に入りました — {tee}の新しい組になりました。主催者が調整できます。',
+                'gsheet.joined': '{name}があなたの組に加わりました',
                 'gsheet.removed': '{name}を削除しました',
                 'gsheet.already': '{name}はすでにこのイベントに登録済みです',
                 'gsheet.nameReq': 'まず名前を入力してください',
@@ -90528,6 +90536,71 @@ window.SocietyGolfDB = new SocietyGolfSupabase();
 // event's organizers get a LINE push. The edge function re-checks the cutoff
 // server-side, resolves the organizer set and localizes per recipient.
 // ============================================
+// v1348 BOOKING PARTY PLACER — pure planning for "my guest must be in my group" once the organizer
+// has already seated me (see GolferEventsManager._placeBookingParty). No DB, no DOM: takes the saved
+// groups (either stored shape), the registrations and the new guest ids, returns the new groups plus
+// what changed. Rules: guest already seated → untouched; host in the pool → untouched (the pool unit
+// rides in under the organizer's tap, v847); room beside the host → guest joins; host's group full →
+// host + the party already beside him leave and become a new group in the first empty cube (else a
+// new one) pinned at the next tee time after the last seated group (sheet interval = the commonest gap
+// between pinned times, else 5 min).
+window.BookingPartyPlacer = {
+    norm(groups) {
+        return (Array.isArray(groups) ? groups : []).map(g => Array.isArray(g)
+            ? { players: g.map(x => ({ playerId: (x && (x.id || x.playerId)) || '', playerName: (x && (x.playerName || x.name)) || '', handicap: x ? x.handicap : null, lateAt: (x && x.lateAt) || null })), teeTime: '', teeFixed: false }
+            : Object.assign({}, g || {}, { players: ((g && g.players) || []).map(x => Object.assign({}, x)) }));
+    },
+    toMin(t) { const m = String(t || '').match(/^(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : null; },
+    fmt(min) { min = ((min % 1440) + 1440) % 1440; return String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0'); },
+    pid(p) { return String((p && (p.playerId || p.id)) || ''); },
+    interval(groups) {
+        const times = groups.filter(g => g.teeFixed && g.teeTime && (g.players || []).length).map(g => this.toMin(g.teeTime)).filter(m => m != null).sort((a, b) => a - b);
+        const cnt = {}; for (let i = 1; i < times.length; i++) { const d = times[i] - times[i - 1]; if (d > 0 && d <= 30) cnt[d] = (cnt[d] || 0) + 1; }
+        let best = 0, bd = 5; Object.keys(cnt).forEach(d => { if (cnt[d] > best) { best = cnt[d]; bd = +d; } });
+        return bd;
+    },
+    teeOf(groups, i, startTime, iv) {
+        const g = groups[i];
+        if (g && g.teeFixed && g.teeTime) return String(g.teeTime).slice(0, 5);
+        const base = this.toMin(startTime); return base == null ? '' : this.fmt(base + i * iv);
+    },
+    nextTee(groups, startTime) {
+        const iv = this.interval(groups); let last = null;
+        groups.forEach((g, i) => { if (!(g.players || []).length) return; const m = this.toMin(this.teeOf(groups, i, startTime, iv)); if (m != null && (last == null || m > last)) last = m; });
+        if (last == null) { const b = this.toMin(startTime); return b == null ? '' : this.fmt(b); }
+        return this.fmt(last + iv);
+    },
+    plan(input) {
+        const groups = this.norm(input.groups);
+        const cap = parseInt(input.groupSize, 10) > 1 ? parseInt(input.groupSize, 10) : 4;
+        const regs = input.regs || [], byPid = {}; regs.forEach(r => { if (r && r.player_id) byPid[String(r.player_id)] = r; });
+        const sr = r => (r && r.special_requests) || {};
+        const find = pid => groups.findIndex(g => (g.players || []).some(p => this.pid(p) === String(pid)));
+        const iso = input.now || new Date().toISOString();
+        const entry = r => ({ playerId: r.player_id, playerName: r.player_name || '', handicap: r.handicap != null ? r.handicap : null, lateAt: iso });
+        const changes = []; let changed = false;
+        (input.newIds || []).forEach(pid => {
+            const r = byPid[String(pid)]; if (!r) return;
+            const host = sr(r).hostId;
+            if (!host || String(host) === String(pid) || sr(r).sameGroup === false) return;
+            if (find(pid) >= 0) return;                        // the organizer already seated this guest
+            const hg = find(host); if (hg < 0) return;          // host still in the pool → the unit rides in together
+            const g = groups[hg];
+            if ((g.players || []).length < cap) { g.players.push(entry(r)); changed = true; changes.push({ kind: 'joined', pid: String(pid), host: String(host), group: hg }); return; }
+            const party = new Set([String(host)]);
+            regs.forEach(x => { const s = sr(x); if (x.player_id && String(s.hostId) === String(host) && s.sameGroup !== false) party.add(String(x.player_id)); });
+            const movers = g.players.filter(p => party.has(this.pid(p)));
+            g.players = g.players.filter(p => !party.has(this.pid(p)));
+            const tee = this.nextTee(groups, input.startTime);
+            const ng = { players: movers.concat([entry(r)]), teeTime: tee, teeFixed: !!tee, startNine: null, secondNine: null };
+            let ti = groups.findIndex(x => !(x.players || []).length);
+            if (ti < 0) { groups.push(ng); ti = groups.length - 1; } else groups[ti] = Object.assign({}, groups[ti], ng);
+            changed = true; changes.push({ kind: 'moved', pid: String(pid), host: String(host), from: hg, group: ti, tee });
+        });
+        return { changed, groups, changes, cap };
+    }
+};
+
 window.LateRegNotify = {
     isLate(eventDate) {
         if (!eventDate) return null;                          // unknown — let the server decide
@@ -145817,8 +145890,9 @@ class GolferEventsManager {
                 partnerPrefs: [], caddyNumbers: this._gsCaddyNums(S.addCaddy).join(', '),
                 specialRequests: { sameGroup: fl.isTeam ? true : (S.addSG !== false), hostId: S.myId, addedBy: S.myId }
             });
-            // late add onto a saved tee sheet → tag for the organizer's unassigned pool (never auto-seats)
-            await this._ensureBookingPlacement(S.eventId, [resolvedId]);
+            // late add onto a saved tee sheet → tag for the organizer's pool; v1348: if I am already
+            // seated, the guest joins my group or we become a new group (BookingPartyPlacer)
+            const _placed = await this._ensureBookingPlacement(S.eventId, [resolvedId]);
             try {
                 window.LateRegNotify && window.LateRegNotify.send(S.eventId, ev.date || ev.event_date, {
                     playerName: S.myReg.player_name, handicap: S.myReg.handicap,
@@ -145828,6 +145902,7 @@ class GolferEventsManager {
             } catch (e) {}
             S.dirty = true; S.addOpen = false; S.pick = null; S.confirmId = null; S.addCaddy = ''; S.cadOpen = null; S.addName = null; S.addHcp = null;
             this._gsToast(T('added', '{name} added', { name }), 'success');
+            this._placementToast(_placed);
             await this._gsLoad();
         } catch (e) {
             console.error('[GSV1] add', e);
@@ -145941,6 +146016,8 @@ class GolferEventsManager {
             const { data, error } = await window.SupabaseDB.client.from('event_registrations').update({ special_requests: r.special_requests }).eq('id', regId).select('id');
             if (error || !data || !data.length) throw (error || new Error('group: 0 rows'));
             S.dirty = true;
+            // v1348: flipped to MY GROUP after the organizer seated me → the guest joins me now
+            if (on && r.player_id) { const _placed = await this._ensureBookingPlacement(S.eventId, [r.player_id]); this._placementToast(_placed); }
         } catch (e) {
             console.warn('[GSV1] group', e);
             r.special_requests = prevSR; this._gsRender();
@@ -149296,12 +149373,13 @@ class GolferEventsManager {
     // still travel as a drag-unit from the pool. First materialization (organizer-load cascade)
     // is untouched — pre-sheet registrations carry no tag and group as before.
     async _ensureBookingPlacement(eventId, newRegIds) {
+        let pairing = null;
         try {
-            if (!window.SocietyGolfDB || !window.SupabaseDB || !newRegIds || !newRegIds.length) return;
-            const pairing = await window.SocietyGolfDB.getPairings(eventId);
-            if (!pairing || !Array.isArray(pairing.groups)) return;
-            const hasPlayers = pairing.groups.some(g => ((g && g.players) || []).length > 0);
-            if (!hasPlayers) return;
+            if (!window.SocietyGolfDB || !window.SupabaseDB || !newRegIds || !newRegIds.length) return null;
+            pairing = await window.SocietyGolfDB.getPairings(eventId);
+            if (!pairing || !Array.isArray(pairing.groups)) return null;
+            const hasPlayers = pairing.groups.some(g => ((g && g.players) || (Array.isArray(g) ? g : [])).length > 0);
+            if (!hasPlayers) return null;
             const iso = new Date().toISOString();
             for (const rid of newRegIds.filter(Boolean)) {
                 // merge-don't-clobber special_requests (hostId/sameGroup/van/payment live here too)
@@ -149318,7 +149396,56 @@ class GolferEventsManager {
                         .eq('id', row.id);
                 }
             }
-        } catch (e) { console.warn('[GolferEvents] late-reg tag', e); }
+        } catch (e) { console.warn('[GolferEvents] late-reg tag', e); return null; }
+        return this._placeBookingParty(eventId, newRegIds, pairing);
+    }
+
+    // v1348 — Pete's rule (Green Valley 2026-09-25): a guest added to MY booking with "same group"
+    // ends up WITH me even after the organizer has seated me. Room in my group → the guest takes the
+    // seat. My group is full → I (and any of my party already beside me) leave it and we become a
+    // new group at the end of the sheet, pinned at the next tee time — no organizer step. This is the
+    // ONE exception to v847 "code seats nobody": it only fires when the HOST is already seated; a
+    // host still in the pool keeps riding in as a unit under the organizer's tap. The organizer keeps
+    // every other power (re-time, drag, dissolve). Pure planner = window.BookingPartyPlacer
+    // (tools/booking-party-placer.test.js guards it on the real Green Valley groups).
+    async _placeBookingParty(eventId, newRegIds, pairing) {
+        try {
+            if (!pairing || !window.BookingPartyPlacer) return null;
+            const sb = window.SupabaseDB.client;
+            const [regsRes, evRes] = await Promise.all([
+                sb.from('event_registrations').select('id, player_id, player_name, handicap, special_requests').eq('event_id', eventId).limit(1000),
+                sb.from('society_events').select('start_time').eq('id', eventId).limit(1)
+            ]);
+            const regs = regsRes.data || [];
+            const startTime = evRes.data && evRes.data[0] && evRes.data[0].start_time ? String(evRes.data[0].start_time).slice(0, 5) : '';
+            const plan = window.BookingPartyPlacer.plan({ groups: pairing.groups, groupSize: pairing.groupSize, startTime, regs, newIds: newRegIds });
+            if (!plan.changed) return null;
+            await window.SocietyGolfDB.savePairings(eventId, { eventId, groupSize: pairing.groupSize, groups: plan.groups, fourBallGroups: pairing.fourBallGroups, format: pairing.format });
+            // stamp the guest rows: the sheet placed them, not a person (merge — lateReg/hostId/van live here)
+            for (const ch of plan.changes) {
+                const r = regs.find(x => String(x.player_id) === String(ch.pid)); if (!r) continue;
+                const sr = Object.assign({}, r.special_requests || {}, { autoGrouped: new Date().toISOString(), autoGroupKind: ch.kind });
+                await sb.from('event_registrations').update({ special_requests: sr }).eq('id', r.id);
+                ch.name = r.player_name || '';
+            }
+            return plan;
+        } catch (e) { console.warn('[GolferEvents] booking party placement', e); return null; }
+    }
+
+    // One line for the golfer after a placement (any surface): joined my group / we are a new group at HH:MM
+    _placementToast(plan) {
+        try {
+            if (!plan || !plan.changes || !plan.changes.length) return;
+            const moved = plan.changes.find(c => c.kind === 'moved'), joined = plan.changes.filter(c => c.kind === 'joined');
+            const names = list => list.map(c => c.name).filter(Boolean).join(', ');
+            if (moved) {
+                const all = plan.changes.filter(c => c.group === moved.group);
+                window.NotificationManager.show(_lvT('gsheet.grouped', '{name} is in your group — you are now a new group at {tee}. The organizer can still adjust it.')
+                    .replace('{name}', names(all) || moved.name || '').replace('{tee}', moved.tee || ''), 'success', 7000);
+            } else if (joined.length) {
+                window.NotificationManager.show(_lvT('gsheet.joined', '{name} joined your group').replace('{name}', names(joined)), 'success', 5000);
+            }
+        } catch (e) {}
     }
 
     async submitRegistration() {
@@ -149566,9 +149693,10 @@ class GolferEventsManager {
                 }
                 this._editGuestIds = null;
                 this._editGuestPrev = null;
-                // Late add onto an already-saved tee sheet → new guests place themselves NOW
-                // (host's group first, else first open seat, else a new group).
-                await this._ensureBookingPlacement(this.currentEvent.id, _newGuestIds);
+                // Late add onto an already-saved tee sheet → pool tag; v1348: seated host → the guests
+                // join my group or we become a new group (BookingPartyPlacer)
+                const _placedEdit = await this._ensureBookingPlacement(this.currentEvent.id, _newGuestIds);
+                this._placementToast(_placedEdit);
 
                 NotificationManager.show(`Registration updated successfully! Changes saved for ${this.currentEvent.name}`, 'success', 3000);
 
@@ -149750,9 +149878,10 @@ class GolferEventsManager {
                         });
                         _lateIds.push(resolvedId);
                     }
-                    // Registration onto an already-saved tee sheet → the whole party places itself NOW
-                    // (host/partner group first, else first open seat, else a new group).
-                    await this._ensureBookingPlacement(this.currentEvent.id, _lateIds);
+                    // Registration onto an already-saved tee sheet → pool tag (the party rides in as a
+                    // unit under the organizer's tap); v1348: a seated host's guests join him now
+                    const _placedReg = await this._ensureBookingPlacement(this.currentEvent.id, _lateIds);
+                    this._placementToast(_placedReg);
 
                     // v1318: only AFTER this registration landed — a failed insert above throws
                     // before we get here, so a golfer is never left on neither venue.

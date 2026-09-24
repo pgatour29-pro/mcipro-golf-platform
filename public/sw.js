@@ -1,7 +1,7 @@
 // SERVICE WORKER - Performance Caching Version
 // Caches static assets for dramatically faster repeat visits
 
-const SW_VERSION = 'mcipro-cache-v1351';
+const SW_VERSION = 'mcipro-cache-v1352';
 const CACHE_NAME = `mcipro-static-${SW_VERSION}`;
 const RUNTIME_CACHE = `mcipro-runtime-${SW_VERSION}`;
 
@@ -11,7 +11,7 @@ const STATIC_ASSETS = [
     '/index.html',
     '/manifest.json',
     '/mcipro.png',
-    '/tailwind.css',
+    '/tw-static.css?v=1352',
     '/professional-analytics.css',
     '/js/scorecardProfileLoader.js',
     '/js/cheechan-yardage-book.js',

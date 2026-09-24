@@ -1325,6 +1325,9 @@ window.ContentModeration = (function() {
     function enforceCharLimit(element, fieldType) {
         const limit = CHAR_LIMITS[fieldType];
         if (!limit || !element) return;
+        // v1352: runs on every DOM change — bind once per element, never stack listeners.
+        if (element._cmCharLimit === limit) return;
+        element._cmCharLimit = limit;
         element.setAttribute('maxlength', limit);
         element.addEventListener('input', function() {
             if (this.value.length > limit) {
@@ -1369,20 +1372,19 @@ window.ContentModeration = (function() {
         // Apply character limits
         applyAllCharLimits();
 
-        // Re-apply on dynamic content changes (observer)
+        // Re-apply on dynamic content changes (observer). v1352: coalesced — at most one
+        // pass per 300ms instead of a full-document query on every mutation during app start.
+        let charLimitTimer = null;
         const observer = new MutationObserver(() => {
-            applyAllCharLimits();
+            if (charLimitTimer) return;
+            charLimitTimer = setTimeout(() => { charLimitTimer = null; applyAllCharLimits(); }, 300);
         });
         observer.observe(document.body, { childList: true, subtree: true });
 
-        // Pre-load NSFW model in background (don't block page load)
-        setTimeout(() => {
-            loadNSFWModel().then(() => {
-                console.log('[ContentModeration] NSFW model pre-loaded');
-            }).catch(() => {
-                console.warn('[ContentModeration] NSFW model pre-load failed (will retry on upload)');
-            });
-        }, 5000);
+        // v1352: NO startup pre-load of the NSFW model. It pulled TensorFlow + nsfwjs + the
+        // MobileNetV2 weights (several MB) and ~0.5s of main thread on EVERY app open, for a
+        // fail-open first line that only runs on photo upload (the real gate is the
+        // image-screen edge function). loadNSFWModel() still loads it on first use.
 
         // Check sanctions
         const sanctionCheck = await checkUserSanctions();

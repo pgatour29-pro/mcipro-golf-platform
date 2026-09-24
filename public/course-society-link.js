@@ -28,6 +28,8 @@
     ['crystal-bay', [['crystal', 'bay']]],
     ['eastern-star', [['eastern', 'star']]],
     ['grand-prix', [['grand', 'prix']]],
+    // v1351: Green Valley RAYONG — never Summit Green Valley (Chiang Mai); 3rd element = tokens that veto
+    ['green-valley-rayong', [['green', 'valley']], ['summit', 'chiang', 'mai']],
     ['greenwood', [['greenwood']]],
     ['hermes', [['hermes']]],
     ['khao-kheow', [['khao', 'kheow'], ['khaokheow']]],
@@ -95,7 +97,7 @@
   };
 
   var CL = window.CourseLink = {
-    _v: 1350,
+    _v: 1351,
     KEYS: KEYS,
     sb: null,
     lang: 'en',
@@ -116,6 +118,7 @@
     slugFor: function (name) {
       var toks = {}; this.tok(name).forEach(function (w) { toks[w] = 1; });
       for (var i = 0; i < KEYS.length; i++) {
+        if (KEYS[i][2] && KEYS[i][2].some(function (w) { return toks[w]; })) continue;
         if (KEYS[i][1].some(function (set) { return set.every(function (w) { return toks[w]; }); })) return KEYS[i][0];
       }
       return null;
@@ -126,7 +129,9 @@
        already uses when it is the same venue (Burapha A+C vs C+D stays as picked) */
     slugForCourse: function (courseName, savedSlug) {
       var s = this.slugFor(courseName);
-      if (savedSlug && (!s || this.sameVenue(savedSlug, s))) return savedSlug;
+      // v1351: an unmatched course returns null — NEVER the saved slug. Falling back to it kept the
+      // previous course's sheet open after the pro shop picked Green Valley ("changing it does nothing").
+      if (s && savedSlug && this.sameVenue(savedSlug, s)) return savedSlug;
       return s;
     },
 

@@ -30105,6 +30105,7 @@
                         'crystal-bay': 'Crystal Bay Golf Club',
                         'eastern-star': 'Eastern Star CC',
                         'grand-prix': 'Grand Prix International GC',
+                        'green-valley-rayong': 'Green Valley Rayong CC',
                         'greenwood': 'Greenwood Golf Club',
                         'hermes': 'Hermes Golf Club',
                         'khao-kheow': 'Khao Kheow CC',
@@ -75140,6 +75141,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         <option value="admin">Admin</option>
                     </select>
                 </div>
+                <!-- v1351: a course's venue is chosen once on its dashboard, then ONLY changed here -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Managed course (staff)</label>
+                    <select id="adminEditUserCourse" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="">— None —</option>
+                    </select>
+                    <p class="mt-1 text-xs text-gray-600">The venue this account's pro shop / manager dashboard runs. Staff cannot change it themselves.</p>
+                </div>
             </div>
             <div class="p-6 border-t border-gray-200 bg-gray-50">
                 <div class="flex gap-3 justify-between">
@@ -85724,6 +85733,24 @@ const AdminSystem = {
             document.getElementById('adminEditUserSociety').value = user.society_name || '';
             document.getElementById('adminEditUserRole').value = user.role || 'golfer';
 
+            // v1351: managed course — the ONLY place a staff account's venue changes
+            this._editCourseLoaded = false;
+            try {
+                const sb = window.SupabaseDB.client;
+                if (!this._courseList) {
+                    const { data: cl } = await sb.from('courses').select('id,name').order('name').limit(500);
+                    this._courseList = cl || [];
+                }
+                const { data: mc } = await sb.from('user_profiles').select('managed_course_id').eq('line_user_id', userId).maybeSingle();
+                const sel = document.getElementById('adminEditUserCourse');
+                const curId = (mc && mc.managed_course_id) || '';
+                sel.innerHTML = '<option value="">— None —</option>' + this._courseList.map(c =>
+                    `<option value="${String(c.id).replace(/"/g, '&quot;')}">${String(c.name).replace(/[&<>]/g, x => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[x]))}</option>`).join('');
+                if (curId && !this._courseList.some(c => c.id === curId)) sel.insertAdjacentHTML('beforeend', `<option value="${curId.replace(/"/g, '&quot;')}">${curId.replace(/[&<>]/g, '')}</option>`);
+                sel.value = curId;
+                this._editCourseLoaded = true;
+            } catch (e) { console.warn('[AdminSystem] managed course load failed', e); }
+
             // Show modal
             document.getElementById('adminEditUserModal').style.display = 'flex';
         } catch (error) {
@@ -85838,6 +85865,12 @@ const AdminSystem = {
                 role: role,
                 profile_data: this.users[userIndex].profile_data
             };
+            if (this._editCourseLoaded) {   // never wipe the venue when the list failed to load
+                const csel = document.getElementById('adminEditUserCourse');
+                const cid = csel.value || null;
+                updatePayload.managed_course_id = cid;
+                updatePayload.managed_course_name = cid ? ((csel.options[csel.selectedIndex] || {}).textContent || cid) : null;
+            }
 
             console.log('[AdminSystem] Update payload:', JSON.stringify(updatePayload, null, 2));
             console.log('[AdminSystem] Updating user with line_user_id:', userId);
@@ -86822,8 +86855,8 @@ window.AdminSystem = AdminSystem;
     <script defer src="marketing-dashboard.js?v=1258"></script>
     <script defer src="golf-feed.js?v=1325"></script>
     <script defer src="handicap-ledger.js?v=1257"></script>
-    <script defer src="course-society-link.js?v=1350"></script>
-    <script defer src="proshop-dashboard.js?v=1334"></script>
+    <script defer src="course-society-link.js?v=1351"></script>
+    <script defer src="proshop-dashboard.js?v=1351"></script>
 
     <!-- Course Data & Handicap Calculations -->
     <script defer src="course-data-manager.js"></script>
@@ -136854,6 +136887,7 @@ const ProShopTeeSheetSettings = {
         'crystal-bay': { name: 'Crystal Bay Golf Club', lanes: null, color: '#99f6e4' },
         'eastern-star': { name: 'Eastern Star CC', lanes: null, color: '#a5b4fc' },
         'grand-prix': { name: 'Grand Prix International GC', lanes: null, color: '#f0abfc' },
+        'green-valley-rayong': { name: 'Green Valley Rayong CC', lanes: null, color: '#86efac' },
         'greenwood': { name: 'Greenwood Golf Club', lanes: null, color: '#6ee7b7' },
         'hermes': { name: 'Hermes Golf Club', lanes: null, color: '#93c5fd' },
         'khao-kheow': { name: 'Khao Kheow CC', lanes: null, color: '#fda4af' },
@@ -137696,7 +137730,7 @@ const CaddyMasterData = {
         ['royal-garden', 'Royal Garden Golf Club'], ['royal-lakeside', 'Royal Lakeside GC'], ['siam-cc-old', 'Siam CC Old Course'],
         ['siam-cc-plantation', 'Siam CC Plantation'], ['siam-cc-waterside', 'Siam CC Waterside'], ['siam-plantation', 'Siam Plantation GC'],
         ['st-andrews-2000', 'St. Andrews 2000 GC'], ['thai-country-club', 'Thai Country Club'], ['treasure-hill-golf', 'Treasure Hill Golf & Country Club'],
-        ['green-valley-rayong', 'Green Valley Rayong CC'] // real roster, no tee sheet option yet — the sheet opens unselected
+        ['green-valley-rayong', 'Green Valley Rayong CC'] // v1351: a real tee sheet course now
     ],
     DB_NAME: {
         'treasure-hill-golf': 'Treasure Hill Golf & Country Club', 'phoenix-gold': 'Phoenix Gold Golf & Country Club', 'phoenix': 'Phoenix Gold Golf & Country Club',
@@ -137910,7 +137944,7 @@ const CaddyMasterData = {
         if (!this.course) { f.style.display = 'none'; if (nc) nc.style.display = ''; return; }
         if (nc) nc.style.display = 'none';
         f.style.display = '';
-        const want = '/proshop-teesheet.html' + (this.course.slug === 'green-valley-rayong' ? '' : '?course=' + encodeURIComponent(this.course.slug));
+        const want = '/proshop-teesheet.html?course=' + encodeURIComponent(this.course.slug);
         const has = f.getAttribute('src') || '';
         if (force || !has) { this._sheetLang(false); f.setAttribute('src', want); }
     },

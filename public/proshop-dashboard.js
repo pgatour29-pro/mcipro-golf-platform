@@ -34,6 +34,9 @@
     };
     const hhmm = (ts) => { const d = new Date(ts); return isNaN(d) ? '' : pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
     const uid = () => (window.AppState && AppState.currentUser && AppState.currentUser.lineUserId) || localStorage.getItem('line_user_id') || '';
+    // v1351 (Pete 2026-09-25): a course picks its venue ONCE. After that the pickers disappear — the venue
+    // never changes (not even on a sale); only the platform admin changes it.
+    const isAdmin = () => uid() === 'U2b6d976f19bca4b2f4374ae0e10ed873' || !!(window.AdminInbox && AdminInbox.isAdmin && AdminInbox.isAdmin());
     const uname = () => (window.AppState && AppState.currentUser && (AppState.currentUser.name || AppState.currentUser.displayName)) || 'Pro Shop';
     const toast = (msg, type) => {
         try { if (window.NotificationManager && window.NotificationManager.show) return window.NotificationManager.show(msg, type || 'info'); } catch (e) { }
@@ -85,15 +88,28 @@
            sheet that had never picked a course showed every society's events for the date, unfiltered.
            courses-table ids (pattaya_county) ≠ tee-sheet slugs (pattaya-golf) — CourseLink maps by name and
            keeps a slug the sheet already uses when it is the same venue (Burapha A+C vs C+D). */
+        /* v1351: the dashboard course IS the tee sheet course — one choice drives both. A course with no
+           tee-sheet slug used to fall back to the sheet's PREVIOUS slug (picking Green Valley "did nothing");
+           now it gets a slug from its courses-table id and the sheet adds it (?name=). The pick is written
+           to teesheet.settings too, so a popped-out sheet window follows at once (storage event). */
+        teeSheetSlug() {
+            if (!PS.course) return '';
+            let saved = '';
+            try { saved = (JSON.parse(localStorage.getItem('teesheet.settings') || '{}').golfCourse) || ''; } catch (e) { }
+            const CL = window.CourseLink;
+            return (CL && CL.slugForCourse(PS.course.name, saved)) || String(PS.course.id || '').toLowerCase().replace(/_/g, '-');
+        },
         linkTeeSheet() {
             try {
                 const f = document.getElementById('teesheet-iframe');
                 if (!f || !PS.course) return;
-                let saved = '';
-                try { saved = (JSON.parse(localStorage.getItem('teesheet.settings') || '{}').golfCourse) || ''; } catch (e) { }
-                const slug = window.CourseLink ? window.CourseLink.slugForCourse(PS.course.name, saved) : saved;
+                const slug = PS.teeSheetSlug();
                 if (!slug) return;
-                const want = '/proshop-teesheet.html?course=' + encodeURIComponent(slug);
+                try {
+                    const ts = JSON.parse(localStorage.getItem('teesheet.settings') || '{}');
+                    if (ts.golfCourse !== slug) { ts.golfCourse = slug; localStorage.setItem('teesheet.settings', JSON.stringify(ts)); }
+                } catch (e) { }
+                const want = '/proshop-teesheet.html?course=' + encodeURIComponent(slug) + '&name=' + encodeURIComponent(PS.course.name || slug);
                 if (f.getAttribute('src') !== want) f.setAttribute('src', want);
             } catch (e) { console.warn('[PS] tee sheet course link', e); }
         },
@@ -104,17 +120,20 @@
             return toks.length ? toks : [String(name || '').toLowerCase().trim()];
         },
         async resolveCourse() {
-            try {
-                const cached = JSON.parse(localStorage.getItem('ps_course_v1') || 'null');
-                if (cached && cached.id) { PS.course = cached; PS.course.stem = PS.stemOf(cached.name); return true; }
-            } catch (e) { }
+            let cached = null;
+            try { cached = JSON.parse(localStorage.getItem('ps_course_v1') || 'null'); } catch (e) { }
+            // v1351: the ADMIN-assigned course (user_profiles.managed_course_id) outranks this device's cache —
+            // that is how the admin moves a pro shop. The platform admin's own device keeps its own pick.
             const me = uid();
-            if (me) {
+            if (me && !isAdmin()) {
                 try {
                     const { data } = await db().from('user_profiles').select('managed_course_id, managed_course_name').eq('line_user_id', me).maybeSingle();
-                    if (data && data.managed_course_id) { await PS.setCourse(data.managed_course_id, data.managed_course_name); return true; }
+                    if (data && data.managed_course_id && (!cached || cached.id !== data.managed_course_id)) {
+                        await PS.setCourse(data.managed_course_id, data.managed_course_name); return true;
+                    }
                 } catch (e) { }
             }
+            if (cached && cached.id) { PS.course = cached; PS.course.stem = PS.stemOf(cached.name); return true; }
             PS.showCoursePicker();
             return false;
         },
@@ -163,7 +182,13 @@
                 const nameEl = document.getElementById('ps-course-chip-name');
                 const chip = document.getElementById('ps-course-chip');
                 if (nameEl) nameEl.textContent = PS.course.name;
-                if (chip) chip.style.display = '';   // classes take over: hidden <sm, flex ≥sm
+                if (chip) {
+                    chip.style.display = '';   // classes take over: hidden <sm, flex ≥sm
+                    chip.style.cursor = isAdmin() ? 'pointer' : 'default';
+                    chip.title = isAdmin() ? tr('ps.switchcourse', 'Switch course') : '';
+                    const caret = chip.querySelector('.material-symbols-outlined');
+                    if (caret) caret.style.display = isAdmin() ? '' : 'none';
+                }
                 if (!PS._clockTimer) {
                     const tick = () => {
                         const el = document.getElementById('ps-clock');
@@ -908,9 +933,25 @@
             if (!host) return;
             let ts = {};
             try { ts = JSON.parse(localStorage.getItem('teesheet.settings') || '{}'); } catch (e) { }
+            // v1351: show what the LIVE sheet is running. With nothing stored the form fell to its first
+            // options (5 min, 1 tee) while the sheet ran 7 min / 2 tees — Save would have changed the sheet.
+            try {
+                const d = document.getElementById('teesheet-iframe')?.contentWindow?.document;
+                const v = (id) => (d && d.getElementById(id) && d.getElementById(id).value) || '';
+                const live = { courseLayout: v('complex-select'), interval: v('interval-select'), startTime: v('start-time'), endTime: v('end-time'), teesPerCourse: v('tees-select') };
+                Object.keys(live).forEach(k => { if (live[k]) ts[k] = live[k]; });
+            } catch (e) { }
+            ts = Object.assign({ courseLayout: '18', interval: '7', startTime: '06:00', endTime: '18:00', teesPerCourse: '2' }, ts);
             const configs = (window.ProShopTeeSheetSettings && window.ProShopTeeSheetSettings.courseConfigs) || {};
-            const slugOpts = Object.keys(configs).map(k =>
-                `<option value="${k}" ${ts.golfCourse === k ? 'selected' : ''}>${esc(configs[k].name)}</option>`).join('');
+            // v1351: the tee sheet course comes FROM the dashboard course. This list only offers that venue's
+            // own layouts (Burapha A+C / C+D / East) — it can no longer point the sheet at another course.
+            const CL = window.CourseLink;
+            const cur = PS.teeSheetSlug();
+            const venue = Object.keys(configs).filter(k => k === cur || (CL && CL.sameVenue(k, cur)));
+            if (cur && venue.indexOf(cur) === -1) venue.unshift(cur);
+            const nameOf = (k) => (configs[k] && configs[k].name) || (k === cur ? PS.course.name : k);
+            const slugOpts = venue.map(k =>
+                `<option value="${esc(k)}" ${cur === k ? 'selected' : ''}>${esc(nameOf(k))}</option>`).join('');
             const timeOpts = (sel) => {
                 let out = '';
                 for (let h = 5; h <= 20; h++) for (const m of ['00', '30']) {
@@ -926,15 +967,18 @@
                   <p class="text-sm text-gray-600 mb-3">${tr('ps.courselinksub', 'POS, inventory, sales and messages are scoped to this course.')}</p>
                   <div class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5">
                     <span class="font-semibold text-gray-900">${esc(PS.course.name)}</span>
-                    <button onclick="ProshopDashboard.changeCourse()" class="text-sm text-green-700 font-semibold hover:underline">${tr('common.change', 'Change')}</button>
+                    ${isAdmin() ? `<button onclick="ProshopDashboard.changeCourse()" class="text-sm text-green-700 font-semibold hover:underline">${tr('common.change', 'Change')}</button>` : ''}
                   </div>
+                  ${isAdmin() ? '' : `<p class="text-xs text-gray-600 mt-2">${tr('ps.courselocked', 'Your course is set. Only the platform admin can change it.')}</p>`}
                 </div>
                 <div class="bg-white border border-gray-200 rounded-xl p-4">
                   <h3 class="font-bold text-gray-900 mb-1">${tr('ps.teesheetcfg', 'Live Tee Sheet configuration')}</h3>
                   <p class="text-sm text-gray-600 mb-3">${tr('ps.teesheetcfgsub', 'Shared with every device showing this tee sheet — changes apply live.')}</p>
                   <div class="grid grid-cols-2 gap-3 text-sm">
                     <label class="block col-span-2"><span class="text-xs text-gray-600">${tr('ps.tscourse', 'Tee sheet course')}</span>
-                      <select id="ps-ts-course" class="w-full border border-gray-300 rounded-lg px-3 py-2"><option value="">—</option>${slugOpts}</select></label>
+                      ${venue.length > 1
+                        ? `<select id="ps-ts-course" class="w-full border border-gray-300 rounded-lg px-3 py-2">${slugOpts}</select>`
+                        : `<select id="ps-ts-course" class="hidden">${slugOpts}</select><div class="w-full border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 font-semibold text-gray-900">${esc(nameOf(cur))}</div>`}</label>
                     <label class="block"><span class="text-xs text-gray-600">${tr('ps.layout', 'Layout')}</span>
                       <select id="ps-ts-layout" class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         <option value="18" ${ts.courseLayout === '18' ? 'selected' : ''}>18 ${tr('ps.holes', 'holes')} (A/B)</option>
@@ -960,6 +1004,7 @@
               </div>`;
         },
         changeCourse() {
+            if (!isAdmin()) return;   // v1351: the venue is fixed once chosen — admin only
             localStorage.removeItem('ps_course_v1');
             PS.course = null;
             PS._loaded = {};
@@ -979,7 +1024,7 @@
             try {
                 if (slug) {
                     const configs = (window.ProShopTeeSheetSettings && window.ProShopTeeSheetSettings.courseConfigs) || {};
-                    const courseName = (configs[slug] && configs[slug].name) || slug;
+                    const courseName = (configs[slug] && configs[slug].name) || (PS.course && PS.course.name) || slug;
                     // merge into any existing teesheet_config so the sheet's "full" settings survive
                     let existing = {};
                     try {
@@ -991,6 +1036,9 @@
                         .upsert({ course_id: slug, course_name: courseName, teesheet_config: merged }, { onConflict: 'course_id' });
                     if (error) throw error;
                 }
+                // the sheet picks the new layout up from its storage listener; a layout variant (Burapha
+                // A+C → C+D) re-points the embedded sheet's URL too
+                PS.linkTeeSheet();
                 try {
                     const f = document.getElementById('teesheet-iframe');
                     if (f && f.contentWindow) f.contentWindow.postMessage({ type: 'REFRESH_TEESHEET' }, '*');

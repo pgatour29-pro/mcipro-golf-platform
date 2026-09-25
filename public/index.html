@@ -32633,7 +32633,8 @@
                 // All of these ship display:none in the markup — restoring that IS the locked state.
                 ['drawerAdmin', 'drawerTrggSync', 'drawerTrggHandicapPaste', 'drawerTrggPOYUpdate',
                  'drawerAlertHistory', 'desktopTrggButtons', 'switchToOrganizerBtn',
-                 'drawerBecomeCaddie', 'drawerMyCaddie', 'drawerBecomeStaff', 'drawerStaffPending'
+                 'drawerBecomeCaddie', 'drawerMyCaddie', 'drawerBecomeStaff', 'drawerStaffPending',
+                 'switchToCaddieBtn'
                 ].forEach(function (id) {
                     var el = document.getElementById(id);
                     if (el) el.style.display = 'none';
@@ -32643,6 +32644,7 @@
                 // rail item (invite-only). Neither is ever removed by the code that adds it.
                 if (gd) gd.classList.remove('g3-adm', 'oo-on');
                 document.body.classList.remove('oo-partner-caddie');   // caddie-dashboard 1on1 entries
+                try { sessionStorage.removeItem('mcipro_caddie_home'); } catch (e) {}   // v1360 caddie↔golfer return
             } catch (e) { console.warn('[lockPrivilegedUI]', e); }
         };
 
@@ -57595,6 +57597,12 @@ document.addEventListener('DOMContentLoaded', function() {
                             <button id="switchToOrganizerBtn" onclick="quickSwitchToOrganizer()" class="header-btn header-btn-neutral relative flex-shrink-0" title="Go straight to my Society dashboard" style="display: none;">
                                 <span class="material-symbols-outlined text-base">groups</span>
                                 <span class="text-xs ml-1">Organizer</span>
+                            </button>
+
+                            <!-- v1360: back to the caddie dashboard (linked caddy, or came from it) -->
+                            <button id="switchToCaddieBtn" onclick="RoleSwitcher.switchToCaddie()" class="header-btn header-btn-neutral relative flex-shrink-0" title="Back to my Caddie dashboard" style="display: none;">
+                                <span class="material-symbols-outlined text-base">badge</span>
+                                <span class="text-xs ml-1">Caddie</span>
                             </button>
 
                             <!-- Light / Full (Geekout) view quick-toggle -->
@@ -156396,8 +156404,16 @@ const RoleSwitcher = {
             localStorage.setItem('mcipro_user_profiles', JSON.stringify(profiles));
         }
 
+        // v1360: leaving the CADDIE dashboard — remember it so the golfer side always shows the
+        // way home. PIN caddies have no caddy_profiles.user_id, so the DB check alone never lit it.
+        const _fromCaddie = document.getElementById('caddieDashboard')?.classList.contains('active');
+
         // Navigate to golfer dashboard
         ScreenManager.showScreen('golferDashboard');
+        if (_fromCaddie) {
+            try { sessionStorage.setItem('mcipro_caddie_home', '1'); } catch (e) {}
+            this.showCaddieReturn();
+        }
 
         // v1183: "Play Golf" on the caddie dashboard means she wants to PLAY — land her on
         // the Play Golf tab in Live mode (Start Round), exactly where the golfer's own Play
@@ -156469,6 +156485,13 @@ const RoleSwitcher = {
      * mirrors the organizer↔golfer pattern; DB role stays 'caddie' so
      * login keeps routing them caddy-first)
      */
+    showCaddieReturn() {
+        ['drawerMyCaddie', 'switchToCaddieBtn'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = id === 'drawerMyCaddie' ? 'flex' : 'block';
+        });
+    },
+
     switchToCaddie() {
         console.log('[RoleSwitcher] Switching to Caddie dashboard...');
         if (!AppState.currentUser) return;
@@ -164440,12 +164463,16 @@ async function initDrawerCaddieButton() {
         const btn = document.getElementById('drawerMyCaddie');
         const joinBtn = document.getElementById('drawerBecomeCaddie');
         if (!btn) return;
+        // v1360: came over from the caddie dashboard this session → the way home is always shown
+        let cameFromCaddie = false;
+        try { cameFromCaddie = sessionStorage.getItem('mcipro_caddie_home') === '1'; } catch (e) {}
+        if (cameFromCaddie) { RoleSwitcher.showCaddieReturn(); if (joinBtn) joinBtn.style.display = 'none'; }
         const userId = AppState.currentUser?.lineUserId || AppState.currentUser?.userId || AppState.currentUser?.id || localStorage.getItem('line_user_id');
         if (!userId || !window.SupabaseDB?.client) return;
         const { data } = await window.SupabaseDB.client
             .from('caddy_profiles').select('id').eq('user_id', userId).limit(1);
         // Linked caddy → dashboard link; not linked → the caddy sign-up door
-        if (data && data.length) { btn.style.display = 'flex'; if (joinBtn) joinBtn.style.display = 'none'; }
+        if ((data && data.length) || cameFromCaddie) { RoleSwitcher.showCaddieReturn(); if (joinBtn) joinBtn.style.display = 'none'; }
         else if (joinBtn) joinBtn.style.display = 'flex';
 
         // Same three-way for course staff: linked, waiting, or not registered
@@ -178578,6 +178605,13 @@ showOrganizerTab = function(tabName) {
                     <span>Return to Scorecard</span>
                 </button>
 
+                <!-- Caddie Dashboard — linked caddy profile OR arrived here from the caddie dashboard (v1360:
+                     TOP of the drawer, it is her way home; was buried under Messages) -->
+                <button id="drawerMyCaddie" class="drawer-link" onclick="closeMobileDrawer(); RoleSwitcher.switchToCaddie();" style="display:none; background: linear-gradient(135deg, #0d9488, #065f46); color: white; border-radius: 8px; font-weight: 600;">
+                    <span class="material-symbols-outlined">badge</span>
+                    <span>Back to Caddie Dashboard</span>
+                </button>
+
                 <button class="drawer-link" onclick="DashboardMode.toggle(); closeMobileDrawer();" style="background: linear-gradient(135deg, #16a34a, #0d9488); color: white; border-radius: 8px; font-weight: 600;"><span class="material-symbols-outlined">swap_horiz</span><span><span data-i18n="lightview.switch">Switch view</span> (<span id="drawerViewLabel">Light</span>)</span></button>
                 <button class="drawer-link" onclick="showGolferTab('overview', event); closeMobileDrawer();"><span class="material-symbols-outlined">dashboard</span><span data-i18n="golfer.overview">Overview</span></button>
                 <button class="drawer-link" onclick="(function(){var w=document.getElementById('weatherWidget');if(w)w.style.display='';try{if(window.WeatherIntegration&&WeatherIntegration.fetchWeatherData)WeatherIntegration.fetchWeatherData();}catch(e){}document.getElementById('weatherModal').style.display='flex';})(); closeMobileDrawer();"><span class="material-symbols-outlined">partly_cloudy_day</span><span data-i18n="lightview.weather">Weather</span></button>
@@ -178624,12 +178658,6 @@ showOrganizerTab = function(tabName) {
                 <button id="drawerCreateSociety" class="drawer-link" onclick="closeMobileDrawer(); SocietySetup.open();" style="display:none; margin-top: 8px; font-weight: 600;">
                     <span class="material-symbols-outlined" style="color:#16a34a;">add_business</span>
                     <span>Create a Society</span>
-                </button>
-
-                <!-- Caddie Dashboard — shown for users with a linked caddy profile -->
-                <button id="drawerMyCaddie" class="drawer-link" onclick="closeMobileDrawer(); RoleSwitcher.switchToCaddie();" style="display:none; background: linear-gradient(135deg, #0d9488, #065f46); color: white; border-radius: 8px; margin-top: 4px; font-weight: 600;">
-                    <span class="material-symbols-outlined">badge</span>
-                    <span>Caddie Dashboard</span>
                 </button>
 
                 <!-- Register as a Caddy — shown when there is NO linked caddy profile (mirrors Create a Society) -->
@@ -178746,6 +178774,9 @@ showOrganizerTab = function(tabName) {
                 <button class="drawer-link" onclick="closeMobileDrawer(); OneOnOne.enter('partner');"><span class="material-symbols-outlined">handshake</span><span data-i18n="oo.title">1on1</span></button>
 
                 <button class="drawer-link" onclick="closeMobileDrawer(); RoleSwitcher.switchToGolfer('play');" style="background: linear-gradient(135deg, #16a34a, #15803d); color: white; border-radius: 8px; margin-top: 8px; font-weight: 600;"><span class="material-symbols-outlined">sports_golf</span><span>Play Golf — Start Round</span></button>
+
+                <!-- v1360: the header Logout is desktop-only (hidden md:flex) — on a phone this is the ONLY way out -->
+                <button class="drawer-link" onclick="closeMobileDrawer(); logout();" style="margin-top: 8px;"><span class="material-symbols-outlined">logout</span><span data-i18n="nav.logout">Logout</span></button>
 
             </div>
 

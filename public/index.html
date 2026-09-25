@@ -14116,6 +14116,10 @@
                 'notice.gotit': 'Got it',
                 'notice.status.live': 'Event status · live',
                 'notice.status.new': 'New',
+                'notice.seenby': 'Seen by',
+                'notice.withapp': 'players with the app',
+                'notice.notseen': 'Not seen yet',
+                'notice.noapp': 'on the roster without the app — they only hear by phone or LINE group',
                 'notice.status.earlier': 'Earlier updates',
                 'notice.status.stays': 'This stays on your dashboard for the event day. New updates open it again.',
                 'notice.popuptitle': 'Event Notices',
@@ -17476,6 +17480,10 @@
                 'notice.gotit': 'รับทราบ',
                 'notice.status.live': 'สถานะอีเวนต์ · สด',
                 'notice.status.new': 'ใหม่',
+                'notice.seenby': 'อ่านแล้ว',
+                'notice.withapp': 'ผู้เล่นที่ใช้แอป',
+                'notice.notseen': 'ยังไม่ได้อ่าน',
+                'notice.noapp': 'คนในรายชื่อที่ไม่ได้ใช้แอป — ต้องแจ้งทางโทรศัพท์หรือกลุ่ม LINE',
                 'notice.status.earlier': 'อัปเดตก่อนหน้า',
                 'notice.status.stays': 'หน้าต่างนี้จะอยู่บนแดชบอร์ดตลอดวันอีเวนต์ อัปเดตใหม่จะเปิดขึ้นอีกครั้ง',
                 'notice.popuptitle': 'ประกาศกิจกรรม',
@@ -21076,6 +21084,10 @@
                 'notice.gotit': '확인',
                 'notice.status.live': '이벤트 상태 · 실시간',
                 'notice.status.new': '새 소식',
+                'notice.seenby': '확인',
+                'notice.withapp': '앱 사용 선수',
+                'notice.notseen': '아직 안 읽음',
+                'notice.noapp': '명은 앱이 없는 명단 인원 — 전화나 LINE 그룹으로만 연락 가능',
                 'notice.status.earlier': '이전 업데이트',
                 'notice.status.stays': '이 창은 이벤트 당일 대시보드에 계속 표시됩니다. 새 업데이트가 오면 다시 열립니다.',
                 'notice.popuptitle': '이벤트 공지',
@@ -24236,6 +24248,10 @@
                 'notice.gotit': '確認',
                 'notice.status.live': 'イベント状況 · ライブ',
                 'notice.status.new': '新着',
+                'notice.seenby': '既読',
+                'notice.withapp': 'アプリ利用の選手',
+                'notice.notseen': '未読',
+                'notice.noapp': '名はアプリなしの登録者 — 電話かLINEグループでのみ連絡可能',
                 'notice.status.earlier': '以前の更新',
                 'notice.status.stays': 'この表示はイベント当日ずっとダッシュボードに残ります。新しい更新があると再び開きます。',
                 'notice.popuptitle': 'イベントのお知らせ',
@@ -136077,7 +136093,46 @@ window.EventNoticeBoard = {
         this._orgAnnsById = {}; anns.forEach(function (a) { EventNoticeBoard._orgAnnsById[a.id] = a; });
         if (!anns.length) { box.innerHTML = '<div style="text-align:center;padding:18px;color:#94a3b8;font-size:13px;">' + this._t('notice.none', 'No notices yet') + '</div>'; return; }
         box.innerHTML = '<div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin:4px 0 8px;">' + this._t('notice.posted', 'Posted notices') + ' (' + anns.length + ')</div>' +
-            anns.map(function (a) { return EventNoticeBoard._noticeRow(a, false, false, true); }).join('');
+            anns.map(function (a) { return EventNoticeBoard._noticeRow(a, false, false, true) + '<div id="enbSeen-' + a.id + '"></div>'; }).join('');
+        this._hydrateSeen(this._orgEventId, anns);
+    },
+
+    /* "Seen by X of Y" under each posted notice (Pete 2026-09-25, Green Valley rain-out: only 2
+       players had opened the tee-time notice). Y = registered players who have the app (a LINE
+       or Kakao login); guests / manual players can't receive in-app notices, so they are counted
+       apart. The not-seen list is by name, so the organizer knows whom to phone. */
+    async _hydrateSeen(eventId, anns) {
+        var sb = this._sb(); if (!sb || !eventId || !anns || !anns.length) return;
+        try {
+            var regs = (await sb.from('event_registrations').select('player_id,player_name').eq('event_id', eventId)).data || [];
+            var seenRegs = {}, app = [], noApp = 0;
+            regs.forEach(function (r) {
+                var id = r.player_id || '';
+                if (!id || seenRegs[id]) return; seenRegs[id] = 1;
+                if (/^U[0-9a-f]{32}$/.test(id) || /^KAKAO-/.test(id)) app.push(r); else noApp++;
+            });
+            var ids = anns.map(function (a) { return a.id; }), readers = {};
+            for (var i = 0; i < ids.length; i += 50) {
+                var rr = (await sb.from('event_announcement_reads').select('announcement_id,reader_line_id').in('announcement_id', ids.slice(i, i + 50))).data || [];
+                rr.forEach(function (x) { (readers[x.announcement_id] = readers[x.announcement_id] || {})[x.reader_line_id] = 1; });
+            }
+            var self = this;
+            anns.forEach(function (a) {
+                var el = document.getElementById('enbSeen-' + a.id); if (!el) return;
+                var got = readers[a.id] || {};
+                var seen = app.filter(function (r) { return got[r.player_id]; });
+                var unseen = app.filter(function (r) { return !got[r.player_id]; });
+                var all = app.length && seen.length === app.length;
+                el.innerHTML = '<div style="margin:-2px 0 10px;padding:7px 10px;border-radius:0 0 10px 10px;background:' + (all ? '#f0fdf4' : '#fff7ed') + ';border:1px solid ' + (all ? '#bbf7d0' : '#fed7aa') + ';border-top:none;font-size:12px;color:#334155;">' +
+                    '<div style="display:flex;align-items:center;gap:6px;"><span class="material-symbols-outlined" style="font-size:16px;color:' + (all ? '#16a34a' : '#c2410c') + ';">visibility</span>' +
+                    '<b style="color:' + (all ? '#15803d' : '#9a3412') + ';">' + self._t('notice.seenby', 'Seen by') + ' ' + seen.length + ' / ' + app.length + '</b>' +
+                    '<span style="color:#64748b;">' + self._t('notice.withapp', 'players with the app') + '</span></div>' +
+                    (unseen.length ? '<details style="margin-top:4px;"><summary style="cursor:pointer;color:#9a3412;font-weight:700;">' + self._t('notice.notseen', 'Not seen yet') + ' (' + unseen.length + ')</summary>' +
+                        '<div style="margin-top:4px;line-height:1.5;color:#334155;">' + unseen.map(function (r) { return self._esc(r.player_name || r.player_id); }).join(', ') + '</div></details>' : '') +
+                    (noApp ? '<div style="margin-top:3px;color:#64748b;">' + noApp + ' ' + self._t('notice.noapp', 'on the roster without the app — they only hear by phone or LINE group') + '</div>' : '') +
+                '</div>';
+            });
+        } catch (e) { console.warn('[NoticeBoard] seen', e); }
     },
 
     async submitOrganizer() {

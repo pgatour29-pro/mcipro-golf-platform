@@ -14140,7 +14140,7 @@
                 'notice.notseen': 'Not seen yet',
                 'notice.noapp': 'on the roster without the app — they only hear by phone or LINE group',
                 'notice.status.earlier': 'Earlier updates',
-                'notice.status.stays': 'This stays on your dashboard for the event day. New updates open it again.',
+                'notice.status.stays': 'This stays on your dashboard for 3 hours after the latest update. New updates open it again.',
                 'notice.popuptitle': 'Event Notices',
                 'notice.placeholder': 'Post an instruction or note for this event…',
                 'notice.postbtn': 'Post Notice',
@@ -17518,7 +17518,7 @@
                 'notice.notseen': 'ยังไม่ได้อ่าน',
                 'notice.noapp': 'คนในรายชื่อที่ไม่ได้ใช้แอป — ต้องแจ้งทางโทรศัพท์หรือกลุ่ม LINE',
                 'notice.status.earlier': 'อัปเดตก่อนหน้า',
-                'notice.status.stays': 'หน้าต่างนี้จะอยู่บนแดชบอร์ดตลอดวันอีเวนต์ อัปเดตใหม่จะเปิดขึ้นอีกครั้ง',
+                'notice.status.stays': 'หน้าต่างนี้จะอยู่บนแดชบอร์ด 3 ชั่วโมงหลังอัปเดตล่าสุด อัปเดตใหม่จะเปิดขึ้นอีกครั้ง',
                 'notice.popuptitle': 'ประกาศกิจกรรม',
                 'notice.placeholder': 'โพสต์คำแนะนำหรือข้อความสำหรับกิจกรรมนี้…',
                 'notice.postbtn': 'โพสต์ประกาศ',
@@ -21136,7 +21136,7 @@
                 'notice.notseen': '아직 안 읽음',
                 'notice.noapp': '명은 앱이 없는 명단 인원 — 전화나 LINE 그룹으로만 연락 가능',
                 'notice.status.earlier': '이전 업데이트',
-                'notice.status.stays': '이 창은 이벤트 당일 대시보드에 계속 표시됩니다. 새 업데이트가 오면 다시 열립니다.',
+                'notice.status.stays': '이 창은 마지막 업데이트 후 3시간 동안 대시보드에 표시됩니다. 새 업데이트가 오면 다시 열립니다.',
                 'notice.popuptitle': '이벤트 공지',
                 'notice.placeholder': '이 이벤트에 대한 안내나 메모를 작성하세요…',
                 'notice.postbtn': '공지 게시',
@@ -24314,7 +24314,7 @@
                 'notice.notseen': '未読',
                 'notice.noapp': '名はアプリなしの登録者 — 電話かLINEグループでのみ連絡可能',
                 'notice.status.earlier': '以前の更新',
-                'notice.status.stays': 'この表示はイベント当日ずっとダッシュボードに残ります。新しい更新があると再び開きます。',
+                'notice.status.stays': 'この表示は最新の更新から3時間ダッシュボードに残ります。新しい更新があると再び開きます。',
                 'notice.popuptitle': 'イベントのお知らせ',
                 'notice.placeholder': 'このイベントの案内やメモを投稿…',
                 'notice.postbtn': 'お知らせを投稿',
@@ -135957,9 +135957,12 @@ window.EventNoticeBoard = {
             var readSet = await this._readSet(anns.map(function (a) { return a.id; }));
             anns.forEach(function (a) { a._ev = evMap[a.event_id]; });
             var todaySet = {}; todayEvs.forEach(function (e) { todaySet[e.id] = 1; });
+            // v1358 (Pete: "this notice disappears after 2 to 4 hours"): the window stands for
+            // STATUS_TTL_H hours after the LATEST update; a newer update restarts the clock.
+            var ttlMs = this.STATUS_TTL_H * 3600000;
             this._renderStatus(todayEvs.map(function (e) {
                 return { ev: e, anns: anns.filter(function (a) { return a.event_id === e.id; }), readSet: readSet };
-            }).filter(function (x) { return x.anns.length; }));
+            }).filter(function (x) { return x.anns.length && (nowMs - new Date(x.anns[0].created_at).getTime()) < ttlMs; }));
             // the old popup keeps the notices of LATER events; today's live in the status window
             var unread = anns.filter(function (a) { return !readSet.has(a.id) && !todaySet[a.event_id]; });
             this._renderPopup(unread);
@@ -135973,6 +135976,7 @@ window.EventNoticeBoard = {
     // earlier update below it. "Got it" marks the updates read and shrinks it to a slim bar that
     // stays on top; a newer update opens it again by itself (EventMsgAlert._onNotice refreshes).
     _statusData: [],
+    STATUS_TTL_H: 3,
     _statusHost() {
         var host = document.getElementById('eventStatusWindow');
         if (host) return host;
@@ -136098,7 +136102,7 @@ window.EventNoticeBoard = {
                 '<button onclick="EventNoticeBoard.ackStatus(\'' + id + '\')" style="flex:1;background:#16a34a;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;">' + this._t('notice.gotit', 'Got it') + '</button>' +
                 '<button onclick="EventNoticeBoard.openPlayerThread(\'' + id + '\')" style="flex:1;background:#0d9488;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;"><span class="material-symbols-outlined" style="font-size:17px;">forum</span>' + this._t('notice.askorg', 'Message the organizer') + '</button>' +
             '</div>' +
-            '<div style="padding:0 12px 10px;background:#fff;font-size:11px;color:#64748b;">' + this._t('notice.status.stays', 'This stays on your dashboard for the event day. New updates open it again.') + '</div>' +
+            '<div style="padding:0 12px 10px;background:#fff;font-size:11px;color:#64748b;">' + this._t('notice.status.stays', 'This stays on your dashboard for 3 hours after the latest update. New updates open it again.') + '</div>' +
         '</div>';
     },
     // "Got it": every update of this event read, window shrinks to the slim bar (still on top)

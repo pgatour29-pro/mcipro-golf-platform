@@ -6718,16 +6718,7 @@
         #irmaPopup .irma-foot input { flex:1; min-width:0; border:1px solid #cbd5e1; border-radius:999px; padding:9px 14px; font:400 14px/1.2 'Instrument Sans',sans-serif; color:#111827; background:#fff; }
         #irmaPopup .irma-foot button { background:#16a34a; border:none; color:#fff; width:40px; height:40px; border-radius:50%; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
         /* ENB ALERT (v1038) — event-notice popup; the banner itself is IRMA's shared pill */
-        /* v1355 Event Status: floating symbol (every golfer screen while a status is live today) + popup */
-        #eswFab { position:fixed; right:16px; bottom:calc(84px + env(safe-area-inset-bottom)); z-index:9990; width:54px; height:54px; border-radius:50%; border:none; background:#78350f; color:#fcd34d; display:none; align-items:center; justify-content:center; box-shadow:0 6px 20px rgba(120,53,15,.45); cursor:pointer; }
-        #eswFab .material-symbols-outlined { font-size:27px; }
-        #eswFab .eswb { position:absolute; top:-3px; right:-3px; min-width:21px; height:21px; padding:0 6px; border-radius:11px; background:#dc2626; color:#fff; font:800 12px/21px 'Instrument Sans',sans-serif; text-align:center; box-shadow:0 0 0 2px #fff; }
-        #eswFab.unread { animation:eswPulse 1.6s ease-in-out infinite; }
-        @keyframes eswPulse { 0%,100% { box-shadow:0 6px 20px rgba(120,53,15,.45),0 0 0 0 rgba(245,158,11,.6); } 50% { box-shadow:0 6px 20px rgba(120,53,15,.45),0 0 0 10px rgba(245,158,11,0); } }
-        @media (prefers-reduced-motion:reduce) { #eswFab.unread { animation:none; } }
-        @media (min-width:768px) { #eswFab { bottom:24px; right:24px; } }
-        body:not(:has(#golferDashboard.active)) #eswFab, body:has(#loginScreen.active) #eswFab,
-        body:has(#golferDashboard.active #golfer-scorecard.active) #eswFab { display:none !important; }
+        /* v1355 Event Status popup (v1356: the floating megaphone is gone — Pete: "the top banner is enough") */
         #eswModal { position:fixed; inset:0; z-index:11600; align-items:center; justify-content:center; padding:16px; background:rgba(5,10,8,.6); }
         #eswModal .eswm { width:100%; max-width:440px; max-height:86vh; overflow-y:auto; -webkit-overflow-scrolling:touch; border-radius:16px; }
         #eswModal .eswx { display:flex; justify-content:flex-end; margin-bottom:6px; }
@@ -135946,7 +135937,6 @@ window.EventNoticeBoard = {
     _renderStatus(items) {
         this._statusData = items || [];
         var self = this;
-        this._renderFab();
         var host = this._statusHost();
         if (host) {
             if (!this._statusData.length) { host.innerHTML = ''; host.style.display = 'none'; }
@@ -135956,24 +135946,6 @@ window.EventNoticeBoard = {
     },
     _unreadCount() {
         return (this._statusData || []).reduce(function (n, x) { return n + x.anns.filter(function (a) { return !x.readSet.has(a.id); }).length; }, 0);
-    },
-    /* The notification symbol (Pete: "for the player there needs to be a separate popup or some type
-       of notification symbol"): a floating megaphone on every golfer screen while one of today's
-       events has a status, red count = unread updates, pulsing while anything is unread. */
-    _renderFab() {
-        var f = document.getElementById('eswFab');
-        if (!this._statusData.length) { if (f) f.style.display = 'none'; return; }
-        if (!f) {
-            f = document.createElement('button');
-            f.id = 'eswFab';
-            f.setAttribute('aria-label', this._t('notice.status.live', 'Event status · live'));
-            f.onclick = function () { EventNoticeBoard.openStatusModal(); };
-            document.body.appendChild(f);
-        }
-        var n = this._unreadCount();
-        f.innerHTML = '<span class="material-symbols-outlined">campaign</span>' + (n ? '<span class="eswb">' + n + '</span>' : '');
-        f.classList.toggle('unread', n > 0);
-        f.style.display = 'flex';
     },
     // The popup opens by itself for an update this device hasn't popped yet (once per update).
     _maybePopup() {

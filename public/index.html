@@ -14114,6 +14114,10 @@
                 'notice.board': 'Notices',
                 'notice.none': 'No notices yet',
                 'notice.gotit': 'Got it',
+                'notice.status.live': 'Event status · live',
+                'notice.status.new': 'New',
+                'notice.status.earlier': 'Earlier updates',
+                'notice.status.stays': 'This stays on your dashboard for the event day. New updates open it again.',
                 'notice.popuptitle': 'Event Notices',
                 'notice.placeholder': 'Post an instruction or note for this event…',
                 'notice.postbtn': 'Post Notice',
@@ -17470,6 +17474,10 @@
                 'notice.board': 'ประกาศ',
                 'notice.none': 'ยังไม่มีประกาศ',
                 'notice.gotit': 'รับทราบ',
+                'notice.status.live': 'สถานะอีเวนต์ · สด',
+                'notice.status.new': 'ใหม่',
+                'notice.status.earlier': 'อัปเดตก่อนหน้า',
+                'notice.status.stays': 'หน้าต่างนี้จะอยู่บนแดชบอร์ดตลอดวันอีเวนต์ อัปเดตใหม่จะเปิดขึ้นอีกครั้ง',
                 'notice.popuptitle': 'ประกาศกิจกรรม',
                 'notice.placeholder': 'โพสต์คำแนะนำหรือข้อความสำหรับกิจกรรมนี้…',
                 'notice.postbtn': 'โพสต์ประกาศ',
@@ -21066,6 +21074,10 @@
                 'notice.board': '공지',
                 'notice.none': '아직 공지가 없습니다',
                 'notice.gotit': '확인',
+                'notice.status.live': '이벤트 상태 · 실시간',
+                'notice.status.new': '새 소식',
+                'notice.status.earlier': '이전 업데이트',
+                'notice.status.stays': '이 창은 이벤트 당일 대시보드에 계속 표시됩니다. 새 업데이트가 오면 다시 열립니다.',
                 'notice.popuptitle': '이벤트 공지',
                 'notice.placeholder': '이 이벤트에 대한 안내나 메모를 작성하세요…',
                 'notice.postbtn': '공지 게시',
@@ -24222,6 +24234,10 @@
                 'notice.board': 'お知らせ',
                 'notice.none': 'お知らせはまだありません',
                 'notice.gotit': '確認',
+                'notice.status.live': 'イベント状況 · ライブ',
+                'notice.status.new': '新着',
+                'notice.status.earlier': '以前の更新',
+                'notice.status.stays': 'この表示はイベント当日ずっとダッシュボードに残ります。新しい更新があると再び開きます。',
                 'notice.popuptitle': 'イベントのお知らせ',
                 'notice.placeholder': 'このイベントの案内やメモを投稿…',
                 'notice.postbtn': 'お知らせを投稿',
@@ -135547,6 +135563,8 @@ window.EventMsgAlert = {
         var me = this._me();
         if (!me || rec.author_line_id === me) return;
         if (!(await this._amRegistered(rec.event_id))) return;
+        // today's event → its status window on the dashboard reopens with this update on top
+        try { EventNoticeBoard.refreshGolfer(); } catch (e) {}
         var title = await this._eventTitle(rec.event_id);
         var self = this;
         InRoundMsgAlert.showBanner(title + ' · NOTICE', rec.message, function () { self._openNotice(rec, title); });
@@ -135829,7 +135847,7 @@ window.EventNoticeBoard = {
         try {
             var regs = (await sb.from('event_registrations').select('event_id').eq('player_id', me)).data || [];
             var ids = [...new Set(regs.map(function (r) { return r.event_id; }).filter(Boolean))];
-            if (!ids.length) { this._renderPopup([]); return; }
+            if (!ids.length) { this._renderPopup([]); this._renderStatus([]); return; }
             var today = this._today();
             var nowMs = Date.now();
             var evs = [];
@@ -135837,25 +135855,143 @@ window.EventNoticeBoard = {
                 var er = await sb.from('society_events').select('id,title,course_name,event_date,start_time,departure_time').in('id', ids.slice(i, i + 50)).gte('event_date', today);
                 evs = evs.concat(er.data || []);
             }
+            // TODAY's events stay in the Event Status window all day, whatever the tee time says:
+            // a weather delay is exactly when the tee time passes and the updates keep coming.
+            var todayEvs = evs.filter(function (e) { return e.event_date === today; });
             // STRICT: drop events whose tee/start time has already passed (consistent with the cube/lists).
             evs = evs.filter(function (e) {
                 var tt = e.start_time || e.departure_time || '23:59';
                 var dt = new Date(e.event_date + 'T' + String(tt).slice(0, 5) + ':00');
                 return isNaN(dt.getTime()) || dt.getTime() >= nowMs;
             });
-            if (!evs.length) { this._renderPopup([]); return; }
-            var evMap = {}; evs.forEach(function (e) { evMap[e.id] = e; });
-            var upIds = evs.map(function (e) { return e.id; });
+            if (!evs.length && !todayEvs.length) { this._renderPopup([]); this._renderStatus([]); return; }
+            var evMap = {}; evs.concat(todayEvs).forEach(function (e) { evMap[e.id] = e; });
+            var upIds = Object.keys(evMap);
             var anns = [];
             for (var j = 0; j < upIds.length; j += 50) {
                 var ar = await sb.from('event_announcements').select('*').in('event_id', upIds.slice(j, j + 50)).order('created_at', { ascending: false });
                 anns = anns.concat(ar.data || []);
             }
-            if (!anns.length) { this._renderPopup([]); return; }
+            if (!anns.length) { this._renderPopup([]); this._renderStatus([]); return; }
             var readSet = await this._readSet(anns.map(function (a) { return a.id; }));
-            var unread = anns.filter(function (a) { return !readSet.has(a.id); }).map(function (a) { a._ev = evMap[a.event_id]; return a; });
+            anns.forEach(function (a) { a._ev = evMap[a.event_id]; });
+            var todaySet = {}; todayEvs.forEach(function (e) { todaySet[e.id] = 1; });
+            this._renderStatus(todayEvs.map(function (e) {
+                return { ev: e, anns: anns.filter(function (a) { return a.event_id === e.id; }), readSet: readSet };
+            }).filter(function (x) { return x.anns.length; }));
+            // the old popup keeps the notices of LATER events; today's live in the status window
+            var unread = anns.filter(function (a) { return !readSet.has(a.id) && !todaySet[a.event_id]; });
             this._renderPopup(unread);
         } catch (e) { console.warn('[NoticeBoard] refreshGolfer', e); }
+    },
+
+    // ---------- GOLFER: EVENT STATUS window (today's events) ----------
+    // Pete 2026-09-25 (TRGG Green Valley, heavy rain): a notice used to vanish after "Got it" and
+    // players had to keep going back to check. Today's events with notices get a status window
+    // pinned at the TOP of the dashboard for the whole event day: the latest update large, every
+    // earlier update below it. "Got it" marks the updates read and shrinks it to a slim bar that
+    // stays on top; a newer update opens it again by itself (EventMsgAlert._onNotice refreshes).
+    _statusData: [],
+    _statusHost() {
+        var host = document.getElementById('eventStatusWindow');
+        if (host) return host;
+        var overview = document.getElementById('golfer-overview');
+        if (!overview) return null;
+        host = document.createElement('div');
+        host.id = 'eventStatusWindow';
+        host.style.cssText = 'margin:0 0 12px;display:none;';
+        overview.insertBefore(host, overview.firstChild);
+        return host;
+    },
+    _ago(ts) {
+        try {
+            var m = Math.round((Date.now() - new Date(ts).getTime()) / 60000);
+            var rtf = new Intl.RelativeTimeFormat(typeof _lvLocale === 'function' ? _lvLocale() : undefined, { numeric: 'auto' });
+            if (m < 60) return rtf.format(-Math.max(0, m), 'minute');
+            return rtf.format(-Math.round(m / 60), 'hour');
+        } catch (e) { return ''; }
+    },
+    _clock(ts) { try { return new Date(ts).toLocaleTimeString(typeof _lvLocale === 'function' ? _lvLocale() : undefined, { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } },
+    _renderStatus(items) {
+        var host = this._statusHost();
+        if (!host) return;
+        this._statusData = items || [];
+        if (!this._statusData.length) { host.innerHTML = ''; host.style.display = 'none'; return; }
+        host.style.display = 'block';
+        var self = this;
+        host.innerHTML = this._statusData.map(function (x) { return self._statusCard(x); }).join('');
+    },
+    _statusCard(x) {
+        var ev = x.ev, anns = x.anns, latest = anns[0], self = this;
+        var unread = anns.filter(function (a) { return !x.readSet.has(a.id); });
+        var id = this._esc(ev.id);
+        var title = this._esc(ev.title || ev.course_name || 'Event');
+        var min = false;
+        try { min = !unread.length && localStorage.getItem('enbStatusMin:' + ev.id) === latest.id; } catch (e) {}
+        if (min) {
+            return '<button onclick="EventNoticeBoard.expandStatus(\'' + id + '\')" style="width:100%;display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:10px 12px;background:#78350f;color:#fff;border:none;border-radius:12px;cursor:pointer;text-align:left;box-shadow:0 2px 10px rgba(120,53,15,.25);">' +
+                '<span class="material-symbols-outlined" style="font-size:20px;color:#fcd34d;">campaign</span>' +
+                '<span style="flex:1;min-width:0;"><span style="display:block;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fcd34d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + this._clock(latest.created_at) + ' · ' + title + '</span>' +
+                '<span style="display:block;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + this._esc(String(latest.message || '').replace(/\s+/g, ' ')) + '</span></span>' +
+                '<span class="material-symbols-outlined" style="font-size:20px;">expand_more</span></button>';
+        }
+        var isNew = !x.readSet.has(latest.id);
+        var older = anns.slice(1);
+        return '<div id="esw-' + id + '" style="margin-bottom:10px;background:#fff;border:2px solid #f59e0b;border-radius:14px;overflow:hidden;box-shadow:0 6px 22px rgba(180,83,9,.22);">' +
+            '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#78350f;color:#fff;">' +
+                '<span class="material-symbols-outlined" style="font-size:22px;color:#fcd34d;">campaign</span>' +
+                '<div style="flex:1;min-width:0;"><div style="display:flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#fcd34d;">' +
+                    '<span style="width:7px;height:7px;border-radius:50%;background:#fcd34d;display:inline-block;"></span>' + this._t('notice.status.live', 'Event status · live') + '</div>' +
+                '<div style="font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + title + '</div></div>' +
+                '<button onclick="EventNoticeBoard.ackStatus(\'' + id + '\')" aria-label="' + this._t('notice.gotit', 'Got it') + '" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:32px;height:32px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="material-symbols-outlined" style="font-size:20px;">expand_less</span></button>' +
+            '</div>' +
+            '<div style="padding:12px 14px 10px;background:#fffbeb;">' +
+                '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">' +
+                    (isNew ? '<span style="background:#dc2626;color:#fff;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:5px;padding:1px 6px;">' + this._t('notice.status.new', 'New') + '</span>' : '') +
+                    '<span style="font-size:12px;font-weight:700;color:#78350f;">' + this._esc(latest.author_name || 'Organizer') + '</span>' +
+                    '<span style="font-size:11px;color:#92400e;margin-left:auto;">' + this._clock(latest.created_at) + ' · ' + this._ago(latest.created_at) + '</span>' +
+                '</div>' +
+                '<div id="enbsrc-sw' + latest.id + '" style="font-size:15px;font-weight:600;color:#1c1917;line-height:1.45;">' + this._esc(latest.message) + '</div>' +
+                this._translateCtl('sw' + latest.id) +
+            '</div>' +
+            (older.length ? '<details style="border-top:1px solid #fde68a;"><summary style="cursor:pointer;padding:9px 14px;font-size:12px;font-weight:700;color:#92400e;list-style:none;">' +
+                this._t('notice.status.earlier', 'Earlier updates') + ' (' + older.length + ')</summary>' +
+                '<div style="padding:0 14px 8px;">' + older.map(function (a) {
+                    return '<div style="border-top:1px solid #f1f5f9;padding:8px 0;">' +
+                        '<div style="display:flex;gap:6px;font-size:11px;color:#64748b;margin-bottom:2px;">' +
+                            (!x.readSet.has(a.id) ? '<span style="color:#dc2626;font-weight:800;">' + self._t('notice.status.new', 'New') + '</span>' : '') +
+                            '<span style="font-weight:700;color:#334155;">' + self._esc(a.author_name || 'Organizer') + '</span><span style="margin-left:auto;">' + self._clock(a.created_at) + '</span></div>' +
+                        '<div id="enbsrc-so' + a.id + '" style="font-size:13px;color:#334155;line-height:1.4;">' + self._esc(a.message) + '</div>' + self._translateCtl('so' + a.id) +
+                    '</div>';
+                }).join('') + '</div></details>' : '') +
+            '<div style="display:flex;gap:8px;padding:10px 12px;border-top:1px solid #fde68a;background:#fff;">' +
+                '<button onclick="EventNoticeBoard.ackStatus(\'' + id + '\')" style="flex:1;background:#16a34a;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;">' + this._t('notice.gotit', 'Got it') + '</button>' +
+                '<button onclick="EventNoticeBoard.openPlayerThread(\'' + id + '\')" style="flex:1;background:#0d9488;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;"><span class="material-symbols-outlined" style="font-size:17px;">forum</span>' + this._t('notice.askorg', 'Message the organizer') + '</button>' +
+            '</div>' +
+            '<div style="padding:0 12px 10px;background:#fff;font-size:11px;color:#64748b;">' + this._t('notice.status.stays', 'This stays on your dashboard for the event day. New updates open it again.') + '</div>' +
+        '</div>';
+    },
+    // "Got it": every update of this event read, window shrinks to the slim bar (still on top)
+    async ackStatus(eventId) {
+        var x = (this._statusData || []).find(function (i) { return i.ev.id === eventId; });
+        if (!x) return;
+        var me = this._me(), sb = this._sb();
+        var unread = x.anns.filter(function (a) { return !x.readSet.has(a.id); });
+        try { localStorage.setItem('enbStatusMin:' + eventId, x.anns[0].id); } catch (e) {}
+        unread.forEach(function (a) { x.readSet.add(a.id); });
+        this._renderStatus(this._statusData);
+        if (sb && me && unread.length) {
+            try {
+                await sb.from('event_announcement_reads').upsert(unread.map(function (a) {
+                    return { announcement_id: a.id, reader_line_id: me, read_at: new Date().toISOString() };
+                }), { onConflict: 'announcement_id,reader_line_id' });
+            } catch (e) { console.warn('[NoticeBoard] ackStatus', e); }
+            try { this.hydrateCards(); this.hydratePlayerEventsCube(); } catch (e) {}
+        }
+    },
+    expandStatus(eventId) {
+        try { localStorage.removeItem('enbStatusMin:' + eventId); } catch (e) {}
+        this._renderStatus(this._statusData);
     },
 
     _popupHost() {

@@ -39268,6 +39268,23 @@ Sent from Login Page`;
                 mainContent.style.display = 'none';
                 return;
             }
+            // v1361 (Pete: "back button does not work on the caddy dashboard"): the MHV staff shells
+            // (caddie, caddy master, marketing, maintenance, course admin) switch tabs from the phone
+            // cube home WITHOUT touching NavHistory — the stack held one entry, so back did nothing at
+            // all. Phone only (desktop has no cube home): More sheet open → close it; on a tab → back
+            // to the cube home. From the home itself, fall through (her home is the root).
+            if (window._mhvCfg && window.matchMedia && window.matchMedia('(max-width: 767px)').matches) {
+                const _mp = ['cad', 'cm', 'mk', 'mnt', 'adm'].find(function (k) {
+                    const d = document.getElementById(_mhvCfg[k].dash);
+                    return d && d.classList.contains('active');
+                });
+                if (_mp) {
+                    const _ms = document.getElementById(_mp + 'MoreSheet');
+                    if (_ms && _ms.classList.contains('open')) { try { mhvCloseMore(_mp); } catch (e) {} return; }
+                    const _mh = document.getElementById(_mp + 'CubeHome');
+                    if (_mh && getComputedStyle(_mh).display === 'none') { try { mhvHome(_mp); } catch (e) {} return; }
+                }
+            }
             // Organizer LITE: back goes to the 5-cube home, NOT out of the dashboard. From the
             // home itself, leave cleanly to the golfer dashboard (never fall through to NavHistory,
             // which was popping users all the way to the login screen).

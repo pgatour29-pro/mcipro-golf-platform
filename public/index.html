@@ -39220,6 +39220,24 @@ Sent from Login Page`;
                 const _el = document.getElementById(_ovl[i][0]);
                 if (_el && _el.style.display && _el.style.display !== 'none') { try { _ovl[i][1](); } catch (e) {} return; }
             }
+            // v1359 Society Events (Pete: "it drops in but the back button is still getting stuck"):
+            // the Browse Events ▾ dropdown and its sub-views (Calendar, My Events, Standings, Rankings,
+            // Players, Create, Manage) are inline-display swaps inside ONE tab — invisible to NavHistory,
+            // so back skipped them: an open dropdown was left hanging over the page, and a sub-view
+            // threw you out to the dashboard and was still there next time (the v1032 rule).
+            // Back now closes the dropdown, then steps a sub-view back to Browse Events, then leaves.
+            const _gse = document.getElementById('golfer-societyevents');
+            if (_gse && _gse.classList.contains('active')) {
+                const _dd = document.getElementById('mobileEventsDropdown');
+                if (_dd && !_dd.classList.contains('hidden')) { _dd.classList.add('hidden'); return; }
+                const _ges = window.GolferEventsSystem;
+                if (_ges && _ges.currentView && _ges.currentView !== 'browse') {
+                    const _bo = document.querySelector('#mobileEventsDropdown [onclick*="\'browse\'"]');
+                    try { if (_bo) _bo.click(); else _ges.showEventsView('browse'); } catch (e) {}
+                    try { window.scrollTo(0, 0); } catch (e) {}
+                    return;
+                }
+            }
             // v1319: the golfer's Registered Players / tee sheet modal (Tee Sheet cube, event pills) is
             // created on <body> and removed on close — back closes it like its X does.
             // GSV1 (v1340): the golfer's "Your booking" guest sheet is body-mounted above the detail /
@@ -40537,6 +40555,8 @@ Sent from Login Page`;
         }
 
         function showGolferTab(tabName, event) {
+            // v1359: the Society Events dropdown never survives a tab change (it was left open behind)
+            try { var _medd = document.getElementById('mobileEventsDropdown'); if (_medd) _medd.classList.add('hidden'); } catch (e) {}
             // Show/hide Return to Scoring banner during active round
             const returnBanner = document.getElementById('returnToScoringBanner');
             const golferDash = document.getElementById('golferDashboard');

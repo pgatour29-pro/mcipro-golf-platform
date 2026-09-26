@@ -13515,6 +13515,7 @@
                 'caddies.f.cancel': 'Cancel Edit',
                 'caddies.f.add': 'Add',
                 'caddies.photo.tapadd': 'Tap to add photo',
+                'caddies.reg.locked': 'Registered caddy — name and photo come from the caddy or the golf course. Your notes, rating and tip are yours to edit.',
                 'caddies.photo.tapview': 'Tap to enlarge',
 
                 // Messages Tab
@@ -16897,6 +16898,7 @@
                 'caddies.f.cancel': 'ยกเลิกการแก้ไข',
                 'caddies.f.add': 'เพิ่ม',
                 'caddies.photo.tapadd': 'แตะเพื่อเพิ่มรูป',
+                'caddies.reg.locked': 'แคดดี้ที่ลงทะเบียนแล้ว — ชื่อและรูปมาจากแคดดี้หรือสนามกอล์ฟ คุณแก้ไขบันทึก คะแนน และทิปของคุณได้',
                 'caddies.photo.tapview': 'แตะเพื่อดูรูปใหญ่',
 
                 // Messages Tab
@@ -20520,6 +20522,7 @@
                 'caddies.f.cancel': '수정 취소',
                 'caddies.f.add': '추가',
                 'caddies.photo.tapadd': '탭하여 사진 추가',
+                'caddies.reg.locked': '등록된 캐디 — 이름과 사진은 캐디 또는 골프장에서 관리합니다. 메모, 평점, 팁은 직접 수정할 수 있습니다.',
                 'caddies.photo.tapview': '탭하여 크게 보기',
 
                 // Messages Tab
@@ -23701,6 +23704,7 @@
                 'caddies.f.cancel': '編集をキャンセル',
                 'caddies.f.add': '追加',
                 'caddies.photo.tapadd': 'タップして写真を追加',
+                'caddies.reg.locked': '登録済みキャディー — 名前と写真はキャディー本人またはゴルフ場が管理します。メモ・評価・チップは編集できます。',
                 'caddies.photo.tapview': 'タップして拡大',
 
                 // Messages Tab
@@ -41433,6 +41437,7 @@ Sent from Login Page`;
             async loadCaddies() {
                 try {
                     this.showLoading(true);
+                    await window._caddyRegLoad();   // v1370: registered caddies show the registration's photo, read-only
 
                     // My Caddies shows ONLY the golfer's own caddies — from their notebook, their
                     // caddy bookings, and their event history. The full demo/seed caddy directory
@@ -41532,6 +41537,7 @@ Sent from Login Page`;
                 const emptyState = document.getElementById('caddyEmptyState');
                 if (filter === 'notebook') {
                     if (notebookSection) notebookSection.classList.remove('hidden');
+                    try { CaddyNotebook._watchRegistered(); } catch (e) {}   // v1370
                     if (caddyCards) caddyCards.classList.add('hidden');
                     if (emptyState) emptyState.classList.add('hidden');
                     // Clear any STALE form values before use. iOS Safari can retain/restore a
@@ -41640,7 +41646,9 @@ Sent from Login Page`;
                     || null;
             },
 
-            quickPhoto(caddyNumber, courseName) {
+            async quickPhoto(caddyNumber, courseName) {
+                await window._caddyRegLoad();
+                if (window._caddyRegBlock(caddyNumber, courseName)) return;   // v1370: registered = read-only
                 CaddyNotebook._pickPhoto(async (file) => {
                     const userId = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
                     if (!userId) return;
@@ -54971,6 +54979,49 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else this.clearPhoto();
                 this._setEditMode(true);
                 document.querySelector('#caddyNotebookSection .mcv1-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                // v1370: a registered caddy's number/name/course/photo are the caddy's or the course's — the golfer
+                // keeps only their own notes, rating, tip, language
+                window._caddyRegLoad().then(() => { if (this._editingId === id) this._lockRegistered(window._caddyRegFor(e.caddy_number, e.course_name)); });
+            },
+
+            // v1370: typing a registered caddy's number + course into the ADD form locks name + photo too
+            _watchRegistered() {
+                if (this._regWatch) return; this._regWatch = true;
+                const chk = async () => {
+                    if (this._editingId) return;
+                    const n = document.getElementById('notebookCaddyNumber')?.value?.trim(), c = document.getElementById('notebookCaddyCourse')?.value?.trim();
+                    await window._caddyRegLoad();
+                    this._lockRegistered(n && c ? window._caddyRegFor(n, c) : null, true);
+                };
+                ['notebookCaddyNumber', 'notebookCaddyCourse'].forEach(fid => { const el = document.getElementById(fid); if (el) { el.addEventListener('input', chk); el.addEventListener('change', chk); } });
+            },
+
+            _lockRegistered(reg, addOnly) {
+                // edit = number/name/course all locked; add = the golfer still types number + course, name + photo come from the registration
+                const ids = addOnly ? ['notebookCaddyName'] : ['notebookCaddyNumber', 'notebookCaddyName', 'notebookCaddyCourse'];
+                if (addOnly || !reg) ['notebookCaddyNumber', 'notebookCaddyCourse'].forEach(fid => { const el = document.getElementById(fid); if (el) { el.disabled = false; el.style.opacity = ''; } });
+                ids.forEach(fid => { const el = document.getElementById(fid); if (el) { el.disabled = !!reg; el.style.opacity = reg ? '.6' : ''; } });
+                const ph = document.getElementById('notebookCaddyPhoto');
+                if (ph) { ph.disabled = !!reg; const pb = ph.nextElementSibling; if (pb && pb.tagName === 'BUTTON') { pb.disabled = !!reg; pb.style.opacity = reg ? '.6' : ''; } }
+                let hint = document.getElementById('notebookRegHint');
+                if (reg && !hint) {
+                    hint = document.createElement('div'); hint.id = 'notebookRegHint';
+                    hint.style.cssText = 'font-size:12px;font-weight:600;color:var(--acc,#22c55e);margin:6px 0;';
+                    document.querySelector('#caddyNotebookSection .mcv1-ftitle')?.after(hint);
+                }
+                if (hint) { hint.textContent = reg ? t('caddies.reg.locked') : ''; hint.style.display = reg ? '' : 'none'; }
+                if (reg) {
+                    const nm = document.getElementById('notebookCaddyName'); if (nm) nm.value = reg.name || '';
+                    this._photoFile = null; this._editingPhotoUrl = reg.photo_url || '';
+                    const img = document.getElementById('notebookCaddyPhotoPreview');
+                    if (img && reg.photo_url) { img.src = reg.photo_url; img.style.display = 'block'; }
+                    else if (img) img.style.display = 'none';
+                    this._regLocked = true;
+                } else if (this._regLocked) {
+                    this._regLocked = false;
+                    if (addOnly) { const nm = document.getElementById('notebookCaddyName'); if (nm) nm.value = ''; this._editingPhotoUrl = ''; this.clearPhoto(); }
+                }
+                this._watchRegistered();
             },
 
             cancelEdit() {
@@ -54982,6 +55033,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 this._rating = 0; this.setRating(0);
                 this.clearPhoto();
                 this._setEditMode(false);
+                this._lockRegistered(null);
             },
 
             _setEditMode(on) {
@@ -55084,7 +55136,10 @@ document.addEventListener('DOMContentLoaded', function() {
             },
 
             // Tap a photo-less avatar on a NOTEBOOK card → chooser → photo saved to that entry
-            quickPhotoForEntry(id) {
+            async quickPhotoForEntry(id) {
+                const ent = (this._entries || []).find(x => x.id === id);
+                await window._caddyRegLoad();
+                if (ent && window._caddyRegBlock(ent.caddy_number, ent.course_name)) return;   // v1370
                 this._pickPhoto(async (file) => {
                     const userId = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
                     if (!userId) return;
@@ -55109,6 +55164,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             async getEntries() {
                 if (this._entries) return this._entries;
+                await window._caddyRegLoad();   // v1370: registered caddies = read-only identity (cached 120s)
                 // Fall back to localStorage like loadCaddies/BookedCaddiesView — AppState may not be
                 // ready when the Notebook/Favorites views first render, and without this they showed
                 // empty even though entries exist.
@@ -55152,6 +55208,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 // throw can strand the form disabled.
                 this._setBusy(true, 'Saving...');
                 try {
+                    // v1370: a caddy registered by the caddy or a course keeps the registration's name + photo —
+                    // the golfer's entry holds only their own notes/rating/tip/language
+                    await window._caddyRegLoad();
+                    const reg = window._caddyRegFor(number, courseSel.value.trim());
+                    if (reg) { this._photoFile = null; }
                     // Upload the picked photo (if any) first — failure never blocks the save
                     let photoUrl = '';
                     if (this._photoFile) {
@@ -55176,6 +55237,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     };
                     if (photoUrl) entry.photo_url = photoUrl;
                     else if (this._editingId) entry.photo_url = this._editingPhotoUrl || null;
+                    if (reg) { entry.caddy_name = reg.name || name; entry.photo_url = reg.photo_url || null; }
                     const wasEdit = !!this._editingId;
                     try {
                         if (wasEdit) {
@@ -55205,6 +55267,10 @@ document.addEventListener('DOMContentLoaded', function() {
             },
 
             async deleteEntry(id) {
+                // v1370: one stray tap on ✕ deleted a caddy for good (no undo) — ask first
+                const ent = (this._entries || []).find(x => x.id === id);
+                const q = 'Remove ' + (ent ? '#' + (ent.caddy_number || '') + (ent.caddy_name ? ' ' + ent.caddy_name : '') : 'this caddy') + ' from your notebook?';
+                if (!(window.askConfirm ? await window.askConfirm({ title: q, danger: true, confirmText: _lvT('common.delete', 'Delete') }) : confirm(q))) return;
                 try {
                     // Direct owner-scoped delete (RLS now permits DELETE on caddy_notebook). The old
                     // edge-function path required a LINE id_token, which desktop / Google / Kakao users
@@ -129796,6 +129862,10 @@ const CourseAdminSystem = {
         };
         try {
             if (caddyId) {
+                // v1370: a course edits ONLY its own caddies; once edited the caddy is the course's
+                const own = (this.allCaddies || []).find(c => c.id === caddyId);
+                if (!own) { fail('This caddy is not on your course roster'); return; }
+                if (!own.user_id && !own.created_by) fields.created_by = 'course_admin';
                 const { error } = await window.SupabaseDB.client
                     .from('caddy_profiles').update(fields).eq('id', caddyId);
                 if (error) throw error;
@@ -139388,7 +139458,12 @@ const CaddyMasterData = {
         try {
             const now = new Date().toISOString();
             if (id) {
-                const { data, error } = await sb.from('caddy_profiles').update({ caddy_number: num, name: name, phone: phone || null, block_minutes: block, updated_at: now }).eq('id', id).select('id');
+                // v1370: a course edits ONLY its own caddies; once edited the caddy is the course's (golfer notebooks never overwrite it)
+                const own = this.roster.find(r => r.id === id);
+                if (!own) { window.NotificationManager.show(this._t('cm.toast.updfail', 'Update failed'), 'error'); return; }
+                const upd = { caddy_number: num, name: name, phone: phone || null, block_minutes: block, updated_at: now };
+                if (!own.user_id && !own.created_by) upd.created_by = 'caddymaster';
+                const { data, error } = await sb.from('caddy_profiles').update(upd).eq('id', id).select('id');
                 if (error || !data?.length) { window.NotificationManager.show(this._t('cm.toast.updfail', 'Update failed') + (error ? ': ' + error.message : ''), 'error'); return; }
             } else {
                 const { data, error } = await sb.from('caddy_profiles').insert({
@@ -157081,8 +157156,44 @@ window._caddyCourseGuard = function(caddyNum, caddyCourse, evCourse){
 // Rules: with course context, only a row at that course (suffix-tolerant) — or a legacy
 // course-less row — may supply the photo. Without course context, only if the number is
 // unambiguous (a single photo'd row).
+// v1370 (Pete 2026-09-26): a caddy REGISTERED in the system — from the caddy's own device (user_id) or
+// added by a golf course (created_by) — is READ-ONLY to golfers: number, name and photo come from the
+// registration. Golfers edit only the caddies they added by hand. _caddyRegLoad() caches the registered
+// set for 120s; _caddyRegFor(num, course) is the sync lookup (null = golfer-added → the golfer's to edit).
+window._caddyRegNorm = function(v){ return String(v||'').toLowerCase()
+  .replace(/country\s*club|golf\s*club|golf\s*course|golf|club|course|international|resort|\bcc\b/g,'')
+  .replace(/[^a-z]/g,''); };
+window._caddyRegLoad = async function(force){
+  var c = window.__cadReg, now = Date.now();
+  if (!force && c && (now - c.t) < 120000) return c.rows;
+  try {
+    var sb = window.SupabaseDB && window.SupabaseDB.client; if (!sb) return (c && c.rows) || [];
+    var r = await sb.from('caddy_profiles').select('id,caddy_number,name,photo_url,course_id,course_name,user_id,created_by')
+      .eq('is_mock', false).or('user_id.not.is.null,created_by.not.is.null').limit(2000);
+    if (r.error) throw r.error;
+    window.__cadReg = { t: now, rows: r.data || [] };
+  } catch (e) { console.warn('[CaddyReg] registry load failed', e); }
+  return (window.__cadReg && window.__cadReg.rows) || [];
+};
+window._caddyRegFor = function(num, course){
+  var c = window.__cadReg; if (!c) return null;
+  var n = String(parseInt(num)); if (!n || n === 'NaN') return null;
+  var want = window._caddyRegNorm(course); if (!want) return null;   // a number means nothing without its course
+  return c.rows.find(function(r){
+    if (String(parseInt(r.caddy_number)) !== n) return false;
+    return [r.course_name, r.course_id].some(function(x){ var k = window._caddyRegNorm(x); return k && (k === want || k.indexOf(want) !== -1 || want.indexOf(k) !== -1); });
+  }) || null;
+};
+// true (and tells the golfer why) when this caddy's details belong to the caddy / the course
+window._caddyRegBlock = function(num, course){
+  if (!window._caddyRegFor(num, course)) return false;
+  try { NotificationManager.show(t('caddies.reg.locked'), 'info', 3500); } catch (e) {}
+  return true;
+};
 window._nbPhotoPick = function(entries, num, course){
   var n = String(parseInt(num)); if (!n || n === 'NaN') return '';
+  var reg = window._caddyRegFor && window._caddyRegFor(num, course);
+  if (reg && reg.photo_url) return reg.photo_url;   // v1370: a registered caddy wears the registration's photo
   var norm = function(v){ return String(v||'').toLowerCase()
     .replace(/country\s*club|golf\s*club|golf\s*course|golf|club|course|international|resort|\bcc\b/g,'')
     .replace(/[^a-z]/g,''); };

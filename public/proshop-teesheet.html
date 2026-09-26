@@ -6558,7 +6558,7 @@
       },
       async load() {
         // inactive rows included, so a caddy can be brought back
-        let q = supabaseClient.from('caddy_profiles').select('id, caddy_number, name, phone, is_active, availability_status, user_id, photo_url').eq('is_mock', false).limit(500);
+        let q = supabaseClient.from('caddy_profiles').select('id, caddy_number, name, phone, is_active, availability_status, user_id, photo_url, created_by').eq('is_mock', false).limit(500);
         q = courseRosterFilter(q, el.courseSelect.value);
         const { data, error } = await q;
         if (error) { alert(t('rosterSaveFail') + ' ' + error.message); return; }
@@ -6655,6 +6655,11 @@
       // NEVER a blind update — scoped to the row id and checked for a returned row.
       async patch(id, fields) {
         if (!supabaseClient || !id) return;
+        // v1370: a course edits ONLY its own caddies — the row must be on this course's roster
+        const own = this.rows.find(x => x.id === id);
+        if (!own) return;
+        // ...and once the course has edited a caddy it is the course's: a golfer's notebook never overwrites it again
+        if (!own.user_id && !own.created_by) fields.created_by = 'proshop_teesheet';
         fields.updated_at = new Date().toISOString();
         const { data, error } = await supabaseClient.from('caddy_profiles').update(fields).eq('id', id).select('id');
         if (error || !data || !data.length) { alert(t('rosterSaveFail') + ' ' + ((error && error.message) || 'no row')); return; }

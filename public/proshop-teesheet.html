@@ -3396,6 +3396,16 @@
           const numSlots = li ? CLk.slotsOnSheet(li) : Math.ceil((endMins - startMins) / step);
           const shortSoc = li ? CLk.shortName(li) : '';
           const paired = li ? li.groups.filter(g => g.players.length) : [];
+          // v1368: registered but not yet paired players (and their caddies) ride on the first held slot —
+          // search-only, never seated (no auto-seating), so quick find can reach every golfer in the booking
+          const unpairedAt = Math.min(paired.length, numSlots - 1);
+          const toGolfer = p => ({
+            name: p.name, odoo_id: p.id || '',
+            caddyId: (p.caddy && p.caddy.id) || null,
+            caddyNumber: (p.caddy && p.caddy.num) || (p.regNums && p.regNums[0]) || '',
+            caddyName: (p.caddy && p.caddy.name && !/^caddy #/i.test(p.caddy.name)) ? p.caddy.name : '',
+            caddyStatus: (p.caddy && p.caddy.status) || ''
+          });
 
           // Create group of time slots for the blocked range
           const slots = [];
@@ -3421,13 +3431,8 @@
               endTime: endTime || hhmm(startMins + numSlots * step),
               // v1347: each paired player carries their caddy (registration number / caddy_bookings row) —
               // the pill's caddy count, the print sheet and the panel all read the same thing
-              golfers: paired[i] ? paired[i].players.map(p => ({
-                name: p.name, odoo_id: p.id || '',
-                caddyId: (p.caddy && p.caddy.id) || null,
-                caddyNumber: (p.caddy && p.caddy.num) || '',
-                caddyName: (p.caddy && p.caddy.name && !/^caddy #/i.test(p.caddy.name)) ? p.caddy.name : '',
-                caddyStatus: (p.caddy && p.caddy.status) || ''
-              })) : [],
+              golfers: paired[i] ? paired[i].players.map(p => Object.assign(toGolfer(p), { caddyNumber: (p.caddy && p.caddy.num) || '' })) : [],
+              unpaired: (li && i === unpairedAt && li.unpaired) ? li.unpaired.map(toGolfer) : [],
               status: 'confirmed',
               createdAt: new Date().toISOString()
             });
@@ -7752,14 +7757,19 @@
       if (fuzzyMatch(b.notes, q)) return true;
       if (fuzzyMatch(b.bookingType, q)) return true;
 
-      // Search in each golfer
-      const golfers = b.golfers || [];
+      // Search in each golfer — seated ones and (v1368) a society event's registered-but-unpaired ones
+      const golfers = (b.golfers || []).concat(b.unpaired || []);
       return golfers.some(g => {
         if (fuzzyMatch(g.name, q)) return true;
         if (fuzzyMatch(g.caddyId, q)) return true;
         if (fuzzyMatch(String(g.caddyNumber || ''), q)) return true;
         if (fuzzyMatch(g.caddyName, q)) return true;
         if (fuzzyMatch(g.caddyLocalName, q)) return true;
+        // v1368: a booking that only holds the caddy's number still finds by the caddy's name (course roster)
+        if (g.caddyNumber) {
+          const c = allCaddies.find(x => String(x.number) === String(g.caddyNumber));
+          if (c && (fuzzyMatch(c.name, q) || fuzzyMatch(c.localName || c.local_name, q))) return true;
+        }
         return false;
       });
     }

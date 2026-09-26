@@ -475,8 +475,8 @@
 
     // ---------- panel ----------
     _panel: function () { return document.getElementById('clPanel'); },
-    /* opts (v1371, pro shop quick find): { hl: player key to highlight + scroll to, left: dock on the left }.
-       A plain open (a tap on the sheet) clears both. */
+    /* opts (v1371, pro shop quick find): { hl: player key to highlight + scroll to, qf: opened by quick find }.
+       A plain open (a tap on the sheet) clears both. v1372: always on the right (Pete). */
     openPanel: function (evId, opts) {
       this._css();
       var st = this.state;
@@ -497,7 +497,7 @@
           e.stopPropagation();   // the tee sheet's type-anywhere quick find must not steal these keys
         });
       }
-      p.classList.toggle('cl-left', !!(opts && opts.left));
+      p.classList.toggle('cl-qf', !!(opts && opts.qf));
       this.renderPanel();
       if (st.openId) this._openThread(st.openId);
     },
@@ -923,7 +923,6 @@
         '#clPanel .cl-p.has{border-left-color:var(--cl-green)}',
         '#clPanel .cl-p.open{border-left-color:#f59e0b}',
         '#clPanel .cl-p.cl-hl{background:rgba(250,204,21,.2);border-left:3px solid #facc15;border-radius:6px}',
-        '#clPanel.cl-left{left:0;right:auto;border-left:0;border-right:1px solid var(--cl-line);box-shadow:18px 0 40px rgba(0,0,0,.35)}',
         '#clPanel .cl-p-n{flex:1 1 80px;min-width:0;font-size:14px;color:var(--cl-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
         '#clPanel .cl-none{color:var(--cl-muted);padding:0 10px}',
         '#clPanel .cl-add{height:28px;padding:0 10px;border-radius:8px;border:1px dashed var(--cl-line2);background:transparent;color:var(--cl-muted);font:700 12px system-ui,sans-serif;cursor:pointer}',

@@ -51693,23 +51693,17 @@ document.addEventListener('DOMContentLoaded', function() {
             let _lbRefreshInterval = null;
             function startLeaderboardRefresh() {
                 if (_lbRefreshInterval) return;
-                // SCALE (v1362): the ticker pulls every round of the year. It ran every 60s on
-                // every phone, hidden or not (1000 phones = ~17 full-year pulls/s). Now: every
-                // 5 min, only while the app is on screen, jittered so phones don't sync up,
-                // plus one refresh when the app comes back to the front after 5+ min away.
-                let _lbLast = Date.now();
+                // SCALE (v1362): runs only while the app is on screen (a phone in a pocket shows
+                // nothing, so it pulls nothing); refreshes the moment the app comes back.
                 const _lbTick = () => {
                     if (document.visibilityState !== 'visible') return;
-                    if (Date.now() - _lbLast < 5 * 60 * 1000) return;
-                    _lbLast = Date.now();
                     if (typeof loadCommunityStatsTicker === 'function') loadCommunityStatsTicker();
                 };
-                _lbRefreshInterval = setInterval(_lbTick, 60 * 1000 + Math.floor(Math.random() * 30000));
-                document.addEventListener('visibilitychange', () => setTimeout(_lbTick, Math.floor(Math.random() * 5000)));
-                console.log('[CommunityStats] 🔄 Auto-refresh enabled (5 min, visible only)');
+                _lbRefreshInterval = setInterval(_lbTick, 60 * 1000);
+                document.addEventListener('visibilitychange', _lbTick);
+                console.log('[CommunityStats] 🔄 Auto-refresh enabled (every 1 min while on screen)');
             }
-            // SCALE (v1362): NOT called any more — every round INSERT anywhere sent a message to
-            // every phone and each reloaded the whole year 2s later. The 5-min visible refresh covers it.
+            // Listen for new rounds via Supabase realtime
             function subscribeToRounds() {
                 try {
                     const sb = window.SupabaseDB?.client;
@@ -51729,9 +51723,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             // Start when DOM is ready
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', () => { startLeaderboardRefresh(); });
+                document.addEventListener('DOMContentLoaded', () => { startLeaderboardRefresh(); setTimeout(subscribeToRounds, 3000); });
             } else {
                 startLeaderboardRefresh();
+                setTimeout(subscribeToRounds, 3000);
             }
         })();
 
@@ -54327,14 +54322,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Subscribe to real-time updates for events
                     if (!this._subscribed) {
                         this._subscribed = true;
-                        // SCALE (v1362): system-wide changes (any society's event, any finished
-                        // card) coalesce into ONE badge refresh 3–30s later, spread across phones;
-                        // my own registration still refreshes at once.
-                        const soon = () => {
-                            if (this._soonTimer) return;
-                            this._soonTimer = setTimeout(() => { this._soonTimer = null; this.update(); },
-                                3000 + Math.floor(Math.random() * 27000));
-                        };
+                        const soon = () => this.update();
                         sb.channel('dashboard-badges')
                             .on('postgres_changes', { event: '*', schema: 'public', table: 'society_events' }, soon)
                             .on('postgres_changes', { event: '*', schema: 'public', table: 'event_registrations', filter: `player_id=eq.${userId}` }, () => this.update())
@@ -87463,16 +87451,20 @@ class SocietyGolfSupabase {
         }
     }
 
-    async getAllPublicEvents() {
+    // opts.ids (v1362): load ONLY these events, fully mapped (counts, my status, society) — the
+    // realtime path patches the one event that changed instead of every phone re-reading all events.
+    async getAllPublicEvents(opts) {
         await this.waitForSupabase();
 
         console.log('[SocietyGolf] Fetching all public events...');
         const startTime = Date.now();
 
         // Get all events first
-        const { data: eventsData, error: eventsError } = await window.SupabaseDB.client
+        let _evQ = window.SupabaseDB.client
             .from('society_events')
             .select('*');
+        if (opts && Array.isArray(opts.ids)) _evQ = _evQ.in('id', opts.ids);
+        const { data: eventsData, error: eventsError } = await _evQ;
 
         if (eventsError) {
             console.error('[SocietyGolf] Error fetching events:', eventsError);
@@ -128436,6 +128428,7 @@ window.EmergencyAlertInbox = EmergencyAlertInbox;
 // Refresh emergency badge every 30 seconds
 // SCALE (v1362): background polls run only while the app is on screen
 setInterval(() => { if (document.visibilityState === 'visible') EmergencyAlertInbox.refreshBadge(); }, 30000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') EmergencyAlertInbox.refreshBadge(); });
 
 // ========== TRGG POY UPDATE MODAL ==========
 function showTRGGPOYUpdateModal() {
@@ -133086,6 +133079,14 @@ const MessagesSystem = {
             clearInterval(this.refreshInterval);
         }
         // Start new interval
+        if (!this._visHook) {
+            this._visHook = true;
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && this.userLineId && this.refreshInterval) {
+                    this.refreshUnreadCounts().then(() => this.updateBadge()).catch(() => {});
+                }
+            });
+        }
         this.refreshInterval = setInterval(async () => {
             if (!this.userLineId || document.visibilityState !== 'visible') return;
             try {
@@ -136921,14 +136922,16 @@ window.EventNoticeBoard = {
     _startPoll() {
         if (this._poll) return;
         var self = this;
-        this._poll = setInterval(function () {
+        var tick = function () {
             if (!self._me() || document.visibilityState !== 'visible') return;
             try { self.hydrateCards(); } catch (e) {}
             try { self.hydrateOrgButtons(); } catch (e) {}
             try { self.refreshGolfer(); } catch (e) {}
             try { self.hydratePlayerEventsCube(); } catch (e) {}
             try { self.hydrateOrgEventsTab(); } catch (e) {}
-        }, this.POLL_MS);
+        };
+        this._poll = setInterval(tick, this.POLL_MS);
+        document.addEventListener('visibilitychange', tick); // on screen again = refresh at once
     },
     initGolfer() {
         try { this.refreshGolfer(); this.hydrateCards(); this.hydratePlayerEventsCube(); } catch (e) {}
@@ -141172,6 +141175,7 @@ const MarketplaceSystem = {
         this.refreshBadges();
         if (this.refreshInterval) return;
         this.refreshInterval = setInterval(() => { if (document.visibilityState === 'visible') this.refreshBadges(); }, 60000);
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.refreshBadges(); });
     },
 
     // ========== SPONSORED ADS ==========
@@ -142661,6 +142665,7 @@ const LiveRoundsBadge = {
         this.refreshInterval = setInterval(() => {
             if (document.visibilityState === 'visible') this.updateCount();
         }, 30000);
+        if (!this._visHook) { this._visHook = true; document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.updateCount(); }); }
 
         console.log('[LiveRoundsBadge] Initialized with 30s polling');
     },
@@ -144166,58 +144171,27 @@ class GolferEventsManager {
                 NotificationManager.show('An event was cancelled', 'warning', 3000);
             }
 
-            // Refresh events list to show updated information — SCALE (v1362): coalesced +
-            // spread over 2–20s so one organizer save doesn't sync every phone's reload.
-            if (this._evChangeTimer) return;
-            this._evChangeTimer = setTimeout(() => {
-                this._evChangeTimer = null;
-                this.loadEvents(false).then(() => {
-                    this.filterEvents();
-                    console.log('[GolferEventsSystem] ✅ Events refreshed after update');
-                });
-            }, 2000 + Math.floor(Math.random() * 18000));
+            // REAL-TIME, SCALED (v1362): re-read just THIS event and patch it in place, at once.
+            this.patchEventLive(payload.new?.id || payload.old?.id);
         });
 
-        // SCALE (v1362): the registration + waitlist feeds carry only MY rows (filtered at the
-        // server). They used to carry every registration in the system to every golfer, each
-        // one triggering a full events reload on every phone. Other golfers' sign-ups (the
-        // spots-left counts) refresh on a 2-min timer while the events list is on screen.
-        const _gvUid = AppState.currentUser?.lineUserId || localStorage.getItem('line_user_id') || '';
-        const _gvRefresh = () => {
-            clearTimeout(this._eventsRefreshTimer);
-            this._eventsRefreshTimer = setTimeout(() => {
-                this.loadEvents(false).then(() => this.filterEvents());
-            }, 600);
-        };
-        if (this._othersRefresh) clearInterval(this._othersRefresh);
-        this._othersRefresh = setInterval(() => {
-            if (document.visibilityState !== 'visible') return;
-            if (!document.getElementById('societyEventSearch')?.offsetParent) return;
-            _gvRefresh();
-        }, 120000 + Math.floor(Math.random() * 20000));
+        // Every registration / waitlist change in the system arrives here LIVE (spots-left counts
+        // are real-time for everyone). What changed is ONE event, so only that event is re-read
+        // and patched in place (patchEventLive) — no phone re-reads every event any more.
         const registrationSubscription = window.SupabaseDB.client
             .channel('golfer_view_registrations')
             .on('postgres_changes', {
                 event: '*',
                 schema: 'public',
-                table: 'event_registrations',
-                filter: 'player_id=eq.' + _gvUid
+                table: 'event_registrations'
             }, (payload) => {
-                console.log('[GolferEventsSystem] 📡 Registration change detected:', payload.eventType);
-                console.log('[GolferEventsSystem] 📡 Payload player_id:', payload.new?.player_id);
-
-                // Check if this affects the current user
                 const currentUserId = AppState.currentUser?.lineUserId || localStorage.getItem('line_user_id');
-                console.log('[GolferEventsSystem] 📡 Current user ID:', currentUserId);
-
                 const affectsCurrentUser = payload.new?.player_id === currentUserId || payload.old?.player_id === currentUserId;
-                console.log('[GolferEventsSystem] 📡 Affects current user:', affectsCurrentUser);
 
                 if (affectsCurrentUser) {
                     console.log('[GolferEventsSystem] 📡 ✅ Registration change affects current user!');
 
                     if (payload.eventType === 'INSERT') {
-                        console.log('[GolferEventsSystem] 📡 🔔 Showing notification and incrementing badge');
                         NotificationManager.show('You have been registered for an event!', 'success', 4000);
                         // Increment new registration badge (only for INSERT, not user's own action)
                         this.incrementNewRegistrationBadge();
@@ -144231,7 +144205,7 @@ class GolferEventsManager {
                     this.loadMyRegistrations();
                 }
 
-                _gvRefresh();
+                this.patchEventLive(payload.new?.event_id || payload.old?.event_id);
             })
             .subscribe((status) => {
                 console.log('[GolferEventsSystem] 📡 Registration subscription status:', status);
@@ -144243,12 +144217,8 @@ class GolferEventsManager {
             .on('postgres_changes', {
                 event: '*',
                 schema: 'public',
-                table: 'event_waitlist',
-                filter: 'player_id=eq.' + _gvUid
+                table: 'event_waitlist'
             }, (payload) => {
-                console.log('[GolferEventsSystem] 📡 Waitlist change detected:', payload.eventType, payload);
-
-                // Check if this affects the current user
                 const currentUserId = AppState.currentUser?.lineUserId || localStorage.getItem('line_user_id');
                 // event_waitlist has player_id (there is no golfer_id column — this never matched)
                 const affectsCurrentUser = payload.new?.player_id === currentUserId || payload.old?.player_id === currentUserId;
@@ -144268,12 +144238,54 @@ class GolferEventsManager {
                     this.loadMyRegistrations();
                 }
 
-                _gvRefresh();
+                this.patchEventLive(payload.new?.event_id || payload.old?.event_id);
             })
             .subscribe();
 
         console.log('[GolferEventsSystem] ✅ Real-time subscriptions active (events, registrations, waitlist)');
 
+    }
+
+    // REAL-TIME, SCALED (v1362): a realtime change names ONE event — re-read only that event
+    // (getAllPublicEvents({ids})) and swap it into allEvents, then repaint. Changes landing in the
+    // same instant (a burst of sign-ups) share one read. No id (rare) = full reload.
+    patchEventLive(eventId) {
+        // no id, or the list was never loaded on this phone (nothing to patch into) = one full load
+        if (!eventId || !(this.allEvents && this.allEvents.length)) {
+            if (this._fullLoadP) return;
+            this._fullLoadP = this.loadEvents(false).then(() => this.filterEvents()).finally(() => { this._fullLoadP = null; });
+            return;
+        }
+        this._patchIds = this._patchIds || new Set();
+        this._patchIds.add(String(eventId));
+        if (this._patchRaf) return;
+        this._patchRaf = setTimeout(async () => {
+            this._patchRaf = null;
+            const ids = [...this._patchIds]; this._patchIds.clear();
+            try {
+                const fresh = await window.SocietyGolfDB.getAllPublicEvents({ ids });
+                const favorites = JSON.parse(localStorage.getItem('mcipro_favorite_events') || '[]');
+                this.allEvents = this.allEvents || [];
+                ids.forEach(id => {
+                    const f = (fresh || []).find(e => String(e.id) === id);
+                    const i = this.allEvents.findIndex(e => String(e.id) === id);
+                    if (f) {
+                        f.isFavorited = favorites.includes(f.id);
+                        if (i >= 0) this.allEvents[i] = f; else this.allEvents.push(f);
+                    } else if (i >= 0) {
+                        this.allEvents.splice(i, 1);
+                    }
+                });
+                this.eventsCache = this.allEvents;
+                this.filterEvents();
+                const { newCount, updatedCount } = EventNotificationSystem.countNotifications(this.allEvents);
+                EventNotificationSystem.updateCubeBadge(newCount, updatedCount);
+                try { this.updateQuickView(); } catch (e) {}
+            } catch (e) {
+                console.warn('[GolferEventsSystem] live patch failed — full reload', e);
+                this.loadEvents(false).then(() => this.filterEvents());
+            }
+        }, 50);
     }
 
     
@@ -154279,12 +154291,12 @@ class GolferEventsManager {
         // Initial check after a delay (let user login complete)
         setTimeout(checkForNewRegistrations, 3000);
 
-        // SCALE (v1362): every 60s (was 10s) and only while on screen — the golfer's own
-        // registrations already arrive live on the player_id-filtered dashboard-badges feed.
-        this.badgePollingInterval = setInterval(() => { if (document.visibilityState === 'visible') checkForNewRegistrations(); }, 60000);
+        // Poll every 10 seconds — SCALE (v1362): only while the app is on screen, and at once on return
+        this.badgePollingInterval = setInterval(() => { if (document.visibilityState === 'visible') checkForNewRegistrations(); }, 10000);
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForNewRegistrations(); });
         this.badgePollingActive = true;
 
-        console.log('[GolferEventsSystem] ✅ Badge polling ACTIVE (every 60s, visible only)');
+        console.log('[GolferEventsSystem] ✅ Badge polling ACTIVE (every 10s)');
         NotificationManager.show(micon('notifications') + ' Badge polling active', 'success', 2000);
 
         // Initialize badge from localStorage
@@ -154379,28 +154391,9 @@ class GolferEventsManager {
                     NotificationManager.show(micon('warning') + ' An event was cancelled', 'warning', 4000);
                 }
 
-                // SCALE (v1362): one reload per burst, at a random 2–20s delay, so an organizer's
-                // save doesn't make every golfer's phone re-read all events in the same second.
-                if (this._earlyReloadTimer) return;
-                this._earlyReloadTimer = setTimeout(async () => {
-                this._earlyReloadTimer = null;
-                try {
-                    const events = await window.SocietyGolfDB.getAllPublicEvents();
-                    this.allEvents = events || [];
-
-                    // Update notification badge
-                    const { newCount, updatedCount } = EventNotificationSystem.countNotifications(this.allEvents);
-                    EventNotificationSystem.updateCubeBadge(newCount, updatedCount);
-                    console.log('[GolferEventsSystem] 📡 EARLY: Badge updated - New:', newCount, 'Updated:', updatedCount);
-
-                    // If events view is open, refresh it
-                    if (document.getElementById('golferEventsFilterCount')) {
-                        this.filterEvents();
-                    }
-                } catch (error) {
-                    console.error('[GolferEventsSystem] 📡 EARLY: Error updating after event change:', error);
-                }
-                }, 2000 + Math.floor(Math.random() * 18000));
+                // REAL-TIME, SCALED (v1362): patch just the changed event in place, at once
+                // (also repaints the cube badge) — was a full re-read of every event per phone.
+                this.patchEventLive(payload.new?.id || payload.old?.id);
             })
             .subscribe();
 

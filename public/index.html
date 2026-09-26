@@ -12552,6 +12552,7 @@
                 'cm.toast.offno': 'Day off declined',
                 'cm.toast.updfail': 'Update failed',
                 'cm.toast.neednum': 'Enter the caddy number',
+                'cm.toast.needname': 'Every caddy needs a number AND a name',
                 'cm.toast.addfail': 'Could not add the caddy',
                 'cm.toast.caddyupd': 'Caddy updated',
                 'cm.toast.caddyadd': 'Caddy added',
@@ -15994,6 +15995,7 @@
                 'cm.toast.offno': 'ไม่อนุมัติวันหยุด',
                 'cm.toast.updfail': 'อัปเดตไม่สำเร็จ',
                 'cm.toast.neednum': 'กรุณาใส่หมายเลขแคดดี้',
+                'cm.toast.needname': 'แคดดี้ทุกคนต้องมีหมายเลขและชื่อ',
                 'cm.toast.addfail': 'เพิ่มแคดดี้ไม่สำเร็จ',
                 'cm.toast.caddyupd': 'อัปเดตข้อมูลแคดดี้แล้ว',
                 'cm.toast.caddyadd': 'เพิ่มแคดดี้แล้ว',
@@ -19304,6 +19306,7 @@
                 'cm.toast.offno': '휴무 거절됨',
                 'cm.toast.updfail': '업데이트 실패',
                 'cm.toast.neednum': '캐디 번호를 입력하세요',
+                'cm.toast.needname': '모든 캐디는 번호와 이름이 필요합니다',
                 'cm.toast.addfail': '캐디를 추가할 수 없습니다',
                 'cm.toast.caddyupd': '캐디 정보 업데이트됨',
                 'cm.toast.caddyadd': '캐디 추가됨',
@@ -22796,6 +22799,7 @@
                 'cm.toast.offno': '休暇を却下しました',
                 'cm.toast.updfail': '更新に失敗しました',
                 'cm.toast.neednum': 'キャディ番号を入力してください',
+                'cm.toast.needname': 'キャディには番号と名前の両方が必要です',
                 'cm.toast.addfail': 'キャディを追加できませんでした',
                 'cm.toast.caddyupd': 'キャディ情報を更新しました',
                 'cm.toast.caddyadd': 'キャディを追加しました',
@@ -139375,6 +139379,8 @@ const CaddyMasterData = {
         const num = v('cmcf-num').replace(/^#/, ''), name = v('cmcf-name'), phone = v('cmcf-phone');
         const block = Math.max(255, parseInt(v('cmcf-block'), 10) || 255);
         if (!num) { window.NotificationManager.show(this._t('cm.toast.neednum', 'Enter the caddy number'), 'error'); return; }
+        // v1368: a caddy is added with THREE things — number, name, course (the course is the caddy master's own)
+        if (!name) { window.NotificationManager.show(this._t('cm.toast.needname', 'Every caddy needs a number AND a name'), 'error'); document.getElementById('cmcf-name')?.focus(); return; }
         const dup = this.roster.find(r => this._num(r) === num && r.id !== id && r.is_active !== false);
         if (dup) { window.NotificationManager.show(this._t('cm.roster.dup', 'That number is already in the roster'), 'error'); return; }
         const sb = this._sb(); if (!sb) return;
@@ -139382,11 +139388,11 @@ const CaddyMasterData = {
         try {
             const now = new Date().toISOString();
             if (id) {
-                const { data, error } = await sb.from('caddy_profiles').update({ caddy_number: num, name: name || 'Caddy #' + num, phone: phone || null, block_minutes: block, updated_at: now }).eq('id', id).select('id');
+                const { data, error } = await sb.from('caddy_profiles').update({ caddy_number: num, name: name, phone: phone || null, block_minutes: block, updated_at: now }).eq('id', id).select('id');
                 if (error || !data?.length) { window.NotificationManager.show(this._t('cm.toast.updfail', 'Update failed') + (error ? ': ' + error.message : ''), 'error'); return; }
             } else {
                 const { data, error } = await sb.from('caddy_profiles').insert({
-                    caddy_number: num, name: name || 'Caddy #' + num, phone: phone || null, block_minutes: block,
+                    caddy_number: num, name: name, phone: phone || null, block_minutes: block,
                     course_id: this.course.slug, course_name: this.course.dbName, is_active: true, is_mock: false,
                     availability_status: 'available', created_by: 'caddymaster', sheet_start: '06:00:00', sheet_end: '16:00:00', created_at: now, updated_at: now
                 }).select('id');

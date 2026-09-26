@@ -30096,13 +30096,8 @@
                     }, 1000);
                 }
 
-                // Initialize GPS tracking for live course status
-                setTimeout(() => {
-                    if (typeof startGPSTracking === 'function') {
-                        startGPSTracking();
-                        getCurrentLocation();
-                    }
-                }, 1000);
+                // NO GPS on landing (v1373): location is asked only when the golfer
+                // opens something that needs it (GPS tab / map / caddy Start round).
             }
 
             static initCaddyDashboard() {
@@ -51575,6 +51570,16 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
+        // Location is asked ONLY by a user action that needs it (v1373). Background
+        // features (weather, course auto-map) call this and stay silent unless granted.
+        window._geoGranted = async function () {
+            try {
+                if (!navigator.geolocation || !navigator.permissions) return false;
+                const st = await navigator.permissions.query({ name: 'geolocation' });
+                return st.state === 'granted';
+            } catch (_) { return false; }
+        };
+
         // Weather Widget (Open-Meteo - free, no API key, dynamic location)
         const PattayaWeather = {
             _lastFetch: 0,
@@ -51583,7 +51588,8 @@ document.addEventListener('DOMContentLoaded', function() {
             _locationName: 'Pattaya',
 
             async getLocation() {
-                // Try browser geolocation first
+                // Silent: only use GPS if the user ALREADY granted it for a real task (v1373)
+                if (!(await window._geoGranted())) return;
                 try {
                     const pos = await new Promise((resolve, reject) => {
                         if (!navigator.geolocation) { reject('No geolocation'); return; }
@@ -91449,8 +91455,9 @@ class LiveScorecardSystem {
         if (!navigator.geolocation) return;
         const courseId = this.courseData?.id || document.getElementById('scorecardCourseSelect')?.value;
         if (!courseId) return;
-
-        navigator.geolocation.getCurrentPosition(
+        // Background harvest - never prompts; only runs if location already granted (v1373)
+        if (!window._geoGranted) return;
+        window._geoGranted().then(ok => { if (ok) navigator.geolocation.getCurrentPosition(
             (pos) => {
                 if (pos.coords.accuracy > 40) return; // Skip inaccurate readings
 
@@ -91485,7 +91492,7 @@ class LiveScorecardSystem {
             },
             () => {}, // Silent fail
             { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
-        );
+        ); }).catch(() => {});
     }
 
     saveRoundState() {

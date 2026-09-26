@@ -2175,6 +2175,9 @@
     #ts-qf:not(.has-q) button,#ts-qf:not(.has-q) #ts-qf-count{display:none}
     #grid-body.qf-on .pill:not(.qf-hit){opacity:.3}
     .pill.qf-hit{outline:2px solid var(--brand);outline-offset:-2px;opacity:1}
+    /* v1371: what quick find opens docks on the LEFT, the matched golfer's field lit */
+    #booking-dialog.qf-dock{margin:12px auto 12px 12px;max-height:calc(100vh - 24px)}
+    #booking-dialog .qf-hl-in{outline:2px solid #facc15;outline-offset:1px;background:rgba(250,204,21,.14)}
     .pill.qf-cur{outline:3px solid #facc15;outline-offset:-2px;box-shadow:0 0 0 3px rgba(250,204,21,.35)}
     .grid-row.qf-hit .time-cell{background:var(--brand);color:#04140d}
     .grid-row.qf-cur .time-cell{background:#facc15;color:#1a1400}
@@ -7769,20 +7772,22 @@
       if (fuzzyMatch(b.bookingType, q)) return true;
 
       // Search in each golfer — seated ones and (v1368) a society event's registered-but-unpaired ones
-      const golfers = (b.golfers || []).concat(b.unpaired || []);
-      return golfers.some(g => {
-        if (fuzzyMatch(g.name, q)) return true;
-        if (fuzzyMatch(g.caddyId, q)) return true;
-        if (fuzzyMatch(String(g.caddyNumber || ''), q)) return true;
-        if (fuzzyMatch(g.caddyName, q)) return true;
-        if (fuzzyMatch(g.caddyLocalName, q)) return true;
-        // v1368: a booking that only holds the caddy's number still finds by the caddy's name (course roster)
-        if (g.caddyNumber) {
-          const c = allCaddies.find(x => String(x.number) === String(g.caddyNumber));
-          if (c && (fuzzyMatch(c.name, q) || fuzzyMatch(c.localName || c.local_name, q))) return true;
-        }
-        return false;
-      });
+      return (b.golfers || []).concat(b.unpaired || []).some(g => tsGolferMatches(g, q));
+    }
+
+    function tsGolferMatches(g, q) {
+      const fuzzyMatch = tsFuzzyMatch;
+      if (fuzzyMatch(g.name, q)) return true;
+      if (fuzzyMatch(g.caddyId, q)) return true;
+      if (fuzzyMatch(String(g.caddyNumber || ''), q)) return true;
+      if (fuzzyMatch(g.caddyName, q)) return true;
+      if (fuzzyMatch(g.caddyLocalName, q)) return true;
+      // v1368: a booking that only holds the caddy's number still finds by the caddy's name (course roster)
+      if (g.caddyNumber) {
+        const c = allCaddies.find(x => String(x.number) === String(g.caddyNumber));
+        if (c && (fuzzyMatch(c.name, q) || fuzzyMatch(c.localName || c.local_name, q))) return true;
+      }
+      return false;
     }
 
     let searchResults = [], searchIdx = 0;
@@ -7849,7 +7854,8 @@
     // Always on screen. Live as you type: every match gets a ring, everything else dims, the
     // current match (yellow) is scrolled to. Enter = next, Shift+Enter = previous, Esc = clear.
     // Typing anywhere on the sheet (no field focused, no dialog open) starts a search.
-    const QF = { box: $('ts-qf'), input: $('ts-qf-input'), count: $('ts-qf-count'), hits: [], idx: -1, timer: 0 };
+    const QF = { box: $('ts-qf'), input: $('ts-qf-input'), count: $('ts-qf-count'), hits: [], idx: -1, timer: 0,
+      bk: new Map(), openTimer: 0, openedId: null };   // v1371: hit node → its booking; the one opened last
 
     function qfTarget(b) {
       const q = (a, v) => v ? document.querySelector(`.pill[${a}="${CSS.escape(String(v))}"]`) : null;
@@ -7864,7 +7870,8 @@
       el.gridBody.classList.toggle('qf-on', !!q);
       if (!q) { QF.hits = []; QF.idx = -1; QF.count.textContent = ''; QF.box.classList.remove('qf-miss'); return; }
       const found = new Set();
-      getDay(el.dateInput.value).forEach(b => { if (tsBookingMatches(b, q)) { const n = qfTarget(b); if (n) found.add(n); } });
+      QF.bk = new Map();
+      getDay(el.dateInput.value).forEach(b => { if (tsBookingMatches(b, q)) { const n = qfTarget(b); if (n) { found.add(n); if (!QF.bk.has(n)) QF.bk.set(n, b); } } });
       QF.hits = [...found].sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1);
       QF.hits.forEach(n => n.classList.add('qf-hit'));
       QF.idx = QF.hits.length ? (jump ? 0 : Math.min(Math.max(QF.idx, 0), QF.hits.length - 1)) : -1;
@@ -7892,18 +7899,75 @@
       qfShow(true);
     }
 
-    function qfClear() { QF.input.value = ''; qfRun(false); }
+    // v1371: a found booking opens straight away — the same panel / dialog a tap on it opens, docked on the LEFT,
+    // landed on the golfer (or the golfer whose caddy) matched. No hunting, no extra clicks.
+    // which booking + which golfer in it the current hit is — a different golfer in the same booking re-opens
+    function qfOpenKey(n) {
+      const b = n && QF.bk.get(n); if (!b) return null;
+      const q = QF.input.value.toLowerCase().trim();
+      const g = (b.golfers || []).concat(b.unpaired || []).find(x => tsGolferMatches(x, q));
+      return { b, g, key: (b.id || b.eventId) + '|' + (g ? (g.odoo_id || g.name) : '') };
+    }
+    function qfOpen() {
+      const k = qfOpenKey(QF.hits[QF.idx]);
+      if (!k) return;
+      const { b, g } = k, q = QF.input.value.toLowerCase().trim();
+      QF.openedId = k.key;
+      if (b.eventId && window.CourseLink && CourseLink.state.side === 'course') {
+        CourseLink.openPanel(b.eventId, { left: true, hl: g ? (g.odoo_id || ('n:' + String(g.name || '').trim().toLowerCase())) : null });
+        return;
+      }
+      el.dialog.classList.add('qf-dock');
+      openDialog(b).then(() => {
+        el.dialog.querySelectorAll('input').forEach(i => { if (i.type !== 'hidden' && i.value && tsFuzzyMatch(i.value, q)) i.classList.add('qf-hl-in'); });
+        // a group booking: open the time slot the golfer / caddy is in (as if the slot had been tapped) and bring it into view
+        let first = null;
+        el.dialog.querySelectorAll('.slot-card').forEach(card => {
+          const hit = card.querySelector('.slot-body .qf-hl-in');
+          if (!hit && !(b.time && card.querySelector('.slot-time-badge')?.textContent.trim() === b.time)) return;
+          const i = parseInt(card.dataset.slotIdx, 10);
+          if (rangeSlots[i]) rangeSlots[i].collapsed = false;
+          card.classList.remove('collapsed');
+          if (!first || hit) first = hit || card;
+        });
+        const body = el.dialog.querySelector('.modal-body');
+        if (first && body) body.scrollTop += first.getBoundingClientRect().top - body.getBoundingClientRect().top - 80;
+      });
+    }
+    el.dialog.addEventListener('close', () => {
+      el.dialog.classList.remove('qf-dock');
+      el.dialog.querySelectorAll('.qf-hl-in').forEach(i => i.classList.remove('qf-hl-in'));
+    });
+
+    function qfClear() {
+      QF.input.value = ''; qfRun(false); clearTimeout(QF.openTimer); QF.openedId = null;
+      const p = document.getElementById('clPanel');
+      if (p && p.classList.contains('cl-left') && window.CourseLink) CourseLink.closePanel();   // the panel quick find opened
+    }
 
     // Re-renders (realtime, 30s poll, date change) rebuild the grid — put the marks back, no jump.
     window._tsQfReapply = () => { if (QF.input.value.trim()) qfRun(false); };
 
-    QF.input.addEventListener('input', () => { clearTimeout(QF.timer); QF.timer = setTimeout(() => qfRun(true), 120); });
+    // v1371: one match → it opens by itself once typing pauses; several → Enter / ↑↓ open each in turn
+    QF.input.addEventListener('input', () => {
+      clearTimeout(QF.timer); clearTimeout(QF.openTimer);
+      QF.timer = setTimeout(() => {
+        qfRun(true);
+        QF.openTimer = setTimeout(() => { if (QF.hits.length === 1) { const k = qfOpenKey(QF.hits[0]); if (k && k.key !== QF.openedId) qfOpen(); } }, 600);
+      }, 120);
+    });
     QF.input.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); clearTimeout(QF.timer); if (!QF.hits.length) qfRun(true); else qfStep(e.shiftKey ? -1 : 1); }
+      if (e.key === 'Enter') {
+        e.preventDefault(); clearTimeout(QF.timer); clearTimeout(QF.openTimer);
+        if (!QF.hits.length) qfRun(true);
+        const ck = qfOpenKey(QF.hits[QF.idx]);
+        if (QF.hits.length > 1 && ck && ck.key === QF.openedId) qfStep(e.shiftKey ? -1 : 1);   // already open → move on
+        qfOpen();
+      }
       else if (e.key === 'Escape') { e.preventDefault(); qfClear(); QF.input.blur(); }
     });
-    $('ts-qf-next').addEventListener('click', () => qfStep(1));
-    $('ts-qf-prev').addEventListener('click', () => qfStep(-1));
+    $('ts-qf-next').addEventListener('click', () => { qfStep(1); qfOpen(); });
+    $('ts-qf-prev').addEventListener('click', () => { qfStep(-1); qfOpen(); });
     $('ts-qf-clear').addEventListener('click', () => { qfClear(); QF.input.focus(); });
     document.addEventListener('keydown', e => {
       if (e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1 || e.key === ' ') return;

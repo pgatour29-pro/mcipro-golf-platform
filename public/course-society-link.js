@@ -475,10 +475,13 @@
 
     // ---------- panel ----------
     _panel: function () { return document.getElementById('clPanel'); },
-    openPanel: function (evId) {
+    /* opts (v1371, pro shop quick find): { hl: player key to highlight + scroll to, left: dock on the left }.
+       A plain open (a tap on the sheet) clears both. */
+    openPanel: function (evId, opts) {
       this._css();
       var st = this.state;
       if (evId) st.openId = evId; else if (st.side === 'society') st.openId = st.eventId;
+      this._hl = (opts && opts.hl) ? { ev: evId, key: opts.hl } : null;
       var p = this._panel();
       if (!p) {
         p = document.createElement('div'); p.id = 'clPanel'; p.setAttribute('role', 'dialog');
@@ -494,10 +497,11 @@
           e.stopPropagation();   // the tee sheet's type-anywhere quick find must not steal these keys
         });
       }
+      p.classList.toggle('cl-left', !!(opts && opts.left));
       this.renderPanel();
       if (st.openId) this._openThread(st.openId);
     },
-    closePanel: function () { var p = this._panel(); if (p) p.remove(); this.state.openId = null; this._pick = null; },
+    closePanel: function () { var p = this._panel(); if (p) p.remove(); this.state.openId = null; this._pick = null; this._hl = null; },
     _openThread: async function (evId) {
       var ev = this.state.byId[evId]; if (!ev) return;
       this._seeRegs(ev);
@@ -530,6 +534,14 @@
       if (inp) { inp.value = draft; if (hadFocus) inp.focus(); }
       if (pkFocus) { var i2 = p.querySelector('.cl-pick-in'); if (i2) { try { i2.focus(); i2.setSelectionRange(i2.value.length, i2.value.length); } catch (e) { } } }
       var mb = p.querySelector('.cl-msgs'); if (mb && atBottom) mb.scrollTop = mb.scrollHeight;
+      // v1371: the player quick find landed on stays in view (the panel's own scroller — never scrollIntoView)
+      var hl = this._hl && p.querySelector('.cl-p.cl-hl'), bd = p.querySelector('.cl-body');
+      if (hl && bd) {
+        // show the event's own header too when the golfer still fits below it; else put the golfer near the top
+        var br = bd.getBoundingClientRect(), hr = hl.getBoundingClientRect(), card = hl.closest('.cl-card');
+        var ct = card ? card.getBoundingClientRect().top : hr.top;
+        bd.scrollTop += (hr.bottom - ct < br.height - 24) ? ct - br.top - 8 : hr.top - br.top - 90;
+      }
     },
     _card: function (ev) {
       var st = this.state, E = this.esc.bind(this), s = this.status(ev), open = st.openId === ev.id;
@@ -670,14 +682,15 @@
     _playerHtml: function (ev, p, gi, canEdit) {
       var E = this.esc.bind(this), c = p.caddy, key = this._pkey(p), pk = this._pick;
       var open = !!(pk && pk.ev === ev.id && pk.key === key), h;
+      var hlc = (this._hl && this._hl.ev === ev.id && this._hl.key === key) ? ' cl-hl' : '';
       if (c) {
-        h = '<div class="cl-p has' + (open ? ' open' : '') + '" data-pk="' + E(key) + '"><span class="cl-p-n">' + E(p.name) + '</span>' +
+        h = '<div class="cl-p has' + (open ? ' open' : '') + hlc + '" data-pk="' + E(key) + '"><span class="cl-p-n">' + E(p.name) + '</span>' +
           '<span class="cl-cd">' + this._photo(c.num, c.photo, 22) + '<b>#' + E(c.num) + '</b><i class="cl-st ' + (c.status === 'confirmed' ? 'conf' : 'pend') + '">' + E(this.t(c.status === 'confirmed' ? 'confirmed' : 'pending')) + '</i></span>' +
           (canEdit ? '<span class="cl-acts">' + (c.status !== 'confirmed' ? '<button class="cl-ic ok" data-a="cadok" title="' + E(this.t('confirmT')) + '" aria-label="' + E(this.t('confirmT')) + '">✓</button>' : '') +
             '<button class="cl-ic" data-a="cadpick" title="' + E(this.t('changeT')) + '" aria-label="' + E(this.t('changeT')) + '">✎</button>' +
             '<button class="cl-ic x" data-a="cadx" title="' + E(this.t('cancelT')) + '" aria-label="' + E(this.t('cancelT')) + '">✕</button></span>' : '') + '</div>';
       } else {
-        h = '<div class="cl-p' + (open ? ' open' : '') + '" data-pk="' + E(key) + '"><span class="cl-p-n">' + E(p.name) + '</span>' +
+        h = '<div class="cl-p' + (open ? ' open' : '') + hlc + '" data-pk="' + E(key) + '"><span class="cl-p-n">' + E(p.name) + '</span>' +
           (canEdit ? '<button class="cl-add' + (open ? ' on' : '') + '" data-a="cadpick">' + E(this.t('addCaddy')) + '</button>' : '<span class="cl-none">—</span>') + '</div>';
       }
       if (open) h += '<div class="cl-pick" data-pk="' + E(key) + '"><input class="cl-pick-in" type="text" autocomplete="off" placeholder="' + E(this.t('pickCaddy')) + '" value="' + E(pk.q || '') + '"><div class="cl-pick-list">' + this._pickListHtml(ev, p) + '</div></div>';
@@ -909,6 +922,8 @@
         '#clPanel .cl-p{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-height:34px;padding:2px 0 2px 6px;border-left:2px solid transparent}',
         '#clPanel .cl-p.has{border-left-color:var(--cl-green)}',
         '#clPanel .cl-p.open{border-left-color:#f59e0b}',
+        '#clPanel .cl-p.cl-hl{background:rgba(250,204,21,.2);border-left:3px solid #facc15;border-radius:6px}',
+        '#clPanel.cl-left{left:0;right:auto;border-left:0;border-right:1px solid var(--cl-line);box-shadow:18px 0 40px rgba(0,0,0,.35)}',
         '#clPanel .cl-p-n{flex:1 1 80px;min-width:0;font-size:14px;color:var(--cl-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
         '#clPanel .cl-none{color:var(--cl-muted);padding:0 10px}',
         '#clPanel .cl-add{height:28px;padding:0 10px;border-radius:8px;border:1px dashed var(--cl-line2);background:transparent;color:var(--cl-muted);font:700 12px system-ui,sans-serif;cursor:pointer}',

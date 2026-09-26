@@ -39138,7 +39138,71 @@ Sent from Login Page`;
         };
 
         // Dashboard back button — go to previous page/tab
+        // v1366 BACK NEVER STUCK (Pete 2026-09-26: "fix this fucking thing now and never happen again").
+        // The cause every time: a new overlay/modal that dashboardGoBack() didn't know about — back either
+        // did nothing or popped the screen UNDER it, and any overlay above z 9999 also buried the button so
+        // the tap never arrived. Structural fix, two halves:
+        //   1. #dashboardBackBtn is the TOP layer, always (z 2147483000, style block by the button).
+        //   2. This catch-all: the topmost visible full-screen fixed overlay that no intercept below owns is
+        //      closed by its OWN close control (✕ / Close / Cancel / Got it …), else hidden. Registered
+        //      surfaces (_BACK_OWNED) keep their own step-by-step back.
+        // A new overlay therefore works with back on day one; register it in _BACK_OWNED only if it needs
+        // multi-step back. Guard: tests/back-button-check.js.
+        const _BACK_OWNED = new Set(['irmaPopup', 'kitchenQueueOverlay', 'eventDayMode', 'teeSheetOverlay',
+            'enbAlertPopup', 'eswModal', 'enbThreadModal', 'enbOrgModal', 'orgLiteRegModal', 'arrivalsModal',
+            'pairingsModal', 'rosterModal', 'manualPlayerModal', 'scv3gGuestSheet', 'playersListModal',
+            'eventDetailModal', 'mobileDrawer', 'mainContent', 'ooDashboard', 'ooAsk',
+            // module sheets with their own canBack()/back() (step-by-step inside)
+            'cmv2Ovl', 'caddyReviewOverlay', 'pfSheet', 'mkOvl', 'mkRepView', 'mkCoursePicker', 'gfdSheet', 'gfdOverlay',
+            // the pro shop course pick is REQUIRED (v1351 course lock) — back must not dismiss it unpicked
+            'psCoursePick']);
+        function _backTopOverlay() {
+            const vw = window.innerWidth, vh = window.innerHeight, area = vw * vh;
+            const set = new Set(Array.from(document.body.children));
+            document.querySelectorAll('[role="dialog"],[aria-modal="true"],[id$="Modal"],[id$="Overlay"],[id$="Sheet"],[id$="Popup"],.fixed.inset-0')
+                .forEach(e => set.add(e));
+            let best = null, bestZ = -Infinity, bestIdx = -1, idx = 0;
+            for (const el of set) {
+                idx++;
+                if (!el || !el.isConnected || el.id === 'dashboardBackBtn' || el.id === 'globalScrollToTopBtn' || el.classList.contains('screen')) continue;
+                const cs = getComputedStyle(el);
+                if (cs.position !== 'fixed' || cs.display === 'none' || cs.visibility === 'hidden' || cs.pointerEvents === 'none' || parseFloat(cs.opacity) < 0.05) continue;
+                const r = el.getBoundingClientRect();
+                const vis = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0)) * Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+                if (vis < area * 0.4) continue;
+                const z = parseInt(cs.zIndex, 10) || 0;
+                if (z > bestZ || (z === bestZ && idx > bestIdx)) { best = el; bestZ = z; bestIdx = idx; }
+            }
+            if (!best) return null;
+            for (const id of _BACK_OWNED) { const o = document.getElementById(id); if (o && (o === best || o.contains(best))) return null; }
+            return best;
+        }
+        function _backCloseOverlay(el) {
+            const CLOSE_TXT = /^(close|cancel|done|got it|back|ok|dismiss|not now|later|skip|×|✕|✖|x|ปิด|ยกเลิก|닫기|취소|閉じる|キャンセル)$/i;
+            const CLOSE_ICON = /^(close|arrow_back|arrow_back_ios|chevron_left|cancel)$/;
+            let pick = null, pickScore = 0, pickTop = Infinity;
+            el.querySelectorAll('button,[role="button"],a,[onclick]').forEach(c => {
+                if (!c.offsetParent && getComputedStyle(c).position !== 'fixed') return;
+                const r = c.getBoundingClientRect(); if (!r.width || !r.height) return;
+                const lab = ((c.getAttribute('aria-label') || '') + ' ' + (c.getAttribute('title') || '')).trim();
+                const txt = (c.textContent || '').replace(/\s+/g, ' ').trim();
+                const oc = c.getAttribute('onclick') || '';
+                let sc = 0;
+                if (/close|back|cancel|dismiss|ปิด|닫기|閉じる/i.test(lab)) sc = 3;
+                if (CLOSE_TXT.test(txt) || CLOSE_ICON.test(txt)) sc = Math.max(sc, 3);
+                if (/close|hide|dismiss|\.remove\(\)/i.test(oc) && !/delete|confirm|submit|save|register|pay/i.test(oc)) sc = Math.max(sc, 2);
+                if (sc > pickScore || (sc === pickScore && sc > 0 && r.top < pickTop)) { pick = c; pickScore = sc; pickTop = r.top; }
+            });
+            console.info('[Back] closing unregistered overlay', el.id || el.className, pick ? 'via its own control' : 'by hiding it');
+            if (pick) { try { pick.click(); return; } catch (e) {} }
+            // no close control: a named (reusable) overlay is hidden, an anonymous built-on-the-fly one removed
+            if (el.id) el.style.display = 'none'; else el.remove();
+        }
+
         function dashboardGoBack() {
+            // v1366: the topmost overlay nobody registered closes FIRST — back is never a dead tap.
+            const _top = _backTopOverlay();
+            if (_top) { _backCloseOverlay(_top); return; }
             // v1034: IRMA reply popup is body-mounted and global (any screen) — back must
             // close it first, not navigate the screen underneath it.
             const _irmaP = document.getElementById('irmaPopup');
@@ -182006,14 +182070,15 @@ showOrganizerTab = function(tabName) {
          it looked gone. It rides on top of them; on the players modal it lifts clear of the full-width
          Edit My Registration bar. Dialogs (askConfirm 12050, tee-sheet popups 100000+) still cover it. -->
     <style>
-        body:has(#teeSheetOverlay) #dashboardBackBtn,
-        body:has(#orgLiteRegModal[style*="display: block"]) #dashboardBackBtn,
-        body:has(#arrivalsModal[style*="display: block"]) #dashboardBackBtn { z-index: 11001 !important; }
-        body:has(#playersListModal) #dashboardBackBtn { z-index: 10001 !important; bottom: 84px !important; }
-        body:has(#eswModal[style*="display: flex"]) #dashboardBackBtn { z-index: 11601 !important; }
+        /* v1366: the back button is the TOP layer, ALWAYS — above every modal, sheet and dialog, today's and
+           tomorrow's (an overlay above 9999 swallowed the tap: Pete's "back button not responding" on the
+           event detail modal z 10000 and What's New z 10050). Where it must NOT show is display:none
+           rules elsewhere (login, live card, desktop) — never lower its z-index to hide it. */
+        #dashboardBackBtn { z-index: 2147483000 !important; }
+        body:has(#playersListModal) #dashboardBackBtn { bottom: 84px !important; }
         /* v1342: the golfer's "Your booking" guest sheet (z 12000) buried the button under its footer — a tap
            on "back" landed on EDIT MY REGISTRATION instead. The sheet footer keeps a left gutter for it. */
-        body:has(#scv3gGuestSheet) #dashboardBackBtn { z-index: 12001 !important; bottom: 16px !important; }
+        body:has(#scv3gGuestSheet) #dashboardBackBtn { bottom: 16px !important; }
     </style>
     <!-- Floating Back Button (mobile only, always in DOM) -->
     <button id="dashboardBackBtn" onclick="dashboardGoBack()" class="md:hidden" style="

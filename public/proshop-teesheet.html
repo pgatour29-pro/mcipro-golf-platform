@@ -4936,6 +4936,96 @@
       return b;
     }
 
+    // ---- v1367 SAVE ONLY WHAT CHANGED, VERSION-CHECKED (Pete 2026-09-26: bookings are transactions) ----
+    // Before: every change re-wrote the WHOLE day from this device's copy — a stale copy reverted other
+    // devices' moves, revived bookings they cancelled, and two devices could fill one tee time twice.
+    // Now each save sends ONLY the bookings this device changed, through public.teesheet_save(), which
+    // writes a booking ONLY if its updated_at still equals the version this device loaded. Anything
+    // stale or over the 4-golfer tee time limit (DB constraint) is refused, shown in red, and the sheet
+    // reloads from the database. SQL: sql/teesheet_no_double_booking_20260926.sql
+    const teeSheetVer = {};   // date -> { bookingId: updated_at this device last loaded / saved }
+    const teeSheetSnap = {};  // date -> { bookingId: normalized row as loaded / saved }
+    let tsSaveChain = Promise.resolve();
+    function tsNorm(b, date) { const r = bookingToDbRow(b, date); delete r.updated_at; return JSON.stringify(r); }
+    function tsRecordFetched(date, rows) {
+      const ver = {}, snap = {};
+      (rows || []).forEach(r => { ver[r.id] = r.updated_at; snap[r.id] = tsNorm(dbRowToBooking(r), date); });
+      teeSheetVer[date] = ver; teeSheetSnap[date] = snap;
+    }
+    function tsAlert(msg) {
+      try { if (window.parent && window.parent !== window && window.parent.NotificationManager) window.parent.NotificationManager.show(msg, 'error', 9000); } catch (e) {}
+      let bar = document.getElementById('tsSaveAlert');
+      if (!bar) {
+        bar = document.createElement('div'); bar.id = 'tsSaveAlert';
+        bar.style.cssText = 'position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:2147483600;max-width:min(560px,calc(100vw - 24px));' +
+          'background:#b91c1c;color:#fff;font:600 15px/1.35 system-ui,sans-serif;padding:12px 16px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer';
+        bar.addEventListener('click', () => bar.remove());
+        document.body.appendChild(bar);
+      }
+      bar.textContent = msg;
+      clearTimeout(bar._t); bar._t = setTimeout(() => { try { bar.remove(); } catch (e) {} }, 12000);
+    }
+    function tsReloadDay(d) {
+      clearAllCaches(d, el?.courseSelect?.value || '');
+      lastLocalSave = 0;
+      Promise.all([fetchTeeSheetBookings(d), fetchCaddyBookings(d), fetchSocietyEvents(d), fetchEventRegistrations(d)])
+        .then(() => { if (el.dateInput.value === d) render(); })
+        .catch(e => console.warn('[TeeSheet] reload after refused save failed:', e));
+    }
+    // Diff the day against what this device last loaded/saved; queue ONE sequential save. Returns the ids
+    // this change touched (new or edited) so the caller only notifies about those.
+    function tsQueueSave(d, list) {
+      const snap = teeSheetSnap[d] || {};
+      const ids = new Set(list.map(b => b && b.id));
+      const ups = list.filter(b => b && b.id && tsNorm(b, d) !== snap[b.id]);
+      const dels = Object.keys(snap).filter(id => !ids.has(id));
+      const touched = new Set(ups.map(b => b.id));
+      if (ups.length || dels.length) {
+        lastLocalSave = Date.now();
+        const upsCopy = JSON.parse(JSON.stringify(ups));
+        tsSaveChain = tsSaveChain.then(() => tsFlush(d, upsCopy, dels)).catch(e => console.error('[TeeSheet] save chain', e));
+      }
+      return touched;
+    }
+    async function tsFlush(d, ups, dels) {
+      if (!supabaseClient) return;
+      if (!el.courseSelect.value) { console.warn('[TeeSheet] No course selected — bookings not written'); return; }
+      const ver = teeSheetVer[d] = teeSheetVer[d] || {};
+      const snap = teeSheetSnap[d] = teeSheetSnap[d] || {};
+      const p_upserts = ups.map(b => ({ row: bookingToDbRow(b, d), expected: ver[b.id] || null }));
+      const p_deletes = dels.map(id => ({ id, expected: ver[id] || null }));
+      lastLocalSave = Date.now();
+      const { data, error } = await supabaseClient.rpc('teesheet_save', { p_upserts, p_deletes });
+      lastLocalSave = Date.now();
+      if (error) {
+        console.error('[TeeSheet] save refused:', error);
+        tsAlert('NOT SAVED — ' + (error.message || 'connection problem') + '. The tee sheet has been reloaded; please redo the change.');
+        tsReloadDay(d);
+        return;
+      }
+      const res = data || {};
+      Object.entries(res.versions || {}).forEach(([id, v]) => {
+        ver[id] = v;
+        const b = ups.find(x => x.id === id); if (b) snap[id] = tsNorm(b, d);
+      });
+      const conflicts = res.conflicts || [], errors = res.errors || [];
+      dels.forEach(id => { if (!conflicts.some(c => c.id === id)) { delete ver[id]; delete snap[id]; } });
+      if (!conflicts.length && !errors.length) return;
+      const label = id => {
+        const b = ups.find(x => x.id === id) || (teeSheetDbCache[d] || []).find(x => x.id === id);
+        return (b && (b.name || (b.golfers && b.golfers[0] && b.golfers[0].name))) || 'a booking';
+      };
+      const full = errors.filter(e => /TEE_SLOT_FULL/.test(e.message || ''));
+      const msgs = [];
+      if (full.length) msgs.push('Tee time FULL (max 4 golfers) — not saved: ' + full.map(e => label(e.id)).join(', ') + '.');
+      if (conflicts.length) msgs.push('Changed on another device a moment ago — your edit to ' + conflicts.map(c => label(c.id)).join(', ') + ' was NOT saved.');
+      const other = errors.filter(e => !/TEE_SLOT_FULL/.test(e.message || ''));
+      if (other.length) msgs.push('Not saved: ' + other.map(e => label(e.id) + ' (' + e.message + ')').join(', ') + '.');
+      console.warn('[TeeSheet] refused:', conflicts, errors);
+      tsAlert(msgs.join(' ') + ' The sheet now shows the latest bookings — please check and redo.');
+      tsReloadDay(d);
+    }
+
     async function upsertBookingsToDb(bookingsArr, date) {
       if (!supabaseClient || !bookingsArr.length) return;
       // no course = no course context to write (course_id null, course_name "-- Select Course --")
@@ -5002,6 +5092,7 @@
         const knownIds = new Set((data || []).map(r => r.id));
         const live = (data || []).filter(r => !r.deleted).map(dbRowToBooking);
         dbSeenAdd(data || []);
+        tsRecordFetched(date, (data || []).filter(r => !r.deleted));
 
         // One-time migration: push legacy local-only bookings (pre-DB era) up to Supabase.
         // Ids already known to the DB (even soft-deleted) or EVER seen from it are never
@@ -5011,7 +5102,7 @@
         const toMigrate = courseId ? legacy.filter(b => b && b.id && !knownIds.has(b.id) && !dbSeenHas(b.id)) : [];
         if (toMigrate.length) {
           console.log('[TeeSheet] Migrating', toMigrate.length, 'legacy local bookings to DB for', date);
-          await upsertBookingsToDb(toMigrate, date);
+          await tsFlush(date, toMigrate, []);   // new rows, version-checked like every other write
           live.push(...toMigrate);
         }
 
@@ -5112,23 +5203,25 @@
       });
       localStorage.setItem(storageKey(d), JSON.stringify(localOnlyBookings));
 
-      // Supabase is the source of truth: upsert live bookings, soft-delete removed ones
+      // Supabase is the source of truth — v1367: send ONLY the bookings this change touched, version-checked
+      let touchedIds = new Set();
       try {
-        const removedIds = new Set((teeSheetDbCache[d] || []).map(b => b.id));
-        localOnlyBookings.forEach(b => removedIds.delete(b.id));
-        upsertBookingsToDb(localOnlyBookings, d);
-        if (removedIds.size) softDeleteBookingsInDb(Array.from(removedIds));
+        touchedIds = tsQueueSave(d, localOnlyBookings);
         teeSheetDbCache[d] = localOnlyBookings.slice();
         teeSheetLastFetch[d] = Date.now();
       } catch (e) {
         console.warn('[TeeSheet] DB sync in setDay failed:', e);
+        tsAlert('NOT SAVED — ' + (e && e.message || e) + '. Please redo the change.');
       }
 
       // Sync each NATIVE booking to parent BookingManager for Schedule tab + caddy notifications.
       // Same id as our direct DB row so parent cloud saves converge on ONE bookings row (no dupes).
       const courseId = el.courseSelect.value;
-      if (localOnlyBookings.length > 0) {
-        localOnlyBookings.forEach(booking => {
+      // v1367: only the bookings this change touched (was: every booking of the day on every save —
+      // re-sending caddy notifications for untouched bookings)
+      const touchedBookings = localOnlyBookings.filter(b => touchedIds.has(b.id));
+      if (touchedBookings.length > 0) {
+        touchedBookings.forEach(booking => {
           // Build ISO teeTime for Schedule tab compatibility
           const teeTimeISO = `${d}T${booking.time}:00`;
 

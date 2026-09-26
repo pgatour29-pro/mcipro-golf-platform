@@ -14069,6 +14069,8 @@
                 'teesheet.dualvenue.kept': 'Still on the other venue (paid or checked in): {list} — remove them there by hand',
                 'dualvenue.stay': 'Stay at {from}',
                 'dualvenue.moved': 'Moved from {from} to {to}',
+                'reg.fullwaitlisted': 'This event is full — {name} is #{n} on the waitlist and moves up automatically when a place opens.',
+                'reg.full': 'This event is full.',
                 'dualvenue.leftfail': "Registered — but you're still on {from} too. Unregister there, or ask the organizer.",
                 'dualvenue.settled': "You're paid or checked in at {from} — ask the organizer to move you",
                 'reg.unreg.title': 'Unregister from {event}?',
@@ -17447,6 +17449,8 @@
                 'teesheet.dualvenue.kept': 'ยังอยู่ที่อีกสนาม (ชำระเงินหรือเช็คอินแล้ว): {list} — กรุณาลบที่นั่นเอง',
                 'dualvenue.stay': 'อยู่ที่ {from}',
                 'dualvenue.moved': 'ย้ายจาก {from} ไป {to} แล้ว',
+                'reg.fullwaitlisted': 'กิจกรรมนี้เต็มแล้ว — {name} อยู่ลำดับที่ #{n} ในรายชื่อรอ และจะเลื่อนขึ้นอัตโนมัติเมื่อมีที่ว่าง',
+                'reg.full': 'กิจกรรมนี้เต็มแล้ว',
                 'dualvenue.leftfail': 'ลงทะเบียนแล้ว — แต่คุณยังอยู่ที่ {from} ด้วย กรุณายกเลิกที่นั่น หรือติดต่อผู้จัด',
                 'dualvenue.settled': 'คุณชำระเงินหรือเช็คอินที่ {from} แล้ว — กรุณาให้ผู้จัดย้ายให้',
                 'reg.unreg.title': 'ยกเลิกการลงทะเบียน {event}?',
@@ -21065,6 +21069,8 @@
                 'teesheet.dualvenue.kept': '다른 코스에 그대로 있음(결제 또는 체크인 완료): {list} — 그곳에서 직접 삭제하세요',
                 'dualvenue.stay': '{from}에 남기',
                 'dualvenue.moved': '{from}에서 {to}(으)로 이동했습니다',
+                'reg.fullwaitlisted': '이 이벤트는 마감되었습니다 — {name}님은 대기자 명단 #{n}번이며, 자리가 나면 자동으로 올라갑니다.',
+                'reg.full': '이 이벤트는 마감되었습니다.',
                 'dualvenue.leftfail': '등록되었지만 {from}에도 아직 등록되어 있습니다. 그곳에서 등록을 취소하거나 주최자에게 문의하세요.',
                 'dualvenue.settled': '{from}에서 이미 결제 또는 체크인했습니다 — 주최자에게 이동을 요청하세요',
                 'reg.unreg.title': '{event} 등록을 취소할까요?',
@@ -24243,6 +24249,8 @@
                 'teesheet.dualvenue.kept': 'もう一方の会場に残っています（支払い済みまたはチェックイン済み）: {list} — そちらで手動で外してください',
                 'dualvenue.stay': '{from} のまま',
                 'dualvenue.moved': '{from} から {to} に移動しました',
+                'reg.fullwaitlisted': 'このイベントは満員です — {name} さんはキャンセル待ち #{n} 番目で、空きが出ると自動で繰り上がります。',
+                'reg.full': 'このイベントは満員です。',
                 'dualvenue.leftfail': '登録しましたが、{from} にもまだ登録されています。そちらを取り消すか、主催者に連絡してください。',
                 'dualvenue.settled': '{from} で支払い済みまたはチェックイン済みです — 主催者に移動を依頼してください',
                 'reg.unreg.title': '{event} の登録を取り消しますか？',
@@ -87581,7 +87589,14 @@ class SocietyGolfSupabase {
                 .from('event_registrations')
                 .select('event_id, player_id')
                 .eq('special_requests->>hostId', playerId)
-                .in('event_id', eventIds) : Promise.resolve({ data: [] })
+                .in('event_id', eventIds) : Promise.resolve({ data: [] }),
+
+            // Query 10 (2026-09-26): tee times the COURSE holds for each event — capacity is the lower
+            // of the organizer's limit and slots x 4, same rule as the DB gate public.event_capacity().
+            window.SupabaseDB.client
+                .from('course_event_slots')
+                .select('event_id, slots_given')
+                .in('event_id', eventIds)
         ]);
 
         // Extract results, providing fallback for any failed queries
@@ -87595,7 +87610,8 @@ class SocietyGolfSupabase {
             userWaitlistResult,
             creatorProfilesResult,
             societiesResult,
-            hostedGuestsResult
+            hostedGuestsResult,
+            courseSlotsResult
         ] = results.map((result, index) => {
             if (result.status === 'fulfilled') {
                 return result.value;
@@ -87668,6 +87684,10 @@ class SocietyGolfSupabase {
             });
         }
 
+        // Course-held tee times per event (0/NULL = not set)
+        const courseSlotMap = {};
+        ((courseSlotsResult && courseSlotsResult.data) || []).forEach(r => { if (r.slots_given > 0) courseSlotMap[r.event_id] = r.slots_given; });
+
         // Create set of user's registered event IDs
         const registeredEventIds = new Set((userRegsResult.data || []).map(r => r.event_id));
 
@@ -87733,7 +87753,13 @@ class SocietyGolfSupabase {
                 competitionFee: e.competition_fee || 0,
                 cartFee: e.cart_fee || 0,
                 caddyFee: e.caddy_fee || 0,
-                maxPlayers: e.max_participants,  // ACTUAL: max_participants
+                // capacity = lower of organizer limit and course tee times x 4 (mirrors public.event_capacity)
+                maxPlayers: (() => {
+                    const org = e.max_participants > 0 ? e.max_participants : null;
+                    const course = courseSlotMap[e.id] ? courseSlotMap[e.id] * 4 : null;
+                    return (org && course) ? Math.min(org, course) : (org || course || e.max_participants);
+                })(),
+                organizerLimit: e.max_participants,
                 organizerId: e.organizer_id,
                 organizerName: e.organizer_name,
                 societyName: society?.society_name || societyIdMap[e.society_id] || e.organizer_name,
@@ -87970,6 +87996,26 @@ class SocietyGolfSupabase {
                     .from('event_registrations').select('*')
                     .eq('event_id', eventId).eq('player_id', playerData.playerId).limit(1);
                 if (won && won[0]) return won[0];
+            }
+            // EVENT_FULL = the DB capacity gate (trg_event_reg_capacity_gate, 2026-09-26): the limit
+            // set by the organizer or the course's held tee times is reached → the WAITLIST kicks in
+            // (Pete). Put the player on it (or keep their place) and tell the caller how it ended.
+            if (/EVENT_FULL/.test(error.message || '')) {
+                let wl = null;
+                try {
+                    const { data: had } = await window.SupabaseDB.client.from('event_waitlist').select('*')
+                        .eq('event_id', eventId).eq('player_id', playerData.playerId).limit(1);
+                    wl = (had && had[0]) || await this.joinWaitlist(eventId, {
+                        name: playerData.name, playerId: playerData.playerId, handicap: playerData.handicap,
+                        wantTransport: playerData.wantTransport || false, wantCompetition: effWantCompetition
+                    });
+                } catch (wErr) { console.error('[SocietyGolf] Event full and waitlist join failed:', wErr); }
+                const full = new Error(wl
+                    ? _lvT('reg.fullwaitlisted', 'This event is full — {name} is #{n} on the waitlist and moves up automatically when a place opens.')
+                        .replace('{name}', playerData.name || '').replace('{n}', wl.position || '?')
+                    : _lvT('reg.full', 'This event is full.'));
+                full.eventFull = true; full.waitlisted = !!wl; full.waitlistRow = wl;
+                throw full;
             }
             console.error('[SocietyGolf] Error registering player:', error);
             throw error;
@@ -150454,7 +150500,7 @@ class GolferEventsManager {
                     const _lateIds = registration.playerId ? [registration.playerId] : [];
                     for (const guest of guestPlayers) {
                         const resolvedId = await this._resolveGuestId(guest.lineUserId, guest.name);
-                        await window.SocietyGolfDB.registerForEvent({
+                        try { await window.SocietyGolfDB.registerForEvent({
                             eventId: this.currentEvent.id,
                             playerName: await this._guestDisplayName(guest.name, resolvedId),
                             playerId: resolvedId,
@@ -150465,7 +150511,10 @@ class GolferEventsManager {
                             partnerPrefs: [],
                             caddyNumbers: guest.caddyNumbers || '',   // GSV2: per-guest caddy from the sheet
                             specialRequests: Object.assign({ sameGroup: guest.sameGroup !== false }, _hostId ? { hostId: _hostId, addedBy: _hostId } : {})
-                        });
+                        }); } catch (gErr) {
+                            if (gErr && gErr.eventFull) { NotificationManager.show(gErr.message, 'info', 7000); continue; }
+                            throw gErr;
+                        }
                         _lateIds.push(resolvedId);
                     }
                     // Registration onto an already-saved tee sheet → pool tag (the party rides in as a
@@ -150517,6 +150566,11 @@ class GolferEventsManager {
 
         } catch (error) {
             console.error('[GolferEventsSystem] Registration error:', error);
+            if (error && error.eventFull) {
+                NotificationManager.show(error.message, error.waitlisted ? 'info' : 'warning', 7000);
+                try { this.closeEventDetail(); await this.refreshEvents(); } catch (e) {}
+                return;
+            }
             NotificationManager.show(`${this.editingRegistrationId ? 'Update' : 'Registration'} failed: ${error.message}`, 'error', 4000);
         } finally {
             this._regSubmitting = false;
@@ -175169,7 +175223,8 @@ class OrganizerScoringSystem {
             try {
                 const reg = await SocietyGolfDB.registerPlayer(this.currentEventId, {
                     name: playerName, playerId: finalId, handicap: hcp,
-                    wantTransport: false, wantCompetition: false
+                    wantTransport: false, wantCompetition: false,
+                    specialRequests: { walkOn: true, source: 'score_entry' }   // a played round is never capped
                 });
                 if (reg && reg.player_id) finalId = String(reg.player_id);
             } catch (e) {

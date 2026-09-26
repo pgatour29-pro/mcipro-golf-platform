@@ -408,21 +408,29 @@
         _usersHtml(d) {
             var us = d.users || [];
             if (!us.length) return '';
-            var th = 'style="text-align:left;font-size:11px;font-weight:700;color:#475569;padding:6px 8px;white-space:nowrap;"';
-            var td = 'style="font-size:12px;color:#0f172a;padding:6px 8px;white-space:nowrap;border-top:1px solid #f1f5f9;"';
+            // Each column has ONE alignment shared by its header and its cells (numbers right, text
+            // left) and tabular digits, so values line up under their headings.
+            var cols = [['User', 'left'], ['24h', 'right'], ['Per day', 'right'], ['Days', 'right'], ['Back ≤24h', 'right'],
+                ['Gap', 'right'], ['Visit', 'right'], ['Last open', 'left']];
+            var th = function (i) {
+                return '<th style="text-align:' + cols[i][1] + ';font-size:11px;font-weight:700;color:#475569;padding:6px 8px;white-space:nowrap;">' + cols[i][0] + '</th>';
+            };
+            var td = function (i, v) {
+                return '<td style="text-align:' + cols[i][1] + ';font-size:12px;color:#0f172a;padding:6px 8px;white-space:nowrap;border-top:1px solid #f1f5f9;font-variant-numeric:tabular-nums;">' + v + '</td>';
+            };
+            var one = function (n) { return n == null ? '–' : Number(n).toFixed(1); };
             var body = us.map(function (u) {
                 var back = u.opens > 1 ? Math.round(100 * u.back_within_24h / Math.max(1, u.opens - 1)) + '%' : '–';
-                return '<tr><td ' + td + '><b>' + esc(u.name) + '</b>' + (u.role ? ' <span style="color:#64748b;">' + esc(u.role) + '</span>' : '') + '</td>' +
-                    '<td ' + td + ' align="right">' + u.opens_24h + '</td><td ' + td + ' align="right">' + u.opens_per_day + '</td>' +
-                    '<td ' + td + ' align="right">' + u.active_days + '</td><td ' + td + ' align="right">' + back + '</td>' +
-                    '<td ' + td + ' align="right">' + (u.med_gap_h == null ? '–' : u.med_gap_h + 'h') + '</td>' +
-                    '<td ' + td + ' align="right">' + (u.avg_visit_min == null ? '–' : u.avg_visit_min + 'm') + '</td>' +
-                    '<td ' + td + '>' + ago(u.last_open) + '</td></tr>';
+                return '<tr>' +
+                    td(0, '<b>' + esc(u.name) + '</b>' + (u.role ? ' <span style="color:#64748b;">' + esc(u.role) + '</span>' : '')) +
+                    td(1, u.opens_24h) + td(2, one(u.opens_per_day)) + td(3, u.active_days) + td(4, back) +
+                    td(5, u.med_gap_h == null ? '–' : one(u.med_gap_h) + 'h') +
+                    td(6, u.avg_visit_min == null ? '–' : one(u.avg_visit_min) + 'm') +
+                    td(7, ago(u.last_open)) + '</tr>';
             }).join('');
             return card('Each user', 'sorted by opens in the last 24h',
                 '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table style="width:100%;border-collapse:collapse;">' +
-                '<thead><tr><th ' + th + '>User</th><th ' + th + '>24h</th><th ' + th + '>Per day</th><th ' + th + '>Days</th><th ' + th + '>Back ≤24h</th>' +
-                '<th ' + th + '>Gap</th><th ' + th + '>Visit</th><th ' + th + '>Last open</th></tr></thead><tbody>' + body + '</tbody></table></div>');
+                '<thead><tr>' + cols.map(function (c, i) { return th(i); }).join('') + '</tr></thead><tbody>' + body + '</tbody></table></div>');
         }
     };
 

@@ -64534,6 +64534,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
                         if (error) {
                             console.error('[CaddyBooking] Error creating booking:', error);
+                            // 23P01 = the DB 4:15 gate (trg_caddy_bookings_no_clash) — someone booked
+                            // this caddy in the same moment. Say so; never fail silently.
+                            if (error.code === '23P01') {
+                                try { window.NotificationManager.show('Caddy #' + parseInt(num) + ': ' + String(error.message || '').replace(/^CADDY_CLASH:\s*/, ''), 'warning'); } catch (e) {}
+                            }
                         } else {
                             console.log(`[CaddyBooking] Created pending booking for Caddy #${parseInt(num)} at ${evt.course_name} on ${evt.event_date}`);
 
@@ -87958,6 +87963,14 @@ class SocietyGolfSupabase {
             .single();
 
         if (error) {
+            // 23505 = the DB's one-row-per-(event, player) rule (2026-09-26) refused a racing second
+            // insert (double tap / two devices). The golfer IS registered — return that row.
+            if (error.code === '23505') {
+                const { data: won } = await window.SupabaseDB.client
+                    .from('event_registrations').select('*')
+                    .eq('event_id', eventId).eq('player_id', playerData.playerId).limit(1);
+                if (won && won[0]) return won[0];
+            }
             console.error('[SocietyGolf] Error registering player:', error);
             throw error;
         }
@@ -88266,6 +88279,14 @@ class SocietyGolfSupabase {
             .single();
 
         if (error) {
+            // 23505 = already on this waitlist (double tap / two devices) — return that row.
+            // (position is assigned by the DB trigger event_waitlist_assign_position, not by us.)
+            if (error.code === '23505') {
+                const { data: won } = await window.SupabaseDB.client
+                    .from('event_waitlist').select('*')
+                    .eq('event_id', eventId).eq('player_id', playerData.playerId).limit(1);
+                if (won && won[0]) return won[0];
+            }
             console.error('[SocietyGolf] Error joining waitlist:', error);
             throw error;
         }

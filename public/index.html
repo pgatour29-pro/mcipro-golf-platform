@@ -13014,6 +13014,12 @@
                 'scorecard.pcv.theirs': 'THEIR PHONE',
                 'scorecard.pcv.nextkey': 'NEXT',
                 'scorecard.pin.pill': 'PIN',
+                'mntpin.review.t': "AI read {n} holes",
+                'mntpin.review.check': "{n} to check — marked amber",
+                'mntpin.review.m': "Compare with the paper sheet. Tap any hole to fix it, then Save all.",
+                'mntpin.review.save': "Save all",
+                'mntpin.review.discard': "Discard",
+                'mntpin.check': "Check",
                 'mntpin.tab.photo': "Photo reports",
                 'mntpin.tab.pin': "PIN placement",
                 'mntpin.today': "Today",
@@ -16540,6 +16546,12 @@
                 'scorecard.pcv.theirs': 'เครื่องของเขา',
                 'scorecard.pcv.nextkey': 'ถัดไป',
                 'scorecard.pin.pill': 'พิน',
+                'mntpin.review.t': "AI อ่านได้ {n} หลุม",
+                'mntpin.review.check': "ต้องตรวจ {n} หลุม — สีส้ม",
+                'mntpin.review.m': "เทียบกับใบพินกระดาษ แตะหลุมที่ต้องแก้ แล้วกดบันทึกทั้งหมด",
+                'mntpin.review.save': "บันทึกทั้งหมด",
+                'mntpin.review.discard': "ยกเลิก",
+                'mntpin.check': "ตรวจ",
                 'mntpin.tab.photo': "รายงานภาพถ่าย",
                 'mntpin.tab.pin': "ตำแหน่งพิน",
                 'mntpin.today': "วันนี้",
@@ -19934,6 +19946,12 @@
                 'scorecard.pcv.theirs': '본인 휴대폰',
                 'scorecard.pcv.nextkey': '다음',
                 'scorecard.pin.pill': '핀',
+                'mntpin.review.t': "AI가 {n}개 홀을 읽었습니다",
+                'mntpin.review.check': "확인 필요 {n}개 — 주황색 표시",
+                'mntpin.review.m': "종이 시트와 비교하세요. 고칠 홀을 탭한 뒤 모두 저장.",
+                'mntpin.review.save': "모두 저장",
+                'mntpin.review.discard': "취소",
+                'mntpin.check': "확인",
                 'mntpin.tab.photo': "사진 보고",
                 'mntpin.tab.pin': "핀 위치",
                 'mntpin.today': "오늘",
@@ -23510,6 +23528,12 @@
                 'scorecard.pcv.theirs': '本人の端末',
                 'scorecard.pcv.nextkey': '次',
                 'scorecard.pin.pill': 'ピン',
+                'mntpin.review.t': "AIが{n}ホールを読み取りました",
+                'mntpin.review.check': "要確認{n}ホール — オレンジ表示",
+                'mntpin.review.m': "紙のシートと比べ、直すホールをタップしてから全て保存。",
+                'mntpin.review.save': "全て保存",
+                'mntpin.review.discard': "破棄",
+                'mntpin.check': "確認",
                 'mntpin.tab.photo': "写真レポート",
                 'mntpin.tab.pin': "ピン位置",
                 'mntpin.today': "今日",
@@ -66274,8 +66298,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 .mnp-row .p { font-size:13px; font-weight:600; color:#15803d; margin-top:2px; }
                 .mnp-row .p.no { color:#4b5563; font-weight:500; }
                 .mnp-row .g { width:140px; height:140px; flex:none; }
-                .mnp-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
-                @media (min-width:768px) { .mnp-grid { grid-template-columns:repeat(6,1fr); } }
+                .mnp-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+                @media (min-width:768px) { .mnp-grid { grid-template-columns:repeat(6,minmax(0,1fr)); } }
                 .mnp-mini { border:1px solid #e5e7eb; border-radius:12px; padding:6px 4px; text-align:center; background:#fff; cursor:pointer; }
                 .mnp-mini.empty { border-style:dashed; border-color:#9ca3af; background:#f9fafb; }
                 .mnp-mini b { font-size:13px; font-weight:800; display:block; color:#111827; }
@@ -144484,16 +144508,19 @@ const PinSheetManager = {
                 throw new Error(result.error);
             }
 
-            // Save through the shared store (find-or-create today's sheet + upsert holes)
-            const readPins = (result.pins || []).filter(p => p.hole >= 1 && p.hole <= 18 && p.primary_grid >= 1 && p.primary_grid <= 9)
-                .map(p => ({ hole: p.hole, q: p.primary_grid }));
+            // v1393: nothing is saved blind. The read lands in the circle manual entry for a check
+            // against the paper — holes the two AI readers disagree on are marked amber "Check" —
+            // and Save All Positions writes it through the shared store.
+            const readPins = (result.pins || []).filter(p => p.hole >= 1 && p.hole <= 18 && p.primary_grid >= 1 && p.primary_grid <= 9);
             if (!readPins.length) throw new Error('No pins could be read from the photo');
-            await this.savePins(this.currentCourseName, this.bkkToday(), readPins, result.green_speed ? { green_speed: result.green_speed } : null);
             this.isProcessing = false;
-            await this.loadPinPositions();
-            this.closeModal();
-
-            NotificationManager.show('Pin sheet uploaded! ' + result.holes_detected + ' holes detected. Green speed: ' + (result.green_speed || 'Not specified') + '. Confidence: ' + result.confidence + '. ' + micon('smart_toy') + ' AI automatically read and saved all positions!', 'success');
+            document.getElementById('pinSheetManualEntry').style.display = 'none';
+            this.showQuickTextEntry();
+            readPins.forEach(p => { this.quickEntryData[p.hole - 1] = p.primary_grid; if (p.confidence === 'low') this._quickLow.add(p.hole); });
+            this._quickSpeed = result.green_speed || null;
+            this.renderAllHoles();
+            window.NotificationManager?.show(_lvT('mntpin.review.t', 'AI read {n} holes').replace('{n}', readPins.length) + ' · '
+                + _lvT('mntpin.review.m', 'Compare with the paper sheet. Tap any hole to fix it, then Save all.'), 'info');
 
         } catch (err) {
             console.error('[PinSheet] AI analysis error:', err);
@@ -144716,6 +144743,8 @@ const PinSheetManager = {
      */
     showQuickTextEntry() {
         this.quickEntryData = new Array(18).fill(null);
+        this._quickLow = new Set();      // holes the AI read flagged "Check" (photo path only)
+        this._quickSpeed = null;
         this.renderAllHoles();
         document.getElementById('pinSheetUploadState').style.display = 'none';
         document.getElementById('pinSheetQuickText').style.display = 'block';
@@ -144738,8 +144767,9 @@ const PinSheetManager = {
 
     _quickHoleInner(hole) {
         const selected = this.quickEntryData[hole - 1];
+        const chk = this._quickLow && this._quickLow.has(hole);
         return `<div class="flex-1 min-w-0">
-                    <div class="text-sm font-bold">Hole ${hole}</div>
+                    <div class="text-sm font-bold">Hole ${hole}${chk ? ` <span style="font-size:11px;font-weight:800;color:#92400e;background:#fef3c7;border-radius:999px;padding:2px 8px;">${_lvT('mntpin.check', 'Check')}</span>` : ''}</div>
                     <div class="text-xs font-semibold ${selected ? 'text-green-700' : 'text-gray-500'}">${selected ? selected + ' · ' + this.quadrantLabel(selected) : 'Tap the green'}</div>
                 </div>
                 <div id="pinGrid${hole}" style="width:150px;height:150px;flex:none;">${this.greenSVG('q' + hole, selected, hole)}</div>`;
@@ -144763,6 +144793,7 @@ const PinSheetManager = {
     selectQuadrantForHole(hole, quadrant) {
         // Save selection
         this.quickEntryData[hole - 1] = quadrant;
+        if (this._quickLow) this._quickLow.delete(hole);   // looked at = checked
 
         // Repaint this hole only (no full re-render)
         const holeDiv = document.getElementById(`pinHole${hole}`);
@@ -144933,7 +144964,8 @@ const PinSheetManager = {
             // (find-or-create + upsert; the old delete-then-insert had no DELETE policy).
             let savedToDb = false;
             try {
-                await this.savePins(courseName, today, this.quickEntryData.map((q, i) => ({ hole: i + 1, q })));
+                await this.savePins(courseName, today, this.quickEntryData.map((q, i) => ({ hole: i + 1, q })),
+                    this._quickSpeed ? { green_speed: this._quickSpeed } : null);
                 savedToDb = true;
                 console.log('[PinSheet] Saved to database successfully');
             } catch (dbErr) {
@@ -145116,6 +145148,7 @@ const MaintPins = {
     _q: Promise.resolve(),
     _note: null,           // { h, kind: 'saving'|'saved'|'err' }
     _busy: null,           // 'read' | 'copy'
+    _review: null,         // AI read awaiting the crew's check: { holes: {h: low?}, green_speed }
 
     _t(k, fb, n) { const v = _lvT(k, fb); return n == null ? v : String(v).replace('{n}', n); },
     _esc(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); },
@@ -145196,6 +145229,7 @@ const MaintPins = {
             const sheet = await P.sheetFor(name, P.bkkToday());
             if (seq !== this._seq || !this.course || name !== this.course.name) return;
             this.sheet = sheet;
+            if (this._review) { this.render(); return; }   // the crew's check of an AI read wins
             const sel = new Array(18).fill(null);
             (sheet?.pin_locations || []).forEach(l => { if (l.hole_number >= 1 && l.hole_number <= 18) sel[l.hole_number - 1] = P.quadrantOf(l); });
             this.sel = sel;
@@ -145240,6 +145274,18 @@ const MaintPins = {
             ? `<div class="mnp-live"><i></i>${this._esc(this._t('mntpin.live', 'Live for golfers'))} · ${n}/18${this._esc(upd)}</div>`
             : `<div class="mnp-live warn"><i></i>${this._esc(this._t('mntpin.none', 'No pins set today — golfers see none'))}</div>`;
         const b = this._busy;
+        const rv = this._review;
+        if (rv) {
+            const read = Object.keys(rv.holes).length, low = Object.values(rv.holes).filter(Boolean).length;
+            return `<div class="mnp-card" style="border:2px solid #f59e0b;">
+                <div style="font-size:16px;font-weight:800;color:#111827;">${this._esc(this._t('mntpin.review.t', 'AI read {n} holes', read))}</div>
+                ${low ? `<div class="mnp-live warn"><i></i>${this._esc(this._t('mntpin.review.check', '{n} to check — marked amber', low))}</div>` : ''}
+                <div style="font-size:13px;color:#374151;margin-top:8px;">${this._esc(this._t('mntpin.review.m', 'Compare with the paper sheet. Tap any hole to fix it, then Save all.'))}</div>
+                <div class="mnp-nav" style="margin-top:12px;">
+                    <button type="button" ${b ? 'disabled' : ''} onclick="MaintPins.discardReview()">${this._esc(this._t('mntpin.review.discard', 'Discard'))}</button>
+                    <button type="button" class="go" ${b ? 'disabled' : ''} onclick="MaintPins.saveReview()">${this._esc(this._t('mntpin.review.save', 'Save all'))} (${read})</button>
+                </div></div>`;
+        }
         return `<div class="mnp-card">
             <div class="mnp-course"><span class="material-symbols-outlined" style="font-size:28px;color:#15803d;">golf_course</span>
                 <div style="min-width:0;"><b>${this._esc(this.course.name)}</b><small>${this._esc(this._t('mntpin.today', 'Today'))} · ${this._esc(when)}</small></div>
@@ -145273,8 +145319,8 @@ const MaintPins = {
         let body = '';
         if (v === 'list') {
             for (let h = 1; h <= 18; h++) {
-                const q = this.sel[h - 1];
-                body += `<div class="mnp-row" id="mnpRow${h}"><div class="m"><div class="h">${this._esc(holeT)} ${h}</div>
+                const q = this.sel[h - 1], chk = this._review && this._review.holes[h];
+                body += `<div class="mnp-row" id="mnpRow${h}"${chk ? ' style="background:#fffbeb;"' : ''}><div class="m"><div class="h">${this._esc(holeT)} ${h}${chk ? ` <span style="font-size:11px;font-weight:800;color:#92400e;background:#fef3c7;border-radius:999px;padding:2px 8px;vertical-align:middle;">${this._esc(this._t('mntpin.check', 'Check'))}</span>` : ''}</div>
                     <div class="p ${q ? '' : 'no'}">${q ? q + ' · ' + this._esc(P.quadrantLabel(q)) : this._esc(this._t('mntpin.tapspot', 'Tap where the pin is'))}</div>
                     ${this._noteHTML(h).replace('class="mnp-note', 'style="justify-content:flex-start;margin-top:2px;" class="mnp-note')}</div>
                     <div class="g">${this._green('ml' + h, q, h)}</div></div>`;
@@ -145282,9 +145328,9 @@ const MaintPins = {
         } else {
             body = `<div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:8px;">${this._esc(this._t('mntpin.tapmove', 'Tap a hole to move its pin'))}</div><div class="mnp-grid">`;
             for (let h = 1; h <= 18; h++) {
-                const q = this.sel[h - 1];
-                body += `<div class="mnp-mini ${q ? '' : 'empty'}" role="button" onclick="MaintPins.openHole(${h})"><b>${h}</b>`
-                    + (q ? `<div class="g">${P.greenSVG('mb' + h, q, null)}</div><small>${this._esc(P.quadrantLabel(q))}</small>`
+                const q = this.sel[h - 1], chk = this._review && this._review.holes[h];
+                body += `<div class="mnp-mini ${q ? '' : 'empty'}" role="button" onclick="MaintPins.openHole(${h})"${chk ? ' style="border:2px solid #f59e0b;background:#fffbeb;"' : ''}><b>${h}</b>`
+                    + (q ? `<div class="g">${P.greenSVG('mb' + h, q, null)}</div><small${chk ? ' style="color:#92400e;"' : ''}>${chk ? this._esc(this._t('mntpin.check', 'Check')) + ' · ' : ''}${this._esc(P.quadrantLabel(q))}</small>`
                          : `<div class="e">${this._esc(this._t('mntpin.notset', 'Not set'))}</div><small>&nbsp;</small>`) + '</div>';
             }
             body += '</div>';
@@ -145300,6 +145346,14 @@ const MaintPins = {
 
     // ---- one tap = one saved hole -------------------------------------------------------
     pick(h, q) {
+        if (this._review) {
+            this.sel[h - 1] = q;
+            this._review.holes[h] = false;           // the crew has looked at it
+            if (!(h in this._review.holes)) this._review.holes[h] = false;
+            this._note = null;
+            this._paint(h);
+            return;
+        }
         const prev = this.sel[h - 1];
         this.sel[h - 1] = q;
         this._note = { h, kind: 'saving' };
@@ -145399,6 +145453,22 @@ const MaintPins = {
         await this.load();
     },
 
+    async saveReview() {
+        const rv = this._review; if (!rv || this._busy) return;
+        const pins = Object.keys(rv.holes).map(Number).map(h => ({ hole: h, q: this.sel[h - 1] })).filter(p => p.q);
+        this._busy = 'copy'; this.render();
+        try {
+            this._review = null;
+            await this._bulkSave(pins, rv.green_speed ? { green_speed: rv.green_speed } : null);
+        } catch (e) {
+            this._review = rv;                          // keep the crew's checked read on screen
+            console.warn('[MaintPins] review save', e);
+            window.NotificationManager?.show(this._t('mntpin.failed', 'Not saved — check signal and tap again'), 'error');
+        } finally { this._busy = null; this.render(); }
+    },
+
+    discardReview() { this._review = null; this.load(); },
+
     async copyYesterday() {
         if (this._busy || !this.course) return;
         const P = this._P();
@@ -145433,10 +145503,14 @@ const MaintPins = {
             });
             const out = await resp.json().catch(() => ({}));
             if (!resp.ok || out.error) throw new Error(out.error || ('HTTP ' + resp.status));
-            const pins = (out.pins || []).filter(p => p.hole >= 1 && p.hole <= 18 && p.primary_grid >= 1 && p.primary_grid <= 9).map(p => ({ hole: p.hole, q: p.primary_grid }));
+            const pins = (out.pins || []).filter(p => p.hole >= 1 && p.hole <= 18 && p.primary_grid >= 1 && p.primary_grid <= 9);
             if (!pins.length) throw new Error('no pins');
-            if (!(await this._confirmReplace())) return;
-            await this._bulkSave(pins, out.green_speed ? { green_speed: out.green_speed } : null);
+            // Nothing is saved yet: the read lands on the board for the crew to check against the
+            // paper (two AI readers; any hole they disagree on is marked amber = "Check").
+            const holes = {};
+            pins.forEach(p => { this.sel[p.hole - 1] = p.primary_grid; holes[p.hole] = p.confidence === 'low'; });
+            this._review = { holes, green_speed: out.green_speed || null };
+            this._note = null;
         } catch (e) {
             console.warn('[MaintPins] read', e);
             window.NotificationManager?.show(this._t('mntpin.readfail', 'Could not read the pin sheet'), 'error');

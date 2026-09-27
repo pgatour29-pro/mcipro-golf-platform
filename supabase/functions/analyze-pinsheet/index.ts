@@ -7,7 +7,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { rateLimit } from "../_shared/ratelimit.ts";
 
 // Get API keys from environment
-const GOOGLE_API_KEY = Deno.env.get("GOOGLE_API_KEY");
+// 2026-09-27: GEMINI_API_KEY first (the key ai-coach / marketing-ai / translate-text run on).
+const GOOGLE_API_KEY = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
+// gemini-2.0-flash-exp was retired by Google — every read 404'd ("model not found").
+// Pro first (a once-a-day read — accuracy beats seconds), flash if pro is unavailable.
+const MODELS = ["gemini-pro-latest", "gemini-flash-latest"];
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -27,6 +31,7 @@ interface PinLocation {
   x: number; // 0-1 normalized
   y: number; // 0-1 normalized
   description: string; // Human-readable with micro-detail
+  confidence?: "high" | "low";
 }
 
 interface PinSheetAnalysis {
@@ -80,43 +85,25 @@ serve(async (req) => {
     const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
 
     // Call Google Gemini Vision API with exact user configuration and verified training data
-    const systemInstruction = `You are a professional golf data parser.
-Analyze the 3x3 grid diagrams for 18 holes.
+    // 2026-09-27 rewrite: the old prompt carried ONE Bangpakong sheet's 18 answers as "training
+    // examples" — it pulled every other sheet toward those answers. Generic rules only now, a
+    // confidence per hole, and holes it cannot see are left OUT (never guessed as centre).
+    const systemInstruction = `You read a golf course's daily PIN SHEET from a photo.
 
-LOGIC (Established 2026-01-15):
-- DEPTH: 'Back' (top line/edge), 'Middle' (center horizontal line), 'Front' (bottom line/edge).
-- SIDE: 'Left' (left vertical line), 'Center' (between/on center lines), 'Right' (right vertical line).
+Each hole has a small drawing of its green (a circle, oval, box or grid) with a mark showing where the hole is cut: a dot, flag, X, circle or filled square.
+Orientation: the TOP of each drawing is the BACK of the green, the BOTTOM is the FRONT (the side the player approaches from).
+For each hole, measure WHERE the mark sits inside that hole's drawing (use the drawing's outer edge as the frame, not any grid lines):
+- x = distance from the drawing's LEFT edge divided by its width (0 = left edge, 0.5 = middle, 1 = right edge)
+- y = distance from the drawing's TOP edge divided by its height (0 = top/back, 0.5 = middle, 1 = bottom/front)
+Measure the CENTRE of the mark, to two decimals. Look closely at each drawing on its own.
+If the sheet prints numbers instead of a mark — e.g. "24" paces from the front and "6L"/"5R" paces from the left/right edge — estimate x and y from them (a typical green is ~30 paces deep and ~30 wide).
+Take hole numbers from the labels printed on the sheet, not from the order you read them.
+confidence = "low" when the photo is blurred there or you are unsure where the mark is; otherwise "high".
+Only return holes you can actually see. Never invent a hole.
+Also read the course name, the date and the green speed (stimp, e.g. 9'6") from the header if printed.`;
 
-CRITICAL TRAINING EXAMPLES (from Bangpakong Riverside pin sheet):
-Hole 1: {"depth": "Front", "side": "Right"} - Bottom right area
-Hole 2: {"depth": "Middle", "side": "Center"} - Dead center
-Hole 3: {"depth": "Back", "side": "Left"} - Top left area (NOT right!)
-Hole 4: {"depth": "Front", "side": "Left"} - Bottom left area
-Hole 5: {"depth": "Middle", "side": "Left"} - Middle left (NOT front!)
-Hole 6: {"depth": "Back", "side": "Center"} - Top center (NOT right!)
-Hole 7: {"depth": "Front", "side": "Right"} - Bottom right (NOT center!)
-Hole 8: {"depth": "Middle", "side": "Left"} - Middle left (NOT center!)
-Hole 9: {"depth": "Back", "side": "Left"} - Top left area
-Hole 10: {"depth": "Middle", "side": "Center"} - Dead center
-Hole 11: {"depth": "Back", "side": "Left"} - Top left area
-Hole 12: {"depth": "Front", "side": "Center"} - Bottom center
-Hole 13: {"depth": "Middle", "side": "Left"} - Middle left
-Hole 14: {"depth": "Back", "side": "Center"} - Top center (NOT middle!)
-Hole 15: {"depth": "Front", "side": "Center"} - Bottom center (NOT right!)
-Hole 16: {"depth": "Middle", "side": "Left"} - Middle left
-Hole 17: {"depth": "Back", "side": "Center"} - Top center
-Hole 18: {"depth": "Front", "side": "Center"} - Bottom center
-
-COMMON MISTAKES TO AVOID:
-- Don't confuse "Back" (top) with "Front" (bottom)
-- Don't confuse "Left" with "Center" or "Right"
-- A dot slightly left of center is still "Center" unless it's clearly on the left line
-- A dot between Front and Middle is usually "Middle" not "Front"
-
-Use these examples to calibrate your detection for all pin sheets.`;
-
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GOOGLE_API_KEY}`,
+    const callModel = (model: string) => fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GOOGLE_API_KEY}`,
       {
         method: 'POST',
         headers: {
@@ -129,7 +116,7 @@ Use these examples to calibrate your detection for all pin sheets.`;
           contents: [{
             role: "user",
             parts: [
-              { text: "Extract all 18 pin positions exactly as they appear on the grid lines. Also extract course_name, date, and green_speed from the header." },
+              { text: "Read every hole's pin position from this pin sheet." },
               {
                 inlineData: {
                   mimeType: mediaType,
@@ -140,7 +127,7 @@ Use these examples to calibrate your detection for all pin sheets.`;
           }],
           generationConfig: {
             temperature: 0,
-            maxOutputTokens: 4096,
+            maxOutputTokens: 32768,   // thinking tokens count here — 4096 cut the JSON off mid-hole
             responseMimeType: "application/json",
             responseSchema: {
               type: "object",
@@ -154,10 +141,11 @@ Use these examples to calibrate your detection for all pin sheets.`;
                     type: "object",
                     properties: {
                       hole: { type: "number" },
-                      depth: { type: "string", enum: ["Front", "Middle", "Back"] },
-                      side: { type: "string", enum: ["Left", "Center", "Right"] }
+                      x: { type: "number" },
+                      y: { type: "number" },
+                      confidence: { type: "string", enum: ["high", "low"] }
                     },
-                    required: ["hole", "depth", "side"]
+                    required: ["hole", "x", "y", "confidence"]
                   }
                 }
               },
@@ -167,42 +155,29 @@ Use these examples to calibrate your detection for all pin sheets.`;
         })
       }
     );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[Analyze Pin Sheet] Gemini API error:", response.status, errorText);
+    // Two independent readers (pro + flash) in parallel. On test sheets each model misread 1-3
+    // holes near a dividing line — never the SAME holes — and marked them "high". Agreement =
+    // taken as read; disagreement (or only one reader) = "low" so the crew checks that hole.
+    const readWith = async (model: string): Promise<any | null> => {
+      try {
+        const r = await callModel(model);
+        if (!r.ok) { console.warn(`[Analyze Pin Sheet] ${model} -> ${r.status}`, (await r.text()).slice(0, 300)); return null; }
+        const j = await r.json();
+        const text = j.candidates?.[0]?.content?.parts?.[0]?.text;
+        return text ? JSON.parse(text) : null;
+      } catch (e) { console.warn(`[Analyze Pin Sheet] ${model} failed`, e); return null; }
+    };
+    const readers = MODELS.includes(body.model) ? [body.model] : MODELS;   // body.model = diagnostics: one reader
+    const reads = await Promise.all(readers.map(readWith));
+    const good = reads.filter(Boolean);
+    if (!good.length) {
       return new Response(
-        JSON.stringify({ error: "AI analysis failed", details: errorText }),
+        JSON.stringify({ error: "AI analysis failed", details: "no reader returned a result" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const result = await response.json();
-    console.log("[Analyze Pin Sheet] Gemini response received");
-
-    // Extract the text content from Gemini's response
-    const textContent = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!textContent) {
-      console.error("[Analyze Pin Sheet] No text in response:", result);
-      return new Response(
-        JSON.stringify({ error: "No analysis returned" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Parse Gemini response
-    let geminiData: any;
-    try {
-      geminiData = JSON.parse(textContent);
-    } catch (parseError) {
-      console.error("[Analyze Pin Sheet] JSON parse error:", parseError);
-      console.error("[Analyze Pin Sheet] Raw text:", textContent);
-      return new Response(
-        JSON.stringify({ error: "Failed to parse AI response", raw: textContent }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const geminiData: any = good[0];
+    const other: any = good[1] || null;
 
     // Convert depth/side format to grid number and coordinates
     const depthSideToGrid = (depth: string, side: string): { grid: number; x: number; y: number; position: string } => {
@@ -218,28 +193,44 @@ Use these examples to calibrate your detection for all pin sheets.`;
         "Back-Right": { grid: 9, x: 0.83, y: 0.17, position: "back-right" },
       };
       const key = `${depth}-${side}`;
-      return gridMap[key] || { grid: 5, x: 0.50, y: 0.50, position: "center" };
+      return gridMap[key] || null;   // unreadable = left out, never a made-up "center"
     };
 
     // Convert Gemini holes format to our format
+    // Thirds are cut HERE from the measured x/y (models place a mark far better than they
+    // classify it); a mark within 0.06 of a dividing line comes back "low" = "check this one".
+    const third = (v: number) => (v < 1 / 3 ? 0 : v < 2 / 3 ? 1 : 2);
+    const nearLine = (v: number) => Math.abs(v - 1 / 3) < 0.06 || Math.abs(v - 2 / 3) < 0.06;
+    const seen = new Set<number>();
     const pins: PinLocation[] = (geminiData.holes || []).map((hole: any) => {
-      const converted = depthSideToGrid(hole.depth, hole.side);
+      const n = Number(hole.hole), x = Number(hole.x), y = Number(hole.y);
+      if (!(n >= 1 && n <= 18) || seen.has(n) || !(x >= 0 && x <= 1) || !(y >= 0 && y <= 1)) return null;
+      seen.add(n);
+      const depth = ["Back", "Middle", "Front"][third(y)], side = ["Left", "Center", "Right"][third(x)];
+      const converted = depthSideToGrid(depth, side)!;
+      let agree = true;
+      if (other) {
+        const o = (other.holes || []).find((h: any) => Number(h.hole) === n);
+        const ox = Number(o?.x), oy = Number(o?.y);
+        agree = !!o && ox >= 0 && ox <= 1 && oy >= 0 && oy <= 1 && third(ox) === third(x) && third(oy) === third(y);
+      }
       return {
-        hole: hole.hole,
+        hole: n,
         primary_grid: converted.grid,
         position: converted.position,
-        micro_placement: `${hole.depth}-${hole.side}`,
-        line_hugging: false,
+        micro_placement: `${depth}-${side}`,
+        line_hugging: nearLine(x) || nearLine(y),
         x: converted.x,
         y: converted.y,
-        description: `${hole.depth} ${hole.side}`
+        description: `${depth} ${side}`,
+        confidence: (!agree || hole.confidence === "low" || nearLine(x) || nearLine(y)) ? "low" : "high"
       };
-    });
+    }).filter(Boolean).sort((a: any, b: any) => a.hole - b.hole);
 
     const analysis: PinSheetAnalysis = {
       course_name: geminiData.course_name || courseName || "Unknown Course",
       date: geminiData.date || date || new Date().toISOString().split('T')[0],
-      green_speed: geminiData.green_speed || null,
+      green_speed: geminiData.green_speed || other?.green_speed || null,
       pins: pins,
       holes_detected: pins.length,
       confidence: pins.length === 18 ? "high" : (pins.length >= 16 ? "medium" : "low")

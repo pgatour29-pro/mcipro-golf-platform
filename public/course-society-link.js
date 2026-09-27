@@ -683,14 +683,16 @@
       var E = this.esc.bind(this), c = p.caddy, key = this._pkey(p), pk = this._pick;
       var open = !!(pk && pk.ev === ev.id && pk.key === key), h;
       var hlc = (this._hl && this._hl.ev === ev.id && this._hl.key === key) ? ' cl-hl' : '';
+      // QR guest (no-app venue page q.html) — amber pill so the counter knows why there is no app profile
+      var qrp = /^QR-GUEST-/.test(String(p.id || '')) ? '<span class="cl-qr">QR</span>' : '';
       if (c) {
-        h = '<div class="cl-p has' + (open ? ' open' : '') + hlc + '" data-pk="' + E(key) + '"><span class="cl-p-n">' + E(p.name) + '</span>' +
+        h = '<div class="cl-p has' + (open ? ' open' : '') + hlc + '" data-pk="' + E(key) + '"><span class="cl-p-n">' + E(p.name) + qrp + '</span>' +
           '<span class="cl-cd">' + this._photo(c.num, c.photo, 22) + '<b>#' + E(c.num) + '</b><i class="cl-st ' + (c.status === 'confirmed' ? 'conf' : 'pend') + '">' + E(this.t(c.status === 'confirmed' ? 'confirmed' : 'pending')) + '</i></span>' +
           (canEdit ? '<span class="cl-acts">' + (c.status !== 'confirmed' ? '<button class="cl-ic ok" data-a="cadok" title="' + E(this.t('confirmT')) + '" aria-label="' + E(this.t('confirmT')) + '">✓</button>' : '') +
             '<button class="cl-ic" data-a="cadpick" title="' + E(this.t('changeT')) + '" aria-label="' + E(this.t('changeT')) + '">✎</button>' +
             '<button class="cl-ic x" data-a="cadx" title="' + E(this.t('cancelT')) + '" aria-label="' + E(this.t('cancelT')) + '">✕</button></span>' : '') + '</div>';
       } else {
-        h = '<div class="cl-p' + (open ? ' open' : '') + hlc + '" data-pk="' + E(key) + '"><span class="cl-p-n">' + E(p.name) + '</span>' +
+        h = '<div class="cl-p' + (open ? ' open' : '') + hlc + '" data-pk="' + E(key) + '"><span class="cl-p-n">' + E(p.name) + qrp + '</span>' +
           (canEdit ? '<button class="cl-add' + (open ? ' on' : '') + '" data-a="cadpick">' + E(this.t('addCaddy')) + '</button>' : '<span class="cl-none">—</span>') + '</div>';
       }
       if (open) h += '<div class="cl-pick" data-pk="' + E(key) + '"><input class="cl-pick-in" type="text" autocomplete="off" placeholder="' + E(this.t('pickCaddy')) + '" value="' + E(pk.q || '') + '"><div class="cl-pick-list">' + this._pickListHtml(ev, p) + '</div></div>';
@@ -951,6 +953,7 @@
         '#clPanel .cl-pk.off em{color:var(--cl-red-soft)}',
         '#clPanel .cl-pk.out,#clPanel .cl-pk.off,#clPanel .cl-pk.grp{opacity:.8}',
         '#clPanel .cl-pk.busy{opacity:.5;pointer-events:none}',
+        '#clPanel .cl-qr{display:inline-block;margin-left:5px;font:800 9px/1 system-ui,sans-serif;letter-spacing:.06em;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:5px;padding:2px 4px;vertical-align:1px}',
         '#clPanel .cl-pk.none{color:var(--cl-muted);justify-content:center;border-top:1px solid var(--cl-line);margin-top:2px}',
         '@media (max-width:420px){#clPanel .cl-st{width:9px;height:9px;padding:0;border-radius:50%;font-size:0;background:#f59e0b}#clPanel .cl-st.conf{background:var(--cl-green)}#clPanel .cl-g-n{font-size:10px}#clPanel .cl-p-n{flex-basis:56px}#clPanel .cl-ic{width:28px}#clPanel .cl-acts{gap:3px}#clPanel .cl-pk{flex-wrap:wrap}#clPanel .cl-pk.out em,#clPanel .cl-pk.off em,#clPanel .cl-pk.grp em{flex:1 1 100%;text-align:left;padding-left:34px;margin-top:-3px}}',
         // thread

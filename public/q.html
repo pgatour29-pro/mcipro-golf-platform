@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#16a34a">
+<title>MyCaddiPro</title>
+<link rel="icon" href="/favicon.ico">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Instrument+Sans:wght@500;600;700&family=Outfit:wght@300;400&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
+<!--
+  QR GUEST VENUE PAGE (2026-09-27). mycaddipro.com/q/<venue> — one permanent QR per venue.
+  No app, no login: name + handicap + phone once, then register for society events at this venue and
+  request caddies here. Every read/write is a SECURITY DEFINER RPC in sql/qr_guest_venue_20260927.sql;
+  the phone keeps a random secret (localStorage qrg_token) that the DB checks on every write.
+  Venue matching = CourseLink token table (course-society-link.js), the same one the pro shop tee sheet
+  uses to find society events at its course. Event cards copy the golfer app's .scv3g-ec CSS.
+-->
+<style>
+:root{--g-bg:#F2F4F6;--g-card:#FFFFFF;--g-hair:rgba(15,23,42,.17);--g-ink:#10151B;--g-mut:#3E4956;--g-dim:#5C6875;--g-grnD:#16a34a;--g-blu:#2563eb;--g-amb:#b45309;--g-red:#e11d48;--g-box:#EDF0F3}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--g-bg);color:var(--g-ink);font-family:Inter,system-ui,sans-serif}
+body{min-height:100vh}
+button{font:inherit;color:inherit;cursor:pointer}
+.msi{font-family:'Material Symbols Outlined';font-weight:normal;font-style:normal;line-height:1;display:inline-block;vertical-align:middle;font-size:20px;letter-spacing:normal;text-transform:none;white-space:nowrap;-webkit-font-feature-settings:'liga';font-feature-settings:'liga'}
+.wrap{max-width:560px;margin:0 auto;padding-bottom:40px}
+.hd{position:sticky;top:0;z-index:5;height:56px;background:#fff;border-bottom:1px solid var(--g-hair);display:flex;align-items:center;gap:10px;padding:0 14px}
+.hd .ic{font-size:26px;color:var(--g-grnD)}
+.hd .t{font:700 15px/1.1 'Instrument Sans',sans-serif;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hd .t small{display:block;font:500 9.5px/1.3 'JetBrains Mono',monospace;color:var(--g-mut);letter-spacing:.02em;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis}
+.qrpill{font:700 9px/1 'JetBrains Mono',monospace;letter-spacing:.08em;color:var(--g-grnD);border:1px solid var(--g-grnD);border-radius:999px;padding:5px 8px;display:inline-flex;gap:3px;align-items:center;background:#fff}
+.qrpill .msi{font-size:12px}
+.pad{padding:12px}
+.lbl{font:600 9px/1 'JetBrains Mono',monospace;letter-spacing:.08em;color:var(--g-mut);text-transform:uppercase;margin:14px 2px 7px}
+.card{background:#fff;border:1px solid var(--g-hair);border-radius:16px;padding:14px}
+.inp{width:100%;height:46px;border:1px solid var(--g-hair);border-radius:12px;background:#fff;padding:0 12px;font:500 16px Inter,sans-serif;color:var(--g-ink);outline:none}
+.inp:focus{border-color:var(--g-grnD);box-shadow:0 0 0 3px rgba(34,197,94,.2)}
+.phrow{display:flex;gap:6px}.phrow .cc{flex:0 0 84px}
+.big{width:100%;height:50px;border:none;border-radius:14px;background:var(--g-grnD);color:#fff;font:700 15px Inter,sans-serif;display:flex;align-items:center;justify-content:center;gap:6px;margin-top:16px}
+.big:disabled{opacity:.55}
+.big.ghost{background:#fff;color:var(--g-ink);border:1px solid var(--g-hair)}
+.note{font:500 12px/1.45 Inter,sans-serif;color:var(--g-mut);margin-top:10px}
+.err{font:600 13px/1.4 Inter,sans-serif;color:#b91c1c;margin-top:10px}
+.hero{padding:26px 16px 6px;text-align:center}
+.hero .logo{width:64px;height:64px;border-radius:999px;background:var(--g-grnD);display:inline-flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.hero .logo .msi{font-size:36px;color:#fff}
+.hero h1{font:700 21px/1.2 'Instrument Sans',sans-serif;margin:10px 0 4px}
+.hero p{font:500 13px/1.4 Inter,sans-serif;color:var(--g-mut);margin:0}
+/* golfer app event card (.scv3g-ec, index.html ~9802) */
+.ec{background:var(--g-card);border:1px solid var(--g-hair);border-radius:16px;padding:11px 12px;display:flex;gap:11px;align-items:center;margin-bottom:8px}
+.ec.reg{border:2px solid #3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.28);padding:10px 11px}
+.ec .d{flex:0 0 44px;text-align:center;background:var(--g-box);border:1px solid var(--g-hair);border-radius:11px;padding:7px 0;align-self:flex-start}
+.ec .d .w{font:600 8px/1 'JetBrains Mono',monospace;color:var(--g-dim)}
+.ec .d .n{font:300 20px/1.1 Outfit,sans-serif}
+.ec .d.wknd{background:linear-gradient(135deg,#fef2f2,#fee2e2);border-color:rgba(220,38,38,.15)}.ec .d.wknd .w,.ec .d.wknd .n{color:#dc2626}
+.ec .m{flex:1;min-width:0}
+.ec .nm{font:700 15px/1.15 'Instrument Sans',sans-serif;display:flex;align-items:center;gap:6px;min-width:0}
+.ec .nm>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ec .nm img,.ec .nm .sl{width:18px;height:18px;border-radius:999px;flex:0 0 auto;object-fit:cover}
+.ec .nm .sl{background:var(--g-box);display:inline-flex;align-items:center;justify-content:center;font:700 8px Inter;color:var(--g-mut)}
+.ec .s{font:500 9.5px/1.4 'JetBrains Mono',monospace;color:var(--g-mut);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ec .tags{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+.tag{font:600 8px/1 'JetBrains Mono',monospace;border:1px solid var(--g-hair);border-radius:6px;padding:4px 6px;color:var(--g-mut);text-transform:uppercase}
+.tag.g{color:#fff;background:var(--g-grnD);border-color:var(--g-grnD)}
+.tag.b{color:var(--g-blu);border-color:rgba(96,165,250,.4)}
+.tag.r{color:var(--g-red);border-color:rgba(225,29,72,.4)}
+.ec .bar{height:5px;border-radius:999px;background:var(--g-box);overflow:hidden;margin-top:6px}
+.ec .bar i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#4ade80)}
+.ec .r{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end}
+.ec .fee{font:600 14px/1 'JetBrains Mono',monospace}
+.btn{margin-top:6px;border:none;border-radius:9px;padding:8px 12px;background:var(--g-grnD);color:#fff;font:700 9px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase}
+.btn.danger{background:transparent;border:1px solid rgba(225,29,72,.5);color:var(--g-red)}
+.btn.ghost{background:transparent;border:1px solid var(--g-hair);color:var(--g-mut)}
+.btn:disabled{opacity:.5}
+.tile{display:flex;align-items:center;gap:10px;padding:12px;border-color:var(--g-grnD);width:100%;text-align:left}
+.tile .msi{font-size:26px;color:var(--g-grnD)}
+.tile b{font:700 14px Inter;display:block}.tile span.sub{font:500 11px Inter;color:var(--g-mut)}
+.empty{text-align:center;font:500 13px/1.45 Inter;color:var(--g-mut);padding:14px 6px}
+/* sheet */
+.scrim{position:fixed;inset:0;background:rgba(10,13,16,.45);z-index:20}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;background:#fff;border-radius:20px 20px 0 0;padding:10px 14px calc(18px + env(safe-area-inset-bottom));max-width:560px;margin:0 auto;max-height:92vh;overflow:auto}
+.grab{width:40px;height:4px;border-radius:9px;background:#cbd5e1;margin:0 auto 10px}
+.opt{display:flex;align-items:center;gap:10px;border:1px solid var(--g-hair);border-radius:12px;padding:11px 12px;margin-top:8px;width:100%;background:#fff;text-align:left}
+.opt .msi{font-size:22px;color:var(--g-mut)}
+.opt .tx{flex:1;font:600 14px Inter}
+.opt .tx small{display:block;font:500 11px Inter;color:var(--g-mut);margin-top:2px}
+.opt.on{border-color:var(--g-grnD);background:#f0fdf4}.opt.on .msi{color:var(--g-grnD)}
+.opt.lock{opacity:.85}
+.sw{width:38px;height:22px;border-radius:99px;background:#cbd5e1;position:relative;flex:0 0 auto}
+.sw:after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:99px;background:#fff;transition:left .15s}
+.opt.on .sw{background:#16a34a}.opt.on .sw:after{left:19px}
+.tot{display:flex;justify-content:space-between;align-items:baseline;margin-top:14px;padding-top:12px;border-top:1px dashed var(--g-hair)}
+.tot b{font:700 20px 'JetBrains Mono',monospace}.tot span{font:600 12px Inter;color:var(--g-mut)}
+.ok{background:#f0fdf4;border:1px solid #86efac;border-radius:16px;padding:14px;display:flex;gap:10px;align-items:flex-start;margin-bottom:6px}
+.ok>.msi{color:#16a34a;font-size:26px}
+.ok b{font:700 15px Inter;display:block}.ok .okt{font:500 12px/1.45 Inter;color:#14532d}
+/* caddies */
+.dstrip{display:flex;gap:6px;overflow-x:auto;margin-bottom:10px;padding-bottom:2px;scrollbar-width:none}
+.dc{flex:0 0 46px;text-align:center;background:#fff;border:1px solid var(--g-hair);border-radius:11px;padding:6px 0}
+.dc .w{font:600 8px/1 'JetBrains Mono',monospace;color:var(--g-dim)}.dc .n{font:300 19px/1.15 Outfit,sans-serif}
+.dc.we{background:linear-gradient(135deg,#fef2f2,#fee2e2);border-color:rgba(220,38,38,.15)}.dc.we .w,.dc.we .n{color:#dc2626}
+.dc.on{background:#16a34a;border-color:#16a34a;color:#fff}.dc.on .w,.dc.on .n{color:#fff}
+.tt{display:flex;gap:6px;overflow-x:auto;margin-bottom:10px;padding-bottom:2px;scrollbar-width:none}
+.tt button{flex:0 0 auto;font:600 12px 'JetBrains Mono',monospace;border:1px solid var(--g-hair);background:#fff;border-radius:9px;padding:8px 9px}
+.tt button.on{background:#10151B;color:#fff;border-color:#10151B}
+.cg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+@media (min-width:480px){.cg{grid-template-columns:repeat(4,1fr)}}
+.cd{background:#fff;border:1px solid var(--g-hair);border-radius:14px;overflow:hidden;text-align:center;position:relative;padding:0}
+.cd .ph{width:100%;height:92px;object-fit:cover;display:block;background:#e2e8f0}
+.cd .ph.none{display:flex;align-items:center;justify-content:center}.cd .ph.none .msi{font-size:36px;color:#94a3b8}
+.cd .no{position:absolute;top:6px;left:6px;font:700 10px 'JetBrains Mono',monospace;background:#10151B;color:#fff;border-radius:7px;padding:3px 6px}
+.cd .cn{font:700 12.5px 'Instrument Sans',sans-serif;margin-top:6px;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cd .cr{font:500 8.5px 'JetBrains Mono',monospace;color:var(--g-mut);margin:2px 4px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cd.pick{border:2px solid #16a34a;box-shadow:0 0 0 2px rgba(34,197,94,.28)}
+.cd.pick:after{content:'check_circle';font-family:'Material Symbols Outlined';position:absolute;top:5px;right:6px;color:#16a34a;background:#fff;border-radius:99px;font-size:20px;line-height:1}
+.cd.busy{opacity:.45}.cd.busy .cr{color:#b91c1c;font-weight:700}
+.stick{position:fixed;left:0;right:0;bottom:0;z-index:6;max-width:560px;margin:0 auto;background:#fff;border-top:1px solid var(--g-hair);padding:10px 12px calc(14px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px rgba(15,23,42,.06)}
+.cadpage{padding-bottom:170px}
+.stick .sum{font:600 12px Inter;color:var(--g-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stick .sum b{color:var(--g-ink)}
+.mycad{display:flex;gap:10px;align-items:center;padding:10px;margin-bottom:8px}
+.mycad img,.mycad .ph0{width:48px;height:48px;border-radius:12px;object-fit:cover;background:#e2e8f0;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
+.mycad .tx{flex:1;min-width:0}.mycad .tx b{font:700 14px 'Instrument Sans',sans-serif;display:block}
+.mycad .tx span{font:500 10px/1.4 'JetBrains Mono',monospace;color:var(--g-mut);display:block}
+.foot{text-align:center;font:500 12px/1.5 Inter;color:var(--g-mut);margin-top:18px}
+.foot a{color:var(--g-grnD);font-weight:700;text-decoration:none}
+.foot button{background:none;border:none;color:var(--g-mut);text-decoration:underline;font:500 12px Inter;margin-top:6px}
+.busyveil{position:fixed;inset:0;z-index:40;background:rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center}
+.spin{width:34px;height:34px;border-radius:99px;border:3px solid #bbf7d0;border-top-color:#16a34a;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;left:16px;right:16px;bottom:24px;z-index:50;max-width:520px;margin:0 auto;background:#10151B;color:#fff;border-radius:12px;padding:12px 14px;font:600 14px/1.35 Inter}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="hero"><div class="spin" style="margin:40px auto"></div></div></div>
+<script src="/course-society-link.js"></script>
+<script>
+(function () {
+  'use strict';
+  // publishable key — the same public value as supabase-config.js (this page skips the app's client)
+  var SB_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co', SB_KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
+  var CL = window.CourseLink;
+
+  // ---------- i18n (EN/TH/KO/JA) ----------
+  var L = {
+    en: { intro: 'Join a game here or book a caddy. No app to download.', name: 'Your name', hcp: 'Handicap', phone: 'Phone (for the organizer)',
+      go: 'Show games at {v}', remember: 'This phone remembers you. Nothing to install.', needName: 'Please type your full name.',
+      needPhone: 'Please type a phone number the organizer can call.', needHcp: 'Handicap must be between -10 and 54.',
+      bookCaddy: 'Book a caddy', bookCaddySub: 'Pick your caddy for any tee time', myGames: 'My games', myCaddies: 'My caddies',
+      gamesHere: 'Society games here', none: 'No society games booked here yet. You can still book a caddy.', register: 'Register',
+      cancel: 'Cancel', closed: 'Closed', full: 'Full', open: 'Open', joined: '+{n} joined', today: 'Today', tomorrow: 'Tomorrow',
+      registered: '✓ Registered', dep: 'DEP', tee: 'TEE', van: 'Van seat', vanSub: 'Leaves {t} from the society pick-up',
+      caddyQ: 'I want a caddy', caddyQSub: 'Pick one next', comp: 'Play in the competition', compSub: 'Prizes and 2s pot',
+      compTrgg: 'Included for every player', youPay: 'You pay on the day', confirm: 'Confirm registration',
+      youIn: "You're in, {n}.", youInSub: "{e}, {d}. You're on the organizer's list now.", sure: 'Tap again to cancel',
+      cancelled: 'Registration cancelled.', fullMsg: 'Sorry, this game just filled up.', pickCaddy: 'Pick your caddy',
+      forGame: 'For {e} · {d} · {t}', req: 'Request this caddy', reqd: 'Caddy requested. The pro shop will confirm.',
+      taken: 'That caddy was just taken. Please pick another.', booked: 'Booked', dayOff: 'Day off', noCaddies: 'No caddies with a name and photo on this course yet.',
+      pending: 'waiting for the pro shop to confirm', confirmedS: 'confirmed', notYou: 'Not you? Start again', getApp: 'Want scores, handicap and results too?',
+      getAppL: 'Get the full app', skip: 'Skip, no caddy', back: 'Back', err: 'Something went wrong. Please try again.',
+      venueUnknown: 'This QR code is not linked to a course yet.', pickTime: 'Pick a tee time', choose: 'Tap a caddy', limit: 'Two caddy requests per day at most.' },
+    th: { intro: 'สมัครเล่นกอล์ฟหรือจองแคดดี้ที่นี่ ไม่ต้องดาวน์โหลดแอป', name: 'ชื่อของคุณ', hcp: 'แฮนดิแคป', phone: 'เบอร์โทร (สำหรับผู้จัด)',
+      go: 'ดูเกมที่ {v}', remember: 'โทรศัพท์นี้จะจำคุณไว้ ไม่ต้องติดตั้งอะไร', needName: 'กรุณาพิมพ์ชื่อเต็ม',
+      needPhone: 'กรุณาพิมพ์เบอร์โทรที่ผู้จัดติดต่อได้', needHcp: 'แฮนดิแคปต้องอยู่ระหว่าง -10 ถึง 54',
+      bookCaddy: 'จองแคดดี้', bookCaddySub: 'เลือกแคดดี้สำหรับเวลาออกรอบใดก็ได้', myGames: 'เกมของฉัน', myCaddies: 'แคดดี้ของฉัน',
+      gamesHere: 'เกมของสมาคมที่นี่', none: 'ยังไม่มีเกมของสมาคมที่นี่ คุณยังจองแคดดี้ได้', register: 'สมัคร',
+      cancel: 'ยกเลิก', closed: 'ปิดรับ', full: 'เต็ม', open: 'เปิด', joined: '+{n} คน', today: 'วันนี้', tomorrow: 'พรุ่งนี้',
+      registered: '✓ สมัครแล้ว', dep: 'ออก', tee: 'ที', van: 'ที่นั่งรถตู้', vanSub: 'ออก {t} จากจุดรับของสมาคม',
+      caddyQ: 'ต้องการแคดดี้', caddyQSub: 'เลือกในขั้นต่อไป', comp: 'ร่วมการแข่งขัน', compSub: 'รางวัลและพอต 2s',
+      compTrgg: 'รวมสำหรับผู้เล่นทุกคน', youPay: 'ชำระในวันเล่น', confirm: 'ยืนยันการสมัคร',
+      youIn: 'สมัครแล้ว {n}', youInSub: '{e}, {d} ชื่อคุณอยู่ในรายชื่อผู้จัดแล้ว', sure: 'แตะอีกครั้งเพื่อยกเลิก',
+      cancelled: 'ยกเลิกการสมัครแล้ว', fullMsg: 'ขออภัย เกมนี้เต็มแล้ว', pickCaddy: 'เลือกแคดดี้',
+      forGame: 'สำหรับ {e} · {d} · {t}', req: 'ขอแคดดี้คนนี้', reqd: 'ส่งคำขอแคดดี้แล้ว โปรช็อปจะยืนยัน',
+      taken: 'แคดดี้คนนี้เพิ่งถูกจอง กรุณาเลือกคนอื่น', booked: 'ถูกจอง', dayOff: 'วันหยุด', noCaddies: 'สนามนี้ยังไม่มีแคดดี้ที่มีชื่อและรูป',
+      pending: 'รอโปรช็อปยืนยัน', confirmedS: 'ยืนยันแล้ว', notYou: 'ไม่ใช่คุณ? เริ่มใหม่', getApp: 'อยากได้สกอร์ แฮนดิแคป และผลการแข่งขันด้วย?',
+      getAppL: 'ใช้แอปเต็ม', skip: 'ข้าม ไม่ใช้แคดดี้', back: 'กลับ', err: 'เกิดข้อผิดพลาด กรุณาลองใหม่',
+      venueUnknown: 'คิวอาร์โค้ดนี้ยังไม่ได้เชื่อมกับสนาม', pickTime: 'เลือกเวลาออกรอบ', choose: 'แตะเลือกแคดดี้', limit: 'ขอแคดดี้ได้สูงสุดวันละ 2 ครั้ง' },
+    ko: { intro: '여기서 게임에 참가하거나 캐디를 예약하세요. 앱 설치가 필요 없습니다.', name: '이름', hcp: '핸디캡', phone: '전화번호 (주최자용)',
+      go: '{v} 게임 보기', remember: '이 휴대폰이 기억합니다. 설치할 것이 없습니다.', needName: '전체 이름을 입력하세요.',
+      needPhone: '주최자가 연락할 수 있는 전화번호를 입력하세요.', needHcp: '핸디캡은 -10에서 54 사이여야 합니다.',
+      bookCaddy: '캐디 예약', bookCaddySub: '원하는 티타임에 캐디 선택', myGames: '내 게임', myCaddies: '내 캐디',
+      gamesHere: '이곳의 소사이어티 게임', none: '아직 이곳에 예정된 게임이 없습니다. 캐디 예약은 가능합니다.', register: '등록',
+      cancel: '취소', closed: '마감', full: '만석', open: '모집중', joined: '+{n}명', today: '오늘', tomorrow: '내일',
+      registered: '✓ 등록됨', dep: '출발', tee: '티', van: '밴 좌석', vanSub: '소사이어티 픽업 장소에서 {t} 출발',
+      caddyQ: '캐디가 필요합니다', caddyQSub: '다음 단계에서 선택', comp: '대회 참가', compSub: '상품과 2s 팟',
+      compTrgg: '모든 참가자 포함', youPay: '당일 결제', confirm: '등록 확인',
+      youIn: '{n}님 등록 완료', youInSub: '{e}, {d}. 주최자 명단에 올라갔습니다.', sure: '한 번 더 누르면 취소',
+      cancelled: '등록이 취소되었습니다.', fullMsg: '죄송합니다. 방금 만석이 되었습니다.', pickCaddy: '캐디 선택',
+      forGame: '{e} · {d} · {t}', req: '이 캐디 요청', reqd: '캐디 요청 완료. 프로샵이 확인합니다.',
+      taken: '방금 다른 사람이 예약했습니다. 다른 캐디를 선택하세요.', booked: '예약됨', dayOff: '휴무', noCaddies: '이 코스에 이름과 사진이 있는 캐디가 아직 없습니다.',
+      pending: '프로샵 확인 대기중', confirmedS: '확정', notYou: '본인이 아닌가요? 다시 시작', getApp: '스코어, 핸디캡, 결과도 원하세요?',
+      getAppL: '전체 앱 사용', skip: '건너뛰기, 캐디 없음', back: '뒤로', err: '문제가 발생했습니다. 다시 시도하세요.',
+      venueUnknown: '이 QR 코드는 아직 코스에 연결되지 않았습니다.', pickTime: '티타임 선택', choose: '캐디를 누르세요', limit: '하루 최대 2건의 캐디 요청.' },
+    ja: { intro: 'ここでゲームに参加、またはキャディを予約。アプリのダウンロードは不要です。', name: 'お名前', hcp: 'ハンディキャップ', phone: '電話番号（主催者用）',
+      go: '{v}のゲームを見る', remember: 'この端末があなたを記憶します。インストール不要。', needName: 'フルネームを入力してください。',
+      needPhone: '主催者が連絡できる電話番号を入力してください。', needHcp: 'ハンディキャップは-10から54の間です。',
+      bookCaddy: 'キャディ予約', bookCaddySub: '好きなティータイムにキャディを選択', myGames: 'マイゲーム', myCaddies: 'マイキャディ',
+      gamesHere: 'ここでのソサエティゲーム', none: 'まだここで予定されているゲームはありません。キャディ予約はできます。', register: '登録',
+      cancel: 'キャンセル', closed: '締切', full: '満員', open: '募集中', joined: '+{n}人', today: '今日', tomorrow: '明日',
+      registered: '✓ 登録済み', dep: '出発', tee: 'ティー', van: 'バン座席', vanSub: 'ソサエティの集合場所から{t}出発',
+      caddyQ: 'キャディを希望', caddyQSub: '次で選択', comp: 'コンペに参加', compSub: '賞品と2sポット',
+      compTrgg: '全員に含まれます', youPay: '当日払い', confirm: '登録を確定',
+      youIn: '{n}さん、登録完了', youInSub: '{e}、{d}。主催者のリストに載りました。', sure: 'もう一度タップでキャンセル',
+      cancelled: '登録をキャンセルしました。', fullMsg: '申し訳ありません、満員になりました。', pickCaddy: 'キャディを選ぶ',
+      forGame: '{e} · {d} · {t}', req: 'このキャディを依頼', reqd: 'キャディを依頼しました。プロショップが確認します。',
+      taken: '先に予約されました。別のキャディを選んでください。', booked: '予約済み', dayOff: '休み', noCaddies: 'このコースには名前と写真のあるキャディがまだいません。',
+      pending: 'プロショップの確認待ち', confirmedS: '確定', notYou: '別の方ですか？やり直す', getApp: 'スコア、ハンディ、結果も見たいですか？',
+      getAppL: 'フル版アプリを使う', skip: 'スキップ（キャディなし）', back: '戻る', err: 'エラーが発生しました。もう一度お試しください。',
+      venueUnknown: 'このQRコードはまだコースに連携されていません。', pickTime: 'ティータイムを選択', choose: 'キャディをタップ', limit: 'キャディ依頼は1日2件まで。' }
+  };
+  var lang = (function () { var l = String(navigator.language || 'en').slice(0, 2).toLowerCase(); return L[l] ? l : 'en'; })();
+  var locale = { en: 'en-GB', th: 'th-TH', ko: 'ko-KR', ja: 'ja-JP' }[lang];
+  document.documentElement.lang = lang;
+  function t(k, v) { var s = (L[lang][k] != null ? L[lang][k] : L.en[k]) || k; if (v) Object.keys(v).forEach(function (x) { s = s.split('{' + x + '}').join(v[x]); }); return s; }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  // ---------- storage (conveniences only; the DB is the truth) ----------
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+
+  // ---------- RPC ----------
+  async function rpc(fn, args) {
+    var r = await fetch(SB_URL + '/rest/v1/rpc/' + fn, { method: 'POST',
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(args || {}) });
+    var body = null; try { body = await r.json(); } catch (e) {}
+    if (!r.ok) { var m = (body && (body.message || body.hint)) || ('HTTP ' + r.status); var err = new Error(m); err.code = body && body.code; throw err; }
+    return body;
+  }
+  async function rest(path) {
+    var r = await fetch(SB_URL + '/rest/v1/' + path, { headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY } });
+    if (!r.ok) throw new Error('HTTP ' + r.status); return r.json();
+  }
+
+  // ---------- venue ----------
+  var key = (location.pathname.match(/^\/q\/([^\/?#]+)/) || [])[1] || new URLSearchParams(location.search).get('v') || '';
+  key = decodeURIComponent(key).toLowerCase().replace(/[^a-z0-9-]/g, '');
+  var V = { key: key, venue: null, slugs: [], name: '' };
+  (function resolve() {
+    if (!CL || !key) return;
+    var exact = CL.KEYS.find(function (k) { return k[0] === key; });
+    var venue = exact ? CL.venueOf(key) : key.replace(/-/g, ' ');
+    var slugs = CL.KEYS.filter(function (k) { return CL.venueOf(k[0]) === venue; }).map(function (k) { return k[0]; });
+    if (!slugs.length) return;
+    V.venue = venue; V.slugs = slugs;
+    V.name = venue.replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  })();
+  // proper venue name ("Burapha Golf Club") from the courses table: the shortest name on this venue
+  var _vn = lsGet('qrg_vn_' + key); if (_vn && V.venue) V.name = _vn;
+  if (V.venue) rest('courses?select=id,name').then(function (rows) {
+    var hits = (rows || []).filter(function (c) { return c && c.name && atVenue(c.name) && !/\b(nine|loop)\b|\(|\s-\s|\//i.test(c.name); })
+      .map(function (c) { return c.name.replace(/\s+/g, ' ').trim(); }).sort(function (a, b) { return a.length - b.length; });
+    if (hits[0] && hits[0] !== V.name) { V.name = hits[0]; lsSet('qrg_vn_' + key, V.name); render(); }
+  }).catch(function () {});
+  function atVenue(courseName) { var s = CL.slugFor(courseName); return !!s && V.slugs.indexOf(s) >= 0; }
+
+  // ---------- state ----------
+  var S = { token: lsGet('qrg_token'), me: null, events: [], caddies: [], view: 'home', flash: null, sheet: null, cad: null, armed: null };
+  try { S.me = JSON.parse(lsGet('qrg_me') || 'null'); } catch (e) { S.me = null; }
+
+  function bkkToday() { return new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10); }
+  function addDays(iso, n) { var d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+  function dObj(iso) { return new Date(iso + 'T12:00:00Z'); }
+  function wd(iso) { return dObj(iso).toLocaleDateString(locale, { weekday: 'short', timeZone: 'UTC' }).toUpperCase(); }
+  function dn(iso) { return dObj(iso).getUTCDate(); }
+  function isWe(iso) { var g = dObj(iso).getUTCDay(); return g === 0 || g === 6; }
+  function longDate(iso) { return dObj(iso).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }); }
+  function hm(x) { if (!x) return ''; var m = String(x).match(/^(\d{1,2}):(\d{2})/); if (!m) return ''; var h = +m[1], ap = h >= 12 ? 'PM' : 'AM'; return ((h % 12) || 12) + ':' + m[2] + ' ' + ap; }
+  function mins(x) { var m = String(x || '').match(/^(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+  function hhmm(v) { return String(Math.floor(v / 60)).padStart(2, '0') + ':' + String(v % 60).padStart(2, '0'); }
+  function baht(n) { return '฿' + Math.round(+n || 0).toLocaleString('en-US'); }
+  function shortTitle(e) { var c = String(e.course_name || e.title || '').replace(/\s+/g, ' ').trim();
+    c = c.toLowerCase().replace(/\b(golf|country|club|cc|gc|resort|and|&)\b/g, ' ').replace(/[&]/g, ' ').replace(/\s+/g, ' ').trim() || c.toLowerCase();
+    return c.replace(/\b\w/g, function (x) { return x.toUpperCase(); }); }
+  function socAbbr(e) { var m = String(e.title || '').match(/^([A-Z]{2,6})\s*-/); if (m) return m[1]; return String(e.society_name || '').split(/\s+/).map(function (w) { return w[0]; }).join('').slice(0, 5).toUpperCase(); }
+  function feeEst(e, o) {
+    var base = +e.entry_fee || 0, tf = +e.transport_fee || 0, cf = +e.competition_fee || 0;
+    if (base > 0) { tf = tf || 300; cf = cf || 250; }
+    var comp = e.is_trgg || o.comp;
+    return base + (+e.non_member_fee || 0) + (o.van ? tf : 0) + (comp ? cf : 0) + (e.is_trgg ? 100 : 0);
+  }
+  function cutoffPassed(e) { return e.cutoff && new Date(e.cutoff).getTime() < Date.now(); }
+  function isFull(e) { return e.capacity != null && +e.regs >= +e.capacity; }
+
+  // ---------- render ----------
+  var app = document.getElementById('app');
+  function toast(msg) { var d = document.createElement('div'); d.className = 'toast'; d.textContent = msg; document.body.appendChild(d); setTimeout(function () { d.remove(); }, 3200); }
+  function veil(on) { var v = document.getElementById('qveil'); if (on && !v) { v = document.createElement('div'); v.id = 'qveil'; v.className = 'busyveil'; v.innerHTML = '<div class="spin"></div>'; document.body.appendChild(v); } else if (!on && v) v.remove(); }
+  function header(sub) {
+    return '<div class="hd"><span class="msi ic">golf_course</span><div class="t">' + esc(V.name) + '<small>' + esc(sub || '') + '</small></div>' +
+      '<span class="qrpill"><span class="msi">qr_code_2</span>GUEST</span></div>';
+  }
+  function meLine() { return S.me ? (S.me.name + (S.me.handicap != null ? ' · HCP ' + S.me.handicap : '')) : ''; }
+
+  function renderSignin(errMsg) {
+    var cc = lsGet('qrg_cc') || '+66';
+    app.innerHTML = '<div class="hero"><div class="logo"><span class="msi">golf_course</span></div><h1>' + esc(V.name) + '</h1><p>' + esc(t('intro')) + '</p></div>' +
+      '<div class="pad"><form class="card" id="qsf" autocomplete="off" novalidate>' +
+      '<div class="lbl" style="margin-top:0">' + esc(t('name')) + '</div><input class="inp" id="qn" autocomplete="name" maxlength="60" value="' + esc(S.me ? S.me.name : '') + '">' +
+      '<div class="lbl">' + esc(t('hcp')) + '</div><input class="inp" id="qh" inputmode="decimal" maxlength="5" value="' + esc(S.me && S.me.handicap != null ? S.me.handicap : '') + '">' +
+      '<div class="lbl">' + esc(t('phone')) + '</div><div class="phrow"><input class="inp cc" id="qcc" inputmode="tel" maxlength="5" value="' + esc(cc) + '"><input class="inp" id="qp" inputmode="tel" autocomplete="tel-national" maxlength="16"></div>' +
+      (errMsg ? '<div class="err">' + esc(errMsg) + '</div>' : '') +
+      '<button class="big" type="submit" id="qgo">' + esc(t('go', { v: V.name })) + ' <span class="msi">arrow_forward</span></button>' +
+      '<div class="note">' + esc(t('remember')) + '</div></form></div>';
+    document.getElementById('qsf').addEventListener('submit', function (ev) { ev.preventDefault(); signin(); });
+  }
+  async function signin() {
+    var name = document.getElementById('qn').value.replace(/\s+/g, ' ').trim();
+    var hRaw = document.getElementById('qh').value.trim().replace(',', '.');
+    var cc = document.getElementById('qcc').value.replace(/\D/g, '') || '66';
+    var ph = document.getElementById('qp').value.replace(/\D/g, '');
+    if (name.length < 2) return renderSignin(t('needName'));
+    var hcp = hRaw === '' ? null : parseFloat(hRaw.replace(/^\+/, '-'));   // "+2" = plus handicap
+    if (hRaw !== '' && (isNaN(hcp) || hcp < -10 || hcp > 54)) return renderSignin(t('needHcp'));
+    if (ph.length < 7) return renderSignin(t('needPhone'));
+    var full = (ph.charAt(0) === '0' ? cc + ph.slice(1) : cc + ph);
+    var tok = S.token;
+    if (!tok) { var a = new Uint8Array(32); crypto.getRandomValues(a); tok = Array.from(a).map(function (b) { return b.toString(16).padStart(2, '0'); }).join(''); }
+    veil(true);
+    try {
+      var me = await rpc('qr_guest_start', { p_name: name, p_handicap: hcp, p_phone: full, p_token: tok });
+      S.token = tok; S.me = me; lsSet('qrg_token', tok); lsSet('qrg_me', JSON.stringify(me)); lsSet('qrg_cc', '+' + cc);
+      await load(); render();
+    } catch (e) { renderSignin(t('err')); console.warn('[QR] start', e); }
+    finally { veil(false); }
+  }
+
+  var _loadSeq = 0;
+  async function load() {
+    var seq = ++_loadSeq;
+    var res = await Promise.all([rpc('qr_upcoming_events', { p_token: S.token || null }), S.token ? rpc('qr_guest_me', { p_token: S.token }).catch(function (e) { return { _err: e }; }) : null]);
+    if (seq !== _loadSeq) return;
+    S.loaded = true;
+    S.events = (res[0] || []).filter(function (e) { return atVenue(e.course_name); });
+    if (res[1] && res[1]._err && /QR_AUTH/.test(res[1]._err.message)) { S.token = null; S.me = null; lsSet('qrg_token', null); return; }
+    if (res[1] && res[1].guest) { S.me = res[1].guest; lsSet('qrg_me', JSON.stringify(S.me)); S.caddies = res[1].caddies || []; }
+  }
+
+  function card(e) {
+    var today = bkkToday(), mine = e.mine, closed = cutoffPassed(e), full = isFull(e) && !mine;
+    var tags = [];
+    if (mine) tags.push('<span class="tag g">' + esc(t('registered')) + '</span>');
+    else if (e.event_date === today) tags.push('<span class="tag g">' + esc(t('today')) + '</span>');
+    else if (e.event_date === addDays(today, 1)) tags.push('<span class="tag g">' + esc(t('tomorrow')) + '</span>');
+    if (!mine) tags.push(closed ? '<span class="tag r">' + esc(t('closed')) + '</span>' : full ? '<span class="tag r">' + esc(t('full')) + '</span>' : '<span class="tag">' + esc(t('open')) + '</span>');
+    if (+e.regs > 0) tags.push('<span class="tag b">' + esc(t('joined', { n: e.regs })) + '</span>');
+    var pct = e.capacity ? Math.min(100, Math.round(100 * e.regs / e.capacity)) : Math.min(100, Math.round(100 * e.regs / 40));
+    var logo = e.society_logo ? '<img src="' + esc(e.society_logo) + '" alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'">' : '<span class="sl">' + esc(socAbbr(e).slice(0, 2)) + '</span>';
+    var sub = (e.departure_time ? t('dep') + ' ' + hm(e.departure_time) + ' · ' : '') + (e.start_time ? t('tee') + ' ' + hm(e.start_time) : '');
+    var right = '<div class="fee">' + baht(mine ? mine.total_fee : e.entry_fee) + '</div>';
+    if (mine) right += '<button class="btn danger" data-act="unreg" data-id="' + e.id + '">' + esc(S.armed === e.id ? t('sure') : t('cancel')) + '</button>';
+    else right += '<button class="btn" data-act="reg" data-id="' + e.id + '"' + (closed || full ? ' disabled' : '') + '>' + esc(t('register')) + '</button>';
+    return '<div class="ec' + (mine ? ' reg' : '') + '"><div class="d' + (isWe(e.event_date) ? ' wknd' : '') + '"><div class="w">' + esc(wd(e.event_date)) + '</div><div class="n">' + dn(e.event_date) + '</div></div>' +
+      '<div class="m"><div class="nm">' + logo + '<span>' + esc(socAbbr(e) + ' · ' + shortTitle(e)) + '</span></div><div class="s">' + esc(sub) + '</div>' +
+      '<div class="tags">' + tags.join('') + '</div>' + (mine ? '' : '<div class="bar"><i style="width:' + pct + '%"></i></div>') + '</div><div class="r">' + right + '</div></div>';
+  }
+  function cadRow(c) {
+    var ph = c.photo_url ? '<img src="' + esc(c.photo_url) + '" alt="" loading="lazy">' : '<div class="ph0"><span class="msi">person</span></div>';
+    return '<div class="card mycad">' + ph + '<div class="tx"><b>#' + esc(c.caddy_number || '') + ' · ' + esc(c.caddy_name || '') + '</b><span>' +
+      esc(longDate(c.booking_date) + ' · ' + c.tee_time) + '</span><span>' + esc(c.course_name || '') + ' · ' +
+      esc(c.status === 'confirmed' ? t('confirmedS') : t('pending')) + '</span></div><button class="btn danger" data-act="uncad" data-id="' + c.id + '">' +
+      esc(S.armed === c.id ? t('sure') : t('cancel')) + '</button></div>';
+  }
+
+  function renderHome() {
+    var mine = S.events.filter(function (e) { return e.mine; }), open = S.events.filter(function (e) { return !e.mine; });
+    var myCads = S.caddies;
+    var h = header(meLine()) + '<div class="pad">';
+    if (!S.loaded) return (app.innerHTML = h + '<div class="spin" style="margin:40px auto"></div></div>');
+    if (S.flash) h += '<div class="ok"><span class="msi">check_circle</span><div><b>' + esc(S.flash.title) + '</b>' + (S.flash.body ? '<div class="okt">' + esc(S.flash.body) + '</div>' : '') + '</div></div>';
+    h += '<button class="card tile" data-act="caddy"><span class="msi">person_pin</span><div style="flex:1"><b>' + esc(t('bookCaddy')) + '</b><span class="sub">' + esc(t('bookCaddySub')) + '</span></div><span class="msi">chevron_right</span></button>';
+    if (mine.length) h += '<div class="lbl">' + esc(t('myGames')) + '</div>' + mine.map(card).join('');
+    if (myCads.length) h += '<div class="lbl">' + esc(t('myCaddies')) + '</div>' + myCads.map(cadRow).join('');
+    h += '<div class="lbl">' + esc(t('gamesHere')) + '</div>' + (open.length ? open.map(card).join('') : '<div class="empty">' + esc(t('none')) + '</div>');
+    h += '<div class="foot">' + esc(t('getApp')) + ' <a href="/">' + esc(t('getAppL')) + '</a><br><button data-act="out">' + esc(t('notYou')) + '</button></div></div>';
+    app.innerHTML = h;
+  }
+
+  function renderSheet() {
+    var old = document.getElementById('qsheet'); if (old) old.remove();
+    if (!S.sheet) return;
+    var e = S.events.find(function (x) { return x.id === S.sheet.id; }); if (!e) { S.sheet = null; return; }
+    var o = S.sheet, total = feeEst(e, o);
+    var opt = function (k, icon, title, sub, on, lock) { return '<button class="opt' + (on ? ' on' : '') + (lock ? ' lock' : '') + '" data-act="opt" data-k="' + k + '"' + (lock ? ' disabled' : '') + '><span class="msi">' + icon + '</span><div class="tx">' + esc(title) + '<small>' + esc(sub) + '</small></div><div class="sw"></div></button>'; };
+    var d = document.createElement('div'); d.id = 'qsheet';
+    d.innerHTML = '<div class="scrim" data-act="close"></div><div class="sheet"><div class="grab"></div>' +
+      '<div style="font:700 17px \'Instrument Sans\',sans-serif">' + esc(socAbbr(e) + ' · ' + shortTitle(e)) + '</div>' +
+      '<div style="font:500 10px \'JetBrains Mono\',monospace;color:#3E4956;margin-top:3px;text-transform:uppercase">' + esc(longDate(e.event_date) + (e.departure_time ? ' · ' + t('dep') + ' ' + hm(e.departure_time) : '') + (e.start_time ? ' · ' + t('tee') + ' ' + hm(e.start_time) : '')) + '</div>' +
+      (e.departure_time ? opt('van', 'airport_shuttle', t('van'), t('vanSub', { t: hm(e.departure_time) }), o.van) : '') +
+      opt('cad', 'person_pin', t('caddyQ'), t('caddyQSub'), o.cad) +
+      opt('comp', 'emoji_events', t('comp'), e.is_trgg ? t('compTrgg') : t('compSub'), e.is_trgg || o.comp, e.is_trgg) +
+      '<div class="tot"><span>' + esc(t('youPay')) + '</span><b>' + baht(total) + '</b></div>' +
+      '<button class="big" data-act="confirm"><span class="msi">how_to_reg</span>' + esc(t('confirm')) + '</button></div>';
+    document.body.appendChild(d);
+  }
+
+  // caddy picker: S.cad = { date, time, eventId, pick, list, loading }
+  var TIMES = []; for (var m = 6 * 60; m <= 13 * 60 + 30; m += 30) TIMES.push(hhmm(m));
+  async function loadCaddies() {
+    var c = S.cad; c.loading = true; render();
+    try {
+      var rows = await rpc('qr_venue_caddies', { p_course_ids: V.slugs.concat([V.venue.replace(/ /g, '-'), V.venue.replace(/ /g, '_'), V.venue.replace(/ /g, '')]), p_name_prefix: V.venue.split(' ')[0], p_date: c.date });
+      if (S.cad !== c) return;
+      c.list = (rows || []).filter(function (r) { return atVenue(r.course_name) || V.slugs.indexOf(r.course_id) >= 0 || (r.course_id || '').replace(/[_-]/g, ' ') === V.venue; });
+    } catch (e) { c.list = []; console.warn('[QR] caddies', e); }
+    c.loading = false; render();
+  }
+  function nowBkkMins() { return mins(new Date(Date.now() + 7 * 3600e3).toISOString().slice(11, 16)); }
+  function timesFor(iso) { var today = bkkToday(), nm = nowBkkMins(); return TIMES.filter(function (x) { return iso !== today || mins(x) > nm + 30; }); }
+  function firstDay() { var d = bkkToday(); return timesFor(d).length ? d : addDays(d, 1); }
+  function busyAt(r, time) {
+    if (r.day_off) return t('dayOff');
+    var tm = mins(time); if (tm == null) return null;
+    for (var i = 0; i < (r.busy || []).length; i++) { var b = mins(r.busy[i]); if (b != null && Math.abs(b - tm) < (r.block || 255)) return t('booked') + ' ' + r.busy[i]; }
+    return null;
+  }
+  function renderCaddy() {
+    var c = S.cad, ev = c.eventId ? S.events.find(function (x) { return x.id === c.eventId; }) : null;
+    var h = header(meLine()) + '<div class="pad cadpage">';
+    h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><button class="btn ghost" data-act="home" style="margin:0"><span class="msi" style="font-size:14px">arrow_back</span> ' + esc(t('back')) + '</button><b style="font:700 16px \'Instrument Sans\',sans-serif">' + esc(t('pickCaddy')) + '</b></div>';
+    if (ev) {
+      h += '<div class="note" style="margin:0 0 10px">' + esc(t('forGame', { e: socAbbr(ev) + ' · ' + shortTitle(ev), d: longDate(ev.event_date), t: hm(ev.start_time) })) + '</div>';
+    } else {
+      var first = firstDay(), days = ''; for (var i = 0; i < 14; i++) { var iso = addDays(first, i); days += '<button class="dc' + (iso === c.date ? ' on' : isWe(iso) ? ' we' : '') + '" data-act="day" data-d="' + iso + '"><div class="w">' + esc(wd(iso)) + '</div><div class="n">' + dn(iso) + '</div></button>'; }
+      var times = timesFor(c.date);
+      h += '<div class="dstrip">' + days + '</div><div class="lbl" style="margin-top:0">' + esc(t('pickTime')) + '</div><div class="tt">' + times.map(function (x) { return '<button class="' + (x === c.time ? 'on' : '') + '" data-act="time" data-t="' + x + '">' + x + '</button>'; }).join('') + '</div>';
+    }
+    if (c.loading) h += '<div class="spin" style="margin:30px auto"></div>';
+    else if (!c.list || !c.list.length) h += '<div class="empty">' + esc(t('noCaddies')) + '</div>';
+    else {
+      h += '<div class="cg">' + c.list.map(function (r) {
+        var busy = c.time ? busyAt(r, c.time) : (r.day_off ? t('dayOff') : null);
+        var ph = r.photo_url ? '<img class="ph" src="' + esc(r.photo_url) + '" alt="" loading="lazy">' : '<div class="ph none"><span class="msi">person</span></div>';
+        return '<button class="cd' + (c.pick === r.id ? ' pick' : '') + (busy ? ' busy' : '') + '" data-act="pick" data-id="' + r.id + '"' + (busy ? ' disabled' : '') + '><span class="no">' + esc(r.caddy_number || '') + '</span>' + ph +
+          '<div class="cn">' + esc(r.name) + '</div><div class="cr">' + esc(busy || r.course_name) + '</div></button>';
+      }).join('') + '</div>';
+    }
+    var picked = c.list && c.list.find(function (r) { return r.id === c.pick; });
+    h += '</div><div class="stick"><div class="sum">' + (picked ? esc(longDate(c.date) + ' · ' + (c.time || '') + ' · ') + '<b>#' + esc(picked.caddy_number) + ' ' + esc(picked.name) + '</b>' : esc(c.time ? t('choose') : t('pickTime'))) + '</div>' +
+      '<button class="big" data-act="book"' + (picked && c.time ? '' : ' disabled') + ' style="margin-top:8px"><span class="msi">event_available</span>' + esc(t('req')) + '</button>' +
+      (c.eventId ? '<button class="big ghost" data-act="home" style="margin-top:8px">' + esc(t('skip')) + '</button>' : '') + '</div>';
+    app.innerHTML = h;
+  }
+
+  function render() {
+    if (!V.venue) { app.innerHTML = '<div class="hero"><div class="logo"><span class="msi">qr_code_2</span></div><h1>MyCaddiPro</h1><p>' + esc(t('venueUnknown')) + '</p></div>'; return; }
+    document.title = V.name + ' · MyCaddiPro';
+    if (!S.token || !S.me) return renderSignin();
+    if (S.view === 'caddy' && S.cad) renderCaddy(); else renderHome();
+    renderSheet();
+  }
+
+  // ---------- actions ----------
+  function errText(e) {
+    var m = (e && e.message) || '';
+    if (/QR_CUTOFF/.test(m)) return t('closed');
+    if (/QR_LIMIT/.test(m)) return t('limit');
+    if (/day off/.test(m)) return t('dayOff');
+    return t('err');
+  }
+  document.addEventListener('click', async function (ev) {
+    var b = ev.target.closest('[data-act]'); if (!b || b.disabled) return;
+    var act = b.getAttribute('data-act'), id = b.getAttribute('data-id');
+    if (act !== 'unreg' && act !== 'uncad') S.armed = null;
+    if (act === 'reg') { S.sheet = { id: id, van: true, cad: false, comp: false }; S.flash = null; return renderSheet(); }
+    if (act === 'close') { S.sheet = null; return renderSheet(); }
+    if (act === 'opt') { var k = b.getAttribute('data-k'); S.sheet[k] = !S.sheet[k]; return renderSheet(); }
+    if (act === 'confirm') {
+      var o = S.sheet, e = S.events.find(function (x) { return x.id === o.id; }); if (!e) return;
+      b.disabled = true; veil(true);
+      try {
+        var r = await rpc('qr_register', { p_token: S.token, p_event_id: e.id, p_transport: !!o.van, p_competition: !!o.comp, p_want_caddy: !!o.cad });
+        S.sheet = null;
+        if (r && r.full) { toast(t('fullMsg')); await load(); return render(); }
+        S.flash = { title: t('youIn', { n: (S.me.name || '').split(' ')[0] }), body: t('youInSub', { e: socAbbr(e) + ' · ' + shortTitle(e), d: longDate(e.event_date) }) };
+        await load();
+        if (o.cad) { S.view = 'caddy'; S.cad = { date: e.event_date, time: String(e.start_time || '').slice(0, 5), eventId: e.id, pick: null, list: null }; render(); return loadCaddies(); }
+        render(); window.scrollTo(0, 0);
+      } catch (err) { toast(errText(err)); console.warn('[QR] register', err); S.sheet = null; render(); }
+      finally { veil(false); }
+      return;
+    }
+    if (act === 'unreg' || act === 'uncad') {
+      if (S.armed !== id) { S.armed = id; render(); setTimeout(function () { if (S.armed === id) { S.armed = null; render(); } }, 3500); return; }
+      S.armed = null; veil(true);
+      try {
+        if (act === 'unreg') await rpc('qr_cancel_registration', { p_token: S.token, p_event_id: id });
+        else await rpc('qr_cancel_caddy', { p_token: S.token, p_booking_id: id });
+        S.flash = null; toast(act === 'unreg' ? t('cancelled') : '✓'); await load();
+      } catch (err) { toast(errText(err)); console.warn('[QR] cancel', err); }
+      finally { veil(false); render(); }
+      return;
+    }
+    if (act === 'caddy') { S.view = 'caddy'; S.flash = null; S.cad = { date: firstDay(), time: null, eventId: null, pick: null, list: null }; render(); window.scrollTo(0, 0); return loadCaddies(); }
+    if (act === 'day') { S.cad.date = b.getAttribute('data-d'); S.cad.pick = null; S.cad.time = null; return loadCaddies(); }
+    if (act === 'time') { S.cad.time = b.getAttribute('data-t'); var p = S.cad.list && S.cad.list.find(function (r) { return r.id === S.cad.pick; }); if (p && busyAt(p, S.cad.time)) S.cad.pick = null; return render(); }
+    if (act === 'pick') { S.cad.pick = id; return render(); }
+    if (act === 'book') {
+      var c = S.cad; b.disabled = true; veil(true);
+      try {
+        var res = await rpc('qr_book_caddy', { p_token: S.token, p_caddy_id: c.pick, p_date: c.date, p_time: c.time, p_course_slug: '', p_event_id: c.eventId || null });
+        if (res && res.taken) { toast(t('taken')); c.pick = null; return loadCaddies(); }
+        if (S.flash) S.flash.body = (S.flash.body ? S.flash.body + ' ' : '') + t('reqd'); else S.flash = { title: t('reqd'), body: '' };
+        S.view = 'home'; S.cad = null; await load(); render(); window.scrollTo(0, 0);
+      } catch (err) { toast(errText(err)); console.warn('[QR] book', err); render(); }
+      finally { veil(false); }
+      return;
+    }
+    if (act === 'home') { S.view = 'home'; S.cad = null; render(); window.scrollTo(0, 0); return; }
+    if (act === 'out') { S.token = null; S.me = null; lsSet('qrg_token', null); lsSet('qrg_me', null); render(); return; }
+  });
+
+  // paint first: a known phone sees its page immediately, the live data follows
+  render();
+  if (V.venue && S.token) load().then(render).catch(function (e) { console.warn('[QR] load', e); S.loaded = true; render(); });
+  // the list keeps itself fresh while the page stays open (new regs, closed games)
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && V.venue && S.token && S.view === 'home' && !S.sheet) load().then(render).catch(function () {}); });
+})();
+</script>
+</body>
+</html>

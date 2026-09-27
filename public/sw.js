@@ -1,7 +1,7 @@
 // SERVICE WORKER - Performance Caching Version
 // Caches static assets for dramatically faster repeat visits
 
-const SW_VERSION = 'mcipro-cache-v1393';
+const SW_VERSION = 'mcipro-cache-v1394';
 const CACHE_NAME = `mcipro-static-${SW_VERSION}`;
 const RUNTIME_CACHE = `mcipro-runtime-${SW_VERSION}`;
 
@@ -124,6 +124,8 @@ self.addEventListener('activate', event => {
 
 // Helper: Check if URL should never be cached
 function shouldNeverCache(url) {
+    // /q/<venue> = the no-app QR guest page: never answer it with the cached app shell
+    try { if (/^\/q(\/|\.html)/.test(new URL(url).pathname)) return true; } catch (e) {}
     return NEVER_CACHE_PATTERNS.some(pattern => url.includes(pattern));
 }
 

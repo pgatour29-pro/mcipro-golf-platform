@@ -581,6 +581,82 @@
                 }
             });
         },
+        // ================= VENUE QR (2026-09-27) =================
+        /* ONE permanent QR per venue → mycaddipro.com/q/<venue> (public/q.html): golfers without the app
+           register for the society games here and request caddies. The code never changes — the page always
+           lists what is coming up, so it is printed once. Venue key = the CourseLink venue of this course's
+           tee-sheet slug (the same token table that links society events to this tee sheet). */
+        _qrTxt() {
+            const L = {
+                en: { title: 'Venue QR', sub: 'Print it once. It always shows the games coming up here.', cap: 'Scan to join a game or book a caddy · no app needed', print: 'Print poster', share: 'Share link', copied: 'Link copied', close: 'Close', none: 'This course is not linked to the society tee sheet yet, so a QR page cannot find its games.' },
+                th: { title: 'คิวอาร์โค้ดสนาม', sub: 'พิมพ์ครั้งเดียว แสดงเกมที่จะมาถึงที่นี่เสมอ', cap: 'สแกนเพื่อสมัครเล่นหรือจองแคดดี้ · ไม่ต้องใช้แอป', print: 'พิมพ์โปสเตอร์', share: 'แชร์ลิงก์', copied: 'คัดลอกลิงก์แล้ว', close: 'ปิด', none: 'สนามนี้ยังไม่ได้เชื่อมกับตารางทีไทม์ของสมาคม' },
+                ko: { title: '코스 QR', sub: '한 번만 인쇄하세요. 이곳의 예정된 게임을 항상 보여줍니다.', cap: '스캔하여 게임 참가 또는 캐디 예약 · 앱 불필요', print: '포스터 인쇄', share: '링크 공유', copied: '링크 복사됨', close: '닫기', none: '이 코스는 아직 소사이어티 티시트와 연결되지 않았습니다.' },
+                ja: { title: 'コースQR', sub: '一度印刷すれば、ここで予定されているゲームを常に表示します。', cap: 'スキャンでゲーム参加・キャディ予約 · アプリ不要', print: 'ポスターを印刷', share: 'リンクを共有', copied: 'リンクをコピーしました', close: '閉じる', none: 'このコースはまだソサエティのティーシートと連携していません。' }
+            };
+            const lang = (typeof currentLanguage !== 'undefined' && L[currentLanguage]) ? currentLanguage : 'en';
+            return L[lang];
+        },
+        venueQrUrl() {
+            const CL = window.CourseLink;
+            const venue = CL && CL.venueOf(PS.teeSheetSlug());
+            return venue ? 'https://mycaddipro.com/q/' + venue.replace(/\s+/g, '-') : null;
+        },
+        openVenueQr() {
+            if (!PS.course) return;
+            const T = PS._qrTxt(), url = PS.venueQrUrl();
+            const img = url ? 'https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=0&data=' + encodeURIComponent(url) : '';
+            document.getElementById('psVenueQrModal') && document.getElementById('psVenueQrModal').remove();
+            const wrap = document.createElement('div');
+            wrap.id = 'psVenueQrModal';
+            wrap.setAttribute('role', 'dialog');
+            // mounted on <body>: .screen transforms trap position:fixed modals
+            wrap.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99998;display:flex;align-items:center;justify-content:center;padding:16px;';
+            wrap.innerHTML = `
+              <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 text-center" style="max-height:92vh;overflow:auto;">
+                <div class="flex items-center justify-between mb-2">
+                  <h3 class="text-lg font-bold text-gray-900">${esc(T.title)}</h3>
+                  <button id="vq-x" aria-label="${esc(T.close)}" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-600">${mi('close', 'text-xl')}</button>
+                </div>
+                ${url ? `
+                <div class="text-sm text-gray-600 mb-3">${esc(T.sub)}</div>
+                <div class="border border-gray-200 rounded-xl p-4">
+                  <div class="text-emerald-600 text-3xl">${mi('golf_course')}</div>
+                  <div class="text-base font-bold text-gray-900 mt-1">${esc(PS.course.name)}</div>
+                  <div class="text-xs text-gray-600 mb-3">${esc(T.cap)}</div>
+                  <img src="${esc(img)}" alt="QR" style="width:200px;height:200px;margin:0 auto;display:block;">
+                  <div class="text-xs text-gray-600 mt-2" style="font-family:'JetBrains Mono',monospace;">${esc(url.replace('https://', ''))}</div>
+                </div>
+                <div class="flex gap-2 mt-4">
+                  <button id="vq-print" class="flex-1 border border-gray-300 rounded-lg py-2.5 text-sm font-semibold text-gray-800">${mi('print')} ${esc(T.print)}</button>
+                  <button id="vq-share" class="flex-1 bg-green-600 hover:bg-green-700 text-white rounded-lg py-2.5 text-sm font-semibold">${mi('share')} <span id="vq-share-l">${esc(T.share)}</span></button>
+                </div>` : `<div class="text-sm text-gray-700 py-4">${esc(T.none)}</div>`}
+              </div>`;
+            document.body.appendChild(wrap);
+            wrap.addEventListener('click', (e) => { if (e.target === wrap) wrap.remove(); });
+            document.getElementById('vq-x').addEventListener('click', () => wrap.remove());
+            if (!url) return;
+            document.getElementById('vq-print').addEventListener('click', () => {
+                const w = window.open('', '_blank');
+                if (!w) return;
+                w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(PS.course.name)} QR</title>
+                  <style>body{font-family:Inter,Arial,sans-serif;text-align:center;margin:0;padding:48px 24px;color:#10151B}
+                  h1{font-size:40px;margin:8px 0}p{font-size:22px;color:#3E4956;margin:0 0 28px}img{width:420px;height:420px}
+                  .u{font:600 18px monospace;color:#3E4956;margin-top:18px}.b{font-size:18px;color:#16a34a;font-weight:700;margin-top:26px}</style></head>
+                  <body><div style="font-size:56px">⛳</div><h1>${esc(PS.course.name)}</h1><p>${esc(T.cap)}</p>
+                  <img src="${esc(img)}" onload="setTimeout(function(){window.print()},300)"><div class="u">${esc(url.replace('https://', ''))}</div>
+                  <div class="b">MyCaddiPro</div></body></html>`);
+                w.document.close();
+            });
+            document.getElementById('vq-share').addEventListener('click', async () => {
+                if (navigator.share) {
+                    try { await navigator.share({ title: PS.course.name, url }); return; }
+                    catch (e) { if (e && e.name === 'AbortError') return; }
+                }
+                try { await navigator.clipboard.writeText(url); } catch (e) { }
+                const l = document.getElementById('vq-share-l');
+                if (l) { l.textContent = T.copied; setTimeout(() => { if (l.isConnected) l.textContent = T.share; }, 2000); }
+            });
+        },
         async deleteProduct(id) {
             const p = PS.products.find(x => x.id === id);
             if (!p) return;

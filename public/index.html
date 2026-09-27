@@ -50798,16 +50798,13 @@ document.addEventListener('DOMContentLoaded', function() {
         // Featured caddies from real Supabase data
         let _featuredCaddiesData = [];
 
-        // Featured Caddies is COMING SOON — booking from the featured grid is gated
-        // until per-user favorite caddies ship (only My Caddies personal data books today).
-        // showFeaturedCaddyProfile below stays wired-ready; re-point the tile onclick when live.
-        function featuredCaddyComingSoon() {
-            const band = document.getElementById('fcvComingSoon');
-            if (!band) return;
-            band.classList.remove('pulse');
-            void band.offsetWidth;
-            band.classList.add('pulse');
+        // A featured caddy tile opens that caddy on her course's booking page (v1385, Pete: no
+        // more Coming Soon). A demo-fallback tile (no real row) opens the caddy booking page.
+        function openFeaturedCaddy(caddyId) {
+            if (caddyId && _featuredCaddiesData.some(c => c.id === caddyId)) showFeaturedCaddyProfile(caddyId);
+            else if (typeof goToCaddieBooking === 'function') goToCaddieBooking();
         }
+        window.openFeaturedCaddy = openFeaturedCaddy;
 
         function showFeaturedCaddyProfile(caddyId) {
             const caddie = _featuredCaddiesData.find(c => c.id === caddyId);
@@ -50893,7 +50890,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     ? '<span class="fcv-chip"><span class="dot"></span>AVAILABLE</span>'
                     : `<span class="fcv-chip ghost"><span class="dot"></span>${fcvEsc(status.toUpperCase())}</span>`;
                 return `
-                <div class="fcv-tile" onclick="featuredCaddyComingSoon()">
+                <div class="fcv-tile" data-cid="${fcvEsc(caddie.id || '')}" onclick="openFeaturedCaddy(this.dataset.cid)">
                     <div class="fcv-avwrap">
                         <div class="fcv-av" style="background:${grad}${textColor}">${fcvEsc(initials)}</div>
                         ${caddie.photo_url ? `<img class="fcv-av fcv-avimg" src="${fcvEsc(caddie.photo_url)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
@@ -53622,13 +53619,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         const t = b.time ? (' ' + b.time) : '';
                         this.setPill('cubeInfoTeeTime', (this.dayLabel(b.date) + t + (course ? (' · ' + course) : '')).trim());
                         const caddie = b.caddieName || b.caddie_name || (b.caddie && b.caddie.name);
-                        // A real booked caddie is real information and stays. Otherwise do NOT
-                        // invite a booking that isn't operational yet — the cube already says
-                        // COMING SOON and "Tap to book" underneath it was sending people in.
-                        this.setPill('cubeInfoCaddy', caddie ? (caddie + ' · booked') : _lvT('golfer.caddy.notyet', 'Not bookable yet'));
+                        // A booked caddie shows by name; otherwise the cube invites a booking
+                        // (v1385, Pete: no more Coming Soon — caddy booking is live).
+                        this.setPill('cubeInfoCaddy', caddie ? (caddie + ' · booked') : _lvT('golfer.caddy.booknow', 'Book Now'));
                     } else {
                         this.setPill('cubeInfoTeeTime', 'No upcoming tee time');
-                        this.setPill('cubeInfoCaddy', _lvT('golfer.caddy.notyet', 'Not bookable yet'));
+                        this.setPill('cubeInfoCaddy', _lvT('golfer.caddy.booknow', 'Book Now'));
                     }
                     const soc = this.badgeNum('societyEventsBadge'); this.setPill('cubeInfoSociety', soc > 0 ? (soc + ' new event' + (soc > 1 ? 's' : '')) : 'No new events');
                     const ord = this.badgeNum('ordersBadge'); this.setPill('cubeInfoOrders', ord > 0 ? (ord + ' open') : 'No open orders');
@@ -58303,13 +58299,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="cube-pill messagesCubeStatus" data-i18n="messages.viewall">View All</div>
                     </button>
                     <button onclick="goToCaddieBooking()" class="card-hover metric-card cube-poster cube-compact" style="--p1:#d8ecef;--p2:#f1f9fa">
-                        <span class="absolute cube-soon" data-i18n="dashboard.comingsoon">Coming Soon</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuBag"/></svg></div>
                         <h3 class="text-base font-bold text-gray-900 mb-1" data-i18n="golfer.caddy">Caddy</h3>
-                        <div class="cube-pill cubeInfoCaddy" data-i18n="golfer.caddy.notyet">Not bookable yet</div>
+                        <div class="cube-pill cubeInfoCaddy" data-i18n="golfer.caddy.booknow">Book Now</div>
                     </button>
                     <button onclick="showGolferTab('food', event)" class="card-hover metric-card cube-poster cube-compact" style="--p1:#f6e7d4;--p2:#fdf7ef">
-                        <span class="absolute cube-soon" data-i18n="dashboard.comingsoon">Coming Soon</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuCloche"/></svg></div>
                         <h3 class="text-base font-bold text-gray-900 mb-1" data-i18n="golfer.foodorders">Food &amp; Orders</h3>
                         <div class="cube-pill cubeInfoOrders" onclick="event.stopPropagation(); showGolferTab('status', event)" data-i18n="golfer.orders.viewstatus">View Status</div>
@@ -58320,7 +58314,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="cube-pill cubeInfoLive" data-i18n="lightview.watchnow">Watch Now</div>
                     </button>
                     <button onclick="showGolferTab('booking', event)" class="card-hover metric-card cube-poster cube-compact" style="--p1:#d9efe1;--p2:#f2faf5">
-                        <span class="absolute cube-soon" data-i18n="dashboard.comingsoon">Coming Soon</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuTee"/></svg></div>
                         <h3 class="text-base font-bold text-gray-900 mb-1" data-i18n="golfer.teetime">Tee Time</h3>
                         <div class="cube-pill cubeInfoTeeTime" data-i18n="golfer.teetime.available">Available Now</div>
@@ -59196,7 +59189,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div id="dashboardCubesGrid" class="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4 mb-3 md:mb-8">
                     <button onclick="showGolferTab('booking', event)" class="card-hover metric-card cube-poster text-center group relative light-hide order-1" style="--p1:#d9efe1;--p2:#f2faf5">
                         <span id="teeTimeBadge" class="absolute top-1 right-1 text-[9px] font-bold text-white bg-red-500 min-w-[18px] h-[18px] flex items-center justify-center rounded-full shadow-md z-10" style="display:none;">0</span>
-                        <span class="absolute cube-soon" data-i18n="dashboard.comingsoon">Coming Soon</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuTee"/></svg></div>
                         <h3 class="text-sm md:text-base font-bold text-gray-900 mb-1" data-i18n="golfer.teetime">Tee Time</h3>
                         <p class="text-xs md:text-sm text-gray-600 hidden sm:block" data-i18n="golfer.teetime.desc">Reserve your next round</p>
@@ -59206,11 +59198,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     </button>
 
                     <button onclick="goToCaddieBooking()" class="card-hover metric-card cube-poster text-center group relative order-2" style="--p1:#d8ecef;--p2:#f1f9fa">
-                        <span class="absolute cube-soon" data-i18n="dashboard.comingsoon">Coming Soon</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuBag"/></svg></div>
                         <h3 class="text-sm md:text-base font-bold text-gray-900 mb-1" data-i18n="golfer.caddy">Caddy</h3>
                         <p class="text-xs md:text-sm text-gray-600 hidden sm:block" data-i18n="golfer.caddy.desc">Request a caddy</p>
-                        <div id="cubeInfoCaddy" class="mt-2 text-xs bg-teal-50 text-teal-700 px-2 md:px-3 py-1 rounded-full inline-block" data-i18n="golfer.caddy.notyet">
+                        <div id="cubeInfoCaddy" class="mt-2 text-xs bg-teal-50 text-teal-700 px-2 md:px-3 py-1 rounded-full inline-block" data-i18n="golfer.caddy.booknow">
                             Book Now
                         </div>
                     </button>
@@ -59218,7 +59209,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     <!-- Food + Orders merged: one mechanism, one cube. Order Status keeps its ids
                          (ordersBadge / cubeInfoOrders — JS updates both) and opens via its own chip. -->
                     <button onclick="showGolferTab('food', event)" class="card-hover metric-card cube-poster text-center group relative light-hide order-3" style="--p1:#f6e7d4;--p2:#fdf7ef">
-                        <span class="absolute cube-soon" data-i18n="dashboard.comingsoon">Coming Soon</span>
                         <span id="foodBadge" class="absolute top-1 right-1 text-[9px] font-bold text-white bg-red-500 min-w-[18px] h-[18px] flex items-center justify-center rounded-full shadow-md z-10" style="display:none;">0</span>
                         <span id="ordersBadge" class="absolute top-1 left-1 text-[9px] font-bold text-white bg-red-500 min-w-[18px] h-[18px] flex items-center justify-center rounded-full shadow-md z-10" style="display:none;">0</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuCloche"/></svg></div>
@@ -59404,11 +59394,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         <button onclick="showGolferTab('caddies', event)" class="fcv-seclink"><span data-i18n="featured.bookcaddy">BOOK CADDY</span> <span class="material-symbols-outlined">arrow_forward</span></button>
                     </div>
 
-                    <div class="fcv-coming" id="fcvComingSoon">
-                        <span class="material-symbols-outlined">schedule</span>
-                        <b data-i18n="featured.comingsoon">COMING SOON</b>
-                        <span data-i18n="featured.comingsoon.sub">Featured caddy booking is not available yet</span>
-                    </div>
 
                     <!-- Mobile: 2x2 compact grid -->
                     <div class="block md:hidden">

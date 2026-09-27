@@ -29668,16 +29668,20 @@
         // instead of relying on updated_at, which any profile write (e.g. a global handicap update) bumps.
         async function recordUserLogin() {
             try {
-                if (sessionStorage.getItem('mcipro_login_recorded')) return;
+                // Automated test browsers (agent-browser / headless) are not people logging in.
+                if (navigator.webdriver) return;
                 if (!window.AppState?.session?.isAuthenticated) return;
                 const uid = AppState.currentUser?.lineUserId || AppState.currentUser?.userId;
                 // Real login ids: LINE 'U…', Kakao 'KAKAO-…', Google 'GOOGLE-…' — the old
                 // U-only gate left Kakao/Google users with last_login_at forever NULL,
                 // so they never showed as active in the admin activity report.
                 if (!uid || !/^(U|KAKAO-|GOOGLE-)/.test(uid)) return;
+                // Guard holds the uid, not '1': logout reloads but sessionStorage survives it,
+                // so a bare flag made the NEXT person signing in on that tab invisible.
+                if (sessionStorage.getItem('mcipro_login_recorded') === uid) return;
                 if (!window.SupabaseDB?.client) return;
                 // Set the guard first so concurrent showScreen calls can't double-write.
-                sessionStorage.setItem('mcipro_login_recorded', '1');
+                sessionStorage.setItem('mcipro_login_recorded', uid);
                 const { error } = await window.SupabaseDB.client
                     .from('user_profiles')
                     .update({ last_login_at: new Date().toISOString() })
@@ -29734,8 +29738,8 @@
         }
 
         async function captureLoginGeo(uid) {
-            if (sessionStorage.getItem('mcipro_geo_recorded')) return;
-            sessionStorage.setItem('mcipro_geo_recorded', '1');
+            if (sessionStorage.getItem('mcipro_geo_recorded') === uid) return;
+            sessionStorage.setItem('mcipro_geo_recorded', uid);
             const row = {
                 line_user_id: uid,
                 browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,

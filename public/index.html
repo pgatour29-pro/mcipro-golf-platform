@@ -65318,15 +65318,18 @@ document.addEventListener('DOMContentLoaded', function() {
                     const nums = String(caddyNum).split(/[,\-.\s:;/|]+/).map(n => n.trim().replace(/\D/g, '')).filter(n => n);
 
                     for (const num of nums) {
-                        // Check if booking already exists for this event+caddy
+                        // Check if a LIVE booking already exists for this event+caddy. v1395: cancelled
+                        // rows don't count — removing a caddy now cancels its job (DB trigger
+                        // trg_caddy_jobs_follow_reg), and re-adding the same caddy must book again.
                         const { data: existing } = await sb.from('caddy_bookings')
                             .select('id')
                             .eq('golfer_id', golferId)
                             .eq('booking_date', evt.event_date)
                             .eq('caddie_name', 'Caddy #' + parseInt(num))
-                            .maybeSingle();
+                            .neq('status', 'cancelled')
+                            .limit(1);
 
-                        if (existing) continue; // Already booked
+                        if (existing && existing.length) continue; // Already booked
 
                         // v1187 THE 4:15 GATE. These rows carry NO caddy_id — the guard matches
                         // on caddie_name for exactly this path. A clash here is not the golfer's

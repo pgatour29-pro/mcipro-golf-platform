@@ -234,7 +234,7 @@ begin
     if p_date is null or coalesce(array_length(p_course_ids, 1), 0) = 0 and coalesce(p_name_prefix, '') = '' then return '[]'::jsonb; end if;
     return coalesce((
         select jsonb_agg(jsonb_build_object(
-            'id', c.id, 'caddy_number', c.caddy_number, 'name', c.name, 'photo_url', c.photo_url,
+            'id', c.id, 'caddy_number', c.caddy_number, 'name', case when c.name ~* '^caddy\s*#' then null else nullif(btrim(c.name), '') end, 'photo_url', c.photo_url,
             'course_name', c.course_name, 'course_id', c.course_id, 'block', greatest(255, coalesce(c.block_minutes, 255)),
             'busy', coalesce((select jsonb_agg(to_char(coalesce(b.tee_time, b.start_time), 'HH24:MI'))
                                 from public.caddy_bookings b
@@ -247,7 +247,9 @@ begin
         ) order by (case when c.caddy_number ~ '^\d+$' then lpad(c.caddy_number, 6, '0') else c.caddy_number end))
         from public.caddy_profiles c
         where coalesce(c.is_active, true) and not coalesce(c.is_mock, false)
-          and nullif(btrim(c.name), '') is not null and c.name !~* '^caddy\s*#'       -- number + name + course, always (v1369)
+          -- a real caddy = a real name OR a photo (Pete 2026-09-27: Burapha #21/#187 are real, photo, no name yet);
+          -- a nameless AND photoless "Caddy #N" row is a notebook phantom (v1369) and stays hidden
+          and ((nullif(btrim(c.name), '') is not null and c.name !~* '^caddy\s*#') or nullif(btrim(c.photo_url), '') is not null)
           and (c.course_id = any(coalesce(p_course_ids, '{}')) or (coalesce(p_name_prefix, '') <> '' and c.course_name ilike p_name_prefix || '%'))
     ), '[]'::jsonb);
 end $$;
@@ -338,7 +340,7 @@ begin
         'caddies', coalesce((
             select jsonb_agg(jsonb_build_object('id', b.id, 'booking_date', b.booking_date, 'tee_time', to_char(coalesce(b.tee_time, b.start_time), 'HH24:MI'),
                     'status', b.status, 'course_name', b.course_name, 'event_title', b.special_requests,
-                    'caddy_number', c.caddy_number, 'caddy_name', c.name, 'photo_url', c.photo_url) order by b.booking_date, b.tee_time)
+                    'caddy_number', c.caddy_number, 'caddy_name', case when c.name ~* '^caddy\s*#' then null else c.name end, 'photo_url', c.photo_url) order by b.booking_date, b.tee_time)
               from public.caddy_bookings b left join public.caddy_profiles c on c.id = b.caddy_id
              where b.golfer_id = g.guest_id and b.status <> 'cancelled' and b.booking_date >= v_now::date), '[]'::jsonb)
     );

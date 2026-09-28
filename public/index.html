@@ -12605,6 +12605,8 @@
                 'cm.toast.msgfail': 'Message failed',
                 'cm.toast.emergency': 'EMERGENCY — {c}',
                 'cm.toast.req_ack': 'Caddy Master is on it',
+                'cm.new.linked': 'Linked to their account — the job shows on their phone',
+                'cm.new.guest': 'No account found — saved as a guest name',
                 'cm.toast.req_resolved': 'Caddy Master resolved your request',
                 'maint.wo.st.pending': 'Open',
                 'maint.wo.st.in_progress': 'In Progress',
@@ -16160,6 +16162,8 @@
                 'cm.toast.msgfail': 'ส่งข้อความไม่สำเร็จ',
                 'cm.toast.emergency': 'ฉุกเฉิน — {c}',
                 'cm.toast.req_ack': 'แคดดี้มาสเตอร์รับเรื่องแล้ว',
+                'cm.new.linked': 'เชื่อมกับบัญชีแล้ว — งานนี้จะแสดงในโทรศัพท์ของนักกอล์ฟ',
+                'cm.new.guest': 'ไม่พบบัญชี — บันทึกเป็นชื่อแขก',
                 'cm.toast.req_resolved': 'แคดดี้มาสเตอร์แก้ไขคำขอของคุณแล้ว',
                 'maint.wo.st.pending': 'เปิด',
                 'maint.wo.st.in_progress': 'กำลังทำ',
@@ -19583,6 +19587,8 @@
                 'cm.toast.msgfail': '메시지 전송 실패',
                 'cm.toast.emergency': '긴급 — {c}',
                 'cm.toast.req_ack': '캐디 마스터가 확인했습니다',
+                'cm.new.linked': '계정에 연결됨 — 골퍼 휴대폰에 표시됩니다',
+                'cm.new.guest': '계정 없음 — 게스트 이름으로 저장됩니다',
                 'cm.toast.req_resolved': '캐디 마스터가 요청을 처리했습니다',
                 'maint.wo.st.pending': '열림',
                 'maint.wo.st.in_progress': '진행 중',
@@ -23188,6 +23194,8 @@
                 'cm.toast.msgfail': 'メッセージ送信に失敗しました',
                 'cm.toast.emergency': '緊急 — {c}',
                 'cm.toast.req_ack': 'キャディマスターが対応中です',
+                'cm.new.linked': 'アカウントに連携済み — ゴルファーのスマホに表示されます',
+                'cm.new.guest': 'アカウントなし — ゲスト名で保存されます',
                 'cm.toast.req_resolved': 'キャディマスターがリクエストを解決しました',
                 'maint.wo.st.pending': '未着手',
                 'maint.wo.st.in_progress': '作業中',
@@ -29917,6 +29925,17 @@
             console.log('[Supabase Realtime] Subscribed to profile changes', userId ? ('(scoped to ' + userId + ')') : '(GLOBAL — no user id)');
             return channel;
         }
+
+        // v1397: caddy_profiles is WRITE-LOCKED — direct insert/update are closed. Every write goes through
+        // the caddy_profile_write RPC (staff: add/edit; a caddy: only her own row / claim / self-register once).
+        // Returns { data: [{id}], error } so callers keep their .select('id') shape.
+        window.caddyProfileWrite = async function (op, id, fields) {
+            const sb = window.SupabaseDB && window.SupabaseDB.client;
+            if (!sb) return { data: null, error: { message: 'offline' } };
+            const actor = (window.AppState && AppState.currentUser && AppState.currentUser.lineUserId) || localStorage.getItem('line_user_id') || null;
+            const { data, error } = await sb.rpc('caddy_profile_write', { p_actor: actor, p_op: op, p_id: id || null, p_rows: fields });
+            return { data: data || null, error: error || null };
+        };
 
         window.SupabaseDB.subscribeToCaddyBookings = function(callback, onProfile) {
             const channel = this.client
@@ -38202,7 +38221,7 @@
                         const patch = { user_id: uid, is_active: true, languages: profileData.roleSpecific?.languages || null };
                         if (courseId && !target.course_id) patch.course_id = courseId;
                         if (!window._caddyRealName(target.name)) patch.name = name;
-                        await sb.from('caddy_profiles').update(patch).eq('id', target.id);
+                        await window.caddyProfileWrite('claim', target.id, patch);
                         console.log('[CaddyReg] Claimed tapped caddy profile', target.id);
                         return Object.assign({}, target, patch);
                     }
@@ -38227,12 +38246,12 @@
                             languages: profileData.roleSpecific?.languages || null
                         };
                         if (!window._caddyRealName(pick.name)) patch.name = name;
-                        await sb.from('caddy_profiles').update(patch).eq('id', pick.id);
+                        await window.caddyProfileWrite('claim', pick.id, patch);
                         console.log('[CaddyReg] Claimed existing caddy profile', pick.id);
                         return Object.assign({}, pick, patch);
                     }
                 }
-                await sb.from('caddy_profiles').insert({
+                await window.caddyProfileWrite('insert', null, {
                     name: name,
                     caddy_number: num || null,
                     user_id: uid,
@@ -83673,7 +83692,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             ? window._caddyClaimPick(cands, home)
                             : ((cands && cands.length === 1) ? cands[0] : null);
                         if (byNum) {
-                            await sb.from('caddy_profiles').update({ user_id: userId }).eq('id', byNum.id);
+                            await window.caddyProfileWrite('claim', byNum.id, { user_id: userId });
                             p = byNum;
                             console.log('[CaddyDashboard] Claimed caddy profile by number', num);
                         }
@@ -83684,13 +83703,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Self-provision so every caddie login is wired from day one.
                     // v993: course_name is NOT NULL in prod — omitting it made this insert fail
                     // SILENTLY on every unmatched caddie login (the error was never checked).
-                    const { data: created } = await sb.from('caddy_profiles').insert({
+                    const ins = await window.caddyProfileWrite('insert', null, {
                         name: u?.name || u?.displayName || 'Caddy',
                         caddy_number: String(u?.caddyNumber || u?.profileData?.caddyInfo?.caddyNumber || ''),
                         course_name: u?.profileData?.roleSpecific?.homeClub || u?.profileData?.homeClub || 'Unassigned',
                         user_id: userId,
                         is_active: true
-                    }).select('id, caddy_number, course_id, course_name, rating, total_reviews, total_rounds, name, photo_url, sheet_start, sheet_end, block_minutes').single();
+                    });
+                    const newId = ins.data && ins.data[0] && ins.data[0].id;
+                    const { data: created } = newId ? await sb.from('caddy_profiles').select('id, caddy_number, course_id, course_name, rating, total_reviews, total_rounds, name, photo_url, sheet_start, sheet_end, block_minutes').eq('id', newId).single() : { data: null };
                     p = created || null;
                     if (p) console.log('[CaddyDashboard] Self-provisioned caddy profile', p.id);
                 }
@@ -84470,7 +84491,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const sb = this._sb();
                 if (!sb || !this.row || !this.row.id) return false;
                 patch.updated_at = new Date().toISOString();
-                const { data, error } = await sb.from('caddy_profiles').update(patch).eq('id', this.row.id).select('id');
+                const { data, error } = await window.caddyProfileWrite('update', this.row.id, patch);
                 if (error) { console.warn('[CaddyProfile] save:', error.message); window.NotificationManager.show(_lvT('caddie.prof.savefail', 'Could not save: ') + error.message, 'error'); return false; }
                 if (!data || !data.length) { window.NotificationManager.show(_lvT('caddie.prof.savenone', 'Nothing was saved — your profile row was not found'), 'error'); return false; }
                 Object.assign(this.row, patch);
@@ -84678,9 +84699,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (!sb || !this.prof || !this.prof.id) return;
                 this._saving = true;
                 try {
-                    const { error } = await sb.from('caddy_profiles')
-                        .update({ sheet_start: from, sheet_end: to, block_minutes: blk, updated_at: new Date().toISOString() })
-                        .eq('id', this.prof.id);
+                    const { error } = await window.caddyProfileWrite('update', this.prof.id, { sheet_start: from, sheet_end: to, block_minutes: blk });
                     if (error) throw error;
                 } catch (e) {
                     console.warn('[CaddyTeeSheet] window save:', e.message);
@@ -130250,10 +130269,7 @@ const CourseAdminSystem = {
             const caddy = this.allCaddies.find(c => c.id === caddyId);
             const newStatus = true ? 'off_duty' : 'available';
 
-            const { error } = await window.SupabaseDB.client
-                .from('caddy_profiles')
-                .update({ availability_status: newStatus })
-                .eq('id', caddyId);
+            const { error } = await window.caddyProfileWrite('update', caddyId, { availability_status: newStatus });
 
             if (error) throw error;
 
@@ -130791,15 +130807,13 @@ const CourseAdminSystem = {
                 const own = (this.allCaddies || []).find(c => c.id === caddyId);
                 if (!own) { fail('This caddy is not on your course roster'); return; }
                 if (!own.user_id && !own.created_by) fields.created_by = 'course_admin';
-                const { error } = await window.SupabaseDB.client
-                    .from('caddy_profiles').update(fields).eq('id', caddyId);
+                const { error } = await window.caddyProfileWrite('update', caddyId, fields);
                 if (error) throw error;
             } else {
                 // Same number twice at one course = two rows for one person in every picker
                 const dup = this.allCaddies.find(c => c.caddy_number && String(parseInt(c.caddy_number)) === String(parseInt(num)));
                 if (dup) { fail(`#${parseInt(num)} already exists at this course (${dup.name || 'unnamed'}) — edit that row instead`); return; }
-                const { error } = await window.SupabaseDB.client
-                    .from('caddy_profiles').insert({
+                const { error } = await window.caddyProfileWrite('insert', null, {
                         ...fields, course_id: this.currentCourseId, course_name: this.courseName || null,
                         is_active: true, is_mock: false, created_by: 'course_admin'
                     });
@@ -133136,15 +133150,8 @@ const GolferCaddyBooking = {
 
             console.log('[GolferCaddyBooking] Booking created successfully:', data);
 
-            // If confirmed, update caddy availability to booked (roster rows only — notebook
-            // pseudo-rows have no caddy_profiles record)
-            if (isAvailable && data && data[0] && isRosterUuid) {
-                await window.SupabaseDB.client
-                    .from('caddy_profiles')
-                    .update({ availability_status: 'booked' })
-                    .eq('id', caddyId);
-                console.log('[GolferCaddyBooking] Caddy status updated to booked');
-            }
+            // v1397: no global 'booked' flag write — availability is per date/time from caddy_bookings
+            // (_availOf ignores the flag), and caddy_profiles is write-locked to staff + the caddy herself.
 
             // Sync to BookingManager (for tee sheet ParentBridge)
             const currentUser = AppState.currentUser || window.currentLineUser;
@@ -133761,14 +133768,7 @@ const GolferCaddyBooking = {
                 if (error) throw error;
             }
 
-            // Update caddy availability back to 'available' if was booked for this
-            if (booking && booking.caddy_id) {
-                await window.SupabaseDB.client
-                    .from('caddy_profiles')
-                    .update({ availability_status: 'available' })
-                    .eq('id', booking.caddy_id);
-                console.log('[GolferCaddyBooking] Caddy availability restored to available');
-            }
+            // v1397: no global flag write on cancel either — availability follows caddy_bookings.
 
             // Log the cancellation for audit trail
             console.log(`[GolferCaddyBooking] Booking ${bookingId} cancelled by ${userName} (${userId}). Reason: ${reason}`);
@@ -140107,6 +140107,10 @@ const CaddyMasterData = {
 
     // ----- walk-in job -----
     openNewJob(pref) {
+        // v1397: the job carries the golfer's ACCOUNT (golfer_id + user_id) so it reaches their phone
+        this._njGolferId = (pref && pref.golferId) || null;
+        this._njGolferName = (pref && pref.golferId && pref.golfer) || '';
+        this._njHits = [];
         if (!this._gate()) return;
         if (!this.course) { this.pickCourse(); return; }
         pref = pref || {};
@@ -140120,7 +140124,8 @@ const CaddyMasterData = {
                     <div><label class="lbl">${this._t('cm.new.date', 'Date')}</label><input type="date" id="cmnj-date" class="form-input w-full" value="${pref.date || this.day || this._today()}" autocomplete="off"></div>
                     <div><label class="lbl">${this._t('cm.new.time', 'Tee time')}</label><input type="time" id="cmnj-time" class="form-input w-full" value="${pref.time || this._hhmm(now.getHours() * 60 + now.getMinutes())}" step="300" autocomplete="off"></div>
                 </div>
-                <label class="lbl">${this._t('cm.new.golfer', 'Golfer')}</label><input type="text" id="cmnj-golfer" class="form-input w-full" value="${this._esc(pref.golfer || '')}" placeholder="${this._esc(this._t('cm.roster.name', 'Name'))}" autocomplete="off">
+                <label class="lbl">${this._t('cm.new.golfer', 'Golfer')}</label><input type="text" id="cmnj-golfer" class="form-input w-full" value="${this._esc(pref.golfer || '')}" placeholder="${this._esc(this._t('cm.roster.name', 'Name'))}" autocomplete="off" oninput="CaddyMasterData._golferSearch(this.value)">
+                <div id="cmnj-golfer-hits" class="mt-1"></div>
                 <div class="grid grid-cols-2 gap-2">
                     <div><label class="lbl">${this._t('cm.new.holes', 'Holes')}</label><select id="cmnj-holes" class="form-select w-full" onchange="document.getElementById('cmnj-fee').value = this.value === '9' ? 250 : 400"><option value="18">18</option><option value="9">9</option></select></div>
                     <div><label class="lbl">${this._t('cm.new.fee', 'Caddy fee (฿)')}</label><input type="number" id="cmnj-fee" class="form-input w-full" value="400" inputmode="numeric" min="0"></div>
@@ -140130,6 +140135,40 @@ const CaddyMasterData = {
                 <label class="lbl">${this._t('cm.new.notes', 'Notes')}</label><input type="text" id="cmnj-notes" class="form-input w-full" autocomplete="off">
                 <div class="flex justify-end gap-2 mt-4"><button class="cm-btn n" onclick="CaddyMasterData._closeOvl()">${this._t('cm.act.close', 'Close')}</button><button class="cm-btn g" id="cmnj-save" onclick="CaddyMasterData.saveNewJob()">${this._t('cm.new.save', 'Save job')}</button></div>
             </div>`);
+    },
+    _golferSearch(q) {
+        q = String(q || '').trim();
+        if (q !== this._njGolferName) { this._njGolferId = null; }
+        clearTimeout(this._njT);
+        const box = document.getElementById('cmnj-golfer-hits');
+        if (!box) return;
+        if (q.length < 2) { this._njHits = []; box.innerHTML = ''; return; }
+        this._njT = setTimeout(async () => {
+            const sb = this._sb(); if (!sb) return;
+            const seq = (this._njSeq = (this._njSeq || 0) + 1);
+            const { data } = await sb.rpc('search_players_global', { p_search_query: q, p_society_id: null, p_handicap_min: null, p_handicap_max: null, p_limit: 6, p_offset: 0 });
+            if (seq !== this._njSeq) return;
+            this._njHits = (data || []).filter(h => h.player_id);
+            this._paintGolferHits();
+        }, 150);
+    },
+    _paintGolferHits() {
+        const box = document.getElementById('cmnj-golfer-hits'); if (!box) return;
+        if (this._njGolferId) {
+            box.innerHTML = `<div class="text-xs font-semibold text-green-700">✓ ${this._esc(this._t('cm.new.linked', 'Linked to their account — the job shows on their phone'))}</div>`;
+            return;
+        }
+        // index-based binding — golfer names never go inside onclick attributes
+        box.innerHTML = this._njHits.map((h, i) => `<button type="button" onclick="CaddyMasterData._pickGolfer(${i})" class="w-full text-left px-2 py-1.5 text-sm rounded-md border border-gray-200 bg-white mb-1 flex justify-between gap-2"><span class="font-medium text-gray-900 truncate">${this._esc(h.player_name || '')}</span><span class="text-xs text-gray-600 flex-shrink-0">${h.handicap != null ? 'HCP ' + this._esc(Number(h.handicap) < 0 ? '+' + Math.abs(Number(h.handicap)) : h.handicap) : ''}</span></button>`).join('')
+            || `<div class="text-xs text-gray-600">${this._esc(this._t('cm.new.guest', 'No account found — saved as a guest name'))}</div>`;
+    },
+    _pickGolfer(i) {
+        const h = this._njHits[i]; if (!h) return;
+        const inp = document.getElementById('cmnj-golfer');
+        this._njGolferId = h.player_id;
+        this._njGolferName = String(h.player_name || '').trim();
+        if (inp) inp.value = this._njGolferName;
+        this._paintGolferHits();
     },
     async saveNewJob() {
         if (!this._gate() || !this.course) return;
@@ -140151,11 +140190,20 @@ const CaddyMasterData = {
             const tee = this._hhmm(tm) + ':00';
             const end = this._hhmm(Math.min(tm + (holes === 9 ? 135 : 270), 23 * 60 + 59)) + ':00';
             const now = new Date().toISOString();
+            // v1397: a picked account wins; else a typed name that matches exactly ONE account links to it
+            let gid = (this._njGolferId && golfer === this._njGolferName) ? this._njGolferId : null;
+            if (!gid && golfer && golfer !== 'Guest') {
+                try {
+                    const { data: hits } = await sb.rpc('search_players_global', { p_search_query: golfer, p_society_id: null, p_handicap_min: null, p_handicap_max: null, p_limit: 5, p_offset: 0 });
+                    const exact = (hits || []).filter(h => String(h.player_name || '').trim().toLowerCase() === golfer.toLowerCase());
+                    if (exact.length === 1) gid = exact[0].player_id;
+                } catch (e) { }
+            }
             const row = {
                 caddy_id: r ? r.id : null, caddie_name: r ? this._jobName(r) : 'Unassigned', booking_date: date, tee_time: tee, start_time: tee, end_time: end,
                 course_id: this.course.slug, course_name: this.course.dbName, holes, payment_amount: fee, payment_status: 'pending',
                 status: r ? 'confirmed' : 'pending', confirmed_at: r ? now : null, confirmed_by: r ? this._me().name : null,
-                golfer_name: golfer, booking_source: 'caddymaster', special_requests: notes || null, created_at: now, updated_at: now
+                golfer_name: golfer, golfer_id: gid, user_id: gid, booking_source: 'caddymaster', special_requests: notes || null, created_at: now, updated_at: now
             };
             const { data, error } = await sb.from('caddy_bookings').insert(row).select('id');
             if (error || !data?.length) { window.NotificationManager.show(this._t('cm.toast.jobfail', 'Could not save the job') + (error ? ': ' + error.message : ''), 'error'); return; }
@@ -140388,10 +140436,10 @@ const CaddyMasterData = {
                 if (!own) { window.NotificationManager.show(this._t('cm.toast.updfail', 'Update failed'), 'error'); return; }
                 const upd = { caddy_number: num, name: name, phone: phone || null, block_minutes: block, updated_at: now };
                 if (!own.user_id && !own.created_by) upd.created_by = 'caddymaster';
-                const { data, error } = await sb.from('caddy_profiles').update(upd).eq('id', id).select('id');
+                const { data, error } = await window.caddyProfileWrite('update', id, upd);
                 if (error || !data?.length) { window.NotificationManager.show(this._t('cm.toast.updfail', 'Update failed') + (error ? ': ' + error.message : ''), 'error'); return; }
             } else {
-                const { data, error } = await sb.from('caddy_profiles').insert({
+                const { data, error } = await window.caddyProfileWrite('insert', null, {
                     caddy_number: num, name: name, phone: phone || null, block_minutes: block,
                     course_id: this.course.slug, course_name: this.course.dbName, is_active: true, is_mock: false,
                     availability_status: 'available', created_by: 'caddymaster', sheet_start: '06:00:00', sheet_end: '16:00:00', created_at: now, updated_at: now
@@ -140411,7 +140459,7 @@ const CaddyMasterData = {
             if (!ok) return;
         }
         const sb = this._sb(); if (!sb) return;
-        const { data, error } = await sb.from('caddy_profiles').update({ is_active: on, updated_at: new Date().toISOString() }).eq('id', id).select('id');
+        const { data, error } = await window.caddyProfileWrite('update', id, { is_active: on });
         if (error || !data?.length) { window.NotificationManager.show(this._t('cm.toast.updfail', 'Update failed'), 'error'); return; }
         window.NotificationManager.show(on ? this._t('cm.toast.react', 'Caddy reactivated') : this._t('cm.toast.deact', 'Caddy deactivated'), 'success');
         this._closeOvl();
@@ -140520,7 +140568,7 @@ const CaddyMasterData = {
     assignFromWait(i) {
         const w = this.waitlist?.[i]; if (!w) return;
         const who = this.waitNames[w.user_id] || '';
-        this.openNewJob({ caddyId: w.caddy_id || '', date: w.preferred_date || '', golfer: who });
+        this.openNewJob({ caddyId: w.caddy_id || '', date: w.preferred_date || '', golfer: who, golferId: w.user_id || null });
     },
     messageGolfer(userId) {
         this._ovl(`<div class="hd"><h3>${this._t('cm.msg.title', 'Message the golfer')}</h3><button class="xx" onclick="CaddyMasterData._closeOvl()"><span class="material-symbols-outlined">close</span></button></div>

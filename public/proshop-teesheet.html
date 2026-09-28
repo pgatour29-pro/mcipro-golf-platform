@@ -4383,6 +4383,16 @@
       const v = parseInt(inp && inp.value);
       return v > 0 ? v : ROUND_DURATION_MINUTES;
     }
+    // v1397: caddy_profiles is write-locked — roster adds/edits go through the caddy_profile_write RPC
+    // (staff only; the signed-in LINE account is the actor). Returns { data: [{id}], error }.
+    async function caddyProfileWrite(op, id, fields) {
+      if (!supabaseClient) return { data: null, error: { message: 'offline' } };
+      let actor = null;
+      try { actor = localStorage.getItem('line_user_id') || null; } catch (e) {}
+      const { data, error } = await supabaseClient.rpc('caddy_profile_write', { p_actor: actor, p_op: op, p_id: id || null, p_rows: fields });
+      return { data: data || null, error: error || null };
+    }
+
     function courseCtx() {
       const id = el.courseSelect.value;
       const opt = el.courseSelect.options[el.courseSelect.selectedIndex];
@@ -6657,7 +6667,7 @@
         }));
         this._busy = true;
         try {
-          const { data, error } = await supabaseClient.from('caddy_profiles').insert(payload).select('id');
+          const { data, error } = await caddyProfileWrite('insert', null, payload);
           if (error) { alert(t('rosterSaveFail') + ' ' + error.message); return false; }
           const n = (data || []).length;
           if (n !== payload.length) alert(t('rosterSaveFail') + ' ' + n + '/' + payload.length);
@@ -6677,7 +6687,7 @@
         // ...and once the course has edited a caddy it is the course's: a golfer's notebook never overwrites it again
         if (!own.user_id && !own.created_by) fields.created_by = 'proshop_teesheet';
         fields.updated_at = new Date().toISOString();
-        const { data, error } = await supabaseClient.from('caddy_profiles').update(fields).eq('id', id).select('id');
+        const { data, error } = await caddyProfileWrite('update', id, fields);
         if (error || !data || !data.length) { alert(t('rosterSaveFail') + ' ' + ((error && error.message) || 'no row')); return; }
         const r = this.rows.find(x => x.id === id);
         if (r) Object.assign(r, fields);

@@ -176795,16 +176795,36 @@ class OrganizerScoringSystem {
             // Check which players already have rounds
             const { data: existingRounds } = await window.SupabaseDB.client
                 .from('rounds')
-                .select('golfer_id, total_gross')
+                .select('golfer_id, total_gross, handicap_used, team_size, scramble_config')
                 .eq('society_event_id', this.currentEventId);
 
             const playersWithRounds = new Set((existingRounds || []).filter(r => r.total_gross != null).map(r => r.golfer_id));   // cleared rounds keep a NULL row
+
+            // 2026-09-28 (Pete: "handicap adjustments must not affect a round just played"): a player
+            // who already has a round / live card on this event keeps the handicap it was PLAYED OFF.
+            // The directory value above is the CURRENT number — after the masterscoreboard pull it is
+            // the NEW one, and re-saving the card stamped it onto the finished round. Only the
+            // organizer's hcp editor (applyHandicapToEvent) changes a played round's handicap.
+            const _playedOff = {};
+            (existingRounds || []).forEach(r => { if (r.handicap_used != null && !((r.team_size || 1) > 1 || r.scramble_config)) _playedOff[String(r.golfer_id)] = parseFloat(r.handicap_used); });   // team rounds hold the TEAM hcp
+            try {
+                const { data: _cards } = await window.SupabaseDB.client
+                    .from('scorecards').select('player_id, handicap').eq('event_id', String(this.currentEventId)).neq('status', 'abandoned');
+                (_cards || []).forEach(c => { if (c.handicap != null && _playedOff[String(c.player_id)] == null) _playedOff[String(c.player_id)] = parseFloat(c.handicap); });
+            } catch (e) {}
+            // Event already under way / played (DB event_hcp_frozen: past date, tee time passed, or any
+            // card posted): a player with no card yet keeps the REGISTRATION number — the roster syncs
+            // stop writing it at that point, so it is the number they teed off.
+            let _frozen = false;
+            try { const { data: _fz } = await window.SupabaseDB.client.rpc('event_hcp_frozen', { p_event: String(this.currentEventId) }); _frozen = _fz === true; } catch (e) {}
+            if (_frozen) (registrations || []).forEach(reg => { if (reg.handicap != null && _playedOff[String(reg.player_id)] == null) _playedOff[String(reg.player_id)] = parseFloat(reg.handicap); });
 
             // Store player data
             this.qsePlayersData = (registrations || []).map(reg => ({
                 player_id: reg.player_id,
                 player_name: reg.player_name,
-                handicap: (_hcpById[String(reg.player_id)] != null ? _hcpById[String(reg.player_id)]
+                handicap: (_playedOff[String(reg.player_id)] != null ? _playedOff[String(reg.player_id)]
+                           : _hcpById[String(reg.player_id)] != null ? _hcpById[String(reg.player_id)]
                            : (reg.handicap != null ? parseFloat(reg.handicap)
                               : (reg.handicap_index != null ? parseFloat(reg.handicap_index) : 18))),   // blank = 18 (platform default), never scratch
                 hasExistingRound: playersWithRounds.has(reg.player_id),

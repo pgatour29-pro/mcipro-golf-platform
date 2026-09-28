@@ -285,6 +285,21 @@ eq('relativeMatchHandicaps: four-ball 12/18/6/20 → [6,12,0,14]', E.relativeMat
     const badge = (idx.match(/async updateResultsBadge\(\)[\s\S]*?setBadge\('resultsCubeBadge'/) || [''])[0];
     check('Results cube badge probes ROUNDS (paper cards)', /from\('rounds'\)/.test(badge) && /resEvents\.add\(r\.society_event_id\)/.test(badge));
 }
+// =========================================================
+// A PLAYED ROUND KEEPS THE HANDICAP IT WAS PLAYED OFF (2026-09-28)
+// The masterscoreboard pull changes the CURRENT handicap. Paper Cards / Quick Score used to load
+// that current number for players whose round was already posted, and re-saving the card rewrote
+// the finished round. Only the organizer's hcp editor (applyHandicapToEvent) may change it.
+// DB side: every roster sync goes through event_hcp_frozen (sql/played_round_hcp_frozen_20260928.sql).
+// =========================================================
+{
+    const fs = require('fs'), path = require('path');
+    const idx = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+    const qse = (idx.match(/const _playedOff = \{\};[\s\S]*?this\.qsePlayersData = \(registrations \|\| \[\]\)\.map\(reg => \(\{[\s\S]*?handicap: ([^\n]*)/) || ['', ''])[1];
+    check('QSE/Paper Card: posted round handicap_used wins over the current handicap', /^\(_playedOff\[/.test(qse.trim()));
+    const sql = fs.readFileSync(path.join(__dirname, '..', 'sql', 'played_round_hcp_frozen_20260928.sql'), 'utf8');
+    check('Roster syncs guard played events via event_hcp_frozen', (sql.match(/NOT public\.event_hcp_frozen\(/g) || []).length >= 8);
+}
 // ---- report ----
 console.log(`\nScoring engine tests: ${pass} passed, ${fail} failed`);
 if (fail) { console.log('\n' + failures.join('\n')); process.exit(1); }

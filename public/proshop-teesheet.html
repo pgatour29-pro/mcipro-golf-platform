@@ -3174,7 +3174,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="golfer-avatar.js?v=20260830a"></script>
   <script src="name-search.js?v=20260917a"></script>
-  <script src="course-society-link.js?v=1351"></script>
+  <script src="course-society-link.js?v=1396"></script>
   <script>
   (function() {
     'use strict';
@@ -3207,7 +3207,7 @@
 
       try {
         // Get caddy bookings with caddy profile
-        const { data, error } = await supabaseClient
+        let { data, error } = await supabaseClient
           .from('caddy_bookings')
           .select('*, caddy_profiles(name, caddy_number, photo_url)')
           .eq('booking_date', date)
@@ -3217,6 +3217,17 @@
         if (error) {
           console.error('[TeeSheet] Error fetching caddy bookings:', error);
           return caddyBookingsCache[date] || [];
+        }
+
+        // v1396: jobs are fetched by date only — drop the ones that CONFIDENTLY belong to another venue.
+        // course_name on caddy jobs can be an event title ("GREEN VALLEY FREE FOOD FRIDAY"), so a name
+        // we can't place is KEPT: hiding a real job from the pro shop is worse than showing a stray one.
+        const CLk = window.CourseLink, sheetSlug = el?.courseSelect?.value || '';
+        if (CLk && sheetSlug && CLk.venueOf(sheetSlug) && data && data.length) {
+          data = data.filter(b => {
+            const v = CLk.slugFor(b.course_name) || (CLk.venueOf(b.course_id) ? b.course_id : null);
+            return !v || CLk.sameVenue(v, sheetSlug);
+          });
         }
 
         // Get user profiles for golfer names
@@ -9183,9 +9194,11 @@
     let rtSubscribedDate = null;
 
     function handleRealtimeEvent() {
-      // Skip echoes of our own writes; the poll covers anything genuinely missed
-      if (Date.now() - lastLocalSave < 2000) return;
+      // v1396: never DROP an event after a local save — another device's change in that window used to
+      // wait for the 30s poll. A same-instant burst coalesces (<100ms); a save still in flight defers
+      // the refetch only until the write lands (fetchTeeSheetBookings keeps its cache for 2.5s).
       clearTimeout(rtDebounceTimer);
+      const wait = Math.max(80, 2600 - (Date.now() - lastLocalSave));
       rtDebounceTimer = setTimeout(() => {
         const date = el.dateInput.value;
         const courseId = el?.courseSelect?.value || '';
@@ -9196,7 +9209,18 @@
           fetchSocietyEvents(date),
           fetchEventRegistrations(date)
         ]).then(render).catch(e => console.warn('[TeeSheet] Realtime refresh failed:', e));
-      }, 700);
+      }, wait);
+    }
+
+    let caddyRosterTimer = null;
+    function onCaddyProfileChange() {
+      // small table, rare writes, and its course_id is not always this sheet's slug — refetch THIS
+      // course's roster through the same courseRosterFilter the first load used
+      clearTimeout(caddyRosterTimer);
+      caddyRosterTimer = setTimeout(async () => {
+        try { allCaddies = await fetchCaddiesFromDb(el.courseSelect.value); } catch (e) { return; }
+        render();
+      }, 80);
     }
 
     function subscribeRealtime(date) {
@@ -9214,6 +9238,13 @@
         .on('postgres_changes', { event: '*', schema: 'public', table: 'caddy_bookings', filter: 'booking_date=eq.' + date }, handleRealtimeEvent)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'society_events', filter: 'event_date=eq.' + date }, handleRealtimeEvent)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'event_registrations' }, handleRealtimeEvent)
+        // v1396: DELETE payloads carry only the primary key (RLS tables) and never match a column filter,
+        // so a removed booking / caddy job used to stay on the sheet. Deletes are rare — refresh on each.
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'bookings' }, handleRealtimeEvent)
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'caddy_bookings' }, handleRealtimeEvent)
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'society_events' }, handleRealtimeEvent)
+        // v1396: caddy roster (new caddy, photo, availability) — live instead of once per course pick
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'caddy_profiles' }, onCaddyProfileChange)
         .subscribe(status => console.log('[TeeSheet] Realtime channel (' + date + '):', status));
     }
 
@@ -9237,13 +9268,8 @@
         fetchSocietyEvents(currentDate),
         fetchEventRegistrations(currentDate)
       ]).then(([tsBookings, caddyBookings, societyEvts, eventRegs]) => {
-        const hasData = (tsBookings && tsBookings.length > 0) ||
-                        (caddyBookings && caddyBookings.length > 0) ||
-                        (societyEvts && societyEvts.length > 0) ||
-                        (eventRegs && eventRegs.length > 0);
-        if (hasData) {
-          render();
-        }
+        // v1396: always paint — an emptied day (last job deleted) must clear, not keep the old pill
+        render();
       }).catch(e => console.warn('[TeeSheet] Auto-refresh failed:', e));
     }, 30000); // 30 seconds
 

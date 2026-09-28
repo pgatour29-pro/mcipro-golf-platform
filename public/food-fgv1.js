@@ -20,6 +20,24 @@
     const baht = n => '฿' + Math.round(Number(n || 0)).toLocaleString();
     const liveMgr = () => window.liveScorecardInstance || window.LiveScorecardManager || null;
     const courseCtx = () => { const m = liveMgr(); return (m && (m.courseName || (m.courseData && m.courseData.name))) || null; };
+    // ---- kitchen course scoping: food_orders streams from EVERY course; a kitchen serves ONE ----
+    const kitchenCourse = () => { const s = S.settings; return (s && s.course_name && s.course_name !== 'default' && String(s.course_name).trim()) || courseCtx() || null; };
+    const courseStem = (name) => {
+        const stop = new Set(['golf', 'club', 'country', 'course', 'resort', 'international', 'the', 'and', 'cc', 'gc', 'spa', 'clubhouse']);
+        const toks = String(name || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w && !stop.has(w)).slice(0, 2);
+        return toks.length ? toks : [String(name || '').toLowerCase().trim()].filter(Boolean);
+    };
+    // no kitchen course context → keep current behaviour (every order); else match course_name by stem
+    const orderMatchesKitchen = (o) => {
+        const kc = kitchenCourse();
+        if (!kc) return true;
+        const stem = courseStem(kc);
+        if (!stem.length) return true;
+        const n = String((o && o.course_name) || '').toLowerCase().trim();
+        // an order placed off-course is stamped 'Clubhouse' (or nothing) — never hide it from a kitchen
+        if (!n || n === 'clubhouse') return true;
+        return stem.every(t => n.includes(t));
+    };
     const holeCtx = () => { const m = liveMgr(); return (m && m.groupId && m.currentHole) ? Number(m.currentHole) : null; };
     const ago = iso => {
         const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
@@ -142,17 +160,27 @@
         try {
             S._ordChan = c.channel('food_orders_' + me)
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'food_orders', filter: 'golfer_id=eq.' + me }, async payload => {
-                    const prev = payload.old && payload.old.status;
+                    // RLS DELETE/UPDATE payload.old carries only the id — read the PREVIOUS status from our local copy
+                    const oid = (payload.new && payload.new.id) || (payload.old && payload.old.id);
+                    const held = oid && S.orders.find(x => x.id === oid);
+                    const prev = held && held.status;
                     await loadOrders();
                     renderStatus(); updateCubeBadges();
                     const o = payload.new;
-                    if (o && o.status && o.status !== prev) {
+                    if (o && o.status && o.status !== prev) {   // only toast on a real status change
                         const m = stMeta(o.status);
                         if (o.status === 'out_for_delivery') notify('Order #' + o.order_number + ' is on the way' + (o.runner_name ? ' — ' + o.runner_name : '') + '!', 'success');
                         else if (o.status === 'delivered') notify('Order #' + o.order_number + ' delivered. Enjoy!', 'success');
                         else if (o.status !== 'confirmed') notify('Order #' + o.order_number + ': ' + m.label, 'info');
                     }
                 }).subscribe();
+            // a backgrounded phone misses events — pull orders fresh when it returns
+            if (!S._ordVisBound) {
+                S._ordVisBound = true;
+                document.addEventListener('visibilitychange', async () => {
+                    if (document.visibilityState === 'visible' && uid()) { await loadOrders(); renderStatus(); updateCubeBadges(); }
+                });
+            }
         } catch (e) { }
     }
 
@@ -679,6 +707,15 @@
             this.subscribe(); subscribeMenu();
             this.renderShell();
             if (!this.tick) this.tick = setInterval(() => { if (this.tab === 'queue') this.renderBody(); }, 30000);
+            // a backgrounded tablet misses realtime — pull the queue fresh the moment it returns
+            if (!this._visBound) {
+                this._visBound = true;
+                document.addEventListener('visibilitychange', async () => {
+                    if (document.visibilityState !== 'visible') return;
+                    const ov = document.getElementById('kitchenQueueOverlay');
+                    if (ov && ov.style.display === 'block') { await this.load(); this.renderBody(); }
+                });
+            }
         },
         close() {
             const ov = document.getElementById('kitchenQueueOverlay');
@@ -691,8 +728,12 @@
             if (!c) return;
             try {
                 const since = new Date(Date.now() - 12 * 3600 * 1000).toISOString();
-                const { data } = await c.from('food_orders').select('*').gte('created_at', since).order('created_at', { ascending: true });
-                this.orders = data || [];
+                let q = c.from('food_orders').select('*').gte('created_at', since);
+                const kc = kitchenCourse();
+                // pre-filter on the broad first stem token server-side (this course only), then refine client-side
+                if (kc) { const st = courseStem(kc); if (st[0]) q = q.or('course_name.is.null,course_name.ilike.clubhouse,course_name.ilike.*' + st[0].replace(/[,()*]/g, '') + '*'); }
+                const { data } = await q.order('created_at', { ascending: true });
+                this.orders = (data || []).filter(orderMatchesKitchen);
             } catch (e) { console.warn('[FGV1:KQ] load failed', e); }
         },
         subscribe() {
@@ -701,6 +742,9 @@
             try {
                 this.chan = c.channel('kitchen_queue')
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'food_orders' }, async payload => {
+                        // food_orders is unfiltered — scope to THIS kitchen's course
+                        if (payload.eventType === 'DELETE') { await this.load(); this.renderBody(); return; }  // RLS delete = only id → reconcile
+                        if (!orderMatchesKitchen(payload.new)) return;   // another course's order — ignore, no reload, no chime
                         await this.load();
                         this.renderBody();
                         if (payload.eventType === 'INSERT' && S.settings && S.settings.chime !== false) this.chime();

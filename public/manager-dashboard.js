@@ -80,6 +80,8 @@
         _rt: null,
         _radar: null,
         _weather: null,
+        _eventIds: new Set(),    // event ids loaded for this course (event_registrations relevance)
+        _cardIds: new Set(),     // today's scorecard ids for this course (scores relevance)
 
         // ================= INIT =================
         async init() {
@@ -91,6 +93,9 @@
             MD.loadSettingsRow();      // async, non-blocking
             MD.onTab('overview');
             MD.subscribeRealtime();
+            // 60s timer is now only a CLOCK TICK — data changes arrive live via subscribeRealtime().
+            // Pace / "behind" figures depend on elapsed wall-clock time, so overview+traffic must
+            // still recompute on a cadence even when no row changed. Not a data poll.
             if (MD._timer) clearInterval(MD._timer);
             MD._timer = setInterval(() => {
                 const scr = document.getElementById('managerDashboard');
@@ -100,6 +105,13 @@
                 const tr_ = document.getElementById('manager-traffic');
                 if (tr_ && tr_.classList.contains('active')) MD.loadTraffic(true);
             }, 60000);
+            // A backgrounded phone misses realtime events — refresh the active tab the moment it returns.
+            if (!MD._visBound) {
+                MD._visBound = true;
+                document.addEventListener('visibilitychange', () => {
+                    if (document.visibilityState === 'visible') MD.refreshActiveTab();
+                });
+            }
         },
 
         // ================= COURSE CONTEXT =================
@@ -134,6 +146,7 @@
             } catch (e) { }
             MD.course = { id, name: name || id, holes: holes, par: par, stem: MD.stemOf(name || id) };
             MD._caddyPhotos = null; MD._caddyPhotosP = null;   // photo map is course-scoped
+            MD._eventIds.clear(); MD._cardIds.clear();          // realtime relevance sets are course-scoped
             localStorage.setItem('mgr_course_v1', JSON.stringify(MD.course));
             if (persist && uid()) {
                 try { await db().from('user_profiles').update({ managed_course_id: id, managed_course_name: MD.course.name }).eq('line_user_id', uid()); } catch (e) { }
@@ -237,6 +250,7 @@
                 if (!seen[ev.id]) { seen[ev.id] = 1; out.push(ev); }
             });
             out.sort((x, y) => String(x.event_date + (x.start_time || '')).localeCompare(String(y.event_date + (y.start_time || ''))));
+            out.forEach(ev => MD._eventIds.add(ev.id));   // realtime: place this course's event_registrations
             return out;
         },
         async regCountsFor(eventIds) {
@@ -261,6 +275,7 @@
                 fromIdx += 1000;
                 if (fromIdx > 5000) break;
             }
+            out.forEach(c => { if (c && c.id != null) MD._cardIds.add(c.id); });   // realtime: place this course's scores
             return out;
         },
         async scoresFor(cardIds) {
@@ -342,7 +357,10 @@
                         const el = document.getElementById('manager-messages');
                         if (el && el.classList.contains('active')) MD.loadMessages(true);
                     })
-                    .on('postgres_changes', { event: '*', schema: 'public', table: 'emergency_alerts' }, () => {
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'emergency_alerts' }, (payload) => {
+                        // unfiltered binding — scope client-side by course_id when the row carries one
+                        const row = payload.new || payload.old;
+                        if (row && row.course_id != null && row.course_id !== MD.course.id) return;
                         const el = document.getElementById('manager-messages');
                         if (el && el.classList.contains('active')) MD.loadMessages(true);
                         MD.loadOverview(true);
@@ -351,6 +369,17 @@
                         const el = document.getElementById('manager-maintenance');
                         if (el && el.classList.contains('active')) MD.loadMaintenance(true);
                     })
+                    // ---- live data feeds (v-rt): every relevant change refreshes only the ACTIVE tab ----
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'caddy_bookings' }, (p) => MD._rtHandle(p, 'caddy_bookings'))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'food_orders' }, (p) => MD._rtHandle(p, 'food_orders'))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'proshop_sales', filter: 'course_id=eq.' + MD.course.id }, (p) => MD._rtHandle(p, 'proshop_sales'))
+                    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'proshop_sales' }, (p) => MD._rtHandle(p, 'proshop_sales'))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, (p) => MD._rtHandle(p, 'bookings'))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'society_events' }, (p) => MD._rtHandle(p, 'society_events'))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'event_registrations' }, (p) => MD._rtHandle(p, 'event_registrations'))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'scorecards', filter: 'course_id=eq.' + MD.course.id }, (p) => MD._rtHandle(p, 'scorecards'))
+                    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'scorecards' }, (p) => MD._rtHandle(p, 'scorecards'))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'scores' }, (p) => MD._rtHandle(p, 'scores'))
                     .subscribe();
             } catch (e) { console.warn('[MD] realtime', e); }
             MD.updateMsgBadge();
@@ -559,6 +588,64 @@
                 ? `<button onclick="showManagerTab('${o.tab}', event)" class="mgr-kpi text-left w-full">${inner}</button>`
                 : `<div class="mgr-kpi">${inner}</div>`;
         }
+    };
+
+    // ================= REALTIME PLUMBING (v-rt) =================
+    // all MD.course.stem tokens appear in the lowercased name — same test as MD.orNameFilters()
+    MD._stemHit = function (name) {
+        const s = String(name || '').toLowerCase();
+        return MD.course && MD.course.stem.length ? MD.course.stem.every(t => s.includes(t)) : false;
+    };
+    // a row is this course's if its course_id matches OR a name column matches the stem
+    MD._rowForThisCourse = function (row) {
+        if (!row) return false;
+        if (row.course_id === MD.course.id) return true;
+        return MD._stemHit(row.course_name || row.course || row.tee_sheet_course || '');
+    };
+    // decide relevance per table, then refresh the active tab (coalesced)
+    MD._rtHandle = function (payload, kind) {
+        try {
+            const type = payload.eventType || payload.event;
+            // RLS DELETE payloads carry ONLY the id — can't place the row, so refresh
+            if (type === 'DELETE') { MD.refreshActiveTab(); return; }
+            const row = payload.new;
+            let relevant;
+            if (kind === 'event_registrations') {
+                const eid = row && row.event_id;
+                relevant = eid ? MD._eventIds.has(eid) : true;   // unknown event id → refresh
+            } else if (kind === 'scores') {
+                // scores fire per hole from EVERY course — only ours matter
+                relevant = !!(row && MD._cardIds.has(row.scorecard_id));
+            } else {
+                relevant = MD._rowForThisCourse(row);
+            }
+            if (relevant) MD.refreshActiveTab();
+        } catch (e) { }
+    };
+    // coalesce a burst (~80ms) then reload whichever tab is currently on screen
+    MD.refreshActiveTab = function () {
+        clearTimeout(MD._rtTimer);
+        MD._rtTimer = setTimeout(() => MD._runActiveReload(), 80);
+    };
+    MD._runActiveReload = function () {
+        if (MD._rtInFlight) { MD._rtQueued = true; return; }   // don't drop — run once more after
+        const scr = document.getElementById('managerDashboard');
+        if (!scr || !scr.classList.contains('active')) return;
+        const on = (tab) => { const el = document.getElementById('manager-' + tab); return el && el.classList.contains('active'); };
+        let p = null;
+        if (on('overview')) p = MD.loadOverview(true);
+        else if (on('traffic')) p = MD.loadTraffic(true);
+        else if (on('analytics')) p = MD.loadAnalytics();        // guards its own spinner via MD._loaded.an
+        else if (on('cash')) p = MD.loadCash();                  // guards its own spinner via MD._loaded.cash
+        else if (on('maintenance')) p = MD.loadMaintenance(true);
+        else if (on('messages')) p = MD.loadMessages(true);
+        else if (on('staff')) p = MD.loadStaff(true);
+        if (!p) return;
+        MD._rtInFlight = true;
+        Promise.resolve(p).catch(() => { }).finally(() => {
+            MD._rtInFlight = false;
+            if (MD._rtQueued) { MD._rtQueued = false; MD._runActiveReload(); }
+        });
     };
 
     // ================= CADDY REVIEWS (v1255) — golfers rate their caddy after Finish Round =================

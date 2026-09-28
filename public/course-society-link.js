@@ -408,28 +408,31 @@
         (sb.getChannels ? sb.getChannels() : []).forEach(function (c) { if (c.topic && c.topic.indexOf('courselink-') !== -1) sb.removeChannel(c); });
       } catch (e) { }
       var mine = function (evId) { return !!self.state.byId[evId]; };
+      // v1396: RLS tables send DELETE with the primary key only (no event_id/booking_date) — a removal
+      // we can't place still refreshes, or a removed player/caddy stays on the sheet
+      var gone = function (p, r) { return p.eventType === 'DELETE' && !(r && (r.event_id || r.booking_date)); };
       var bump = function () {
         clearTimeout(self._rt);
         self._rt = setTimeout(function () { self.reload().then(function () { if (self.onChange) try { self.onChange(); } catch (e) { } }); }, 600);
       };
       sb.channel('courselink-' + key)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'event_registrations' }, function (p) {
-          var r = p.new && p.new.event_id ? p.new : p.old; if (r && mine(r.event_id)) bump();
+          var r = p.new && p.new.event_id ? p.new : p.old; if (r && (mine(r.event_id) || gone(p, r))) bump();
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'event_pairings' }, function (p) {
-          var r = p.new && p.new.event_id ? p.new : p.old; if (r && mine(r.event_id)) bump();
+          var r = p.new && p.new.event_id ? p.new : p.old; if (r && (mine(r.event_id) || gone(p, r))) bump();
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'society_events' }, function (p) {
-          var r = p.new || p.old || {};
+          var r = p.new && p.new.id ? p.new : (p.old || {});
           if (mine(r.id) || (self.state.side === 'course' && self.sameVenue(self.slugFor(r.course_name), self.state.slug))) bump();
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'course_event_slots' }, function (p) {
-          var r = p.new || p.old; if (r && mine(r.event_id)) bump();
+          var r = p.new && p.new.event_id ? p.new : p.old; if (r && (mine(r.event_id) || gone(p, r))) bump();
         })
         // v1347: a caddy booked, confirmed or cancelled anywhere (golfer app, caddy master, this panel) on one of our days
         .on('postgres_changes', { event: '*', schema: 'public', table: 'caddy_bookings' }, function (p) {
-          var r = p.new || p.old, d = r && r.booking_date;
-          if (d && self.state.events.some(function (ev) { return ev.date === d; })) bump();
+          var r = p.new && p.new.booking_date ? p.new : p.old, d = r && r.booking_date;
+          if ((d && self.state.events.some(function (ev) { return ev.date === d; })) || gone(p, r)) bump();
         })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'event_course_messages' }, function (p) {
           var m = p.new; if (!m || !mine(m.event_id)) return;

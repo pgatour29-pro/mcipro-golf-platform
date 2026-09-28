@@ -45,6 +45,7 @@
         course: null,            // { id, name, stem, like, names[] }
         days: 30,
         _seq: {}, _loaded: {}, _cache: {}, _cur: 'overview',
+        _rt: null, _eventIds: new Set(),   // realtime channel + this course's event ids (event_registrations relevance)
 
         // ---------- boot ----------
         async init() {
@@ -102,6 +103,8 @@
                 try { await db().from('user_profiles').update({ managed_course_id: id, managed_course_name: MK.course.name }).eq('line_user_id', uid()); } catch (e) { }
             }
             MK.paintHeader();
+            MK._eventIds.clear(); MK._evNo = null;      // relevance sets are course-scoped
+            MK.subscribeRealtime();    // (re)bind live listeners to the new course
         },
         async showCoursePicker() {
             let list = [];
@@ -577,6 +580,7 @@
                 const { data: past } = await db().from('society_events').select('id,title,event_date,start_time,organizer_name,max_participants,course_name,society_id,status').ilike('course_name', MK.course.like).gte('event_date', fromDate).lt('event_date', today).order('event_date', { ascending: false }).limit(60);
                 if (seq !== MK._seq.ev) return;
                 const ids = (past || []).map(e => e.id);
+                ids.forEach(id => MK._eventIds.add(id));   // realtime: place this course's event_registrations
                 const regs = {};
                 if (ids.length) {
                     const { data } = await db().from('event_registrations').select('event_id,status').in('event_id', ids.slice(0, 200)).limit(1000);
@@ -1142,6 +1146,94 @@
               }
             `;
             document.head.appendChild(st);
+        }
+    };
+
+    // ================= REALTIME (v-rt) — no polling; live invalidate + silent re-render =================
+    MK._stemHit = function (name) {
+        const s = String(name || '').toLowerCase();
+        return MK.course && MK.course.stem.length ? MK.course.stem.every(t => t && s.includes(t)) : false;
+    };
+    MK._rowForThisCourse = function (row) {
+        if (!row || !MK.course) return false;
+        if (row.course_id === MK.course.id) return true;
+        return MK._stemHit(row.course_name || row.course || '');
+    };
+    // which cached RPC each table feeds — invalidate only those before re-render
+    MK._rtInv = { course_offers: ['offers'], bookings: ['offers'], caddy_bookings: ['offers'], society_events: ['report'], event_registrations: ['report'] };
+    MK._invalidate = function (kinds) {
+        if (!MK.course) return;
+        (kinds || []).forEach(k => {
+            if (k === 'offers') delete MK._cache['offers|' + MK.course.id];
+            else if (k === 'report') Object.keys(MK._cache).forEach(key => { if (key.indexOf(MK.course.id + '|') === 0) delete MK._cache[key]; });
+        });
+    };
+    MK._rtHandle = function (payload, kind) {
+        try {
+            if (!MK.course) return;
+            const type = payload.eventType || payload.event;
+            const isDelete = type === 'DELETE';
+            const row = isDelete ? payload.old : payload.new;
+            let relevant;
+            if (isDelete) {
+                // RLS delete carries only id. bookings/caddy_bookings delete high-volume platform-wide and
+                // their marketing-relevant signal (hot-deal spots) already arrives via the course_offers UPDATE.
+                relevant = (kind !== 'bookings' && kind !== 'caddy_bookings');
+            } else if (kind === 'bookings') {
+                relevant = !!(row && row.booking_type === 'hotdeal' && MK._rowForThisCourse(row));
+            } else if (kind === 'event_registrations') {
+                const eid = row && row.event_id;
+                if (eid && !MK._eventIds.has(eid)) {
+                    // an event this tab never loaded (e.g. upcoming): ONE one-row read decides, cached per event
+                    MK._evNo = MK._evNo || new Set();
+                    if (MK._evNo.has(eid)) return;
+                    db().from('society_events').select('id,course_id,course_name').eq('id', eid).maybeSingle().then(({ data }) => {
+                        if (data && MK._rowForThisCourse(data)) { MK._eventIds.add(eid); MK._invalidate(MK._rtInv.event_registrations); MK.refreshActiveTab(); }
+                        else MK._evNo.add(eid);
+                    }).catch(() => { });
+                    return;
+                }
+                relevant = true;   // one of this course's events, or no event id → refresh
+            } else {
+                relevant = MK._rowForThisCourse(row);
+                if (relevant && kind === 'society_events' && row && row.id) { MK._eventIds.add(row.id); if (MK._evNo) MK._evNo.delete(row.id); }
+            }
+            if (relevant) { MK._invalidate(MK._rtInv[kind]); MK.refreshActiveTab(); }
+        } catch (e) { }
+    };
+    // coalesce a burst (~80ms) then silently re-render the active tab, only while the dashboard is on screen
+    MK.refreshActiveTab = function () {
+        clearTimeout(MK._rtTimer);
+        MK._rtTimer = setTimeout(() => {
+            if (!MK.course) return;
+            const scr = document.getElementById('marketingDashboard');
+            if (!scr || !scr.classList.contains('active')) return;
+            MK.onTab(MK._cur, true);   // silent = no spinner flash
+        }, 80);
+    };
+    MK.subscribeRealtime = function () {
+        const c = db(); if (!c || !MK.course) return;
+        try {
+            if (MK._rt) { c.removeChannel(MK._rt); MK._rt = null; }   // reuse crashes — always remove first
+            MK._rt = c.channel('mk-dash-' + MK.course.id)
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'course_offers', filter: 'course_id=eq.' + MK.course.id }, (p) => MK._rtHandle(p, 'course_offers'))
+                .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'course_offers' }, (p) => MK._rtHandle(p, 'course_offers'))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, (p) => MK._rtHandle(p, 'bookings'))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'caddy_bookings' }, (p) => MK._rtHandle(p, 'caddy_bookings'))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'society_events' }, (p) => MK._rtHandle(p, 'society_events'))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'event_registrations' }, (p) => MK._rtHandle(p, 'event_registrations'))
+                .subscribe();
+        } catch (e) { console.warn('[Marketing] realtime', e); }
+        // a backgrounded phone misses events — full refresh of the active tab when it returns
+        if (!MK._visBound) {
+            MK._visBound = true;
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState !== 'visible' || !MK.course) return;
+                const scr = document.getElementById('marketingDashboard');
+                if (!scr || !scr.classList.contains('active')) return;
+                MK._invalidate(['offers', 'report']);
+                MK.onTab(MK._cur, true);
+            });
         }
     };
 

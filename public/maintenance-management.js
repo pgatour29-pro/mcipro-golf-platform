@@ -1,3 +1,5 @@
+// crew strings through the app i18n (Thai grounds crew) — fallback = English
+function _crewT(k, fb) { try { return (typeof _lvT === 'function') ? _lvT(k, fb) : fb; } catch (e) { return fb; } }
 /**
  * MAINTENANCE MANAGEMENT SYSTEM
  * Handles work orders, course conditions, equipment tracking
@@ -75,48 +77,10 @@ const MaintenanceManagement = {
     },
 
     initializeSampleData() {
-        const now = new Date();
-        this.state.workOrders = [
-            {
-                id: Date.now() + 1,
-                title: 'Sprinkler Head Repair - Hole 7',
-                description: 'Sprinkler head damaged during mowing, needs immediate replacement',
-                priority: 'high',
-                status: 'in-progress',
-                assignee: 'tom-johnson',
-                created: new Date(now.getTime() - 3600000 * 2).toISOString(),
-                dueDate: new Date(now.getTime() + 3600000 * 4).toISOString(),
-                progress: 65,
-                category: 'irrigation',
-                location: 'Hole 7, Fairway'
-            },
-            {
-                id: Date.now() + 2,
-                title: 'Cart #23 - Battery Replacement',
-                description: 'Battery not holding charge, replacement ordered',
-                priority: 'medium',
-                status: 'pending',
-                assignee: 'dave-miller',
-                created: new Date(now.getTime() - 3600000).toISOString(),
-                dueDate: new Date(now.getTime() + 3600000 * 8).toISOString(),
-                progress: 0,
-                category: 'equipment',
-                location: 'Cart Storage'
-            },
-            {
-                id: Date.now() + 3,
-                title: 'Bunker Sand Replenishment',
-                description: 'Holes 3, 7, and 14 need sand replenishment',
-                priority: 'medium',
-                status: 'pending',
-                assignee: 'grounds-crew',
-                created: new Date(now.getTime() - 7200000).toISOString(),
-                dueDate: new Date(now.getTime() + 86400000).toISOString(),
-                progress: 0,
-                category: 'course',
-                location: 'Holes 3, 7, 14'
-            }
-        ];
+        // No sample/placeholder work orders — never present fabricated tasks as real.
+        // The Task Management tab starts empty; real GM work orders load from Supabase
+        // (course_work_orders) via MaintenanceManagement.CrewWorkOrders below.
+        this.state.workOrders = [];
         this.saveToStorage();
     },
 
@@ -1165,5 +1129,245 @@ const MaintenanceManagement = {
 
 // Export to window
 window.MaintenanceManagement = MaintenanceManagement;
+
+// ============================================================================
+// CREW WORK ORDERS + MESSAGES — live from Supabase (course_work_orders /
+// staff_messages). The GM (manager-dashboard.js) creates work orders and sends
+// crew notes; this makes the maintenance CREW dashboard see them, instantly.
+// Renders into #mt-workorders-list, drives the #maint-msg-badge unread pill,
+// and lets the crew move a work order open -> in progress -> done with a write
+// the GM already listens to over realtime. Course-scoped, same as MD.course.
+// ============================================================================
+MaintenanceManagement.CrewWorkOrders = {
+    _course: null,
+    _rows: [],
+    _rt: null,
+    _subscribed: false,
+    _loadedOnce: false,
+    _vizBound: false,
+
+    // Crew departments a GM message can be addressed to (matches CHANNELS ids
+    // in manager-dashboard.js): the maintenance channel + all-staff broadcasts.
+    DEPTS: ['maintenance', 'all-staff'],
+
+    // Status -> [pill classes, label]; keys match manager-dashboard.js WO_STATUS.
+    // getters: labels resolve in the CURRENT language at render time
+    get STATUS() { return {
+        pending: ['bg-amber-100 text-amber-700', _crewT('maint.wo.st.pending', 'Open')],
+        in_progress: ['bg-blue-100 text-blue-700', _crewT('maint.wo.st.in_progress', 'In Progress')],
+        on_hold: ['bg-gray-100 text-gray-700', _crewT('maint.wo.st.on_hold', 'On Hold')],
+        completed: ['bg-green-100 text-green-700', _crewT('maint.wo.st.completed', 'Done')],
+        cancelled: ['bg-gray-100 text-gray-400', _crewT('maint.wo.st.cancelled', 'Cancelled')]
+    }; },
+    get PRIORITY() { return {
+        low: ['border-gray-400', 'bg-gray-100 text-gray-700', _crewT('maint.wo.pr.low', 'Low')],
+        medium: ['border-blue-500', 'bg-blue-100 text-blue-700', _crewT('maint.wo.pr.medium', 'Medium')],
+        high: ['border-amber-500', 'bg-amber-100 text-amber-700', _crewT('maint.wo.pr.high', 'High')],
+        critical: ['border-red-500', 'bg-red-100 text-red-700', _crewT('maint.wo.pr.critical', 'Critical')]
+    }; },
+
+    _db() { return (window.SupabaseDB && window.SupabaseDB.client) || null; },
+    _uid() {
+        return (window.AppState && AppState.currentUser && AppState.currentUser.lineUserId)
+            || localStorage.getItem('line_user_id') || '';
+    },
+    _esc(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    },
+    _timeAgo(ts) {
+        const ms = Date.now() - new Date(ts).getTime();
+        if (isNaN(ms)) return '';
+        const m = Math.floor(ms / 60000);
+        if (m < 1) return _crewT('maint.ago.now', 'just now');
+        if (m < 60) return _crewT('maint.ago.m', '{n}m ago').replace('{n}', m);
+        const h = Math.floor(m / 60);
+        if (h < 24) return _crewT('maint.ago.h', '{n}h ago').replace('{n}', h);
+        return _crewT('maint.ago.d', '{n}d ago').replace('{n}', Math.floor(h / 24));
+    },
+
+    // Resolve the crew member's course the same way manager-dashboard.js does:
+    // user_profiles.managed_course_id / managed_course_name (pinned by StaffSetup
+    // ._grantRole), with an AppState fast path.
+    async _resolveCourse() {
+        if (this._course) return this._course;
+        const u = (window.AppState && AppState.currentUser) || {};
+        let id = u.managedCourseId || u.managed_course_id || '';
+        let name = u.managedCourseName || u.managed_course_name || u.homeClub || '';
+        const me = this._uid();
+        const db = this._db();
+        if (!id && me && db) {
+            try {
+                const { data } = await db.from('user_profiles')
+                    .select('managed_course_id, managed_course_name')
+                    .eq('line_user_id', me).maybeSingle();
+                if (data) { id = data.managed_course_id || ''; name = data.managed_course_name || name; }
+            } catch (e) { /* offline / not ready */ }
+        }
+        if (!id) return null;
+        this._course = { id: id, name: name || id };
+        return this._course;
+    },
+
+    async activate() {
+        const course = await this._resolveCourse();
+        if (!course || !this._db()) return;
+        if (!this._subscribed) { this._subscribe(course); this._subscribed = true; }
+        if (!this._vizBound) {
+            this._vizBound = true;
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState !== 'visible') return;
+                const d = document.getElementById('maintenanceDashboard');
+                if (d && d.classList.contains('active')) this.load(true);
+            });
+        }
+        this.load(this._loadedOnce);
+        this._loadedOnce = true;
+    },
+
+    async load(silent) {
+        const course = await this._resolveCourse();
+        const db = this._db();
+        if (!course || !db) return;
+        try {
+            const [wo, msgs] = await Promise.all([
+                db.from('course_work_orders').select('*')
+                    .eq('course_id', course.id)
+                    .order('created_at', { ascending: false }).limit(200),
+                db.from('staff_messages').select('id,department,sender_id,read_by,msg_type,status')
+                    .eq('course_id', course.id).eq('status', 'active')
+                    .order('created_at', { ascending: false }).limit(300)
+            ]);
+            this._rows = wo.data || [];
+            this._renderWorkOrders();
+            this._renderBadges(msgs.data || []);
+        } catch (e) {
+            console.warn('[CrewWorkOrders] load', e);
+        }
+    },
+
+    _renderWorkOrders() {
+        const list = document.getElementById('mt-workorders-list');
+        if (!list) return;
+        // Active = anything the crew still needs to act on (open / in progress / on hold).
+        const active = this._rows.filter(w => ['pending', 'in_progress', 'on_hold'].includes(w.status));
+        // Sub-tab badge = open count.
+        const woBadge = document.getElementById('mt-workorders-badge');
+        if (woBadge) { woBadge.textContent = active.length; woBadge.style.display = active.length ? '' : 'none'; }
+        if (!active.length) {
+            list.innerHTML = `
+                <div class="text-center text-gray-500 py-6">
+                    <span class="material-symbols-outlined text-4xl text-gray-300">task_alt</span>
+                    <p class="text-sm mt-1">${_crewT('maint.wo.empty', 'Work orders from management appear here')}</p>
+                </div>`;
+            return;
+        }
+        list.innerHTML = active.slice(0, 40).map(w => this._card(w)).join('');
+        list.querySelectorAll('[data-wo-act]').forEach(btn => {
+            btn.addEventListener('click', () => this.setStatus(btn.dataset.woId, btn.dataset.woAct));
+        });
+    },
+
+    _card(w) {
+        const pr = this.PRIORITY[w.priority] || this.PRIORITY.medium;
+        const st = this.STATUS[w.status] || this.STATUS.pending;
+        const by = w.created_by_name || _crewT('maint.wo.bymgmt', 'Management');
+        const meta = [];
+        if (w.location_hole) meta.push(_crewT('maint.wo.hole', 'Hole') + ' ' + w.location_hole);
+        if (w.assigned_to) meta.push(this._esc(w.assigned_to));
+        // Progression buttons: open -> in progress -> done.
+        let actions = '';
+        if (w.status === 'pending' || w.status === 'on_hold') {
+            actions += `<button data-wo-act="in_progress" data-wo-id="${this._esc(w.id)}" class="btn-sm btn-primary">${_crewT('maint.wo.start', 'Start')}</button>`;
+        }
+        if (w.status === 'pending' || w.status === 'on_hold' || w.status === 'in_progress') {
+            actions += `<button data-wo-act="completed" data-wo-id="${this._esc(w.id)}" class="btn-sm btn-outline">${_crewT('maint.wo.markdone', 'Mark Done')}</button>`;
+        }
+        return `
+            <div class="bg-white border-l-4 ${pr[0]} rounded-r-xl p-4 shadow-sm">
+                <div class="flex items-start justify-between">
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="px-2 py-0.5 ${pr[1]} text-xs rounded-full font-medium">${pr[2]}</span>
+                            <span class="px-2 py-0.5 ${st[0]} text-xs rounded-full font-medium">${st[1]}</span>
+                            <h4 class="font-semibold text-gray-900">${this._esc(w.title)}</h4>
+                        </div>
+                        ${w.description ? `<p class="text-sm text-gray-600 mt-1">${this._esc(w.description)}</p>` : ''}
+                        <p class="text-xs text-gray-400 mt-2">${meta.length ? this._esc(meta.join(' • ')) + ' • ' : ''}${_crewT('maint.wo.assignedby', 'Assigned by:')} ${this._esc(by)} • ${this._timeAgo(w.created_at)}</p>
+                    </div>
+                    <div class="flex flex-col gap-2 shrink-0 ml-2">${actions}</div>
+                </div>
+            </div>`;
+    },
+
+    async setStatus(id, status) {
+        const db = this._db();
+        if (!db || !id) return;
+        const patch = { status: status, updated_at: new Date().toISOString() };
+        if (status === 'completed') { patch.progress = 100; patch.completed_at = new Date().toISOString(); }
+        try {
+            const { data, error } = await db.from('course_work_orders')
+                .update(patch).eq('id', id).select();
+            if (error || !(data || []).length) throw error || new Error('no rows');
+            // Optimistic local update; realtime will also confirm for the GM.
+            const row = this._rows.find(w => String(w.id) === String(id));
+            if (row) Object.assign(row, patch);
+            this._renderWorkOrders();
+            MaintenanceManagement.showToast(_crewT('maint.wo.marked', 'Work order marked') + ' ' + (this.STATUS[status] ? this.STATUS[status][1] : status), 'success');
+        } catch (e) {
+            console.error('[CrewWorkOrders] setStatus', e);
+            MaintenanceManagement.showToast(_crewT('maint.wo.fail', 'Could not update work order'), 'error');
+        }
+    },
+
+    _renderBadges(msgs) {
+        const me = this._uid();
+        const unread = (msgs || []).filter(m =>
+            this.DEPTS.includes(m.department)
+            && m.msg_type !== 'request'
+            && m.sender_id !== me
+            && !((m.read_by || []).includes(me))
+        ).length;
+        ['maint-msg-badge', 'mntCubeMsgBadge'].forEach(elId => {
+            const el = document.getElementById(elId);
+            if (!el) return;
+            el.textContent = unread > 99 ? '99+' : unread;
+            el.style.display = unread ? 'flex' : 'none';
+        });
+    },
+
+    _subscribe(course) {
+        const db = this._db();
+        if (!db) return;
+        try {
+            if (this._rt) { db.removeChannel(this._rt); this._rt = null; }
+            this._rt = db.channel('crew-maint-' + course.id)
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'course_work_orders', filter: 'course_id=eq.' + course.id }, () => this.load(true))
+                // RLS tables emit id-only DELETE payloads that never match a column filter — bind DELETE unfiltered.
+                .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'course_work_orders' }, () => this.load(true))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_messages', filter: 'course_id=eq.' + course.id }, () => this.load(true))
+                .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'staff_messages' }, () => this.load(true))
+                .subscribe();
+        } catch (e) { console.warn('[CrewWorkOrders] realtime', e); }
+    }
+};
+
+// Bootstrap: activate whenever the crew maintenance dashboard becomes visible.
+(function () {
+    const CW = MaintenanceManagement.CrewWorkOrders;
+    const start = () => {
+        const el = document.getElementById('maintenanceDashboard');
+        if (!el) { setTimeout(start, 800); return; }
+        const kick = () => { if (el.classList.contains('active')) CW.activate(); };
+        try {
+            const obs = new MutationObserver(kick);
+            obs.observe(el, { attributes: true, attributeFilter: ['class'] });
+        } catch (e) { /* no MutationObserver */ }
+        kick(); // already-active on load
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+    else start();
+})();
 
 console.log('[MaintenanceManagement] Module loaded');

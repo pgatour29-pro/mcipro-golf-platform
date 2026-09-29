@@ -531,7 +531,7 @@ window.PlayerScorecardViewer = (function() {
                                 </tr>
                                 <tr class="bg-white">
                                     <td class="px-1.5 py-1.5 text-gray-700 font-semibold border border-gray-200" style="border-top:1.5px solid #000;border-bottom:1.5px solid #000;border-left:1.5px solid #000;">Gross</td>
-                                    ${nineHoles.map(h => `<td class="px-1 py-1.5 text-center border border-gray-200 ${getScoreCellClass(h.gross_score, h.par)}" style="border-top:1.5px solid #000;border-bottom:1.5px solid #000;">${h.gross_score}</td>`).join('')}
+                                    ${nineHoles.map(h => `<td class="px-1 py-1.5 text-center border border-gray-200 font-semibold text-gray-900" style="border-top:1.5px solid #000;border-bottom:1.5px solid #000;">${window.ScoreMark ? window.ScoreMark.html(h.gross_score, h.par) : h.gross_score}</td>`).join('')}
                                     <td class="px-1.5 py-1.5 text-center font-bold text-emerald-700 bg-emerald-50 border border-gray-200" style="border-top:1.5px solid #000;border-bottom:1.5px solid #000;border-right:1.5px solid #000;">${nineGross}</td>
                                 </tr>
                                 <tr>

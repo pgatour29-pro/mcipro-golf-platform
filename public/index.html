@@ -8055,6 +8055,15 @@
             padding:6px 9px; overflow:hidden; display:flex; align-items:center; gap:8px; }
         /* v1401: basis 0 — with basis auto the chip's full content width (HOLE n + nine chips + clock)
            was measured BEFORE shrinking, so the row wrapped and END fell to a line of its own (~44px). */
+        /* v1404 (Pete: "where is the timer on the papercard"): the clock is the part that must
+           never clip — it's flex:none and the HOLE label gives way first (ellipsis). On phones the
+           A+B course-nine chips stand down: F9/B9 beside the chip already says which nine you're
+           on, and a round clock reads 3:45:12 for most of the day. */
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-hole b { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-hole .pcv-time { flex:none; }
+        @media (max-width: 419px) {
+            #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-hole .cn-nines { display:none !important; }
+        }
         #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-hole b {
             display:block; font:800 13px/1.15 'Instrument Sans',sans-serif; color:var(--pcv-onslab) !important;
             white-space:nowrap; }
@@ -104916,7 +104925,14 @@ class LiveScorecardSystem {
         // The paper card hides the timer bar (it costs the one screen), so the elapsed clock
         // rides the hole chip's spare width instead — same tick, no extra height.
         const pcvT = document.getElementById('pcvTime');
-        if (pcvT) pcvT.textContent = this.formatTimer(totalElapsed);
+        if (pcvT) {
+            // v1404: h:mm once past the hour — 3:45:12 cost the chip its HOLE number at 360px.
+            // The full clock (F9 / B9 / TOTAL) stays in MORE.
+            const _hr = totalElapsed >= 3600000;
+            pcvT.textContent = _hr
+                ? Math.floor(totalElapsed / 3600000) + ':' + String(Math.floor((totalElapsed % 3600000) / 60000)).padStart(2, '0')
+                : this.formatTimer(totalElapsed);
+        }
     }
 
     // Final round timings (seconds) for post-round save, mirroring the live timer.

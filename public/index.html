@@ -8178,6 +8178,14 @@
             background:var(--pcv-slab) !important; padding:9px 6px; text-align:left; vertical-align:bottom; width:62px; }
         #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-g th.lab span {
             display:block; font:800 8.5px/1.3 'JetBrains Mono',monospace; letter-spacing:.1em; color:var(--pcv-dim) !important; }
+        /* v1406 (Pete: "when the course has multiple nines, where is the indicator"): the nine's
+           NAME rides the card's own corner (group) / column caps (solo) — the hole chip has no
+           width left at 360px. Green = the nine you are on right now (the v1179 rule). */
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-nn { display:block; max-width:100%; overflow:hidden; white-space:normal; overflow-wrap:anywhere;
+            font:800 8px/1.15 'JetBrains Mono',monospace; font-style:normal; letter-spacing:.06em; text-transform:uppercase;
+            padding:3px 4px; border-radius:5px; margin-bottom:4px; background:var(--pcv-soft) !important; color:var(--pcv-ink) !important; }
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-nn.on { background:var(--pcv-grn) !important; color:#ffffff !important; }
+        #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-cap .pcv-nn { display:inline-block; max-width:62px; margin:0 0 0 5px; vertical-align:middle; }
         #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-g th.lab b {
             display:block; font:800 10px/1.3 'JetBrains Mono',monospace; color:var(--pcv-onslab) !important; }
         #golferDashboard #golfer-scorecard #scorecardActiveSection #paperCardView .pcv-g th.hd {
@@ -13078,6 +13086,7 @@
                 'scorecard.trad.keypad': 'Keypad',
                 'scorecard.trad.card': 'Card',
                 'scorecard.pcv.paper': 'Paper',
+                'scorecard.pcv.nine': 'NINE',
                 'scorecard.pcv.total': 'TOTAL',
                 'scorecard.pcv.pause': 'Pause',
                 'scorecard.pcv.resume': 'Resume',
@@ -16638,6 +16647,7 @@
                 'scorecard.trad.keypad': 'แป้นตัวเลข',
                 'scorecard.trad.card': 'การ์ด',
                 'scorecard.pcv.paper': 'กระดาษ',
+                'scorecard.pcv.nine': 'ไนน์',
                 'scorecard.pcv.total': 'รวม',
                 'scorecard.pcv.pause': 'หยุด',
                 'scorecard.pcv.resume': 'เล่นต่อ',
@@ -20066,6 +20076,7 @@
                 'scorecard.trad.keypad': '키패드',
                 'scorecard.trad.card': '카드',
                 'scorecard.pcv.paper': '종이',
+                'scorecard.pcv.nine': '나인',
                 'scorecard.pcv.total': '합계',
                 'scorecard.pcv.pause': '일시정지',
                 'scorecard.pcv.resume': '재개',
@@ -23676,6 +23687,7 @@
                 'scorecard.trad.keypad': 'キーパッド',
                 'scorecard.trad.card': 'カード',
                 'scorecard.pcv.paper': 'ペーパー',
+                'scorecard.pcv.nine': 'ナイン',
                 'scorecard.pcv.total': '合計',
                 'scorecard.pcv.pause': '一時停止',
                 'scorecard.pcv.resume': '再開',
@@ -107511,6 +107523,22 @@ class LiveScorecardSystem {
         if (mb) mb.classList.toggle('on', !!this._pcvMore);
         try { this.renderStatsInput(); } catch (e) { /* stats row is optional */ }
     }
+    // v1406: [front nine name, back nine name] for a combo course ('Burapha (A+B)'), else null.
+    _pcvNines() {
+        try {
+            const n = window.CourseNines && CourseNines.split(this.courseData?.name || '').nines;
+            const parts = n ? n.split('+').map(t => t.trim()) : [];
+            return parts.length === 2 ? parts : null;
+        } catch (e) { return null; }
+    }
+    _pcvNinePill(side) {   // side 0 = front (1-9), 1 = back (10-18)
+        const nn = this._pcvNines();
+        if (!nn) return '';
+        const h = Number(this.currentHole) || 0;
+        const on = side === 0 ? (h >= 1 && h <= 9) : (h >= 10 && h <= 18);
+        const nm = nn[side].length <= 2 ? _lvT('scorecard.pcv.nine', 'NINE') + ' ' + nn[side] : nn[side];   // "A" alone reads as nothing
+        return '<i class="pcv-nn' + (on ? ' on' : '') + '">' + this._pcvEsc(nm) + '</i>';
+    }
     _pcvSoloHTML() {
         const p = this.players[0];
         const mine = this._ownsCard(p.id);
@@ -107532,7 +107560,7 @@ class LiveScorecardSystem {
                     + '<span class="pts">' + (pv == null ? '' : pv) + '</span>'
                     + this._pcvCellHTML(p, h, mine, shots[h]) + '</div>';
             }
-            return '<div class="pcv-col9"><div class="pcv-cap"><span>' + cap + '</span><span>PAR ' + parSum + '</span></div>' + rows + '</div>';
+            return '<div class="pcv-col9"><div class="pcv-cap"><span>' + cap + this._pcvNinePill(from === 1 ? 0 : 1) + '</span><span>PAR ' + parSum + '</span></div>' + rows + '</div>';
         };
         let out = 0, inn = 0;
         for (let h = 1; h <= 9; h++) out += (this.scoresCache?.[p.id]?.[h] || 0);
@@ -107569,7 +107597,10 @@ class LiveScorecardSystem {
         players.forEach(p => { shotMaps[p.id] = this._pcvShotMap(p); });
 
         let html = '<div class="pcv-gcard"><table class="pcv-g' + dense + '">';
-        html += '<thead><tr><th class="lab"><span>' + this._pcvEsc(_lvT('scorecard.hole', 'Hole').toUpperCase()) + '</span><b>PAR&middot;SI</b></th>';
+        // the nine's name takes the HOLE word's line (the numbers say "hole" already) — the header
+        // must not grow, or the one-screen card starts to scroll
+        const _nnPill = this._pcvNinePill(from === 1 ? 0 : 1);
+        html += '<thead><tr><th class="lab">' + (_nnPill || '<span>' + this._pcvEsc(_lvT('scorecard.hole', 'Hole').toUpperCase()) + '</span>') + '<b>PAR&middot;SI</b></th>';
         players.forEach(p => {
             const mine = this._ownsCard(p.id);
             const first = String(p.name || '').split(' ')[0] || '?';

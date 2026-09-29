@@ -4069,6 +4069,7 @@
     };
     // v1408 Caddy Desk strings — kept in one block per language so the four stay at parity
     Object.assign(translations.en, {
+      cdJobNoRoster: "{c} is not on this course's caddy roster — add her in Roster to manage the job here.", cdJobElsewhere: "That caddy job is at another course.",
       cdPickPh: "Find a caddy # or name",
       cdSearchPh: "Search caddy # or name, or a golfer", cdFound: "{n} found", cdNoMatch: "No caddy or golfer matches",
       cdMode: "CADDIES", cdTitle: "CADDY DESK", cdTabNow: "Now", cdTabBoard: "Board", cdTabRoster: "Roster", cdTabClose: "Day close",
@@ -4097,6 +4098,7 @@
       cdBkMissing: "That tee time is not on this sheet."
     });
     Object.assign(translations.th, {
+      cdJobNoRoster: "{c} ไม่อยู่ในรายชื่อแคดดี้ของสนามนี้ — เพิ่มในรายชื่อเพื่อจัดการงานนี้", cdJobElsewhere: "งานแคดดี้นี้อยู่ที่สนามอื่น",
       cdPickPh: "ค้นหาหมายเลขหรือชื่อแคดดี้",
       cdSearchPh: "ค้นหาหมายเลขหรือชื่อแคดดี้ หรือนักกอล์ฟ", cdFound: "พบ {n}", cdNoMatch: "ไม่พบแคดดี้หรือนักกอล์ฟ",
       cdMode: "แคดดี้", cdTitle: "โต๊ะแคดดี้", cdTabNow: "ตอนนี้", cdTabBoard: "บอร์ด", cdTabRoster: "รายชื่อ", cdTabClose: "ปิดวัน",
@@ -4125,6 +4127,7 @@
       cdBkMissing: "ไม่พบทีไทม์นี้ในตาราง"
     });
     Object.assign(translations.ko, {
+      cdJobNoRoster: "{c}는 이 코스 캐디 명단에 없습니다 — 명단에 추가하면 여기서 관리할 수 있습니다.", cdJobElsewhere: "이 캐디 업무는 다른 코스입니다.",
       cdPickPh: "캐디 번호 또는 이름 찾기",
       cdSearchPh: "캐디 번호·이름 또는 골퍼 검색", cdFound: "{n}명 찾음", cdNoMatch: "일치하는 캐디나 골퍼 없음",
       cdMode: "캐디", cdTitle: "캐디 데스크", cdTabNow: "지금", cdTabBoard: "보드", cdTabRoster: "명단", cdTabClose: "마감",
@@ -4153,6 +4156,7 @@
       cdBkMissing: "이 티타임이 시트에 없습니다."
     });
     Object.assign(translations.ja, {
+      cdJobNoRoster: "{c} はこのコースの名簿にいません — 名簿に追加するとここで管理できます。", cdJobElsewhere: "このキャディー業務は別のコースです。",
       cdPickPh: "キャディー番号・名前で検索",
       cdSearchPh: "キャディー番号・名前、またはゴルファーを検索", cdFound: "{n}件", cdNoMatch: "一致するキャディー・ゴルファーなし",
       cdMode: "キャディー", cdTitle: "キャディーデスク", cdTabNow: "現在", cdTabBoard: "ボード", cdTabRoster: "名簿", cdTabClose: "締め",
@@ -6231,6 +6235,8 @@
           // v1334: a society event's slot opens its live panel (registrations, pairings, slots, messages)
           if (pill.dataset.eventId && window.CourseLink && CourseLink.state.side === 'course') { CourseLink.openPanel(pill.dataset.eventId); return; }
           const booking = bookings.find(b => b.id === pill.dataset.id);
+          // v1410: a caddy job pill (from caddy_bookings) is a caddy job — it opens in the Caddy Desk, never as a new tee time
+          if (booking && booking.source === 'caddy-booking-db') { CaddyDesk.showJob(booking.dbId); return; }
           if (booking) openDialog(booking);
         });
 
@@ -7232,6 +7238,19 @@
         this.paintPills();                                 // the grid was just rebuilt — keep the outlines on it
         clearTimeout(this._t);
         this._t = setTimeout(() => this.reload(), 60);
+      },
+      // v1410: open ONE caddy job — hers → her card; still open → the job with its caddy list
+      async showJob(id) {
+        if (!id) return;
+        this._close = false; this.q = '';
+        if (!this.open) { this.open = true; document.documentElement.classList.add('cd-open'); try { localStorage.setItem('teesheet.desk', '1'); } catch (e) {} }
+        await this.reload();
+        const D = this.data; if (!D || !D.jobs) return;
+        const j = D.jobs.find(x => x.id === id), o = D.open.find(x => x.id === id);
+        if (j && j.cad) { this.sel = j.cad.id; this._pick = null; this.loadStats(j.cad.id); }
+        else if (o) { this.sel = null; this._pick = o.id; this.pq = ''; }
+        else { this.sel = null; this.toast(j ? t('cdJobNoRoster').replace('{c}', j.num ? '#' + j.num : '') : t('cdJobElsewhere'), true); }
+        this.paint();
       },
       setMode(on) {
         document.documentElement.classList.toggle('ts-cad', !!on);
@@ -8761,7 +8780,18 @@
       if (!q) { QF.hits = []; QF.idx = -1; QF.count.textContent = ''; QF.box.classList.remove('qf-miss'); return; }
       const found = new Set();
       QF.bk = new Map();
-      getDay(el.dateInput.value).forEach(b => { if (tsBookingMatches(b, q)) { const n = qfTarget(b); if (n) { found.add(n); if (!QF.bk.has(n)) QF.bk.set(n, b); } } });
+      // v1410 (Pete: "pete park" highlighted TRGG AND opened an empty Book slot): a caddy job (caddy_bookings pill
+      // source) whose golfer already sits on another booking — his society group — is found THROUGH that booking;
+      // on its own it has no pill, fell back to the bare time row and opened a new-tee-time dialog.
+      const day = getDay(el.dateInput.value);
+      const nameKey = g => 'n:' + String((g && g.name) || '').trim().toLowerCase();
+      const owned = new Set();
+      day.forEach(b => { if (b.source !== 'caddy-booking-db') (b.golfers || []).concat(b.unpaired || []).forEach(g => { if (!g) return; if (g.odoo_id) owned.add('id:' + g.odoo_id); if (g.name) owned.add(nameKey(g)); }); });
+      day.forEach(b => {
+        if (!tsBookingMatches(b, q)) return;
+        if (b.source === 'caddy-booking-db' && (b.golfers || []).some(g => (g.odoo_id && owned.has('id:' + g.odoo_id)) || owned.has(nameKey(g)))) return;
+        const n = qfTarget(b); if (n) { found.add(n); if (!QF.bk.has(n)) QF.bk.set(n, b); }
+      });
       QF.hits = [...found].sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1);
       QF.hits.forEach(n => n.classList.add('qf-hit'));
       QF.idx = QF.hits.length ? (jump ? 0 : Math.min(Math.max(QF.idx, 0), QF.hits.length - 1)) : -1;
@@ -8803,6 +8833,7 @@
       if (!k) return;
       const { b, g } = k, q = QF.input.value.toLowerCase().trim();
       QF.openedId = k.key;
+      if (b.source === 'caddy-booking-db') { CaddyDesk.showJob(b.dbId); return; }   // v1410: a caddy job, not a tee time
       if (b.eventId && window.CourseLink && CourseLink.state.side === 'course') {
         CourseLink.openPanel(b.eventId, { qf: true, hl: g ? (g.odoo_id || ('n:' + String(g.name || '').trim().toLowerCase())) : null });
         return;

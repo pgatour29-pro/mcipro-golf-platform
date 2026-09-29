@@ -139686,10 +139686,12 @@ const CaddyMasterData = {
     },
     _stLabel(b) {
         if (this._needs(b)) return this._t('cm.st.unassigned', 'UNASSIGNED');
+        // v1408: "on course" = started_at on a confirmed job (the status CHECK has no 'in_progress')
+        const st = (b.status === 'confirmed' && b.started_at) ? 'in_progress' : b.status;
         const k = { pending: 'PENDING', confirmed: 'CONFIRMED', in_progress: 'ON COURSE', completed: 'DONE', cancelled: 'CANCELLED' };
-        return this._t('cm.st.' + b.status, k[b.status] || String(b.status || '—').toUpperCase());
+        return this._t('cm.st.' + st, k[st] || String(st || '—').toUpperCase());
     },
-    _stClass(b) { return this._needs(b) ? 'unassigned' : (b.status || 'pending'); },
+    _stClass(b) { return this._needs(b) ? 'unassigned' : ((b.status === 'confirmed' && b.started_at) ? 'in_progress' : (b.status || 'pending')); },
     _scope(q) {
         const c = this.course; if (!c) return q;
         return q.or('course_id.eq.' + c.slug + ',course_name.ilike.' + c.prefix + '%');
@@ -139708,7 +139710,7 @@ const CaddyMasterData = {
         return top || this.course?.dbName || '';
     },
     _jobsFor(iso) { return iso === this._today() ? this.todayRows : (iso === this.day ? this.dayRows : []); },
-    _JOB_COLS: 'id,booking_date,tee_time,start_time,end_time,caddie_name,caddy_id,golfer_name,golfer_id,user_id,status,course_name,course_id,payment_amount,payment_status,payment_method,holes,booking_source,teesheet_booking_id,special_requests,confirmed_by,created_at',
+    _JOB_COLS: 'id,booking_date,tee_time,start_time,end_time,caddie_name,caddy_id,golfer_name,golfer_id,user_id,status,course_name,course_id,payment_amount,payment_status,payment_method,holes,booking_source,teesheet_booking_id,special_requests,confirmed_by,created_at,started_at,paid_at',
     _ROSTER_COLS: 'id,caddy_number,name,phone,course_id,course_name,rating,total_reviews,total_rounds,availability_status,is_active,photo_url,user_id,block_minutes,languages',
 
     // ===== course context =====
@@ -139952,7 +139954,7 @@ const CaddyMasterData = {
             if (b.status === 'completed') continue;
             const t = this._mins(b.tee_time || b.start_time); if (t == null) continue;
             const end = this._mins(b.end_time) ?? (t + block);
-            if (b.status === 'in_progress' || (t <= at && at < end)) { if (!out || t > this._mins(out.tee_time || out.start_time)) out = Object.assign({}, b, { _end: end }); }
+            if (b.started_at || (t <= at && at < end)) { if (!out || t > this._mins(out.tee_time || out.start_time)) out = Object.assign({}, b, { _end: end }); }
             else if (t > at) { if (!next || t < this._mins(next.tee_time || next.start_time)) next = b; }
         }
         return { jobs: mine, out, next, off, state: off ? 'off' : out ? 'out' : next ? 'next' : 'free' };
@@ -140110,7 +140112,7 @@ const CaddyMasterData = {
     openDatePicker() { const inp = document.getElementById('cm-day-input'); if (!inp) return; inp.value = this.day; try { inp.showPicker ? inp.showPicker() : inp.click(); } catch (e) { inp.click(); } },
     setFilter(f) { this.filter = f; this.renderBookings(); },
     setQuery(q, clear) { this.q = String(q || '').trim().toLowerCase(); if (clear) { const i = document.getElementById('cm-jobs-q'); if (i) i.value = ''; } this.renderBookings(); },
-    _isOut(b) { if (b.status === 'in_progress') return true; if (b.status !== 'confirmed' || b.booking_date !== this._today()) return false; const t = this._mins(b.tee_time || b.start_time); if (t == null) return false; const end = this._mins(b.end_time) ?? (t + 255); const now = this._nowMins(); return t <= now && now < end; },
+    _isOut(b) { if (b.status === 'confirmed' && b.started_at) return true; if (b.status !== 'confirmed' || b.booking_date !== this._today()) return false; const t = this._mins(b.tee_time || b.start_time); if (t == null) return false; const end = this._mins(b.end_time) ?? (t + 255); const now = this._nowMins(); return t <= now && now < end; },
     renderBookings() {
         const list = document.getElementById('cm-jobs-list'); if (!list) return;
         const today = this._today();
@@ -140155,10 +140157,10 @@ const CaddyMasterData = {
             if (needs) parts.push(A('g', 'openAssign', this._t('cm.act.assign', 'Assign')));
             else {
                 if (b.status === 'pending') parts.push(A('g', 'confirmBooking', this._t('cm.act.confirm', 'Confirm')));
-                if (b.status === 'confirmed' && b.booking_date <= this._today()) parts.push(A('b', 'startBooking', this._t('cm.act.start', 'Start')));
-                if (b.status === 'in_progress' || b.status === 'confirmed') parts.push(A('n', 'completeBooking', this._t('cm.act.done', 'Done')));
+                if (b.status === 'confirmed' && !b.started_at && b.booking_date <= this._today()) parts.push(A('b', 'startBooking', this._t('cm.act.start', 'Start')));
+                if (b.status === 'confirmed') parts.push(A('n', 'completeBooking', this._t('cm.act.done', 'Done')));
                 parts.push(A('n', 'openAssign', this._t('cm.act.replace', 'Replace')));
-                if (b.teesheet_booking_id && b.status !== 'in_progress') parts.push(A('a', 'releaseBooking', this._t('cm.act.release', 'Release')));
+                if (b.teesheet_booking_id && !b.started_at) parts.push(A('a', 'releaseBooking', this._t('cm.act.release', 'Release')));
             }
             parts.push(A('r', 'cancelBooking', this._t('cm.act.cancel', 'Cancel')));
             acts = `<div class="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-gray-100">${parts.join('')}</div>`;
@@ -140192,7 +140194,8 @@ const CaddyMasterData = {
     },
     async startBooking(id) {
         if (!this._gate()) return;
-        if (await this._update(id, { status: 'in_progress' }, this._t('cm.toast.oncourse', 'Marked on course'))) this.refreshToday();
+        // v1408: the status CHECK has no 'in_progress' — this write was refused every time. Sent out = started_at.
+        if (await this._update(id, { started_at: new Date().toISOString() }, this._t('cm.toast.oncourse', 'Marked on course'))) this.refreshToday();
     },
     async completeBooking(id) {
         if (!this._gate()) return;
@@ -140202,7 +140205,7 @@ const CaddyMasterData = {
         if (!this._gate()) return;
         const b = this._find(id); if (!b) return;
         const paid = String(b.payment_status || '').toLowerCase() === 'paid';
-        const patch = paid ? { payment_status: 'pending' } : { payment_status: 'paid', payment_method: b.payment_method || 'cash' };
+        const patch = paid ? { payment_status: 'pending', paid_at: null } : { payment_status: 'paid', paid_at: new Date().toISOString(), payment_method: b.payment_method || 'cash' };
         if (await this._update(id, patch, paid ? this._t('cm.toast.unpaid', 'Marked unpaid') : this._t('cm.toast.paid', 'Marked paid'))) this.refreshToday();
     },
     async cancelBooking(id) {

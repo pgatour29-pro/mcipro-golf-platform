@@ -7,5 +7,7 @@ if (!/#dashboardBackBtn\s*\{\s*z-index:\s*2147483000\s*!important;\s*\}/.test(s)
 const lowered = s.match(/#dashboardBackBtn[^{]*\{[^}]*z-index:\s*(\d+)/g) || [];
 lowered.forEach(r => { const z = +r.match(/z-index:\s*(\d+)/)[1]; if (z !== 2147483000 && z !== 9999) fail.push('a rule sets the back button z-index to ' + z + ' — never lower it: ' + r.slice(0, 90)); });
 if (!/function dashboardGoBack\(\) \{\s*\/\/ v1366[^\n]*\n\s*const _top = _backTopOverlay\(\);\s*if \(_top\) \{ _backCloseOverlay\(_top\); return; \}/.test(s)) fail.push('dashboardGoBack must start with the _backTopOverlay() catch-all');
+if (!/v1402 BACK NEVER A DEAD TAP[\s\S]{0,900}if \(!NavHistory\.canGoBack\(\)\) \{[\s\S]{0,400}showGolferTab\('overview', null\)/.test(s)) fail.push('dashboardGoBack must fall back to the golfer home when history is empty (v1402)');
+if (!/if \(dashboardId === 'golferDashboard' && typeof NavHistory !== 'undefined'\) NavHistory\.push\(/.test(s)) fail.push('TabManager.showTab must record golfer tab switches in NavHistory (v1402)');
 if (fail.length) { console.error('✗ back button guard:\n  ' + fail.join('\n  ')); process.exit(1); }
 console.log('✓ back button: top layer + catch-all in place');

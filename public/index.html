@@ -30882,6 +30882,9 @@
                     }
                     this._lastSwitch = { time: now, dash: dashboardId, tab: tabName };
                     console.log(`TabManager: Switching to ${tabName} in ${dashboardId}`);
+                    // v1402: every golfer tab switch is a history entry, whoever calls it (showGolferTab
+                    // pushes too — the stack de-dupes). Skipped while back itself is navigating.
+                    if (dashboardId === 'golferDashboard' && typeof NavHistory !== 'undefined') NavHistory.push({ screen: dashboardId, tab: tabName });
 
                     // Update tab button states
                     const tabButtons = document.querySelectorAll(`#${dashboardId} .tab-button`);
@@ -39920,7 +39923,19 @@ Sent from Login Page`;
                 try { ScreenManager.showScreen('golferDashboard'); showGolferTab('overview', null); } catch (e) {}
                 return;
             }
-            if (!NavHistory.canGoBack()) return;
+            // v1402 BACK NEVER A DEAD TAP (Pete: "why is the back button getting stuck again … a common
+            // issue that is ongoing"). Any path that lands on a golfer tab without a history entry (app
+            // reopened straight onto a tab, a link or button that calls TabManager directly) left the stack
+            // at its one root entry, so this returned and the tap did nothing. No history ⇒ fall back to
+            // the golfer home; only the home itself is the end of the line.
+            if (!NavHistory.canGoBack()) {
+                const _gd = document.getElementById('golferDashboard');
+                const _ov = document.getElementById('golfer-overview');
+                if (_gd && _gd.classList.contains('active') && _ov && !_ov.classList.contains('active')) {
+                    try { showGolferTab('overview', null); window.scrollTo(0, 0); } catch (e) {}
+                }
+                return;
+            }
             const prev = NavHistory.pop();
             if (!prev) return;
             NavHistory._navigating = true;

@@ -47133,6 +47133,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                     course_name,
                                     status,
                                     caddy_id,
+                                    caddie_name,
+                                    booking_source,
                                     teesheet_booking_id,
                                     caddy_profiles:caddy_id (name, photo_url, caddy_number)
                                 `)
@@ -47145,6 +47147,16 @@ document.addEventListener('DOMContentLoaded', function() {
                                 this._caddyBookingsCache = caddyBookings || [];
                                 this._caddyBookingsCacheTime = cacheNow;
                                 console.log('[renderScheduleList] Fetched', this._caddyBookingsCache.length, 'caddy bookings from Supabase');
+                                // v1423: a caddy job on one of MY events is that event's card — title, society,
+                                // green badge — not an anonymous "Golf Round" (Pete: #404 for TRGG Phoenix).
+                                try {
+                                    const { data: regs } = await window.SupabaseDB.client
+                                        .from('event_registrations')
+                                        .select('event_id, caddy_numbers, society_events(id, title, event_date, start_time, course_name, organizer_name, society_id)')
+                                        .eq('player_id', userId)
+                                        .gte('society_events.event_date', today);
+                                    this._myEventsCache = (regs || []).filter(r => r.society_events).map(r => Object.assign({ _regCaddies: r.caddy_numbers || '' }, r.society_events));
+                                } catch (e) { this._myEventsCache = []; }
                             }
                         }
                     } catch (err) {
@@ -47159,8 +47171,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (bookings.some(b => b.id === existingId)) return;
 
                         const teeTimeISO = `${cb.booking_date}T${cb.tee_time || '08:00:00'}`;
-                        const caddyName = cb.caddy_profiles?.name || 'Caddy';
-                        const caddyNumber = cb.caddy_profiles?.caddy_number || '';
+                        // number-keyed jobs ('Caddy #212', no profile row) still have a number; a placeholder
+                        // profile name ('Caddy #404') is never shown as a name
+                        const caddyNumber = cb.caddy_profiles?.caddy_number || (window._lvFirstNum ? window._lvFirstNum(cb.caddie_name) : '') || '';
+                        const rawName = cb.caddy_profiles?.name || '';
+                        const caddyName = (rawName && !/^caddy\s*#?\s*\d*$/i.test(rawName.trim())) ? rawName : (caddyNumber ? '' : 'Caddy');
+                        // the event this job belongs to: same day, and an event job or the same course or its number on my registration
+                        const ev = (this._myEventsCache || []).find(e => e.event_date === cb.booking_date && (
+                            cb.booking_source === 'event_registration' || cb.booking_source === 'proshop_event' ||
+                            (typeof _courseMatch === 'function' && _courseMatch(e.course_name, cb.course_name)) ||
+                            (caddyNumber && String(e._regCaddies || '').split(/\D+/).includes(String(parseInt(caddyNumber, 10))))));
 
                         bookings.push({
                             id: existingId,
@@ -47176,6 +47196,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             golferName: AppState?.currentUser?.name || '',
                             caddyName: caddyName,
                             caddyNumber: caddyNumber,
+                            eventName: ev ? ev.title : undefined,
+                            societyName: ev ? (ev.organizer_name || 'Society') : undefined,
+                            societyId: ev ? ev.society_id : undefined,
+                            eventId: ev ? ev.id : undefined,
                             source: 'caddy_bookings'
                         });
 
@@ -47183,11 +47207,14 @@ document.addEventListener('DOMContentLoaded', function() {
                             id: `${existingId}_caddie`,
                             groupId: existingId,
                             kind: 'caddie',
-                            caddieName: caddyNumber ? `#${caddyNumber} ${caddyName}` : caddyName,
+                            caddieName: caddyNumber ? ('#' + caddyNumber + (caddyName ? ' ' + caddyName : '')) : caddyName,
                             caddyNumber: caddyNumber,
                             status: cb.status,
                             date: cb.booking_date,
-                            teeTime: teeTimeISO
+                            teeTime: teeTimeISO,
+                            // v1423: the golfer filter below keeps only rows it can tie to me — this child
+                            // had no source, so the caddy line never rendered (Pete: "#404 not on my schedule")
+                            source: 'caddy_bookings'
                         });
                     });
                 }

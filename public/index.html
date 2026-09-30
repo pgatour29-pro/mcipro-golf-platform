@@ -92658,6 +92658,10 @@ class LiveScorecardSystem {
             this.scoresCache = {};
             this.players = [];
             this._demoSeedPlayers();
+            // v1427: nothing of the event follows the golfer into the demo — not its popups either
+            document.getElementById('scWhoScoreOverlay')?.remove();
+            document.getElementById('scNinesOverlay')?.remove();
+            this._ninesPromptQueued = null;
             this.setRoundTab('play');          // a demo is always a practice round
             // Pre-pick a course that has a full 18-hole card, so it really is one tap to start.
             const cs = document.getElementById('scorecardCourseSelect');
@@ -92672,6 +92676,9 @@ class LiveScorecardSystem {
             if (st) {
                 this.players = st.players;
                 this.scoresCache = st.scoresCache;
+                // v1427: Demo tapped before the first load had added the golfer stashed an EMPTY
+                // list — back on Live Round the group arrived without its own scorer. Add them first.
+                if (!this.players.length) { try { this.autoAddCurrentUser(); } catch (e) {} }
                 const cs = document.getElementById('scorecardCourseSelect');
                 if (cs && cs.value !== st.course) { cs.value = st.course; cs.dispatchEvent(new Event('change')); }
                 this.setRoundTab(st.roundTab);
@@ -96419,8 +96426,12 @@ class LiveScorecardSystem {
                 // 🗺️ MAP-AS-YOU-PLAY: offer mapping when this course has ZERO course_holes rows
                 this._maypProbe(val).catch(e => console.warn('[MAYP] probe', e));
 
-                // Initialize pin sheet manager for selected course
-                if (courseSelect.value && window.PinSheetManager) {
+                // Initialize pin sheet manager for selected course.
+                // v1427: never while a round is on screen — the ROUND's course owns the PIN state
+                // (startRound / restore set it from courseData). Re-opening Play Golf re-runs the
+                // setup auto-select, and on an event day that re-pointed the PIN manager at the
+                // EVENT's course mid-round (the pill lost its letter and the real green).
+                if (courseSelect.value && window.PinSheetManager && !this._isRoundActive()) {
                     const courseOption = courseSelect.options[courseSelect.selectedIndex];
                     const courseName = courseOption.textContent;
                     await window.PinSheetManager.init(courseName, courseSelect.value);
@@ -96518,10 +96529,19 @@ class LiveScorecardSystem {
         } catch (e) { return false; }
     }
 
+    // v1427: the group is only wanted while the setup screen still shows THAT event, and never in a
+    // demo. prefillFromTeeSheet awaits four reads; a golfer who tapped Demo (or Practice) meanwhile
+    // got the real group pushed into the round they had just switched to.
+    _prefillStillWanted(eventId) {
+        if (this.demoMode) return false;
+        return String(document.getElementById('scorecardEventSelect')?.value || '') === String(eventId);
+    }
+
     async prefillFromTeeSheet(eventId) {
         // Guard against overlapping loads when the event dropdown changes quickly
         const seq = (this._prefillSeq = (this._prefillSeq || 0) + 1);
         try {
+            if (this.demoMode) return;
             const uid = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
             if (!uid || !eventId || !window.SocietyGolfDB?.getPairings) return;
             // NEVER prefill over a LIVE round (Green Valley 2026-07-30): with an active-round
@@ -96574,6 +96594,7 @@ class LiveScorecardSystem {
 
             const gi = groups.findIndex(g => g.players.some(p => String(p.playerId) === String(uid)));
             if (gi === -1) return; // golfer not in any published group for this event
+            if (!this._prefillStillWanted(eventId)) return;   // left the event (or went Demo) while loading
 
             const group = groups[gi];
             this._prefillDismissed = this._prefillDismissed || new Set();
@@ -96607,6 +96628,7 @@ class LiveScorecardSystem {
             // Re-check AFTER the awaits: a round may have been resumed while we were loading —
             // bail out, and never push anyone already in the (possibly replaced) players array.
             if (this.groupId || localStorage.getItem('mcipro_active_round')) return;
+            if (!this._prefillStillWanted(eventId)) return;
             const nowIn = new Set(this.players.map(p => String(p.lineUserId || p.id)));
 
             const room = Math.max(0, 7 - this.players.length);
@@ -97469,10 +97491,21 @@ class LiveScorecardSystem {
     // standing on different nines. Confirm writes the venue's real Front9/Back9 selects, so
     // startRound and the combination loaders need nothing new. Once per event; backdrop tap =
     // dismissed (the setup status ring still refuses Start Round until both nines are picked).
+    // v1427: a nines prompt (fresh, queued behind WHO-SCORE, or back from its await) is only valid
+    // while the setup screen STILL shows that event at that course — and never in a demo. A queued
+    // prompt used to fire for the event's course after the golfer had moved to Demo / another course.
+    _ninesPromptStillWanted(eventId, courseId) {
+        if (this.demoMode) return false;
+        const ev = document.getElementById('scorecardEventSelect')?.value || '';
+        const cs = document.getElementById('scorecardCourseSelect')?.value || '';
+        return String(ev) === String(eventId) && String(cs) === String(courseId);
+    }
+
     async _promptNinesConfirm(eventId, courseId) {
         this._ninesPrompted = this._ninesPrompted || new Set();
         if (!eventId || !courseId || this._ninesPrompted.has(String(eventId))) return;
         if (this.groupId || localStorage.getItem('mcipro_active_round')) return;
+        if (!this._ninesPromptStillWanted(eventId, courseId)) return;
         const ev = this.loadedEvents?.find(e => String(e.id) === String(eventId));
         if (!ev) return; // practice/private/casual — the questionnaire is about EVENT bookings
         const cfg = this._comboConfig()[courseId];
@@ -97495,6 +97528,7 @@ class LiveScorecardSystem {
         // Re-check the world after the await — a round may have started, the tab hopped, etc.
         if (this._ninesPrompted.has(String(eventId))) return;
         if (this.groupId || localStorage.getItem('mcipro_active_round')) return;
+        if (!this._ninesPromptStillWanted(eventId, courseId)) return;
         if (!startSec.offsetParent) return;
         if (document.getElementById('scWhoScoreOverlay')) { this._ninesPromptQueued = [eventId, courseId]; return; }
 
@@ -98214,10 +98248,18 @@ class LiveScorecardSystem {
         // until they tap Society Event — non-members were getting other societies'
         // events pre-picked. A tab the user tapped themselves is never overridden.
         this._pendingAutoSelectEventId = autoSelectId || null;
-        if (!this._roundTabUserSet) {
+        if (this.demoMode) {
+            // v1427 DEMO STAYS A DEMO: a demo is a practice round. This block runs on every Play Golf
+            // open — also when the events land AFTER the golfer tapped Demo, and again when they
+            // come back to the tab mid-demo. It used to flip the tab to Society Event and re-select
+            // the day's event: real group mates joined the demo players, the course jumped to the
+            // event's course, WHO-SCORE and confirm-your-nines popped for a round nobody is playing.
+            // Only remember where a fresh load would have landed, for when Demo is switched off.
+            if (this._demoStash && !this._roundTabUserSet) this._demoStash.roundTab = firstRegisteredTodayId ? 'event' : 'play';
+        } else if (!this._roundTabUserSet) {
             this.setRoundTab(firstRegisteredTodayId ? 'event' : 'play');
         }
-        if (autoSelectId && this.roundTabMode === 'event') {
+        if (autoSelectId && this.roundTabMode === 'event' && !this.demoMode) {
             if (select.value !== autoSelectId) {
                 select.value = autoSelectId;
                 select.dispatchEvent(new Event('change'));

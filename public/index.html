@@ -13170,6 +13170,7 @@
                 'mntpin.tab.photo': "Photo reports",
                 'mntpin.tab.pin': "PIN placement",
                 'mntpin.today': "Today",
+                'mntpin.letter': "Today's letter — sets all 18 holes",
                 'mntpin.live': "Live for golfers",
                 'mntpin.updated': "updated",
                 'mntpin.none': "No pins set today — golfers see none",
@@ -16737,6 +16738,7 @@
                 'mntpin.tab.photo': "รายงานภาพถ่าย",
                 'mntpin.tab.pin': "ตำแหน่งพิน",
                 'mntpin.today': "วันนี้",
+                'mntpin.letter': "ตัวอักษรวันนี้ — ตั้งทั้ง 18 หลุม",
                 'mntpin.live': "นักกอล์ฟเห็นแล้ว",
                 'mntpin.updated': "อัปเดต",
                 'mntpin.none': "วันนี้ยังไม่ได้ตั้งพิน — นักกอล์ฟยังไม่เห็น",
@@ -20172,6 +20174,7 @@
                 'mntpin.tab.photo': "사진 보고",
                 'mntpin.tab.pin': "핀 위치",
                 'mntpin.today': "오늘",
+                'mntpin.letter': "오늘의 문자 — 18홀 모두 설정",
                 'mntpin.live': "골퍼에게 공개 중",
                 'mntpin.updated': "업데이트",
                 'mntpin.none': "오늘 설정된 핀 없음 — 골퍼에게 표시 안 됨",
@@ -23789,6 +23792,7 @@
                 'mntpin.tab.photo': "写真レポート",
                 'mntpin.tab.pin': "ピン位置",
                 'mntpin.today': "今日",
+                'mntpin.letter': "今日の文字 — 18ホールすべてに設定",
                 'mntpin.live': "ゴルファーに公開中",
                 'mntpin.updated': "更新",
                 'mntpin.none': "本日のピン未設定 — ゴルファーには非表示",
@@ -144736,6 +144740,37 @@ const PinSheetManager = {
         const order = this.holeLetters(courseName, hole);
         return order ? (this.letterOf(q, order) || '') : q + ' · ' + this.quadrantLabel(q);
     },
+    // Pete 2026-09-30: the club sets ONE letter for the day — one tap fills all 18 holes.
+    qForLetter(courseName, hole, letter) {
+        const order = this.holeLetters(courseName, hole);
+        const i = order ? order.indexOf(String(letter || '').toUpperCase()) : -1;
+        return i < 0 ? null : [8, 5, 2][i];
+    },
+    letterPins(courseName, letter) {
+        const out = [];
+        for (let h = 1; h <= 18; h++) { const q = this.qForLetter(courseName, h, letter); if (q) out.push({ hole: h, q }); }
+        return out;
+    },
+    /** The one letter all 18 holes share (sel = 18 q's, hole 1 first), else null. */
+    dayLetter(courseName, sel) {
+        let L = null;
+        for (let h = 1; h <= 18; h++) {
+            const q = sel && sel[h - 1]; if (!q) return null;
+            const l = this.letterOf(q, this.holeLetters(courseName, h)); if (!l) return null;
+            if (L && l !== L) return null;
+            L = l;
+        }
+        return L;
+    },
+    /** A / B / C row for a lettered course (null on a grid course). onclick = handler + "('A')". */
+    letterRowHTML(courseName, current, onclick, disabled) {
+        if (!this.layoutFor(courseName)) return '';
+        const esc = v => String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const btn = L => { const on = current === L;
+            return `<button type="button" ${disabled ? 'disabled' : ''} onclick="${esc(onclick)}('${L}')" aria-pressed="${on}" style="flex:1;height:56px;border-radius:12px;cursor:pointer;font:800 24px/1 'JetBrains Mono',monospace;border:2px solid ${on ? '#15803d' : '#86efac'};background:${on ? '#15803d' : '#fff'};color:${on ? '#fff' : '#166534'};${disabled ? 'opacity:.55;' : ''}">${L}</button>`; };
+        return `<div style="margin-top:12px;"><div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:6px;">${esc(_lvT('mntpin.letter', "Today's letter — sets all 18 holes"))}</div>
+            <div style="display:flex;gap:8px;">${btn('A')}${btn('B')}${btn('C')}</div></div>`;
+    },
 
     /**
      * The green (Pete 2026-09-27, mockup C): a circle split into back / middle / front bands with
@@ -145386,10 +145421,20 @@ const PinSheetManager = {
         let html = '';
         // Pete 2026-09-27: the 3x3 box became the circle green (mockup C) — tap where the pin is,
         // bottom of the circle = front of the green. Same 1-9 numbers, same saved data.
+        const course = this._quickCourse();
+        html += this.letterRowHTML(course, this.dayLetter(course, this.quickEntryData), 'PinSheetManager.setQuickLetter', false).replace('margin-top:12px;', 'margin:0 0 12px;');
         for (let hole = 1; hole <= 18; hole++) {
             html += `<div id="pinHole${hole}" class="mb-2 pb-2 border-b flex items-center gap-3">${this._quickHoleInner(hole)}</div>`;
         }
         container.innerHTML = html;
+    },
+    setQuickLetter(L) {
+        const pins = this.letterPins(this._quickCourse(), L);
+        if (pins.length !== 18) return;
+        this.quickEntryData = new Array(18).fill(null);
+        pins.forEach(p => { this.quickEntryData[p.hole - 1] = p.q; });
+        if (this._quickLow) this._quickLow.clear();
+        this.renderAllHoles();
     },
 
     _quickCourse() { return document.getElementById('pinSheetCourseQuick')?.value || this.currentCourseName; },
@@ -145920,6 +145965,7 @@ const MaintPins = {
                 <div style="min-width:0;"><b>${this._esc(this.course.name)}</b><small>${this._esc(this._t('mntpin.today', 'Today'))} · ${this._esc(when)}</small></div>
                 <button type="button" class="chg" onclick="MaintPins.changeCourse()">${this._esc(this._t('mntpin.course.change', 'Change'))}</button></div>
             ${live}
+            ${P.letterRowHTML(this.course.name, P.dayLetter(this.course.name, this.sel), 'MaintPins.setLetter', !!b)}
             <div class="mnp-acts">
                 <button type="button" ${b ? 'disabled' : ''} onclick="document.getElementById('mnpPhoto').click()"><span class="material-symbols-outlined">photo_camera</span>${this._esc(b === 'read' ? this._t('mntpin.reading', 'Reading pin sheet…') : this._t('mntpin.read', 'Read pin sheet'))}</button>
                 <button type="button" ${b ? 'disabled' : ''} onclick="MaintPins.copyYesterday()"><span class="material-symbols-outlined">content_copy</span>${this._esc(this._t('mntpin.copy', 'Copy yesterday'))}</button>
@@ -146099,6 +146145,19 @@ const MaintPins = {
     },
 
     discardReview() { this._review = null; this.load(); },
+
+    // one letter for the day (lettered course): all 18 holes saved in one go, golfers follow live
+    async setLetter(L) {
+        if (this._busy || !this.course || this._review) return;
+        const pins = this._P().letterPins(this.course.name, L);
+        if (pins.length !== 18) return;
+        this._busy = 'copy'; this.render();
+        try { await this._bulkSave(pins); }
+        catch (e) {
+            console.warn('[MaintPins] letter', e);
+            window.NotificationManager?.show(this._t('mntpin.failed', 'Not saved — check signal and tap again'), 'error');
+        } finally { this._busy = null; this.render(); }
+    },
 
     async copyYesterday() {
         if (this._busy || !this.course) return;

@@ -65456,7 +65456,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>
                                 <div class="scv3-hole-actions">
                                     <!-- Pete 2026-09-27: the pin is a PIN pill — tap = half-screen view of the green -->
-                                    <button type="button" id="holePinIndicator" class="pin-pill" onclick="PinSheetManager.showPinView()" style="display:none;height:29px;"><span class="material-symbols-outlined">flag</span><span data-i18n="scorecard.pin.pill">PIN</span></button>
+                                    <button type="button" id="holePinIndicator" class="pin-pill" onclick="PinSheetManager.showPinView()" style="display:none;height:29px;"><span class="material-symbols-outlined">flag</span><span data-i18n="scorecard.pin.pill">PIN</span><span class="pin-q"></span></button>
                                     <!-- v1147: the theme cycle button and the SUN pill both moved
                                          out to #thmStation — the 4-up rail at the top of this tab,
                                          which stays put whether a round is running or not. -->
@@ -105483,18 +105483,20 @@ class LiveScorecardSystem {
         if (!window.PinSheetManager || !this.currentHole) {
             return;
         }
-        const pinData = window.PinSheetManager.getPinForHole(this.currentHole);
         // v1418 (Pete 2026-09-30): the pill is on EVERY course; with no sheet yet it is blank and
         // opens the unlit green, so golfers always know where the pin sheet lives.
+        // v1417 named the quadrant (v1418: or the letter) on the Paper Card pill only; v1428: EVERY pill
+        // names it (Paper, Card, Keypad, 3-hole pace) and stays on THIS hole.
+        let lab = '';
+        try { lab = window.PinSheetManager.pillLabel(this.currentHole); } catch (e) {}
         ['holePinIndicator', 'tradPinIndicator', 'pacePinIndicator', 'pcvPinIndicator'].forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.style.display = 'flex'; // inline — .hidden can't beat inline display
+            if (!el) return;
+            el.style.display = 'flex'; // inline — .hidden can't beat inline display
+            let qEl = el.querySelector('.pin-q');
+            if (!qEl) { qEl = document.createElement('span'); qEl.className = 'pin-q'; el.appendChild(qEl); }
+            if (qEl.textContent !== lab) qEl.textContent = lab;
         });
-        // v1417: the Paper Card pill names the quadrant (v1418: or the letter) — keep it on THIS hole
-        try {
-            const qEl = document.querySelector('#pcvPinIndicator .pin-q');
-            if (qEl) { const P = window.PinSheetManager; const q = pinData && P.quadrantOf ? P.quadrantOf(pinData) : null; qEl.textContent = q && P.labelFor ? String(P.labelFor(q, this.currentHole)).toUpperCase() : ''; }
-        } catch (e) {}
         // an open pin view follows the hole
         const ov = document.getElementById('pinViewSheet');
         if (ov && ov.style.display !== 'none') window.PinSheetManager.showPinView(this.currentHole);
@@ -106923,16 +106925,17 @@ class LiveScorecardSystem {
                     '<span class="scv3-gauge-n pcb-gauge-n">' + esc(range) + '</span>' +
                 '</div></div>' +
                 '<div class="scv3-holeinfo">' +
+                    // v1428: the PIN pill names where the pin is ("PIN FRONT RIGHT"), and this column is only
+                    // ~198px at 360 — the cards chip and the map ride the meta line so FIX + PIN stay on ONE
+                    // line on every hole. END lives on the round strip above (v1408), as in the every-hole view.
                     '<div class="scv3-meta-row">' +
-                        '<span class="pcb-meta">' + metaHtml + '</span>' +
-                        '<span style="flex:1;"></span>' +
-                        '<button onclick="LiveScorecardManager.completeRound(\'end\')" class="scv3-end" style="flex:none;">END</button>' +
+                        '<span class="pcb-meta" style="flex:1 1 0;">' + metaHtml + '</span>' +
+                        '<span class="pcb-scope" style="flex:none;"><span class="material-symbols-outlined">' + (cards.length === 1 ? 'person' : 'groups') + '</span>' + cards.length + '</span>' +
+                        '<button onclick="LiveScorecardManager.viewHolePreview()" class="scv3-mini" style="flex:none;" title="View Hole Layout"><span class="material-symbols-outlined">map</span></button>' +
                     '</div>' +
                     '<div class="scv3-hole-actions">' +
                         backPill +
-                        '<button type="button" id="pacePinIndicator" class="pin-pill" onclick="PinSheetManager.showPinView()" style="display:none;height:29px;">' + (window.PinSheetManager ? PinSheetManager.pillInner() : 'PIN') + '</button>' +
-                        '<span class="pcb-scope"><span class="material-symbols-outlined">' + (cards.length === 1 ? 'person' : 'groups') + '</span>' + cards.length + '</span>' +
-                        '<button onclick="LiveScorecardManager.viewHolePreview()" class="scv3-mini" title="View Hole Layout"><span class="material-symbols-outlined">map</span></button>' +
+                        '<button type="button" id="pacePinIndicator" class="pin-pill" onclick="PinSheetManager.showPinView()" style="display:none;height:29px;">' + (window.PinSheetManager ? PinSheetManager.pillInner(this.currentHole) : 'PIN') + '</button>' +
                     '</div>' +
                 '</div>' +
                 '<button onclick="LiveScorecardManager.paceStepBlock(1)" class="scv3-chev"><span class="material-symbols-outlined">chevron_right</span></button>' +
@@ -107013,7 +107016,11 @@ class LiveScorecardSystem {
         try {
             let el = document.getElementById('fixControl');
             const host = this._liveActionsHost();
-            if (!host) { if (el) el.remove(); return; }
+            // v1428: FIX needs a score (before one it only toasted "nothing to fix") and the starting-tee
+            // switch lives only until one — they take turns in this row. That is the width the PIN pill's
+            // location ("PIN FRONT RIGHT") needs to stay on ONE line at 360px; with both, the switch
+            // wrapped and the keypad jumped 36px the moment the first score removed it.
+            if (!host || !this._roundHasAnyScore()) { if (el) el.remove(); return; }
             if (!el) {
                 el = document.createElement('span');
                 el.id = 'fixControl';
@@ -107635,7 +107642,7 @@ class LiveScorecardSystem {
             // v1067 pin location — TRADV shipped without the pin the SCV3 header has. The
             // strip has NO spare width at 360px (END wraps — verified), so the mirror lives
             // here in the legend row; same ids updatePinPositionIndicator drives.
-            '<button type="button" id="tradPinIndicator" class="pin-pill" onclick="PinSheetManager.showPinView()" style="display:none;height:20px;">' + (window.PinSheetManager ? PinSheetManager.pillInner() : 'PIN') + '</button>' +
+            '<button type="button" id="tradPinIndicator" class="pin-pill" onclick="PinSheetManager.showPinView()" style="display:none;height:20px;">' + (window.PinSheetManager ? PinSheetManager.pillInner(this.currentHole) : 'PIN') + '</button>' +
             // v1147: the SUN pill that used to live here moved out to #thmStation — the 4-up
             // WHITE/DARK/GLASS/SUN rail at the top of the tab. This view never had a
             // light/dark/glass control of its own; now it has all four.
@@ -108067,12 +108074,9 @@ class LiveScorecardSystem {
     // names the quadrant so the pin reads without a tap; updatePinPositionIndicator keeps it on the hole.
     _pcvPinPillHTML(extra) {
         const P = window.PinSheetManager;
-        const pin = P ? P.getPinForHole(this.currentHole) : null;
-        const q = pin && P.quadrantOf ? P.quadrantOf(pin) : null;
-        const lab = q && P.labelFor ? String(P.labelFor(q, this.currentHole)).toUpperCase() : '';
         return '<button type="button" id="pcvPinIndicator" class="pin-pill" onclick="PinSheetManager.showPinView()" style="display:'
             + (P ? 'flex' : 'none') + ';height:20px;' + (extra || 'margin:-2px 0;') + '">'
-            + (P ? P.pillInner() : 'PIN') + '<span class="pin-q">' + this._pcvEsc(lab) + '</span></button>';
+            + (P ? P.pillInner(this.currentHole) : 'PIN') + '</button>';
     }
     _pcvNowHTML() {
         const t = this._pcvTarget();
@@ -108507,6 +108511,9 @@ class LiveScorecardSystem {
             this.scoresCache[savingPlayerId] = {};
         }
         this.scoresCache[savingPlayerId][savingHole] = score;
+        // v1428: the first score locks the starting tee and makes FIX useful — swap them NOW (this
+        // path paints targeted cells and never reaches renderHole until the hole is done).
+        try { this.ensureStartNineControl(); this.ensureFixControl(); } catch (e) { /* cosmetic */ }
 
         // Clear input and unlock — UI is updated, next tap can proceed
         this.currentScore = '';
@@ -144995,8 +145002,20 @@ const PinSheetManager = {
         ov.style.display = 'block';
     },
 
-    pillInner() {
-        return '<span class="material-symbols-outlined">flag</span><span>' + String(_lvT('scorecard.pin.pill', 'PIN')).replace(/[&<>"]/g, '') + '</span>';
+    // v1428 (Pete 2026-10-01: "Papercard PIN pill gives location on the pill but on the Card and Keypad
+    // scorecard it does not, it just says PIN"): the location is part of THE pill body, so every live
+    // view that draws a pill (Paper, Card, Keypad, 3-hole pace) reads the same on every course with a
+    // sheet — "BACK LEFT" on a grid course, "B" on a lettered one, nothing until a sheet is uploaded.
+    pillLabel(hole) {
+        const h = hole || (window.LiveScorecardManager && window.LiveScorecardManager.currentHole);
+        const pin = h ? this.getPinForHole(h) : null;
+        const q = pin ? this.quadrantOf(pin) : null;
+        return q ? String(this.labelFor(q, h) || '').toUpperCase() : '';
+    },
+    pillInner(hole) {
+        const esc = v => String(v).replace(/[&<>"]/g, '');
+        return '<span class="material-symbols-outlined">flag</span><span>' + esc(_lvT('scorecard.pin.pill', 'PIN')) + '</span>'
+            + '<span class="pin-q">' + esc(this.pillLabel(hole)) + '</span>';
     },
 
     closePinView() {

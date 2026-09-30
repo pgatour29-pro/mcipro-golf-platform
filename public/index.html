@@ -6582,6 +6582,10 @@
         .tt-cad.on { color:#0d9488; }
         .tt-notes { margin-top:6px; font-size:12px; color:#475569; }
         .tt-acts { display:flex; gap:8px; margin-top:10px; }
+        .tt-fold { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; margin:8px 0 2px; font-size:12px; font-weight:600; color:#475569; }
+        .tt-fold-tag { color:#c2410c; }
+        .tt-fold-acts { display:flex; gap:8px; width:100%; margin-top:4px; }
+        .tt-fold-acts .tt-btn { padding:7px 8px; }
         .tt-btn { flex:1; border:1px solid #cbd5e1; background:#f8fafc; color:#0f172a; border-radius:10px; padding:9px 10px; font-size:12px; font-weight:700; cursor:pointer; }
         .tt-btn.danger { border-color:#fecaca; background:#fef2f2; color:#b91c1c; }
         /* your caddy on a booked tee time (v1234) */
@@ -46921,8 +46925,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (bookings.length === 0) {
                     const savedBookings = localStorage.getItem('mcipro_bookings');
                     if (savedBookings) {
-                        bookings = JSON.parse(savedBookings);
-                        BookingManager.bookings = bookings;
+                        // v1416: a COPY — this list gets caddy_bookings rows pushed in below; aliasing it
+                        // leaked them into BookingManager.bookings as fake "tee time" cards (My Schedule
+                        // showed a second "Booked in the app" card for a society day, Pete 2026-09-30).
+                        BookingManager.bookings = JSON.parse(savedBookings).filter(b => b && !(window.TeeTimeCards && TeeTimeCards.isCaddyJob(b)));
+                        bookings = [...BookingManager.bookings];
                         console.log('[renderScheduleList] Loaded', bookings.length, 'bookings from localStorage');
                     }
                 }
@@ -142093,10 +142100,12 @@ window.HotDeals = HotDeals;
 const TeeTimeCards = {
     esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); },
     ms(b) { const tt = b.time ? String(b.time).slice(0, 5) : '23:59'; return new Date(b.date + 'T' + tt + ':00').getTime(); },
+    // a caddy_bookings row the legacy schedule list folds in as a pseudo tee time — a caddy JOB, not a tee time
+    isCaddyJob(b) { return !!b && (b.source === 'caddy_bookings' || /^caddy_booking_/.test(String(b.id || ''))); },
     upcoming() {
         const list = (window.BookingManager && BookingManager.bookings) || [];
         const now = Date.now();
-        return list.filter(b => b && (b.kind === 'tee' || b.type === 'tee_time') && b.status === 'confirmed' && b.date && !b.deleted)
+        return list.filter(b => b && (b.kind === 'tee' || b.type === 'tee_time') && b.status === 'confirmed' && b.date && !b.deleted && !this.isCaddyJob(b))
             .filter(b => { const t = this.ms(b); return isNaN(t) || t >= now; })
             .sort((a, b) => this.ms(a) - this.ms(b));
     },
@@ -142226,11 +142235,43 @@ const TeeTimeCards = {
           + '<div class="tt-list">' + list.map(b => this.card(b)).join('') + '</div>';
     },
     // My Schedule: weave the tee-time cards among the society-event cards by date
+    // v1416 (Pete: "Why is there separate notice saying booked in app. Get rid of this. This type of
+    // information can be on the primary notice. Wasted space."): a tee time on the SAME day at the SAME
+    // venue as a society event is that round — its tee time / players / caddy / actions go ON the society
+    // card as one line. Only a tee time with no society round that day gets its own card.
+    sameVenue(a, b) {
+        if (!a || !b) return false;
+        try { if (window.CourseLink && CourseLink.slugFor) { const sa = CourseLink.slugFor(a), sb = CourseLink.slugFor(b); if (sa && sb) return CourseLink.sameVenue(sa, sb); } } catch (e) {}
+        const n = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        const w = s => n(s).split(' ')[0] || '';
+        return n(a) === n(b) || (w(a).length >= 4 && w(a) === w(b));
+    },
+    foldLine(b, hostCaddyText) {
+        const n = parseInt(b.players) || 1, cad = this.caddyInfo(b);
+        const bits = [this.tag(b), _lvT('lightview.tee', 'Tee') + ' ' + (b.time ? String(b.time).slice(0, 5) : '--:--'), _lvT('teetime.who', 'Players') + ' ' + n];
+        // the registration pill on the card already names this caddy → don't say it twice
+        const nums = t => (String(t || '').match(/\d+/g) || []).map(x => String(parseInt(x, 10)));
+        const already = cad.has && nums(cad.text).length && nums(cad.text).every(x => nums(hostCaddyText).includes(x));
+        if (cad.has && !already) bits.push(cad.text);
+        return '<div class="tt-fold" data-tt="' + this.esc(b.id) + '"><span class="tt-fold-tag">' + this.esc(bits[0]) + '</span>' + bits.slice(1).map(x => '<span>' + this.esc(x) + '</span>').join('')
+          + (this.owned(b) ? '<span class="tt-fold-acts"><button class="tt-btn" onclick="TeeTimeCards.openCaddy(\'' + this.esc(b.id) + '\')">' + this.esc(_lvT('teetime.caddy.btn', 'Caddy')) + '</button>'
+              + '<button class="tt-btn danger" onclick="TeeTimeCards.cancel(\'' + this.esc(b.id) + '\')">' + this.esc(_lvT('teetime.cancel', 'Cancel tee time')) + '</button></span>' : '')
+          + '</div>';
+    },
     mergeIntoSchedule(body) {
         if (!body) return;
         const list = this.upcoming(); if (!list.length) return;
-        const cards = list.map(b => { const d = document.createElement('div'); d.innerHTML = this.card(b); return d.firstElementChild; });
         const socs = Array.from(body.querySelectorAll('[data-ms]')).filter(el => !el.classList.contains('tt-card'));
+        const own = [];
+        list.forEach(b => {
+            const host = socs.find(x => x.dataset.date && x.dataset.date === b.date && this.sameVenue(x.dataset.course, this.course(b)));
+            if (!host) { own.push(b); return; }
+            if (host.querySelector('.tt-fold[data-tt="' + (window.CSS && CSS.escape ? CSS.escape(b.id) : b.id) + '"]')) return;
+            const btn = host.querySelector('button');
+            const d = document.createElement('div'); d.innerHTML = this.foldLine(b, btn ? btn.textContent : '');
+            if (btn) host.insertBefore(d.firstElementChild, btn); else host.appendChild(d.firstElementChild);
+        });
+        const cards = own.map(b => { const d = document.createElement('div'); d.innerHTML = this.card(b); return d.firstElementChild; });
         if (!socs.length) { body.innerHTML = ''; cards.forEach(c => body.appendChild(c)); return; }
         cards.forEach(c => { const ms = +c.dataset.ms; const after = socs.find(x => +x.dataset.ms > ms); if (after) body.insertBefore(c, after); else body.appendChild(c); });
     },
@@ -159305,7 +159346,8 @@ window._openScheduleModalSociety = async function(){
       var r=map[e.id]; var caddy=(r&&r.caddy_numbers)?(_lvT('lightview.caddy','Caddy')+' '+r.caddy_numbers):_lvT('lightview.nocaddyassigned','No caddy assigned');
       var cadImg=(r&&r.caddy_numbers)?window._lvCaddyImg(nbPhoto[window._lvFirstNum(r.caddy_numbers)],22):'';
       var soc=(e.society_id&&socMap[e.society_id])?socMap[e.society_id]:'';
-      return '<div data-ms="'+_ms+'" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px;">'+
+      var _at=' data-date="'+e.event_date+'" data-course="'+String(e.course_name||'').replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];})+'"';
+      return '<div data-ms="'+_ms+'"'+_at+' style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px;">'+
         '<div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;">'+d+'</div>'+
         '<div style="font-size:15px;font-weight:700;color:#0f172a;margin:2px 0 1px;">'+(e.course_name||e.title||'Event')+'</div>'+
         (soc?'<div style="font-size:12px;color:#16a34a;font-weight:600;margin-bottom:8px;">'+soc+'</div>':'<div style="margin-bottom:7px;"></div>')+

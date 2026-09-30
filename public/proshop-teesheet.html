@@ -7319,7 +7319,7 @@
         try {
           if (!allCaddies.length) allCaddies = await fetchCaddiesFromDb(c.id);
           let jobsQ = supabaseClient.from('caddy_bookings')
-            .select('id, caddy_id, caddie_name, tee_time, start_time, end_time, status, payment_status, payment_amount, golfer_name, teesheet_booking_id, booking_source, confirmed_at, started_at, completed_at, paid_at, special_requests, caddy_profiles(caddy_number, block_minutes)')
+            .select('id, caddy_id, caddie_name, tee_time, start_time, end_time, status, payment_status, payment_amount, golfer_name, golfer_id, user_id, teesheet_booking_id, booking_source, confirmed_at, started_at, completed_at, paid_at, special_requests, caddy_profiles(caddy_number, block_minutes)')
             .eq('booking_date', date).neq('status', 'cancelled').limit(1000);
           jobsQ = courseRosterFilter(jobsQ, c.id);
           const ids = allCaddies.map(x => x.id).filter(Boolean);
@@ -7812,6 +7812,7 @@
           .eq('id', j.id).is('caddy_id', null).neq('status', 'cancelled').select('id');
         if (error) { this.toast(t('caddyRefused') + ' ' + this.clashMsg(error), true); return false; }
         if (!data || !data.length) { this.toast(t('cdTaken'), true); return false; }
+        await this.regFollow(date, j.row, r.num);   // v1415
         if (!quiet) this.toast(t('cdAssigned').replace('{c}', '#' + r.num + ' ' + r.name).replace('{t}', j.t));
         return true;
       },
@@ -7979,6 +7980,20 @@
           + '<input id="cd-gq" class="cd-gq" data-gq type="search" autocomplete="off" placeholder="' + this.esc(t('cdGiveSearch')) + '" value="' + this.esc(this.gq) + '">'
           + (items.length ? items.map(row).join('') : '<div class="cd-empty">' + t('cdNoGolfers') + '</div>') + '</div>';
       },
+      // v1415: a caddy job that belongs to a society registration (the golfer's event card, the organizer roster)
+      // keeps the registration's caddy number in step — same contract CourseLink writes with.
+      async regFollow(date, row, num) {
+        if (!row || !(row.golfer_id || row.user_id)) return;
+        const src = String(row.booking_source || '');
+        const evs = (eventRegistrationsCache[date] || []).filter(ev => (src === 'proshop_event' || src === 'event_registration') ? true : (ev.eventTitle && ev.eventTitle === row.special_requests));
+        for (const ev of evs) {
+          const hit = (ev.registrations || []).some(rg => rg.playerId && (rg.playerId === row.golfer_id || rg.playerId === row.user_id));
+          if (!hit) continue;
+          const q = await supabaseClient.from('event_registrations').update({ caddy_numbers: String(num) }).eq('event_id', ev.eventId).eq('player_id', row.golfer_id || row.user_id);
+          if (q.error) console.warn('[CaddyDesk] reg caddy', q.error);
+          eventRegLastFetchTime[date] = 0;
+        }
+      },
       async giveTo(r, it) {
         const date = this.date();
         const done = () => this.toast((it.cur ? t('cdReplaced').replace('{o}', '#' + it.cur.num) : t('cdGiveDone')).replace('{c}', '#' + r.num + ' ' + r.name).replace('{g}', it.name).replace('{t}', it.t));
@@ -7991,6 +8006,7 @@
             .eq('id', it.j.id).neq('status', 'cancelled').is('started_at', null).select('id');
           if (error) { this.toast(t('caddyRefused') + ' ' + this.clashMsg(error), true); return false; }
           if (!data || !data.length) { this.toast(t('cdTaken'), true); return false; }
+          await this.regFollow(date, it.j.row, r.num);
           delete caddyBookingsCache[date]; delete lastFetchTime[date];
           done();
           return true;

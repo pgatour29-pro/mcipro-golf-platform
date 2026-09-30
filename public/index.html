@@ -66507,7 +66507,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <!-- Course this pin sheet belongs to -->
                                     <div class="mb-2 w-full">
                                         <label class="block text-xs font-semibold text-gray-700 mb-1">Course</label>
-                                        <select id="pinSheetCourseQuick" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"></select>
+                                        <select id="pinSheetCourseQuick" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" onchange="PinSheetManager.renderAllHoles()"></select>
                                     </div>
 
                                     <!-- Scrollable hole list -->
@@ -105171,14 +105171,16 @@ class LiveScorecardSystem {
             return;
         }
         const pinData = window.PinSheetManager.getPinForHole(this.currentHole);
+        // v1418 (Pete 2026-09-30): the pill is on EVERY course; with no sheet yet it is blank and
+        // opens the unlit green, so golfers always know where the pin sheet lives.
         ['holePinIndicator', 'tradPinIndicator', 'pacePinIndicator', 'pcvPinIndicator'].forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.style.display = pinData ? 'flex' : 'none'; // inline — .hidden can't beat inline display
+            if (el) el.style.display = 'flex'; // inline — .hidden can't beat inline display
         });
-        // v1417: the Paper Card pill names the quadrant — keep it on THIS hole
+        // v1417: the Paper Card pill names the quadrant (v1418: or the letter) — keep it on THIS hole
         try {
             const qEl = document.querySelector('#pcvPinIndicator .pin-q');
-            if (qEl) { const P = window.PinSheetManager; const q = pinData && P.quadrantOf ? P.quadrantOf(pinData) : null; qEl.textContent = q && P.quadrantLabel ? String(P.quadrantLabel(q)).toUpperCase() : ''; }
+            if (qEl) { const P = window.PinSheetManager; const q = pinData && P.quadrantOf ? P.quadrantOf(pinData) : null; qEl.textContent = q && P.labelFor ? String(P.labelFor(q, this.currentHole)).toUpperCase() : ''; }
         } catch (e) {}
         // an open pin view follows the hole
         const ov = document.getElementById('pinViewSheet');
@@ -107754,9 +107756,9 @@ class LiveScorecardSystem {
         const P = window.PinSheetManager;
         const pin = P ? P.getPinForHole(this.currentHole) : null;
         const q = pin && P.quadrantOf ? P.quadrantOf(pin) : null;
-        const lab = q && P.quadrantLabel ? String(P.quadrantLabel(q)).toUpperCase() : '';
+        const lab = q && P.labelFor ? String(P.labelFor(q, this.currentHole)).toUpperCase() : '';
         return '<button type="button" id="pcvPinIndicator" class="pin-pill" onclick="PinSheetManager.showPinView()" style="display:'
-            + (pin ? 'flex' : 'none') + ';height:20px;' + (extra || 'margin:-2px 0;') + '">'
+            + (P ? 'flex' : 'none') + ';height:20px;' + (extra || 'margin:-2px 0;') + '">'
             + (P ? P.pillInner() : 'PIN') + '<span class="pin-q">' + this._pcvEsc(lab) + '</span></button>';
     }
     _pcvNowHTML() {
@@ -144528,9 +144530,9 @@ const PinSheetManager = {
                     <div class="text-center mb-2">
                         <div class="text-lg font-bold text-gray-800">Hole ${pin.hole_number}</div>
                     </div>
-                    <div style="width:100%;max-width:150px;aspect-ratio:1;margin:0 auto 8px;">${this.greenSVG('d' + pin.hole_number, this.quadrantOf(pin), null)}</div>
+                    <div style="width:100%;max-width:150px;aspect-ratio:1;margin:0 auto 8px;">${this.greenSVG('d' + pin.hole_number, this.quadrantOf(pin), null, this.greenOpts(pin.hole_number, this.currentPinData.course_name))}</div>
                     <div class="text-center">
-                        <div class="text-xs font-semibold text-amber-700 capitalize">${pin.position_label || pin.description}</div>
+                        <div class="text-xs font-semibold text-amber-700 capitalize">${this._esc(this.labelFor(this.quadrantOf(pin), pin.hole_number, this.currentPinData.course_name) || pin.position_label || pin.description)}</div>
                     </div>
                 </div>
             `;
@@ -144690,6 +144692,51 @@ const PinSheetManager = {
         return q ? _lvT('scorecard.pin.q' + q, en[q]) : '';
     },
 
+    // ---- Lettered greens (v1418, Pete 2026-09-30) ---------------------------------------------
+    // Royal Lakeside's daily sheet names a SECTION of the green (A, B or C) and every green has its
+    // own letter order, read off the club's green card. A stored pin is still the BAND (front /
+    // center / back — the same rows every course uses), the letter is the hole's display mapping,
+    // so the data model, the crew tab, the AI reader and realtime need no change. `order` runs
+    // BACK -> FRONT (top -> bottom on the card); the two numbers are the card's width x depth.
+    GREEN_LAYOUTS: [
+        { match: /royal\s*lakeside/i, style: 'letters', holes: {
+            1: ['CBA', 22, 36], 2: ['BAC', 33, 36], 3: ['ACB', 36, 32], 4: ['BAC', 23, 40], 5: ['ACB', 30, 30], 6: ['CBA', 34, 38],
+            7: ['BAC', 28, 33], 8: ['ACB', 24, 38], 9: ['CBA', 25, 35], 10: ['BAC', 27, 34], 11: ['ACB', 33, 36], 12: ['CBA', 28, 29],
+            13: ['ACB', 22, 42], 14: ['CBA', 25, 33], 15: ['BAC', 34, 34], 16: ['ACB', 26, 36], 17: ['BAC', 25, 36], 18: ['CBA', 32, 33]
+        } }
+    ],
+    layoutFor(courseName) {
+        const n = String(courseName || '').trim();
+        return n ? (this.GREEN_LAYOUTS.find(L => L.match.test(n)) || null) : null;
+    },
+    holeLetters(courseName, hole) {
+        const L = this.layoutFor(courseName == null ? this.currentCourseName : courseName);
+        const h = L && L.holes[Number(hole)];
+        return h ? h[0] : null;
+    },
+    bandOf(q) { q = Number(q); return q >= 7 ? 'back' : q >= 4 ? 'mid' : q >= 1 ? 'front' : null; },
+    letterOf(q, order) {
+        const b = this.bandOf(q);
+        return b && order ? order[b === 'back' ? 0 : b === 'mid' ? 1 : 2] : null;
+    },
+    /** greenSVG's 4th argument for this hole on this course (null = the 1-9 grid green). */
+    greenOpts(hole, courseName) {
+        const order = this.holeLetters(courseName, hole);
+        return order ? { letters: order } : null;
+    },
+    /** What the pin is called on this hole: "Front" on a grid course, "B" on a lettered one. */
+    labelFor(q, hole, courseName) {
+        if (!q) return '';
+        const order = this.holeLetters(courseName, hole);
+        return order ? (this.letterOf(q, order) || '') : this.quadrantLabel(q);
+    },
+    /** List text: "2 · Front" on a grid course, "B" on a lettered one. */
+    pinText(q, hole, courseName) {
+        if (!q) return '';
+        const order = this.holeLetters(courseName, hole);
+        return order ? (this.letterOf(q, order) || '') : q + ' · ' + this.quadrantLabel(q);
+    },
+
     /**
      * The green (Pete 2026-09-27, mockup C): a circle split into back / middle / front bands with
      * curved left-centre-right columns, turf colours, "BACK OF GREEN" / "FRONT OF GREEN" curving
@@ -144698,9 +144745,14 @@ const PinSheetManager = {
      *   uid  — unique per SVG on the page (clip-path ids)
      *   sel  — selected quadrant or null
      *   pick — hole number: cells become buttons calling selectQuadrantForHole(pick, q)
+     *   opts — { letters: 'CBA' } (v1418): a LETTERED green — three full-width sections labelled
+     *          back -> front with the hole's letters instead of the 3x3 grid; taps select the band
+     *          (8 back, 5 middle, 2 front) so the saved pin is the same row a grid course stores.
      */
-    greenSVG(uid, sel, pick) {
+    greenSVG(uid, sel, pick, opts) {
         const R = 41, rx = R * 0.40, h = R / 3, id = 'pg' + uid;
+        const letters = opts && opts.letters ? String(opts.letters).toUpperCase().slice(0, 3) : null;
+        if (letters) sel = sel ? (sel >= 7 ? 8 : sel >= 4 ? 5 : 2) : null;   // a grid pin on a lettered course = its band
         const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
         const bands = { back: [-R - 1, -h], mid: [-h, h], front: [h, R + 1] };
         const shape = {
@@ -144708,8 +144760,13 @@ const PinSheetManager = {
             L: `<path fill-rule="evenodd" d="M 0 ${-R - 1} H ${-R - 1} V ${R + 1} H 0 Z M 0 ${-R} A ${rx} ${R} 0 0 0 0 ${R} Z"/>`,
             Rt: `<path fill-rule="evenodd" d="M 0 ${-R - 1} H ${R + 1} V ${R + 1} H 0 Z M 0 ${-R} A ${rx} ${R} 0 0 1 0 ${R} Z"/>`
         };
-        const cells = [[7, 'back', 'L'], [8, 'back', 'C'], [9, 'back', 'Rt'], [4, 'mid', 'L'], [5, 'mid', 'C'], [6, 'mid', 'Rt'],
-                       [1, 'front', 'L'], [2, 'front', 'C'], [3, 'front', 'Rt']];
+        if (letters) shape.F = `<rect x="${-R - 1}" y="${-R - 1}" width="${2 * R + 2}" height="${2 * R + 2}"/>`;
+        const cells = letters
+            ? [[8, 'back', 'F'], [5, 'mid', 'F'], [2, 'front', 'F']]
+            : [[7, 'back', 'L'], [8, 'back', 'C'], [9, 'back', 'Rt'], [4, 'mid', 'L'], [5, 'mid', 'C'], [6, 'mid', 'Rt'],
+               [1, 'front', 'L'], [2, 'front', 'C'], [3, 'front', 'Rt']];
+        const mark = q => letters ? (letters[q === 8 ? 0 : q === 5 ? 1 : 2] || '') : String(q);   // what the cell says
+        const name = q => letters ? mark(q) : q + ' ' + this.quadrantLabel(q);
         const pos = q => {
             const yb = { 7: -.58, 8: -.66, 9: -.58, 4: 0, 5: 0, 6: 0, 1: .58, 2: .66, 3: .58 }[q] * R;
             const col = [7, 4, 1].includes(q) ? -1 : [9, 6, 3].includes(q) ? 1 : 0;
@@ -144729,21 +144786,22 @@ const PinSheetManager = {
         let g = `<circle r="${R + 8.5}" fill="none" stroke="#166534" stroke-width="17"/>`;
         for (const [q, b, c] of cells) {
             const on = sel === q;
-            const act = pick ? ` role="button" aria-label="${esc(q + ' ' + this.quadrantLabel(q))}" style="cursor:pointer" onclick="PinSheetManager.selectQuadrantForHole(${pick}, ${q})"` : '';
+            const act = pick ? ` role="button" aria-label="${esc(name(q))}" style="cursor:pointer" onclick="PinSheetManager.selectQuadrantForHole(${pick}, ${q})"` : '';
             g += `<g clip-path="url(#${id}c)"><g clip-path="url(#${id}${b})" fill="${on ? '#15803d' : '#86efac'}"${act}>${shape[c]}</g></g>`;
         }
         const cx = Math.sqrt(R * R - h * h);
         g += `<g stroke="#166534" stroke-width=".8" fill="none" stroke-dasharray="2 2" pointer-events="none">`
-           + `<line x1="${-cx}" y1="${-h}" x2="${cx}" y2="${-h}"/><line x1="${-cx}" y1="${h}" x2="${cx}" y2="${h}"/><ellipse rx="${rx}" ry="${R}"/></g>`
+           + `<line x1="${-cx}" y1="${-h}" x2="${cx}" y2="${-h}"/><line x1="${-cx}" y1="${h}" x2="${cx}" y2="${h}"/>${letters ? '' : `<ellipse rx="${rx}" ry="${R}"/>`}</g>`
            + `<circle r="${R}" fill="none" stroke="#14532d" stroke-width="1" pointer-events="none"/>`;
+        const fz = letters ? 19 : 13, dx = letters ? 5 : 3, fx = letters ? 8 : 5;   // letters read bigger, flag sits beside them
         for (const [q] of cells) {
             const [x, y] = pos(q), r = rot(x, y);
             if (sel === q) {
-                g += `<g pointer-events="none"><text transform="translate(${x - 3} ${y}) rotate(${r})" font-size="13" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="central">${q}</text>`
-                   + `<line x1="${x + 5}" y1="${y + 7}" x2="${x + 5}" y2="${y - 8}" stroke="#fff" stroke-width="1.3"/>`
-                   + `<path d="M ${x + 5} ${y - 8} L ${x + 12} ${y - 5.5} L ${x + 5} ${y - 3} Z" fill="#ef4444"/></g>`;
+                g += `<g pointer-events="none"><text transform="translate(${x - dx} ${y}) rotate(${r})" font-size="${fz}" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="central">${esc(mark(q))}</text>`
+                   + `<line x1="${x + fx}" y1="${y + 7}" x2="${x + fx}" y2="${y - 8}" stroke="#fff" stroke-width="1.3"/>`
+                   + `<path d="M ${x + fx} ${y - 8} L ${x + fx + 7} ${y - 5.5} L ${x + fx} ${y - 3} Z" fill="#ef4444"/></g>`;
             } else {
-                g += `<text transform="translate(${x} ${y}) rotate(${r})" font-size="13" font-weight="800" fill="#052e16" text-anchor="middle" dominant-baseline="central" pointer-events="none">${q}</text>`;
+                g += `<text transform="translate(${x} ${y}) rotate(${r})" font-size="${fz}" font-weight="800" fill="#052e16" text-anchor="middle" dominant-baseline="central" pointer-events="none">${esc(mark(q))}</text>`;
             }
         }
         // curved fringe labels: top reads over the arc, bottom runs anti-clockwise so it reads upright
@@ -144753,7 +144811,7 @@ const PinSheetManager = {
            + `<path id="${id}b" d="M ${-bot} 0 A ${bot} ${bot} 0 0 0 ${bot} 0" fill="none"/>`
            + `<text font-size="${fs}" font-weight="800" fill="#fff" letter-spacing="1.2" pointer-events="none"><textPath href="#${id}t" startOffset="50%" text-anchor="middle">${lab('scorecard.pin.back', 'BACK OF GREEN')}</textPath></text>`
            + `<text font-size="${fs}" font-weight="800" fill="#fff" letter-spacing="1.2" pointer-events="none"><textPath href="#${id}b" startOffset="50%" text-anchor="middle">${lab('scorecard.pin.front', 'FRONT OF GREEN')}</textPath></text>`;
-        return `<svg class="pin-green" viewBox="-60 -60 120 120" style="display:block;width:100%;height:100%;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;" aria-label="${esc(sel ? this.quadrantLabel(sel) : 'Pin position')}"><defs>${defs}</defs>${g}</svg>`;
+        return `<svg class="pin-green" viewBox="-60 -60 120 120" style="display:block;width:100%;height:100%;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;" aria-label="${esc(sel ? name(sel) : 'Pin position')}"><defs>${defs}</defs>${g}</svg>`;
     },
 
     /**
@@ -144780,18 +144838,19 @@ const PinSheetManager = {
         const speed = pin && !pin.demo && this.currentPinData && this.currentPinData.green_speed;
         const demoNote = pin && pin.demo
             ? `<div style="font:700 11px/1.3 'JetBrains Mono',monospace;letter-spacing:.06em;color:#92400e;">${esc(_lvT('scorecard.pin.demo', 'DEMO · SAMPLE PIN'))}</div>` : '';
-        const body = q
-            ? `<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:4px 0 10px;">
-                   <div style="height:100%;aspect-ratio:1;max-width:100%;">${this.greenSVG('view', q, null)}</div></div>`
-            : `<div style="flex:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;color:#374151;font-weight:600;">${esc(_lvT('scorecard.pin.none', 'No pin sheet for this hole today'))}</div>`;
+        // v1418: every course shows its green; with no sheet yet it is unlit ("blank until uploaded")
+        const opts = this.greenOpts(hole);
+        const body = `<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:4px 0 10px;">
+                   <div style="height:100%;aspect-ratio:1;max-width:100%;">${this.greenSVG('view', q, null, opts)}</div></div>`;
+        const noneNote = q ? '' : `<div style="font:600 12px/1.3 system-ui,sans-serif;color:#92400e;">${esc(_lvT('scorecard.pin.none', 'No pin sheet for this hole today'))}</div>`;
         ov.innerHTML =
             `<div style="position:absolute;left:0;right:0;bottom:0;height:50vh;height:50dvh;min-height:300px;background:#fff;border-radius:18px 18px 0 0;box-shadow:0 -8px 30px rgba(0,0,0,.25);display:flex;flex-direction:column;padding:12px 16px calc(8px + env(safe-area-inset-bottom));">
                 <div style="display:flex;align-items:center;gap:10px;">
                     <span style="flex:none;background:#166534;color:#fff;border-radius:999px;padding:5px 12px;font:800 12px/1 'JetBrains Mono',monospace;letter-spacing:.08em;">${esc(_lvT('scorecard.pin.pill', 'PIN'))}</span>
                     <div style="min-width:0;flex:1;">
-                        <div style="font:800 18px/1.15 'Instrument Sans',system-ui,sans-serif;color:#111827;">${esc(_lvT('scorecard.hole', 'Hole'))} ${hole}${q ? ' · ' + esc(this.quadrantLabel(q)) : ''}</div>
+                        <div style="font:800 18px/1.15 'Instrument Sans',system-ui,sans-serif;color:#111827;">${esc(_lvT('scorecard.hole', 'Hole'))} ${hole}${q ? ' · ' + esc(this.labelFor(q, hole)) : ''}</div>
                         ${speed ? `<div style="font:600 12px/1.3 system-ui,sans-serif;color:#4b5563;">${esc(_lvT('scorecard.pin.speed', 'Green speed'))} ${esc(speed)}</div>` : ''}
-                        ${demoNote}
+                        ${demoNote}${noneNote}
                     </div>
                     <button type="button" aria-label="${esc(_lvT('scorecard.pin.close', 'Close'))}" onclick="PinSheetManager.closePinView()"
                         style="flex:none;width:40px;height:40px;border-radius:999px;border:1px solid #d1d5db;background:#f3f4f6;color:#111827;display:flex;align-items:center;justify-content:center;cursor:pointer;">
@@ -145333,14 +145392,16 @@ const PinSheetManager = {
         container.innerHTML = html;
     },
 
+    _quickCourse() { return document.getElementById('pinSheetCourseQuick')?.value || this.currentCourseName; },
     _quickHoleInner(hole) {
         const selected = this.quickEntryData[hole - 1];
         const chk = this._quickLow && this._quickLow.has(hole);
+        const course = this._quickCourse();
         return `<div class="flex-1 min-w-0">
                     <div class="text-sm font-bold">Hole ${hole}${chk ? ` <span style="font-size:11px;font-weight:800;color:#92400e;background:#fef3c7;border-radius:999px;padding:2px 8px;">${_lvT('mntpin.check', 'Check')}</span>` : ''}</div>
-                    <div class="text-xs font-semibold ${selected ? 'text-green-700' : 'text-gray-500'}">${selected ? selected + ' · ' + this.quadrantLabel(selected) : 'Tap the green'}</div>
+                    <div class="text-xs font-semibold ${selected ? 'text-green-700' : 'text-gray-500'}">${selected ? this._esc(this.pinText(selected, hole, course)) : 'Tap the green'}</div>
                 </div>
-                <div id="pinGrid${hole}" style="width:150px;height:150px;flex:none;">${this.greenSVG('q' + hole, selected, hole)}</div>`;
+                <div id="pinGrid${hole}" style="width:150px;height:150px;flex:none;">${this.greenSVG('q' + hole, selected, hole, this.greenOpts(hole, course))}</div>`;
     },
 
     /**
@@ -145877,8 +145938,10 @@ const MaintPins = {
 
     _green(uid, q, h) {
         // the shared green, its taps routed here instead of the manual-entry picker
-        return this._P().greenSVG(uid, q, h).replace(/PinSheetManager\.selectQuadrantForHole\(/g, 'MaintPins.pick(');
+        const P = this._P();
+        return P.greenSVG(uid, q, h, P.greenOpts(h, this.course.name)).replace(/PinSheetManager\.selectQuadrantForHole\(/g, 'MaintPins.pick(');
     },
+    _lab(q, h) { return this._P().labelFor(q, h, this.course.name); },
 
     render() {
         const root = document.getElementById('mntCuPin');
@@ -145889,7 +145952,7 @@ const MaintPins = {
             for (let h = 1; h <= 18; h++) {
                 const q = this.sel[h - 1], chk = this._review && this._review.holes[h];
                 body += `<div class="mnp-row" id="mnpRow${h}"${chk ? ' style="background:#fffbeb;"' : ''}><div class="m"><div class="h">${this._esc(holeT)} ${h}${chk ? ` <span style="font-size:11px;font-weight:800;color:#92400e;background:#fef3c7;border-radius:999px;padding:2px 8px;vertical-align:middle;">${this._esc(this._t('mntpin.check', 'Check'))}</span>` : ''}</div>
-                    <div class="p ${q ? '' : 'no'}">${q ? q + ' · ' + this._esc(P.quadrantLabel(q)) : this._esc(this._t('mntpin.tapspot', 'Tap where the pin is'))}</div>
+                    <div class="p ${q ? '' : 'no'}">${q ? this._esc(P.pinText(q, h, this.course.name)) : this._esc(this._t('mntpin.tapspot', 'Tap where the pin is'))}</div>
                     ${this._noteHTML(h).replace('class="mnp-note', 'style="justify-content:flex-start;margin-top:2px;" class="mnp-note')}</div>
                     <div class="g">${this._green('ml' + h, q, h)}</div></div>`;
             }
@@ -145898,7 +145961,7 @@ const MaintPins = {
             for (let h = 1; h <= 18; h++) {
                 const q = this.sel[h - 1], chk = this._review && this._review.holes[h];
                 body += `<div class="mnp-mini ${q ? '' : 'empty'}" role="button" onclick="MaintPins.openHole(${h})"${chk ? ' style="border:2px solid #f59e0b;background:#fffbeb;"' : ''}><b>${h}</b>`
-                    + (q ? `<div class="g">${P.greenSVG('mb' + h, q, null)}</div><small${chk ? ' style="color:#92400e;"' : ''}>${chk ? this._esc(this._t('mntpin.check', 'Check')) + ' · ' : ''}${this._esc(P.quadrantLabel(q))}</small>`
+                    + (q ? `<div class="g">${P.greenSVG('mb' + h, q, null, P.greenOpts(h, this.course.name))}</div><small${chk ? ' style="color:#92400e;"' : ''}>${chk ? this._esc(this._t('mntpin.check', 'Check')) + ' · ' : ''}${this._esc(this._lab(q, h))}</small>`
                          : `<div class="e">${this._esc(this._t('mntpin.notset', 'Not set'))}</div><small>&nbsp;</small>`) + '</div>';
             }
             body += '</div>';
@@ -145985,7 +146048,7 @@ const MaintPins = {
             <div style="display:flex;align-items:center;gap:10px;">
                 <span style="flex:none;background:#166534;color:#fff;border-radius:999px;padding:5px 12px;font:800 12px/1 'JetBrains Mono',monospace;letter-spacing:.08em;">${this._esc(this._t('scorecard.pin.pill', 'PIN'))}</span>
                 <div style="min-width:0;flex:1;">
-                    <div style="font-size:18px;font-weight:800;line-height:1.15;color:#111827;">${this._esc(holeT)} ${h}${q ? ' · ' + this._esc(P.quadrantLabel(q)) : ''}</div>
+                    <div style="font-size:18px;font-weight:800;line-height:1.15;color:#111827;">${this._esc(holeT)} ${h}${q ? ' · ' + this._esc(this._lab(q, h)) : ''}</div>
                     <div style="font-size:12px;color:#4b5563;">${this._esc(this._t('mntpin.saveshint', 'Tap the new spot — saves at once'))}</div>
                 </div>
                 <button type="button" aria-label="${this._esc(this._t('scorecard.pin.close', 'Close'))}" onclick="MaintPins.closeHole()"

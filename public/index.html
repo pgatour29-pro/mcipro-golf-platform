@@ -66715,6 +66715,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     font: 800 10px/1 'JetBrains Mono', monospace; letter-spacing: .1em; cursor: pointer; white-space: nowrap;
                 }
                 .pin-pill .material-symbols-outlined { font-size: 13px; color: #fca5a5 !important; }
+                .pin-pill .pin-q { font: 800 9px/1 'JetBrains Mono', monospace; letter-spacing: .06em; opacity: .9; }
+                .pin-pill .pin-q:empty { display: none; }
                 /* the scorecard themes colour every button's text ((2,3,0) theme-light rule) — out-rank them */
                 #golferDashboard #golfer-scorecard .pin-pill.pin-pill.pin-pill.pin-pill, #golferDashboard #golfer-scorecard .pin-pill.pin-pill.pin-pill.pin-pill span:not(.material-symbols-outlined) { color: #fff !important; background: #15803d !important; }
                 #golferDashboard #golfer-scorecard .pin-pill.pin-pill.pin-pill.pin-pill span:not(.material-symbols-outlined) { background: transparent !important; }
@@ -105173,6 +105175,11 @@ class LiveScorecardSystem {
             const el = document.getElementById(id);
             if (el) el.style.display = pinData ? 'flex' : 'none'; // inline — .hidden can't beat inline display
         });
+        // v1417: the Paper Card pill names the quadrant — keep it on THIS hole
+        try {
+            const qEl = document.querySelector('#pcvPinIndicator .pin-q');
+            if (qEl) { const P = window.PinSheetManager; const q = pinData && P.quadrantOf ? P.quadrantOf(pinData) : null; qEl.textContent = q && P.quadrantLabel ? String(P.quadrantLabel(q)).toUpperCase() : ''; }
+        } catch (e) {}
         // an open pin view follows the hole
         const ov = document.getElementById('pinViewSheet');
         if (ov && ov.style.display !== 'none') window.PinSheetManager.showPinView(this.currentHole);
@@ -107673,6 +107680,7 @@ class LiveScorecardSystem {
         return '<div class="pcv-me"><div style="min-width:0;"><div class="nm">' + this._pcvEsc(p.name || '') + '</div>'
             + '<div class="sub">HCP ' + (hcpNum == null ? '&ndash;' : hcpNum)
             + (this.courseData?.name ? ' &middot; ' + this._pcvEsc(String(this.courseData.name).toUpperCase()) : '') + '</div></div>'
+            + this._pcvPinPillHTML('margin-left:auto;flex:none;')
             + '<span class="tag">' + this._pcvEsc(mine ? _lvT('scorecard.pcv.yourcard', 'YOUR CARD') : _lvT('scorecard.pcv.theirs', 'THEIR PHONE')) + '</span></div>'
             + '<div class="pcv-cols">' + col(1, 'OUT') + col(10, 'IN') + '</div>'
             + '<div class="pcv-tots">'
@@ -107739,12 +107747,24 @@ class LiveScorecardSystem {
         html += '</tr></tbody></table></div>';
         return html;
     }
+    // v1417: THE Paper Card PIN pill (Pete 2026-09-30 solo TRGG round, sheet saved, no pin anywhere: the pill
+    // lived only in the NEXT bar, which a one-player card never renders). One builder, every branch; the pill
+    // names the quadrant so the pin reads without a tap; updatePinPositionIndicator keeps it on the hole.
+    _pcvPinPillHTML(extra) {
+        const P = window.PinSheetManager;
+        const pin = P ? P.getPinForHole(this.currentHole) : null;
+        const q = pin && P.quadrantOf ? P.quadrantOf(pin) : null;
+        const lab = q && P.quadrantLabel ? String(P.quadrantLabel(q)).toUpperCase() : '';
+        return '<button type="button" id="pcvPinIndicator" class="pin-pill" onclick="PinSheetManager.showPinView()" style="display:'
+            + (pin ? 'flex' : 'none') + ';height:20px;' + (extra || 'margin:-2px 0;') + '">'
+            + (P ? P.pillInner() : 'PIN') + '<span class="pin-q">' + this._pcvEsc(lab) + '</span></button>';
+    }
     _pcvNowHTML() {
         const t = this._pcvTarget();
         const pl = (this.players || []).find(p => String(p.id) === String(t.pid));
         if (!pl) {
             return '<div class="pcv-now"><span class="k">' + this._pcvEsc(_lvT('scorecard.pcv.nextkey', 'NEXT')) + '</span>'
-                + '<span class="nm">' + this._pcvEsc(_lvT('scorecard.selectplayer', 'Select a player')) + '</span></div>';
+                + '<span class="nm">' + this._pcvEsc(_lvT('scorecard.selectplayer', 'Select a player')) + '</span>' + this._pcvPinPillHTML('margin:-2px 0 -2px auto;') + '</div>';
         }
         const hd = this.getHoleData(t.hole) || {};
         const par = hd.par || 4;
@@ -107771,9 +107791,7 @@ class LiveScorecardSystem {
             + '<span class="sub">' + sub + '</span>'
             // Pete 2026-09-27: PIN pill — the Paper Card never showed the pin. The strip above has no
             // spare width at 360px (END wraps and the keypad moves), this bar has ~85px.
-            + '<button type="button" id="pcvPinIndicator" class="pin-pill" onclick="PinSheetManager.showPinView()" style="display:'
-            + ((window.PinSheetManager && PinSheetManager.getPinForHole(this.currentHole)) ? 'flex' : 'none') + ';height:20px;margin:-2px 0;">'
-            + (window.PinSheetManager ? PinSheetManager.pillInner() : 'PIN') + '</button></div>';
+            + this._pcvPinPillHTML() + '</div>';
     }
     _pcvPadHTML() {
         const key = (n, cls) => '<button type="button" class="pcv-key' + (cls || '') + '"'

@@ -13369,6 +13369,8 @@
                 'scorecard.pin.speed': 'Green speed',
                 'scorecard.pin.none': 'No pin sheet for this hole today',
                 'scorecard.pin.demo': 'DEMO · SAMPLE PIN',
+                'scorecard.pin.today': "TODAY'S PIN",
+                'scorecard.pin.size': 'width × depth',
                 'scorecard.pin.q1': 'Front Left',
                 'scorecard.pin.q2': 'Front',
                 'scorecard.pin.q3': 'Front Right',
@@ -16939,6 +16941,8 @@
                 'scorecard.pin.speed': 'ความเร็วกรีน',
                 'scorecard.pin.none': 'วันนี้ยังไม่มีตำแหน่งพินของหลุมนี้',
                 'scorecard.pin.demo': 'ทดลอง · พินตัวอย่าง',
+                'scorecard.pin.today': 'พินวันนี้',
+                'scorecard.pin.size': 'กว้าง × ลึก',
                 'scorecard.pin.q1': 'หน้าซ้าย',
                 'scorecard.pin.q2': 'หน้า',
                 'scorecard.pin.q3': 'หน้าขวา',
@@ -20377,6 +20381,8 @@
                 'scorecard.pin.speed': '그린 스피드',
                 'scorecard.pin.none': '오늘 이 홀의 핀 위치가 없습니다',
                 'scorecard.pin.demo': '체험 · 샘플 핀',
+                'scorecard.pin.today': '오늘의 핀',
+                'scorecard.pin.size': '너비 × 깊이',
                 'scorecard.pin.q1': '앞 왼쪽',
                 'scorecard.pin.q2': '앞',
                 'scorecard.pin.q3': '앞 오른쪽',
@@ -23997,6 +24003,8 @@
                 'scorecard.pin.speed': 'グリーンスピード',
                 'scorecard.pin.none': '本日このホールのピン位置はありません',
                 'scorecard.pin.demo': '体験 · サンプルピン',
+                'scorecard.pin.today': '本日のピン',
+                'scorecard.pin.size': '幅 × 奥行',
                 'scorecard.pin.q1': '手前左',
                 'scorecard.pin.q2': '手前',
                 'scorecard.pin.q3': '手前右',
@@ -144161,6 +144169,7 @@ const PinSheetManager = {
         this.currentCourseName = courseName;
         this.currentCourseId = courseId;
         this._subscribeLive();
+        this.preloadShapes(courseName);   // v1425: the real green shapes, before the first PIN tap
 
         // Show pin sheet section
         const section = document.getElementById('pinSheetSection');
@@ -144582,7 +144591,7 @@ const PinSheetManager = {
     // so the data model, the crew tab, the AI reader and realtime need no change. `order` runs
     // BACK -> FRONT (top -> bottom on the card); the two numbers are the card's width x depth.
     GREEN_LAYOUTS: [
-        { match: /royal\s*lakeside/i, style: 'letters', holes: {
+        { match: /royal\s*lakeside/i, style: 'letters', shapes: 'greens/royal-lakeside.json', holes: {
             1: ['CBA', 22, 36], 2: ['BAC', 33, 36], 3: ['ACB', 36, 32], 4: ['BAC', 23, 40], 5: ['ACB', 30, 30], 6: ['CBA', 34, 38],
             7: ['BAC', 28, 33], 8: ['ACB', 24, 38], 9: ['CBA', 25, 35], 10: ['BAC', 27, 34], 11: ['ACB', 33, 36], 12: ['CBA', 28, 29],
             13: ['ACB', 22, 42], 14: ['CBA', 25, 33], 15: ['BAC', 34, 34], 16: ['ACB', 26, 36], 17: ['BAC', 25, 36], 18: ['CBA', 32, 33]
@@ -144592,6 +144601,26 @@ const PinSheetManager = {
         const n = String(courseName || '').trim();
         return n ? (this.GREEN_LAYOUTS.find(L => L.match.test(n)) || null) : null;
     },
+    // v1425: the REAL greens. `shapes` names a traced file (tools/green-trace/trace_greens.py reads the
+    // club's printed green card): per hole the outline, the three sections back -> front, bunkers and
+    // water as SVG paths in a -60..60 box. Loaded once per layout, cached by the service worker.
+    _shapes: {},
+    loadShapes(layout) {
+        if (!layout || !layout.shapes) return Promise.resolve(null);
+        const key = layout.shapes;
+        if (!this._shapes[key]) {
+            this._shapes[key] = fetch(key, { cache: 'force-cache' }).then(r => r.ok ? r.json() : null)
+                .then(j => { this._shapes[key] = (j && j.holes) || {}; return this._shapes[key]; })
+                .catch(() => { delete this._shapes[key]; return null; });
+        }
+        return this._shapes[key] instanceof Promise ? this._shapes[key] : Promise.resolve(this._shapes[key]);
+    },
+    shapeFor(layout, hole) {
+        const m = layout && layout.shapes && this._shapes[layout.shapes];
+        if (!m) { this.loadShapes(layout); return null; }
+        return m instanceof Promise ? null : (m[String(Number(hole))] || null);
+    },
+    preloadShapes(courseName) { return this.loadShapes(this.layoutFor(courseName == null ? this.currentCourseName : courseName)); },
     holeLetters(courseName, hole) {
         const L = this.layoutFor(courseName == null ? this.currentCourseName : courseName);
         const h = L && L.holes[Number(hole)];
@@ -144605,7 +144634,9 @@ const PinSheetManager = {
     /** greenSVG's 4th argument for this hole on this course (null = the 1-9 grid green). */
     greenOpts(hole, courseName) {
         const order = this.holeLetters(courseName, hole);
-        return order ? { letters: order } : null;
+        if (!order) return null;
+        const shape = this.shapeFor(this.layoutFor(courseName == null ? this.currentCourseName : courseName), hole);
+        return shape ? { letters: order, shape } : { letters: order };
     },
     /** What the pin is called on this hole: "Front" on a grid course, "B" on a lettered one. */
     labelFor(q, hole, courseName) {
@@ -144663,7 +144694,76 @@ const PinSheetManager = {
      *          back -> front with the hole's letters instead of the 3x3 grid; taps select the band
      *          (8 back, 5 middle, 2 front) so the saved pin is the same row a grid course stores.
      */
+    /**
+     * v1425 — THE REAL GREEN (Pete 2026-09-30: "the actual green diagram for Royal Lakeside greens
+     * with the A,B,C layout the way it is in the scorecard"). Same contract as greenSVG: uid, sel
+     * (band 8/5/2 or a grid q), pick (hole -> sections are buttons), opts.letters = back -> front
+     * order, opts.shape = the traced hole { o: outline, s: [[path, cx, cy] top -> bottom], b: bunkers,
+     * w: water }. Sections are the club's own divisions, so the letter that is lit is exactly the
+     * region printed on the card. Bottom = front, as everywhere else.
+     */
+    greenMapSVG(uid, sel, pick, opts) {
+        const id = 'pm' + uid, sh = opts.shape, letters = String(opts.letters || 'ABC').toUpperCase();
+        const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        const band = sel ? (sel >= 7 ? 8 : sel >= 4 ? 5 : 2) : null;
+        const qs = [8, 5, 2];
+        const secs = (sh.s || []).slice(0, 3);
+        const defs =
+            `<radialGradient id="${id}bg" cx="50%" cy="45%" r="70%"><stop offset="0" stop-color="#f7fdf8"/><stop offset="1" stop-color="#e3f4e6"/></radialGradient>` +
+            `<linearGradient id="${id}turf" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6ee7a0"/><stop offset="1" stop-color="#34c26b"/></linearGradient>` +
+            `<linearGradient id="${id}on" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22a457"/><stop offset="1" stop-color="#15803d"/></linearGradient>` +
+            `<linearGradient id="${id}wat" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a7d3fb"/><stop offset="1" stop-color="#5aa4ee"/></linearGradient>` +
+            `<pattern id="${id}mow" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(-32)"><rect width="3.5" height="7" fill="#fff" opacity=".10"/></pattern>` +
+            `<filter id="${id}sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="1.6" stdDeviation="1.6" flood-color="#052e16" flood-opacity=".35"/></filter>` +
+            `<filter id="${id}soft" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#78350f" flood-opacity=".25"/></filter>` +
+            `<filter id="${id}glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="2.2"/></filter>` +
+            `<clipPath id="${id}clip"><path d="${esc(sh.o)}"/></clipPath>` +
+            `<clipPath id="${id}card"><rect x="-64" y="-64" width="128" height="128" rx="18"/></clipPath>`;
+        let g = `<rect x="-64" y="-64" width="128" height="128" rx="18" fill="url(#${id}bg)"/><g clip-path="url(#${id}card)">`;
+        // the collar: the card's dotted line round the whole complex
+        g += `<path d="${esc(sh.o)}" transform="scale(1.22)" fill="none" stroke="#86efac" stroke-width=".7" stroke-dasharray="1.8 2.4" opacity=".9"/>`;
+        for (const w of (sh.w || [])) g += `<path d="${esc(w)}" fill="url(#${id}wat)" stroke="#3b82f6" stroke-width=".5" opacity=".95"/>`;
+        for (const b of (sh.b || [])) g += `<path d="${esc(b)}" fill="#fde68a" stroke="#f5c451" stroke-width=".6" filter="url(#${id}soft)"/>`;
+        // fringe ring + the putting surface
+        g += `<path d="${esc(sh.o)}" fill="none" stroke="#a7f3c4" stroke-width="6.5" stroke-linejoin="round" filter="url(#${id}sh)"/>`
+           + `<path d="${esc(sh.o)}" fill="url(#${id}turf)"/>`;
+        // the three sections — the lit one is today's pin
+        g += `<g clip-path="url(#${id}clip)">`;
+        secs.forEach((sc, i) => {
+            const q = qs[i], on = band === q;
+            const act = pick ? ` role="button" aria-label="${esc(letters[i] || '')}" style="cursor:pointer" onclick="PinSheetManager.selectQuadrantForHole(${pick}, ${q})"` : '';
+            g += `<path d="${esc(sc[0])}" fill="${on ? `url(#${id}on)` : 'transparent'}"${act}/>`;
+        });
+        g += `<path d="${esc(sh.o)}" fill="url(#${id}mow)" pointer-events="none"/>`;
+        secs.forEach(sc => { g += `<path d="${esc(sc[0])}" fill="none" stroke="#fff" stroke-width="1.1" opacity=".9" pointer-events="none"/>`; });
+        g += `<path d="${esc(sh.o)}" fill="none" stroke="#052e16" stroke-width="3" opacity=".14" pointer-events="none"/>`   // inner edge
+           + `</g><path d="${esc(sh.o)}" fill="none" stroke="#14532d" stroke-width=".9" opacity=".8" pointer-events="none"/>`;
+        // letters, and the flag on the lit section
+        secs.forEach((sc, i) => {
+            const q = qs[i], on = band === q, L = letters[i] || '', x = sc[1], y = sc[2];
+            const fz = on ? 15 : 12.5, dx = on ? -5 : 0;
+            g += `<g pointer-events="none"><text x="${x + dx}" y="${y}" font-size="${fz}" font-weight="800" text-anchor="middle" dominant-baseline="central" stroke="#052e16" stroke-width="2.4" stroke-linejoin="round" opacity=".55">${esc(L)}</text>`
+               + `<text x="${x + dx}" y="${y}" font-size="${fz}" font-weight="800" text-anchor="middle" dominant-baseline="central" fill="#fff">${esc(L)}</text></g>`;
+            if (on) {
+                const fx = x + 7, fy = y + 6;
+                g += `<g pointer-events="none"><circle cx="${fx}" cy="${fy}" r="4.5" fill="#fca5a5" opacity=".55" filter="url(#${id}glow)"><animate attributeName="r" values="3.5;6;3.5" dur="2.4s" repeatCount="indefinite"/><animate attributeName="opacity" values=".6;.15;.6" dur="2.4s" repeatCount="indefinite"/></circle>`
+                   + `<ellipse cx="${fx}" cy="${fy}" rx="2.1" ry="1.1" fill="#052e16" opacity=".8"/>`
+                   + `<line x1="${fx}" y1="${fy}" x2="${fx}" y2="${fy - 16}" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/>`
+                   + `<path d="M ${fx} ${fy - 16} L ${fx + 8.5} ${fy - 13} L ${fx} ${fy - 10} Z" fill="#ef4444" stroke="#b91c1c" stroke-width=".4" filter="url(#${id}sh)"/></g>`;
+            }
+        });
+        // orientation, quiet
+        g += `</g>`;   // end of the clipped map
+        const lab = (k, en) => esc(_lvT(k, en));
+        const pill = (y, k, en) => `<g pointer-events="none"><rect x="-27" y="${y - 4.6}" width="54" height="9.2" rx="4.6" fill="#fff" opacity=".85"/>`
+            + `<text x="0" y="${y}" font-family="'JetBrains Mono',monospace" font-size="5" font-weight="800" letter-spacing="1.3" fill="#166534" text-anchor="middle" dominant-baseline="central">${lab(k, en)}</text></g>`;
+        g += pill(-56, 'scorecard.pin.back', 'BACK OF GREEN') + pill(56, 'scorecard.pin.front', 'FRONT OF GREEN');
+        const name = band ? (letters[qs.indexOf(band)] || '') : 'Pin position';
+        return `<svg class="pin-green pin-map" viewBox="-64 -64 128 128" style="display:block;width:100%;height:100%;font-family:'Instrument Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;" aria-label="${esc(name)}"><defs>${defs}</defs>${g}</svg>`;
+    },
+
     greenSVG(uid, sel, pick, opts) {
+        if (opts && opts.shape) return this.greenMapSVG(uid, sel, pick, opts);   // v1425: a traced green
         const R = 41, rx = R * 0.40, h = R / 3, id = 'pg' + uid;
         const letters = opts && opts.letters ? String(opts.letters).toUpperCase().slice(0, 3) : null;
         if (letters) sel = sel ? (sel >= 7 ? 8 : sel >= 4 ? 5 : 2) : null;   // a grid pin on a lettered course = its band
@@ -144733,7 +144833,7 @@ const PinSheetManager = {
      * Body-mounted (a .screen transform would trap position:fixed); ✕ carries aria-label Close so
      * the v1366 back catch-all closes it on the phone's back too.
      */
-    showPinView(hole) {
+    async showPinView(hole) {
         const L = window.LiveScorecardManager;
         hole = Number(hole) || (L && L.currentHole) || 1;
         const pin = this.getPinForHole(hole);
@@ -144744,33 +144844,55 @@ const PinSheetManager = {
             ov.id = 'pinViewSheet';
             ov.setAttribute('role', 'dialog');
             ov.setAttribute('aria-modal', 'true');
-            ov.style.cssText = 'position:fixed;inset:0;z-index:100050;background:rgba(0,0,0,.45);display:none;';
+            ov.style.cssText = 'position:fixed;inset:0;z-index:100050;background:rgba(2,12,6,.55);display:none;-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);';
             ov.addEventListener('click', e => { if (e.target === ov) this.closePinView(); });
             document.body.appendChild(ov);
         }
         const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
         const speed = pin && !pin.demo && this.currentPinData && this.currentPinData.green_speed;
-        const demoNote = pin && pin.demo
-            ? `<div style="font:700 11px/1.3 'JetBrains Mono',monospace;letter-spacing:.06em;color:#92400e;">${esc(_lvT('scorecard.pin.demo', 'DEMO · SAMPLE PIN'))}</div>` : '';
-        // v1418: every course shows its green; with no sheet yet it is unlit ("blank until uploaded")
+        // v1425: a traced course draws its REAL green — wait for the shapes on the first open
+        const layout = this.layoutFor(this.currentCourseName);
+        if (layout && layout.shapes && !this.shapeFor(layout, hole)) { try { await this.loadShapes(layout); } catch (e) {} }
         const opts = this.greenOpts(hole);
-        const body = `<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:4px 0 10px;">
-                   <div style="height:100%;aspect-ratio:1;max-width:100%;">${this.greenSVG('view', q, null, opts)}</div></div>`;
-        const noneNote = q ? '' : `<div style="font:600 12px/1.3 system-ui,sans-serif;color:#92400e;">${esc(_lvT('scorecard.pin.none', 'No pin sheet for this hole today'))}</div>`;
+        const order = this.holeLetters(this.currentCourseName, hole);
+        const letter = q && order ? this.letterOf(q, order) : null;
+        const card = layout && layout.holes && layout.holes[hole];
+        const size = card && card[1] && card[2] ? `${card[1]} × ${card[2]}` : '';
+        const sub = [size ? `${size} <span style="opacity:.75">${esc(_lvT('scorecard.pin.size', 'width × depth'))}</span>` : '',
+                     speed ? `${esc(_lvT('scorecard.pin.speed', 'Green speed'))} ${esc(speed)}` : ''].filter(Boolean);
+        const demoNote = pin && pin.demo
+            ? `<span style="font:700 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.06em;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:999px;padding:4px 8px;">${esc(_lvT('scorecard.pin.demo', 'DEMO · SAMPLE PIN'))}</span>` : '';
+        const noneNote = q ? '' : `<span style="font:600 11.5px/1.2 system-ui,sans-serif;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:999px;padding:4px 9px;">${esc(_lvT('scorecard.pin.none', 'No pin sheet for this hole today'))}</span>`;
+        const map = `<div style="width:min(78vw,340px);aspect-ratio:1;margin:2px auto 0;">${this.greenSVG('view', q, null, opts)}</div>`;
+        // A · B · C strip on a lettered course — today's letter lit; the band name on a grid course
+        let foot = '';
+        if (order) {
+            foot = `<div style="display:flex;gap:8px;margin-top:6px;">` + ['A', 'B', 'C'].map(Lt => { const on = Lt === letter;
+                return `<div aria-current="${on}" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:52px;border-radius:14px;border:1.5px solid ${on ? '#15803d' : '#d1fae5'};background:${on ? 'linear-gradient(160deg,#16a34a,#15803d)' : '#f0fdf4'};color:${on ? '#fff' : '#166534'};box-shadow:${on ? '0 6px 16px rgba(21,128,61,.35)' : 'none'};">
+                    <span style="font:800 20px/1 'Instrument Sans',system-ui,sans-serif;">${Lt}</span>
+                    ${on ? `<span style="font:800 8.5px/1 'JetBrains Mono',monospace;letter-spacing:.14em;opacity:.9;">${esc(_lvT('scorecard.pin.today', "TODAY'S PIN"))}</span>` : ''}</div>`; }).join('') + `</div>`;
+        } else if (q) {
+            foot = `<div style="margin-top:6px;text-align:center;font:800 13px/1 'JetBrains Mono',monospace;letter-spacing:.12em;color:#166534;">${esc(String(this.labelFor(q, hole)).toUpperCase())}</div>`;
+        }
         ov.innerHTML =
-            `<div style="position:absolute;left:0;right:0;bottom:0;height:50vh;height:50dvh;min-height:300px;background:#fff;border-radius:18px 18px 0 0;box-shadow:0 -8px 30px rgba(0,0,0,.25);display:flex;flex-direction:column;padding:12px 16px calc(8px + env(safe-area-inset-bottom));">
+            `<div style="position:absolute;left:0;right:0;bottom:0;max-height:84vh;max-height:84dvh;background:#fff;border-radius:24px 24px 0 0;box-shadow:0 -12px 40px rgba(0,0,0,.35);display:flex;flex-direction:column;padding:8px 16px calc(12px + env(safe-area-inset-bottom));overflow:hidden;">
+                <div style="width:38px;height:4px;border-radius:999px;background:#d1d5db;margin:0 auto 8px;"></div>
                 <div style="display:flex;align-items:center;gap:10px;">
-                    <span style="flex:none;background:#166534;color:#fff;border-radius:999px;padding:5px 12px;font:800 12px/1 'JetBrains Mono',monospace;letter-spacing:.08em;">${esc(_lvT('scorecard.pin.pill', 'PIN'))}</span>
+                    <span style="flex:none;display:inline-flex;align-items:center;gap:4px;background:#166534;color:#fff;border-radius:999px;padding:6px 11px 6px 8px;font:800 11px/1 'JetBrains Mono',monospace;letter-spacing:.1em;"><span class="material-symbols-outlined" style="font-size:14px;color:#fca5a5;">flag</span>${esc(_lvT('scorecard.pin.pill', 'PIN'))}</span>
                     <div style="min-width:0;flex:1;">
-                        <div style="font:800 18px/1.15 'Instrument Sans',system-ui,sans-serif;color:#111827;">${esc(_lvT('scorecard.hole', 'Hole'))} ${hole}${q ? ' · ' + esc(this.labelFor(q, hole)) : ''}</div>
-                        ${speed ? `<div style="font:600 12px/1.3 system-ui,sans-serif;color:#4b5563;">${esc(_lvT('scorecard.pin.speed', 'Green speed'))} ${esc(speed)}</div>` : ''}
-                        ${demoNote}${noneNote}
+                        <div style="display:flex;align-items:baseline;gap:8px;">
+                            <span style="font:800 21px/1.1 'Instrument Sans',system-ui,sans-serif;color:#111827;letter-spacing:-.01em;">${esc(_lvT('scorecard.hole', 'Hole'))} ${hole}</span>
+                            ${letter ? `<span style="font:800 21px/1.1 'Instrument Sans',system-ui,sans-serif;color:#15803d;">· ${esc(letter)}</span>` : (q ? `<span style="font:800 14px/1.1 'Instrument Sans',system-ui,sans-serif;color:#15803d;">· ${esc(this.labelFor(q, hole))}</span>` : '')}
+                        </div>
+                        <div style="font:600 11.5px/1.3 system-ui,sans-serif;color:#4b5563;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sub.map(x => x.startsWith('<') || x.includes('<span') ? x : esc(x)).join(' <span style="opacity:.5">·</span> ')}</div>
                     </div>
                     <button type="button" aria-label="${esc(_lvT('scorecard.pin.close', 'Close'))}" onclick="PinSheetManager.closePinView()"
-                        style="flex:none;width:40px;height:40px;border-radius:999px;border:1px solid #d1d5db;background:#f3f4f6;color:#111827;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+                        style="flex:none;width:38px;height:38px;border-radius:999px;border:1px solid #e5e7eb;background:#f3f4f6;color:#111827;display:flex;align-items:center;justify-content:center;cursor:pointer;">
                         <span class="material-symbols-outlined" style="font-size:22px;">close</span></button>
                 </div>
-                ${body}
+                ${(demoNote || noneNote) ? `<div style="display:flex;gap:6px;margin-top:6px;">${demoNote}${noneNote}</div>` : ''}
+                ${map}
+                ${foot}
             </div>`;
         ov.style.display = 'block';
     },

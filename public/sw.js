@@ -1,7 +1,7 @@
 // SERVICE WORKER - Performance Caching Version
 // Caches static assets for dramatically faster repeat visits
 
-const SW_VERSION = 'mcipro-cache-v1424';
+const SW_VERSION = 'mcipro-cache-v1425';
 const CACHE_NAME = `mcipro-static-${SW_VERSION}`;
 const RUNTIME_CACHE = `mcipro-runtime-${SW_VERSION}`;
 
@@ -137,7 +137,8 @@ function isCDNResource(url) {
 // Helper: Check if URL is a static asset (JS, CSS, images, fonts)
 function isStaticAsset(url) {
     const pathname = new URL(url).pathname;
-    return /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/i.test(pathname);
+    // v1425: traced green shapes (/greens/*.json) ride the cache-first path so the PIN map works on-course offline
+    return /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/i.test(pathname) || /^\/greens\/.+\.json$/i.test(pathname);
 }
 
 // Helper: Check if URL is HTML

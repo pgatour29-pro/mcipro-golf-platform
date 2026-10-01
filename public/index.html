@@ -13210,6 +13210,11 @@
                 'lgv2.pin.enter': 'Enter PIN code',
                 'lgv2.pin.wrong': 'Incorrect PIN code. Access denied.',
                 'lgv2.pin.offline': 'Could not check the PIN. Check your connection and try again.',
+                'lgv2.handoff.title': 'You are signed in',
+                'lgv2.handoff.body': 'Your MyCaddiPro app on the home screen is signed in too. Open it from its icon.',
+                'lgv2.handoff.ok': 'OK',
+                'lgv2.ioshint.appbody': 'You’ll approve in the {p} app. After you tap Confirm/Allow there, come back to this app.',
+                'lgv2.ioshint.appnote': 'This app signs you in by itself when you return.',
                 'lgv2.pin.back': 'Back',
                 'lgv2.pin.unlock': 'Unlock',
                 'lgv2.role.caddy': 'Caddy',
@@ -16850,6 +16855,11 @@
                 'lgv2.pin.enter': 'กรอกรหัส PIN',
                 'lgv2.pin.wrong': 'รหัส PIN ไม่ถูกต้อง ไม่สามารถเข้าใช้งานได้',
                 'lgv2.pin.offline': 'ตรวจสอบรหัส PIN ไม่ได้ กรุณาตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง',
+                'lgv2.handoff.title': 'เข้าสู่ระบบแล้ว',
+                'lgv2.handoff.body': 'แอป MyCaddiPro บนหน้าจอหลักเข้าสู่ระบบแล้วเช่นกัน เปิดจากไอคอนได้เลย',
+                'lgv2.handoff.ok': 'ตกลง',
+                'lgv2.ioshint.appbody': 'คุณจะอนุมัติในแอป {p} หลังจากแตะ ยืนยัน/อนุญาต แล้ว ให้กลับมาที่แอปนี้',
+                'lgv2.ioshint.appnote': 'เมื่อกลับมา แอปนี้จะเข้าสู่ระบบให้เอง',
                 'lgv2.pin.back': 'ย้อนกลับ',
                 'lgv2.pin.unlock': 'ปลดล็อก',
                 'lgv2.role.caddy': 'แคดดี้',
@@ -20358,6 +20368,11 @@
                 'lgv2.pin.enter': 'PIN 코드를 입력하세요',
                 'lgv2.pin.wrong': 'PIN 코드가 올바르지 않습니다. 접근이 거부되었습니다.',
                 'lgv2.pin.offline': 'PIN을 확인할 수 없습니다. 연결 상태를 확인한 후 다시 시도하세요.',
+                'lgv2.handoff.title': '로그인되었습니다',
+                'lgv2.handoff.body': '홈 화면의 MyCaddiPro 앱도 로그인되었습니다. 아이콘으로 열어 주세요.',
+                'lgv2.handoff.ok': '확인',
+                'lgv2.ioshint.appbody': '{p} 앱에서 승인합니다. 확인/허용을 누른 후 이 앱으로 돌아오세요.',
+                'lgv2.ioshint.appnote': '돌아오면 이 앱이 자동으로 로그인합니다.',
                 'lgv2.pin.back': '뒤로',
                 'lgv2.pin.unlock': '잠금 해제',
                 'lgv2.role.caddy': '캐디',
@@ -24048,6 +24063,11 @@
                 'lgv2.pin.enter': 'PINコードを入力',
                 'lgv2.pin.wrong': 'PINコードが正しくありません。アクセスが拒否されました。',
                 'lgv2.pin.offline': 'PINを確認できませんでした。接続を確認してもう一度お試しください。',
+                'lgv2.handoff.title': 'ログインしました',
+                'lgv2.handoff.body': 'ホーム画面のMyCaddiProアプリもログイン済みです。アイコンから開いてください。',
+                'lgv2.handoff.ok': 'OK',
+                'lgv2.ioshint.appbody': '{p}アプリで承認します。確認/許可をタップしたら、このアプリに戻ってください。',
+                'lgv2.ioshint.appnote': '戻ると、このアプリは自動でログインします。',
                 'lgv2.pin.back': '戻る',
                 'lgv2.pin.unlock': 'ロック解除',
                 'lgv2.role.caddy': 'キャディ',
@@ -31863,7 +31883,9 @@
                     const LINE_CHANNEL_ID = '2008228481'; // Your LINE Login channel ID
                     // CRITICAL: Always use non-www to match LINE console + edge function
                     const redirectUri = 'https://mycaddipro.com/';
-                    const state = Math.random().toString(36).substring(7);
+                    // v1432: the state is a one-time hand-back ticket (see window.LoginHandoff) — LINE returns
+                    // the approval to the phone's default browser, not to the home-screen app that asked.
+                    const state = window.LoginHandoff ? window.LoginHandoff.newTicket() : Math.random().toString(36).substring(7);
 
                     // Store state in BOTH storage locations for resilience
                     localStorage.setItem('line_oauth_state', state);
@@ -33963,9 +33985,128 @@
         // iOS opens the LINE/Kakao APP to approve and does NOT auto-return to Safari — the login
         // actually completes in Safari in the background, but the user is left looking at the app.
         // Warn iPhone users to tap "◀ Safari" to come back. No-op on Android/desktop (proceeds directly).
+        // v1432 (2026-10-01) LOGIN HAND-BACK. LINE hands its approval to the phone's DEFAULT BROWSER. An
+        // installed home-screen app does not share that browser's storage, so the login finished in
+        // Safari/Chrome and the app icon stayed logged out — users tapped "Continue with LINE" on every
+        // open (43 of 43 such logins for two Chrome-default iPhone users landed in Chrome, never the app).
+        // Now the OAuth state is a 160-bit one-time ticket kept only by the context that STARTED the login.
+        // Whoever FINISHES the login files ticket -> user (login_handoff_put); the starter claims it once
+        // (login_handoff_claim) and signs itself in. Ticket shape: h + s|b (app|browser) + 40 hex.
+        window.LoginHandoff = {
+            KEY: 'login_handoff_v1',
+            RE: /^h[sb][0-9a-f]{40}$/,
+            TTL_MS: 7 * 24 * 3600 * 1000,      // matches login_handoff_claim
+            POLL_MS: 10 * 60 * 1000,           // keep asking this long while the page stays open
+            _busy: false,
+            standalone: function () {
+                try { return !!((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true); }
+                catch (e) { return false; }
+            },
+            newTicket: function () {
+                var hex = '';
+                try { var a = new Uint8Array(20); (window.crypto || window.msCrypto).getRandomValues(a); for (var i = 0; i < a.length; i++) hex += ('0' + a[i].toString(16)).slice(-2); }
+                catch (e) { hex = ''; while (hex.length < 40) hex += Math.floor(Math.random() * 16).toString(16); }
+                var ticket = 'h' + (this.standalone() ? 's' : 'b') + hex;
+                try { localStorage.setItem(this.KEY, JSON.stringify({ t: ticket, at: Date.now() })); } catch (e) { }
+                return ticket;
+            },
+            pending: function () {
+                try {
+                    var p = JSON.parse(localStorage.getItem(this.KEY) || 'null');
+                    if (p && this.RE.test(p.t || '') && (Date.now() - (p.at || 0)) < this.TTL_MS) return p;
+                    if (p) localStorage.removeItem(this.KEY);
+                } catch (e) { }
+                return null;
+            },
+            clear: function () { try { localStorage.removeItem(this.KEY); } catch (e) { } },
+            // the context that FINISHED the login
+            completed: async function (state, userId) {
+                if (!this.RE.test(state || '') || !userId) return;
+                var mine = this.pending();
+                if (mine && mine.t === state) { this.clear(); return; }   // started AND finished here — nothing to hand back
+                try {
+                    var sb = window.SupabaseDB && window.SupabaseDB.client;
+                    if (sb) await sb.rpc('login_handoff_put', { p_ticket: state, p_user: userId });
+                } catch (e) { console.warn('[LoginHandoff] put failed', e && e.message); }
+                if (state.charAt(1) === 's') this.showReturnCard();
+            },
+            // the context that STARTED the login
+            tryClaim: async function () {
+                if (this._busy) return;
+                var p = this.pending();
+                if (!p) return;
+                try {
+                    if (localStorage.getItem('line_user_id')) { this.clear(); return; }   // already signed in here
+                    if (sessionStorage.getItem('__oauth_in_progress') || /[?&]code=/.test(location.search)) return;   // finishing here right now
+                } catch (e) { return; }
+                var sb = window.SupabaseDB && window.SupabaseDB.client;
+                if (!sb) return;
+                this._busy = true;
+                try {
+                    var r = await sb.rpc('login_handoff_claim', { p_ticket: p.t });
+                    var who = r && !r.error && typeof r.data === 'string' ? r.data : '';
+                    if (!who) return;
+                    this.clear();
+                    if (localStorage.getItem('line_user_id')) return;
+                    localStorage.setItem('line_user_id', who);
+                    try { localStorage.removeItem('mcipro_pwa_state'); } catch (e) { }   // fresh login lands on the dashboard
+                    console.log('[LoginHandoff] session handed back to this app — restoring');
+                    location.replace(location.origin + '/');
+                } catch (e) { console.warn('[LoginHandoff] claim failed', e && e.message); }
+                finally { this._busy = false; }
+            },
+            watch: function () {
+                var self = this;
+                var go = function () { try { self.tryClaim(); } catch (e) { } };
+                document.addEventListener('visibilitychange', function () { if (!document.hidden) go(); });
+                window.addEventListener('pageshow', go);
+                window.addEventListener('focus', go);
+                if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+                [400, 1500, 3500, 7000].forEach(function (ms) { setTimeout(go, ms); });   // the DB client may not be up at first paint
+                setInterval(function () {
+                    if (document.hidden) return;
+                    var p = self.pending();
+                    if (p && (Date.now() - (p.at || 0)) < self.POLL_MS) go();
+                }, 4000);
+            },
+            _say: function (k, fb) { try { var v = (typeof t === 'function') ? t(k) : k; return (v && v !== k) ? v : fb; } catch (e) { return fb; } },
+            // shown in the BROWSER that finished a login the home-screen app started
+            showReturnCard: function () {
+                var self = this;
+                setTimeout(function () {
+                    try {
+                        if (document.getElementById('loginHandoffCard')) return;
+                        var ov = document.createElement('div');
+                        ov.id = 'loginHandoffCard';
+                        ov.style.cssText = 'position:fixed;inset:0;z-index:200000;background:rgba(2,8,6,0.88);display:flex;align-items:center;justify-content:center;padding:24px;';
+                        var card = document.createElement('div');
+                        card.style.cssText = 'background:#fff;border-radius:20px;max-width:360px;width:100%;padding:26px 22px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.45);';
+                        var h = document.createElement('div');
+                        h.style.cssText = 'font-size:18px;font-weight:800;color:#0f172a;margin-bottom:10px;';
+                        h.textContent = self._say('lgv2.handoff.title', 'You are signed in');
+                        var b = document.createElement('div');
+                        b.style.cssText = 'font-size:14px;color:#334155;line-height:1.55;margin-bottom:18px;';
+                        b.textContent = self._say('lgv2.handoff.body', 'Your MyCaddiPro app on the home screen is signed in too. Open it from its icon.');
+                        var ok = document.createElement('button');
+                        ok.style.cssText = 'width:100%;background:#16a34a;color:#fff;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:700;cursor:pointer;';
+                        ok.textContent = self._say('lgv2.handoff.ok', 'OK');
+                        ok.onclick = function () { try { ov.remove(); } catch (e) { } };
+                        card.appendChild(h); card.appendChild(b); card.appendChild(ok); ov.appendChild(card);
+                        document.body.appendChild(ov);
+                    } catch (e) { }
+                }, 900);
+            }
+        };
+        window.LoginHandoff.watch();
+
         window.iosAppLoginHint = function (providerName, proceed) {
             var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
             if (!isIOS) { proceed(); return; }
+            // v1432: from the home-screen app there is no "◀ Safari" — the login finishes in the browser and
+            // is handed back to this app when the user returns to it.
+            var _appMode = !!(window.LoginHandoff && window.LoginHandoff.standalone());
+            var _hs = function (k, fb) { return window.LoginHandoff ? window.LoginHandoff._say(k, fb) : fb; };
+            var _escH = function (x) { return String(x).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
             try { if (window.LoadingManager) LoadingManager.hide(); } catch (e) {}
             var ov = document.createElement('div');
             ov.id = 'iosLoginHintOverlay';
@@ -33974,8 +34115,11 @@
                 '<div style="background:#fff;border-radius:20px;max-width:360px;width:100%;padding:26px 22px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.45);">' +
                   '<div style="font-size:40px;margin-bottom:8px;">📱</div>' +
                   '<div style="font-size:18px;font-weight:800;color:#0f172a;margin-bottom:10px;">One step on iPhone</div>' +
-                  '<div style="font-size:14px;color:#475569;line-height:1.55;margin-bottom:8px;">You’ll approve in the <b>' + providerName + '</b> app. After you tap <b>Confirm/Allow</b> there, tap <b>◀ Safari</b> at the <b>top-left</b> of your screen to come back and finish.</div>' +
-                  '<div style="font-size:12px;color:#94a3b8;margin-bottom:18px;">iPhone doesn’t switch back on its own — your dashboard will be waiting in Safari.</div>' +
+                  (_appMode
+                    ? '<div style="font-size:14px;color:#475569;line-height:1.55;margin-bottom:8px;">' + _escH(_hs('lgv2.ioshint.appbody', 'You’ll approve in the {p} app. After you tap Confirm/Allow there, come back to this app.')).replace('{p}', '<b>' + providerName + '</b>') + '</div>' +
+                      '<div style="font-size:12px;color:#64748b;margin-bottom:18px;">' + _escH(_hs('lgv2.ioshint.appnote', 'This app signs you in by itself when you return.')) + '</div>'
+                    : '<div style="font-size:14px;color:#475569;line-height:1.55;margin-bottom:8px;">You’ll approve in the <b>' + providerName + '</b> app. After you tap <b>Confirm/Allow</b> there, tap <b>◀ Safari</b> at the <b>top-left</b> of your screen to come back and finish.</div>' +
+                      '<div style="font-size:12px;color:#94a3b8;margin-bottom:18px;">iPhone doesn’t switch back on its own — your dashboard will be waiting in Safari.</div>') +
                   '<button id="iosHintGo" style="width:100%;background:#16a34a;color:#fff;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:700;cursor:pointer;">Continue</button>' +
                 '</div>';
             document.body.appendChild(ov);
@@ -36609,6 +36753,14 @@
                         // Clean URL without reloading
                         const cleanUrl = window.location.origin + window.location.pathname;
                         history.replaceState(null, '', cleanUrl);
+
+                        // v1432: this login may have been STARTED somewhere else (the home-screen app) — hand
+                        // the session back to it. Never blocks or fails the login that just succeeded here.
+                        try {
+                            if (provider === 'line' && AppState.session.isAuthenticated && window.LoginHandoff) {
+                                window.LoginHandoff.completed(state, AppState.currentUser && AppState.currentUser.lineUserId);
+                            }
+                        } catch (e) { console.warn('[LoginHandoff] completed() failed', e); }
 
                         // Only redirect if user is authenticated (handleOAuthProfile may show modal instead)
                         if (AppState.session.isAuthenticated) {

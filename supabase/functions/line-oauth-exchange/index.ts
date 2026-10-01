@@ -261,6 +261,25 @@ Deno.serve(async (req: Request) => {
       console.error("[line-oauth-exchange] v2 session minting failed (login continues):", authWarning);
     }
 
+    // 6b. Login hand-back (v1433). LINE returns its approval to the phone's DEFAULT BROWSER, not to the
+    // home-screen app that started the login, so the app stayed logged out. The client's `state` is a
+    // one-time ticket held only by the context that started the login; filing ticket -> user HERE, after
+    // LINE itself has vouched for this user, means a later claim can only ever return an id that completed
+    // a real LINE sign-in. (login_handoff_put is service-role only — the browser cannot file tickets.)
+    // Never blocks or fails the login.
+    try {
+      if (typeof state === "string" && /^h[sb][0-9a-f]{40}$/.test(state)) {
+        const hbRes = await fetch(`${SB_URL}/rest/v1/rpc/login_handoff_put`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ p_ticket: state, p_user: lineUserId }),
+        });
+        if (!hbRes.ok) console.error("[line-oauth-exchange] login_handoff_put status:", hbRes.status);
+      }
+    } catch (hbErr: any) {
+      console.error("[line-oauth-exchange] login_handoff_put failed (login continues):", String(hbErr?.message || hbErr));
+    }
+
     // 7. Return profile (+ token_hash when session minting succeeded).
     return json({
       ok: true,

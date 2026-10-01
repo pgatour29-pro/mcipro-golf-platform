@@ -33990,8 +33990,9 @@
         // Safari/Chrome and the app icon stayed logged out — users tapped "Continue with LINE" on every
         // open (43 of 43 such logins for two Chrome-default iPhone users landed in Chrome, never the app).
         // Now the OAuth state is a 160-bit one-time ticket kept only by the context that STARTED the login.
-        // Whoever FINISHES the login files ticket -> user (login_handoff_put); the starter claims it once
-        // (login_handoff_claim) and signs itself in. Ticket shape: h + s|b (app|browser) + 40 hex.
+        // The line-oauth-exchange edge function files ticket -> user AFTER LINE has vouched for that user
+        // (v1433: the browser cannot file tickets — login_handoff_put is service-role only); the starter
+        // claims it once (login_handoff_claim) and signs itself in. Ticket: h + s|b (app|browser) + 40 hex.
         window.LoginHandoff = {
             KEY: 'login_handoff_v1',
             RE: /^h[sb][0-9a-f]{40}$/,
@@ -34019,15 +34020,19 @@
                 return null;
             },
             clear: function () { try { localStorage.removeItem(this.KEY); } catch (e) { } },
-            // the context that FINISHED the login
+            // the context that FINISHED the login (the exchange function has already filed the ticket)
             completed: async function (state, userId) {
                 if (!this.RE.test(state || '') || !userId) return;
                 var mine = this.pending();
-                if (mine && mine.t === state) { this.clear(); return; }   // started AND finished here — nothing to hand back
-                try {
-                    var sb = window.SupabaseDB && window.SupabaseDB.client;
-                    if (sb) await sb.rpc('login_handoff_put', { p_ticket: state, p_user: userId });
-                } catch (e) { console.warn('[LoginHandoff] put failed', e && e.message); }
+                if (mine && mine.t === state) {
+                    // started AND finished here — nobody is waiting for it, so burn the ticket (single-use)
+                    this.clear();
+                    try {
+                        var sb = window.SupabaseDB && window.SupabaseDB.client;
+                        if (sb) await sb.rpc('login_handoff_claim', { p_ticket: state });
+                    } catch (e) { }
+                    return;
+                }
                 if (state.charAt(1) === 's') this.showReturnCard();
             },
             // the context that STARTED the login

@@ -7,8 +7,8 @@
 -- does not share, so the app icon stays logged out forever ("I can't log in").
 --
 -- Fix: the login's OAuth `state` is now a 160-bit one-time ticket held only by the context that
--- started the login. Whichever context finishes the login files (ticket -> who signed in); the
--- starter claims it once and is signed in too.
+-- started the login. The line-oauth-exchange edge function files (ticket -> the user LINE verified);
+-- the starter claims it once and is signed in too.
 --
 -- The ticket is stored hashed, is single-use and expires after 7 days. What a claim returns is a
 -- LINE user id — the same thing every restored session already carries in this app (client-side
@@ -59,7 +59,10 @@ begin
 end
 $$;
 
-revoke all on function public.login_handoff_put(text, text) from public;
+-- v1433: filing a ticket is SERVER-ONLY. The line-oauth-exchange edge function calls it after LINE has
+-- verified the user, so a claim can only ever return an id that completed a real LINE sign-in. The
+-- browser may only claim (it is logged out when it does — the 160-bit ticket is its proof).
+revoke all on function public.login_handoff_put(text, text) from public, anon, authenticated;
 revoke all on function public.login_handoff_claim(text) from public;
-grant execute on function public.login_handoff_put(text, text) to anon, authenticated;
+grant execute on function public.login_handoff_put(text, text) to service_role;
 grant execute on function public.login_handoff_claim(text) to anon, authenticated;

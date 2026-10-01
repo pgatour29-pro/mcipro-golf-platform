@@ -13436,7 +13436,6 @@
                 'scorecard.pin.close': 'Close',
                 'scorecard.pin.speed': 'Green speed',
                 'scorecard.pin.none': 'No pin sheet for this hole today',
-                'scorecard.pin.demo': 'DEMO · SAMPLE PIN',
                 'scorecard.pin.today': "TODAY'S PIN",
                 'scorecard.pin.size': 'width × depth',
                 'scorecard.pin.q1': 'Front Left',
@@ -17076,7 +17075,6 @@
                 'scorecard.pin.close': 'ปิด',
                 'scorecard.pin.speed': 'ความเร็วกรีน',
                 'scorecard.pin.none': 'วันนี้ยังไม่มีตำแหน่งพินของหลุมนี้',
-                'scorecard.pin.demo': 'ทดลอง · พินตัวอย่าง',
                 'scorecard.pin.today': 'พินวันนี้',
                 'scorecard.pin.size': 'กว้าง × ลึก',
                 'scorecard.pin.q1': 'หน้าซ้าย',
@@ -20584,7 +20582,6 @@
                 'scorecard.pin.close': '닫기',
                 'scorecard.pin.speed': '그린 스피드',
                 'scorecard.pin.none': '오늘 이 홀의 핀 위치가 없습니다',
-                'scorecard.pin.demo': '체험 · 샘플 핀',
                 'scorecard.pin.today': '오늘의 핀',
                 'scorecard.pin.size': '너비 × 깊이',
                 'scorecard.pin.q1': '앞 왼쪽',
@@ -24274,7 +24271,6 @@
                 'scorecard.pin.close': '閉じる',
                 'scorecard.pin.speed': 'グリーンスピード',
                 'scorecard.pin.none': '本日このホールのピン位置はありません',
-                'scorecard.pin.demo': '体験 · サンプルピン',
                 'scorecard.pin.today': '本日のピン',
                 'scorecard.pin.size': '幅 × 奥行',
                 'scorecard.pin.q1': '手前左',
@@ -145146,7 +145142,7 @@ const PinSheetManager = {
             document.body.appendChild(ov);
         }
         const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-        const speed = pin && !pin.demo && this.currentPinData && this.currentPinData.green_speed;
+        const speed = pin && this.currentPinData && this.currentPinData.green_speed;
         // v1425: a traced course draws its REAL green — wait for the shapes on the first open
         const layout = this.layoutFor(this.currentCourseName);
         if (layout && layout.shapes && !this.shapeFor(layout, hole)) { try { await this.loadShapes(layout); } catch (e) {} }
@@ -145157,8 +145153,6 @@ const PinSheetManager = {
         const size = card && card[1] && card[2] ? `${card[1]} × ${card[2]}` : '';
         const sub = [size ? `${size} <span style="opacity:.75">${esc(_lvT('scorecard.pin.size', 'width × depth'))}</span>` : '',
                      speed ? `${esc(_lvT('scorecard.pin.speed', 'Green speed'))} ${esc(speed)}` : ''].filter(Boolean);
-        const demoNote = pin && pin.demo
-            ? `<span style="font:700 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.06em;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:999px;padding:4px 8px;">${esc(_lvT('scorecard.pin.demo', 'DEMO · SAMPLE PIN'))}</span>` : '';
         const noneNote = q ? '' : `<span style="font:600 11.5px/1.2 system-ui,sans-serif;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:999px;padding:4px 9px;">${esc(_lvT('scorecard.pin.none', 'No pin sheet for this hole today'))}</span>`;
         const map = `<div style="width:min(78vw,340px);aspect-ratio:1;margin:2px auto 0;">${this.greenSVG('view', q, null, opts)}</div>`;
         // A · B · C strip on a lettered course — today's letter lit; the band name on a grid course
@@ -145187,7 +145181,7 @@ const PinSheetManager = {
                         style="flex:none;width:38px;height:38px;border-radius:999px;border:1px solid #e5e7eb;background:#f3f4f6;color:#111827;display:flex;align-items:center;justify-content:center;cursor:pointer;">
                         <span class="material-symbols-outlined" style="font-size:22px;">close</span></button>
                 </div>
-                ${(demoNote || noneNote) ? `<div style="display:flex;gap:6px;margin-top:6px;">${demoNote}${noneNote}</div>` : ''}
+                ${noneNote ? `<div style="display:flex;gap:6px;margin-top:6px;">${noneNote}</div>` : ''}
                 ${map}
                 ${foot}
             </div>`;
@@ -145351,18 +145345,14 @@ const PinSheetManager = {
     /**
      * Get pin position for a specific hole
      */
-    // v1400: a Demo round shows every button working (Pete: "when i did the demo i did not
-    // see the PIN sheet pill"). With no real sheet today for the course, the demo gets a
-    // SAMPLE pin per hole — in memory only, flagged demo:true, never written anywhere.
-    _DEMO_PINS: ['front-left', 'back-right', 'center', 'front-right', 'back-left', 'front', 'right', 'back', 'left'],
-    _demoPin(holeNumber) {
-        const L = window.LiveScorecardManager;
-        if (!L || !L.demoMode || !holeNumber) return null;
-        const lab = this._DEMO_PINS[(Number(holeNumber) - 1) % this._DEMO_PINS.length];
-        return { hole_number: Number(holeNumber), position_label: lab, demo: true };
-    },
+    // v1430 (Pete 2026-10-01: "one course pin location is not the same for every courses. If no entries
+    // have been uploaded do not copy other courses to that course"): a pin is ONLY ever the one uploaded
+    // for THIS course, for TODAY. The v1400 Demo "sample pins" drew the same made-up positions on every
+    // course without a sheet (hole 1 front left, hole 2 back right …), which read as one course's sheet
+    // copied onto the others. They are gone: no sheet = a blank pill and the unlit green, demo or not.
+    // (The pill itself is on every course since v1418, so the demo still shows where the pin sheet lives.)
     getPinForHole(holeNumber) {
-        return this._realPinForHole(holeNumber) || this._demoPin(holeNumber);
+        return this._realPinForHole(holeNumber);
     },
     _realPinForHole(holeNumber) {
         if (!this.currentPinData || !this.currentPinData.pin_locations) {

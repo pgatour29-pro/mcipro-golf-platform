@@ -21,5 +21,12 @@ const upd = (s.match(/updatePinPositionIndicator\(\) \{[\s\S]{0,1800}?\n    \}/)
     if (!upd.includes("'" + id + "'")) fail.push('updatePinPositionIndicator must refresh #' + id);
 });
 if (!/pillLabel\(this\.currentHole\)/.test(upd) || !/querySelector\('\.pin-q'\)/.test(upd)) fail.push('updatePinPositionIndicator must write the location into every pill, not one');
+// v1430 (Pete 2026-10-01: "If no entries have been uploaded do not copy other courses to that course"):
+// a pin comes from THIS course's sheet for TODAY or not at all. The Demo round used to invent the same
+// sample pins on every course without a sheet — that must never come back.
+if (/_demoPin|_DEMO_PINS|SAMPLE PIN/.test(s)) fail.push('PinSheetManager must not invent pins (demo sample pins were removed in v1430)');
+if (!/getPinForHole\(holeNumber\) \{\s*return this\._realPinForHole\(holeNumber\);\s*\}/.test(s)) fail.push('getPinForHole must return ONLY _realPinForHole (no fallback pin of any kind)');
+const real = (s.match(/_realPinForHole\(holeNumber\) \{[\s\S]{0,1400}?\n    \}/) || [''])[0];
+if (!/pinCourse !== curCourse/.test(real) || !/this\.currentPinData\.date !== this\.bkkToday\(\)/.test(real)) fail.push('_realPinForHole must require the SAME course and TODAY\'s sheet');
 if (fail.length) { console.error('✗ PIN pill guard:\n  ' + fail.join('\n  ')); process.exit(1); }
 console.log('✓ PIN pill: all ' + pills.length + ' live pills name the pin location');

@@ -3393,6 +3393,7 @@
   <script src="golfer-avatar.js?v=20260830a"></script>
   <script src="name-search.js?v=20260917a"></script>
   <script src="course-society-link.js?v=1396"></script>
+  <script src="caddy-work-core.js?v=1429"></script>
   <script>
   (function() {
     'use strict';
@@ -4785,6 +4786,13 @@
           if (o.course_name && c.prefix && !String(o.course_name).toLowerCase().startsWith(c.prefix.toLowerCase())) return;
           state.off[String(o.caddy_number).trim()] = true;
         });
+        // v1429: a day the caddy master's work schedule takes her off (set day or usual week) counts the same
+        try {
+          if (window.CaddyWorkSchedule && allCaddies.length) {
+            window.CaddyWorkSchedule.client = supabaseClient;
+            (await window.CaddyWorkSchedule.offNumbers(allCaddies, date)).forEach(n => { state.off[n] = true; });
+          }
+        } catch (e) { console.warn('[TeeSheet] work schedule:', e.message); }
         Object.keys(state.jobs).forEach(n => state.jobs[n].sort((a, b) => a.time.localeCompare(b.time)));
       } catch (e) {
         console.warn('[TeeSheet] caddy day state:', e.message);
@@ -7330,9 +7338,12 @@
             ids.length ? supabaseClient.from('caddy_checkins').select('caddy_id, checked_in_at, by_label').eq('check_date', date).in('caddy_id', ids.slice(0, 500)) : Promise.resolve({ data: [] }),
             supabaseClient.from('caddy_rotation_config').select('course_name, start_number, active_count, rotation_date')
           ]);
+          // v1429: the work schedule (caddy-work-core.js) — who is off today beyond approved requests
+          let workOff = new Set();
+          try { if (window.CaddyWorkSchedule) { window.CaddyWorkSchedule.client = supabaseClient; workOff = await window.CaddyWorkSchedule.offNumbers(allCaddies, date); } } catch (e) {}
           if (seq !== this._seq) return;               // a newer load owns the desk
           if (jobs.error) throw new Error(jobs.error.message);
-          this.data = this.model(date, c, jobs.data || [], offs.data || [], (chk && chk.data) || [], (rot && rot.data) || []);
+          this.data = this.model(date, c, jobs.data || [], offs.data || [], (chk && chk.data) || [], (rot && rot.data) || [], workOff);
         } catch (e) {
           if (seq !== this._seq) return;
           console.warn('[CaddyDesk] load:', e.message);
@@ -7340,12 +7351,13 @@
         }
         this.paint();
       },
-      model(date, c, rows, offs, chk, rots) {
+      model(date, c, rows, offs, chk, rots, workOff) {
         const isToday = date === this.today();
         const now = this.nowM();
         const pre = String(c.prefix || '').toLowerCase();
         const off = new Set();
         offs.forEach(o => { if (o.caddy_number == null) return; if (o.course_name && pre && !String(o.course_name).toLowerCase().startsWith(pre)) return; off.add(String(o.caddy_number).trim()); });
+        if (workOff) workOff.forEach(n => off.add(n));   // v1429 work schedule
         const inAt = {}; chk.forEach(r => { inAt[r.caddy_id] = r; });
         const useChk = chk.length > 0;               // a course that never checks caddies in: everyone not off is on duty
         const byId = {}, byNum = {};
@@ -10479,6 +10491,9 @@
         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'caddy_checkins' }, () => CaddyDesk.onRender())
         .on('postgres_changes', { event: '*', schema: 'public', table: 'caddy_dayoff_requests' }, () => CaddyDesk.onRender())
         .on('postgres_changes', { event: '*', schema: 'public', table: 'caddy_rotation_config' }, () => CaddyDesk.onRender())
+        // v1429: the caddy master's work schedule drops / returns a caddy in the queue live
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'caddy_work_days' }, () => CaddyDesk.onRender())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'caddy_work_week' }, () => CaddyDesk.onRender())
         .subscribe(status => console.log('[TeeSheet] Realtime channel (' + date + '):', status));
     }
 

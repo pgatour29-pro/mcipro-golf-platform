@@ -31820,6 +31820,13 @@
 
             static async loginWithLINE() {
                 try {
+                    // v1434: a login this app already started may be waiting to be handed back (approved in
+                    // LINE, finished in the browser). Take THAT instead of sending the user round again —
+                    // a second tap must sign them in, never restart the loop.
+                    try {
+                        if (window.LoginHandoff && window.LoginHandoff.pending() && (await window.LoginHandoff.tryClaim()) === true) return;
+                    } catch (e) { /* never block a login on the hand-back check */ }
+
                     LoadingManager.show('Connecting to LINE...');
 
                     // DIAGNOSTIC (2026-07-22): new users report "keeps asking for QR" on LINE. The QR is
@@ -34029,7 +34036,7 @@
                     this.clear();
                     try {
                         var sb = window.SupabaseDB && window.SupabaseDB.client;
-                        if (sb) await sb.rpc('login_handoff_claim', { p_ticket: state });
+                        if (sb) await sb.rpc('login_handoff_claim', { p_ticket: state, p_burn: true });
                     } catch (e) { }
                     return;
                 }
@@ -34057,6 +34064,7 @@
                     try { localStorage.removeItem('mcipro_pwa_state'); } catch (e) { }   // fresh login lands on the dashboard
                     console.log('[LoginHandoff] session handed back to this app — restoring');
                     location.replace(location.origin + '/');
+                    return true;
                 } catch (e) { console.warn('[LoginHandoff] claim failed', e && e.message); }
                 finally { this._busy = false; }
             },

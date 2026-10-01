@@ -21,6 +21,7 @@ if (!/sb\.rpc\('login_handoff_claim', \{ p_ticket: p\.t \}\)/.test(s)) fail.push
 if (!/if \(localStorage\.getItem\('line_user_id'\)\) \{ this\.clear\(\); return; \}/.test(s)) fail.push('tryClaim() must never replace an existing session');
 if (!/sessionStorage\.getItem\('__oauth_in_progress'\) \|\| \/\[\?&\]code=\/\.test\(location\.search\)/.test(s)) fail.push('tryClaim() must stand down while this context is finishing its own OAuth return');
 if (!/window\.LoginHandoff\.watch\(\);/.test(s)) fail.push('LoginHandoff.watch() must be started');
+if (!/window\.LoginHandoff\.pending\(\) && \(await window\.LoginHandoff\.tryClaim\(\)\) === true\) return;/.test(s)) fail.push('loginWithLINE must take a waiting hand-back before starting a new LINE round (second tap signs in)');
 ['visibilitychange', 'pageshow', 'focus'].forEach(ev => { if (!new RegExp("addEventListener\\('" + ev + "', ").test(s.slice(s.indexOf('window.LoginHandoff = {'), s.indexOf('window.LoginHandoff.watch();')))) fail.push('watch() must retry the claim on ' + ev); });
 ['lgv2.handoff.title', 'lgv2.handoff.body', 'lgv2.handoff.ok', 'lgv2.ioshint.appbody', 'lgv2.ioshint.appnote'].forEach(k => {
     const n = (s.match(new RegExp("'" + k.replace(/\./g, '\\.') + "': '", 'g')) || []).length;

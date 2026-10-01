@@ -37,6 +37,17 @@
     // v1351 (Pete 2026-09-25): a course picks its venue ONCE. After that the pickers disappear — the venue
     // never changes (not even on a sale); only the platform admin changes it.
     const isAdmin = () => uid() === 'U2b6d976f19bca4b2f4374ae0e10ed873' || !!(window.AdminInbox && AdminInbox.isAdmin && AdminInbox.isAdmin());
+    // v1431 (Pete 2026-10-01): a course with its OWN pro shop PIN. Signing in with that PIN pins this
+    // session to the course (ps_pin_lock_v1, written by _staffPinGrant in index.html) — nobody changes the
+    // venue from inside it, admin included. The lock lives and dies with the staff PIN session.
+    const pinLock = () => {
+        try {
+            if (localStorage.getItem('mcipro_staff_role') !== 'proshop') return null;
+            const l = JSON.parse(localStorage.getItem('ps_pin_lock_v1') || 'null');
+            return (l && l.id) ? l : null;
+        } catch (e) { return null; }
+    };
+    const canChangeCourse = () => isAdmin() && !pinLock();
     const uname = () => (window.AppState && AppState.currentUser && (AppState.currentUser.name || AppState.currentUser.displayName)) || 'Pro Shop';
     const toast = (msg, type) => {
         try { if (window.NotificationManager && window.NotificationManager.show) return window.NotificationManager.show(msg, type || 'info'); } catch (e) { }
@@ -120,22 +131,56 @@
             return toks.length ? toks : [String(name || '').toLowerCase().trim()];
         },
         async resolveCourse() {
+            // v1431: a course PIN IS the course. It outranks the device cache and every other source.
+            const lock = pinLock();
+            if (lock) {
+                if (PS.course && PS.course.id !== lock.id) PS._loaded = {};
+                PS.course = { id: lock.id, name: lock.name || lock.id, stem: PS.stemOf(lock.name || lock.id) };
+                try { localStorage.setItem('ps_course_v1', JSON.stringify({ id: PS.course.id, name: PS.course.name })); } catch (e) { }
+                return true;
+            }
             let cached = null;
             try { cached = JSON.parse(localStorage.getItem('ps_course_v1') || 'null'); } catch (e) { }
             // v1351: the ADMIN-assigned course (user_profiles.managed_course_id) outranks this device's cache —
             // that is how the admin moves a pro shop. The platform admin's own device keeps its own pick.
             const me = uid();
+            let managedId = '';
             if (me && !isAdmin()) {
                 try {
                     const { data } = await db().from('user_profiles').select('managed_course_id, managed_course_name').eq('line_user_id', me).maybeSingle();
+                    managedId = (data && data.managed_course_id) || '';
                     if (data && data.managed_course_id && (!cached || cached.id !== data.managed_course_id)) {
                         await PS.setCourse(data.managed_course_id, data.managed_course_name); return true;
                     }
                 } catch (e) { }
             }
-            if (cached && cached.id) { PS.course = cached; PS.course.stem = PS.stemOf(cached.name); return true; }
+            // v1431: a venue that has its own PIN opens with THAT PIN only. A shared-PIN device that picked
+            // it earlier is sent back to the chooser (which no longer lists it). Admin-assigned staff keep it.
+            if (cached && cached.id && !isAdmin() && cached.id !== managedId && PS.needsOwnPin(cached, await PS.pinCourses())) {
+                try { localStorage.removeItem('ps_course_v1'); } catch (e) { }
+                cached = null; PS.course = null; PS._loaded = {};
+            }
+            if (cached && cached.id) {
+                if (PS.course && PS.course.id !== cached.id) PS._loaded = {};
+                PS.course = cached; PS.course.stem = PS.stemOf(cached.name); return true;
+            }
             PS.showCoursePicker();
             return false;
+        },
+        /* v1431: the venues that have their own pro shop PIN — [{id,name}], never the PINs. A slow or failed
+           lookup answers [] (the shared PIN keeps working offline); the course PIN itself is checked server-side. */
+        async pinCourses() {
+            try {
+                const ask = db().rpc('proshop_pin_courses').then(r => (r && Array.isArray(r.data)) ? r.data : []);
+                return await Promise.race([ask, new Promise(res => setTimeout(() => res([]), 4000))]);
+            } catch (e) { return []; }
+        },
+        /* same VENUE counts: "Burapha - East Course" and the Phoenix nines are the PIN course's own sheet */
+        needsOwnPin(course, pinned) {
+            if (!course || !pinned || !pinned.length) return false;
+            const CL = window.CourseLink;
+            const slug = CL ? CL.slugFor(course.name) : null;
+            return pinned.some(p => p.id === course.id || (!!slug && CL.sameVenue(slug, CL.slugFor(p.name))));
         },
         async setCourse(id, name) {
             try {
@@ -151,6 +196,14 @@
                 const { data } = await db().from('courses').select('id,name').order('name').limit(200);
                 rows = data || [];
             } catch (e) { }
+            // v1431: venues with their own PIN are not on the shared chooser (the admin still sees every course)
+            let hidPinned = false;
+            if (!isAdmin()) {
+                const pinned = await PS.pinCourses();
+                const open = rows.filter(r => !PS.needsOwnPin(r, pinned));
+                hidPinned = open.length !== rows.length;
+                rows = open;
+            }
             document.getElementById('psCoursePick') && document.getElementById('psCoursePick').remove();
             const wrap = document.createElement('div');
             wrap.id = 'psCoursePick';
@@ -161,6 +214,10 @@
                 <p class="text-sm text-gray-600 mb-3">${tr('ps.pickcoursesub', 'The pro shop dashboard is scoped to one course.')}</p>
                 <input id="psCourseQ" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-3" placeholder="${tr('common.search', 'Search')}...">
                 <div id="psCourseList" style="overflow-y:auto;" class="space-y-1"></div>
+                ${hidPinned ? `<div class="mt-3 pt-3 border-t border-gray-200 flex items-center justify-between gap-3">
+                  <p class="text-xs text-gray-600">${tr('ps.ownpinnote', 'A course with its own PIN opens with that PIN.')}</p>
+                  <button id="psCoursePinBtn" style="margin-left:auto;" class="shrink-0 text-sm text-green-700 font-semibold hover:underline">${tr('ps.enterpin', 'Enter a course PIN')}</button>
+                </div>` : ''}
               </div>`;
             document.body.appendChild(wrap);
             const paint = (q) => {
@@ -176,6 +233,8 @@
             };
             paint('');
             document.getElementById('psCourseQ').addEventListener('input', (e) => paint(e.target.value));
+            const pinBtn = document.getElementById('psCoursePinBtn');
+            if (pinBtn) pinBtn.addEventListener('click', () => { wrap.remove(); if (typeof window.logout === 'function') window.logout(); });
         },
         paintHeader() {
             try {
@@ -184,10 +243,10 @@
                 if (nameEl) nameEl.textContent = PS.course.name;
                 if (chip) {
                     chip.style.display = '';   // classes take over: hidden <sm, flex ≥sm
-                    chip.style.cursor = isAdmin() ? 'pointer' : 'default';
-                    chip.title = isAdmin() ? tr('ps.switchcourse', 'Switch course') : '';
+                    chip.style.cursor = canChangeCourse() ? 'pointer' : 'default';
+                    chip.title = canChangeCourse() ? tr('ps.switchcourse', 'Switch course') : '';
                     const caret = chip.querySelector('.material-symbols-outlined');
-                    if (caret) caret.style.display = isAdmin() ? '' : 'none';
+                    if (caret) caret.style.display = canChangeCourse() ? '' : 'none';
                 }
                 if (!PS._clockTimer) {
                     const tick = () => {
@@ -1043,9 +1102,9 @@
                   <p class="text-sm text-gray-600 mb-3">${tr('ps.courselinksub', 'POS, inventory, sales and messages are scoped to this course.')}</p>
                   <div class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5">
                     <span class="font-semibold text-gray-900">${esc(PS.course.name)}</span>
-                    ${isAdmin() ? `<button onclick="ProshopDashboard.changeCourse()" class="text-sm text-green-700 font-semibold hover:underline">${tr('common.change', 'Change')}</button>` : ''}
+                    ${canChangeCourse() ? `<button onclick="ProshopDashboard.changeCourse()" class="text-sm text-green-700 font-semibold hover:underline">${tr('common.change', 'Change')}</button>` : ''}
                   </div>
-                  ${isAdmin() ? '' : `<p class="text-xs text-gray-600 mt-2">${tr('ps.courselocked', 'Your course is set. Only the platform admin can change it.')}</p>`}
+                  ${canChangeCourse() ? '' : `<p class="text-xs text-gray-600 mt-2">${tr('ps.courselocked', 'Your course is set. Only the platform admin can change it.')}</p>`}
                 </div>
                 <div class="bg-white border border-gray-200 rounded-xl p-4">
                   <h3 class="font-bold text-gray-900 mb-1">${tr('ps.teesheetcfg', 'Live Tee Sheet configuration')}</h3>
@@ -1080,7 +1139,7 @@
               </div>`;
         },
         changeCourse() {
-            if (!isAdmin()) return;   // v1351: the venue is fixed once chosen — admin only
+            if (!canChangeCourse()) return;   // v1351: the venue is fixed once chosen — admin only; v1431: never under a course PIN
             localStorage.removeItem('ps_course_v1');
             PS.course = null;
             PS._loaded = {};

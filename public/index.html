@@ -13209,6 +13209,7 @@
                 'caddie.rot.reqoff': 'Request Day Off',
                 'lgv2.pin.enter': 'Enter PIN code',
                 'lgv2.pin.wrong': 'Incorrect PIN code. Access denied.',
+                'lgv2.pin.offline': 'Could not check the PIN. Check your connection and try again.',
                 'lgv2.pin.back': 'Back',
                 'lgv2.pin.unlock': 'Unlock',
                 'lgv2.role.caddy': 'Caddy',
@@ -16848,6 +16849,7 @@
                 'caddie.rot.reqoff': 'ขอวันหยุด',
                 'lgv2.pin.enter': 'กรอกรหัส PIN',
                 'lgv2.pin.wrong': 'รหัส PIN ไม่ถูกต้อง ไม่สามารถเข้าใช้งานได้',
+                'lgv2.pin.offline': 'ตรวจสอบรหัส PIN ไม่ได้ กรุณาตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง',
                 'lgv2.pin.back': 'ย้อนกลับ',
                 'lgv2.pin.unlock': 'ปลดล็อก',
                 'lgv2.role.caddy': 'แคดดี้',
@@ -20355,6 +20357,7 @@
                 'caddie.rot.reqoff': '휴무 신청',
                 'lgv2.pin.enter': 'PIN 코드를 입력하세요',
                 'lgv2.pin.wrong': 'PIN 코드가 올바르지 않습니다. 접근이 거부되었습니다.',
+                'lgv2.pin.offline': 'PIN을 확인할 수 없습니다. 연결 상태를 확인한 후 다시 시도하세요.',
                 'lgv2.pin.back': '뒤로',
                 'lgv2.pin.unlock': '잠금 해제',
                 'lgv2.role.caddy': '캐디',
@@ -24044,6 +24047,7 @@
                 'caddie.rot.reqoff': '休暇を申請',
                 'lgv2.pin.enter': 'PINコードを入力',
                 'lgv2.pin.wrong': 'PINコードが正しくありません。アクセスが拒否されました。',
+                'lgv2.pin.offline': 'PINを確認できませんでした。接続を確認してもう一度お試しください。',
                 'lgv2.pin.back': '戻る',
                 'lgv2.pin.unlock': 'ロック解除',
                 'lgv2.role.caddy': 'キャディ',
@@ -38110,7 +38114,7 @@
 
         function logout() {
             // End any persisted staff PIN session or it auto-restores on next load
-            try { localStorage.removeItem('mcipro_staff_role'); } catch (e) { }
+            try { localStorage.removeItem('mcipro_staff_role'); localStorage.removeItem('ps_pin_lock_v1'); } catch (e) { }
             LineAuthentication.logout();
         }
 
@@ -56883,7 +56887,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Failsafe if the panel markup is missing: legacy prompt() path
                 const pin = prompt(`Enter PIN code for ${meta.name} access:`);
                 if (!pin) return false;
-                if (pin === '000000') {
+                if ((await window._staffPinGrant(role, pin.trim())) === 'ok') {
                     try { localStorage.setItem('mcipro_staff_role', role); } catch (e) { }
                     return window.login(role);
                 }
@@ -56928,15 +56932,51 @@ document.addEventListener('DOMContentLoaded', function() {
             if (err) err.style.display = 'none';
         };
 
-        // Staff PIN panel submit — same validation the old prompt() path used
-        // TODO: Move to database-based validation per role
-        window.submitStaffPin = function () {
+        // v1431 (Pete 2026-10-01): THE staff PIN check. A pro shop course PIN opens THAT course and nothing
+        // else — it pins this device's pro shop to the course (ps_pin_lock_v1) and the dashboard + tee sheet
+        // refuse to leave it. The PIN -> course map lives in the DB (proshop_pin_login RPC, table locked to
+        // the browser); it must NEVER be written into this file — the repo is public. The shared PIN keeps
+        // working for every course that has no PIN of its own. Returns 'ok' | 'wrong' | 'offline'.
+        window._staffPinGrant = async function (role, pin) {
+            if (role !== 'proshop') return pin === '000000' ? 'ok' : 'wrong';
+            if (pin === '000000') {
+                try { localStorage.removeItem('ps_pin_lock_v1'); } catch (e) { }
+                return 'ok';
+            }
+            if (!/^\d{6}$/.test(pin)) return 'wrong';
+            try {
+                const sb = window.SupabaseDB && window.SupabaseDB.client;
+                if (!sb) return 'offline';
+                const { data, error } = await sb.rpc('proshop_pin_login', { p_pin: pin });
+                if (error) { console.warn('[loginWithPin] course PIN check failed:', error.message); return 'offline'; }
+                if (!data || !data.course_id) return 'wrong';
+                const pick = JSON.stringify({ id: data.course_id, name: data.course_name || data.course_id });
+                localStorage.setItem('ps_pin_lock_v1', pick);
+                localStorage.setItem('ps_course_v1', pick);
+                return 'ok';
+            } catch (e) {
+                console.warn('[loginWithPin] course PIN check failed:', e && e.message);
+                return 'offline';
+            }
+        };
+
+        // Staff PIN panel submit
+        window.submitStaffPin = async function () {
             const role = window._staffPinRole;
             if (!role) return false;
+            if (window._staffPinBusy) return false;
             const input = document.getElementById('lgv2StaffPinInput');
             const err = document.getElementById('lgv2StaffPinErr');
             const pin = ((input && input.value) || '').trim();
-            if (pin === '000000') {
+            let verdict = 'wrong';
+            window._staffPinBusy = true;
+            try { verdict = await window._staffPinGrant(role, pin); } finally { window._staffPinBusy = false; }
+            if (window._staffPinRole !== role) return false;   // backed out of the panel while the check ran
+            const say = (k, fb) => { try { const v = (typeof t === 'function') ? t(k) : k; return (v && v !== k) ? v : fb; } catch (e) { return fb; } };
+            if (err) err.textContent = verdict === 'offline'
+                ? say('lgv2.pin.offline', 'Could not check the PIN. Check your connection and try again.')
+                : say('lgv2.pin.wrong', 'Incorrect PIN code. Access denied.');
+            if (verdict === 'ok') {
                 console.log('[loginWithPin] PIN correct - granting access to:', role);
                 // Persist so a full page navigation (tee sheet "← Dashboard") restores this
                 // staff session instead of dumping to the login screen. Cleared by logout().
@@ -88744,7 +88784,7 @@ window.AdminSystem = AdminSystem;
     <script defer src="handicap-ledger.js?v=1257"></script>
     <script defer src="course-society-link.js?v=1396"></script>
     <script defer src="engagement-meter.js?v=1377"></script>
-    <script defer src="proshop-dashboard.js?v=1351"></script>
+    <script defer src="proshop-dashboard.js?v=1431"></script>
 
     <!-- Course Data & Handicap Calculations -->
     <script defer src="course-data-manager.js"></script>

@@ -9770,11 +9770,35 @@
       if (!courseDisplayNames[slug]) courseDisplayNames[slug] = name || slug;
       if (name && !courseIdToDbName[slug]) courseIdToDbName[slug] = name;
     }
+    // v1431 (Pete 2026-10-01): a pro shop signed in with its course's OWN PIN stays on that course. The
+    // lock (ps_pin_lock_v1, same origin as the dashboard) outranks the URL — a hand-typed ?course= for
+    // another venue, or a sheet opened with no course at all, still lands on the PIN's course. A layout
+    // of the SAME venue (Burapha A+C vs C+D) is left as picked. Same slug rule as the dashboard.
+    function pinLockCourse() {
+      try {
+        if (localStorage.getItem('mcipro_staff_role') !== 'proshop') return null;
+        const l = JSON.parse(localStorage.getItem('ps_pin_lock_v1') || 'null');
+        if (!l || !l.id) return null;
+        const CL = window.CourseLink;
+        const slug = (CL && CL.slugForCourse(l.name, getSettings().golfCourse)) || String(l.id).toLowerCase().replace(/_/g, '-');
+        return { slug: slug, name: l.name || slug };
+      } catch (e) { return null; }
+    }
     function handleUrlParams() {
       const params = new URLSearchParams(window.location.search);
-      const courseParam = params.get('course');
+      let courseParam = params.get('course');
+      let nameParam = params.get('name');
+      const lock = pinLockCourse();
+      if (lock && !(courseParam && window.CourseLink ? CourseLink.sameVenue(courseParam, lock.slug) : courseParam === lock.slug)) {
+        courseParam = lock.slug; nameParam = lock.name;
+        try {
+          const u = new URL(window.location.href);
+          u.searchParams.set('course', lock.slug); u.searchParams.set('name', lock.name);
+          history.replaceState(null, '', u.pathname + u.search + u.hash);
+        } catch (e) {}
+      }
       if (!courseParam) return;
-      ensureCourseOption(courseParam, params.get('name'));
+      ensureCourseOption(courseParam, nameParam);
       el.courseSelect.value = courseParam;
       try { const cur = getSettings(); cur.golfCourse = courseParam; localStorage.setItem(SETTINGS_KEY, JSON.stringify(cur)); } catch (e) {}
       flushDayCachesForCourse(courseParam);
@@ -9785,6 +9809,7 @@
     function courseLocked() {
       let admin = false;
       try { admin = localStorage.getItem('line_user_id') === 'U2b6d976f19bca4b2f4374ae0e10ed873'; } catch (e) {}
+      if (pinLockCourse()) return true;   // v1431: a course PIN locks the sheet for everyone, admin included
       return !admin && !!new URLSearchParams(window.location.search).get('course');
     }
     function applyCourseLock() {

@@ -306,7 +306,9 @@
                     if (idx > 0 && key && b.course_name && fk(b.course_name) !== key) return;   // numbers repeat between clubs
                     seen[b.id] = 1; out.push(b);
                 }));
-                this.rows = out; this.store = store; this.offs = (offs && offs.data) || []; this.chk = (chk && chk.data) || null; this.post = post;
+                // v1435: day-off requests are filed per course — the ones from a course she has left stay there
+                const offRows = ((offs && offs.data) || []).filter(o => !o.course_name || !key || fk(o.course_name) === key);
+                this.rows = out; this.store = store; this.offs = offRows; this.chk = (chk && chk.data) || null; this.post = post;
             } catch (e) { console.warn('[CaddyMySchedule] load:', e.message); }
             if (seq !== this._seq) return;
             this.loaded = true;
@@ -808,7 +810,7 @@
                 <span class="cbk-badge" style="background:${c.badge[1]}">${esc(c.badge[0])}</span>${q ? `<span class="cws-rot">Q${q}</span>` : ''}</div>
                 <div class="cbk-tile-body"><span class="cbk-num">${numOf(c.r) ? '#' + esc(numOf(c.r)) : ''}</span><span class="cbk-name">${esc(nameOf(c.r))}</span></div></div>`;
             let q = 0;
-            grid.innerHTML = list.map(c => tile(c, c.fit ? ++q : 0)).join('') + inactive.map(r => tile({ r, fit: false, badge: [D._t('cm.grp.inactive', 'Inactive'), '#475569'] }, 0)).join('');
+            grid.innerHTML = list.map(c => tile(c, c.fit ? ++q : 0)).join('') + inactive.map(r => tile({ r, fit: false, badge: [r.left_at ? D._t('cm.grp.left', 'Left') : D._t('cm.grp.inactive', 'Inactive'), '#475569'] }, 0)).join('');   // v1435: left_at = she left the course, the record stays
         },
 
         // ---------- rotation (start number + window; CaddyMasterData.saveRotation does the write) ----------
@@ -876,7 +878,7 @@
             const inactive = r.is_active === false;
             const c0 = inactive ? null : (this.cands(today, '', null).find(c => c.r.id === r.id) || null);   // her state right now
             const me = job ? (this.cands(job.booking_date, D._tm(job), job).find(c => c.r.id === r.id) || null) : c0;
-            const badge = inactive ? [D._t('cm.grp.inactive', 'Inactive'), '#475569'] : !c0 ? ['', '#475569'] : c0.fit ? [T('cws.freenow', 'Free now'), '#16a34a'] : c0.badge;
+            const badge = inactive ? [r.left_at ? D._t('cm.grp.left', 'Left') : D._t('cm.grp.inactive', 'Inactive'), '#475569'] : !c0 ? ['', '#475569'] : c0.fit ? [T('cws.freenow', 'Free now'), '#16a34a'] : c0.badge;
             const nextRot = !inactive && this._firstFit === r.id;
             let lead = '', prop = null;
             if (job && me) {

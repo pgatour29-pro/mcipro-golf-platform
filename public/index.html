@@ -89209,7 +89209,7 @@ window.AdminSystem = AdminSystem;
     <script defer src="manager-dashboard.js?v=1396"></script>
     <script defer src="caddy-demo.js?v=1436"></script>
     <!-- v1437 Tech Support help desk: the drawer row, the ticket sheet and the thread (Messages > Reports is the admin side) -->
-    <script defer src="tech-support.js?v=1437"></script>
+    <script defer src="tech-support.js?v=1438"></script>
     <script defer src="caddy-work-core.js?v=1436"></script>
     <script defer src="caddy-work.js?v=1436"></script>
     <script defer src="marketing-dashboard.js?v=1396"></script>
@@ -141979,6 +141979,9 @@ const ReportsInbox = {
         this._open = r;
         const esc = window._caddyEsc || ((v) => String(v == null ? '' : v));
         const app = r.source === 'app' && !!window.TechSupport;
+        // a ticket from a PIN session has a device id, not an account: the answer still reaches its thread,
+        // but there is nobody to LINE or DM (v1438)
+        const reachable = /^(U|KAKAO-)/.test(String(r.reporter_id || ''));
         document.getElementById('rptSheetDim')?.remove();
         const when = new Date(r.created_at).toLocaleString(window._lvLocale ? _lvLocale() : undefined,
             { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -141998,7 +142001,7 @@ const ReportsInbox = {
               ? '<div class="rpt-ctx">' + esc(TechSupport.ctxLine(r.context)) + '</div>' +
                 '<div id="rptThread" class="ts-scope" style="margin:12px 0 4px;">' + TechSupport.threadHTML(r, [], 'support') + '</div>' +
                 '<div class="lbl">Reply to ' + esc(this._firstName(r.reporter_name)) + '</div>' +
-                '<textarea id="rptReply" maxlength="4000" placeholder="Your answer. It appears in their Tech Support thread and they get one LINE message."></textarea>' +
+                '<textarea id="rptReply" maxlength="4000" placeholder="' + (reachable ? 'Your answer. It appears in their Tech Support thread and they get one LINE message.' : 'Your answer. It appears in their Tech Support thread. No LINE message: this ticket came from a phone with no account.') + '"></textarea>' +
                 '<div class="rpt-acts" style="margin-top:9px;"><button class="on" id="rptReplyBtn" onclick="ReportsInbox.sendReply()">Send reply</button></div>'
               : '<div class="bd">' + esc(r.body) + '</div>') +
             '<div class="lbl">Status</div>' +
@@ -142010,7 +142013,7 @@ const ReportsInbox = {
             '<textarea id="rptNote" placeholder="What was done about it">' + esc(r.admin_note || '') + '</textarea>' +
             '<div class="rpt-acts" style="margin-top:9px;">' +
               '<button onclick="ReportsInbox.saveNote()">Save note</button>' +
-              '<button onclick="ReportsInbox.messageReporter()">Message ' + esc(this._firstName(r.reporter_name)) + '</button>' +
+              (app && !reachable ? '' : '<button onclick="ReportsInbox.messageReporter()">Message ' + esc(this._firstName(r.reporter_name)) + '</button>') +
             '</div>' +
             '<button class="rpt-close" onclick="ReportsInbox.close()">Close</button>' +
           '</div>';

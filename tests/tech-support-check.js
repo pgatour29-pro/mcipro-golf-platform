@@ -26,6 +26,15 @@ if (/from\(['"](direct_messages|announcements)['"]\)|SecureDM/.test(src)) fail.p
 if (!/\.eq\('reporter_id', uid\(\)\)\.eq\('source', 'app'\)/.test(src)) fail.push("My tickets must filter .eq('source', 'app')");
 if (!/source: 'app'/.test(src)) fail.push("a new ticket must be written with source: 'app'");
 
+// 4b. screenshots (v1439): private bucket + signed URLs, a plain picker, at most 3
+if (!/var BUCKET = 'support-attachments', MAX_SHOTS = 3,/.test(src)) fail.push('screenshots: bucket support-attachments, at most 3');
+if (/getPublicUrl/.test(src)) fail.push('screenshots live in a PRIVATE bucket — show them with createSignedUrls, never getPublicUrl');
+if (!/createSignedUrls\(/.test(src)) fail.push('hydrate() must sign the screenshot URLs');
+if (!/<input type="file" id="tsFile" accept="image\/\*" multiple hidden>/.test(src) || /<input[^>]*\scapture/.test(src)) fail.push('the screenshot picker must be a plain accept="image/*" input with NO capture attribute (dead tap in LINE)');
+if (!/try \{ paths = await this\._upload\('new'\); \}[\s\S]{0,700}attachments: paths/.test(src)) fail.push('a ticket must upload its screenshots BEFORE the row is written');
+if (!/WhatsNew = \{\s*REL: 'v1439-techsupport'/.test(html) && !/REL: 'v1[4-9]\d\d-/.test(html)) fail.push("What's New REL must not go back to a pre-Tech-Support release");
+if (!/last_reply_by, attachments'/.test(html) || (html.match(/TechSupport\.hydrate\(/g) || []).length < 2) fail.push('the Reports sheet must read attachments and hydrate the thumbs (ticket + thread)');
+
 // 5. run the module: 4-language parity + a seeded row can never be answered/pushed
 const calls = { fetch: 0, db: 0 };
 const el = () => ({ style: {}, classList: { toggle() {}, add() {}, remove() {}, contains() { return false; } }, setAttribute() {}, getAttribute() { return null; }, addEventListener() {}, appendChild() {}, querySelector() { return null; }, querySelectorAll() { return []; }, remove() {} });
@@ -34,7 +43,7 @@ const sandbox = {
   navigator: { userAgent: 'node', onLine: true }, location: { hostname: 'mycaddipro.com' },
   localStorage: { getItem: () => null, setItem() {} },
   fetch: () => { calls.fetch++; return Promise.resolve({}); },
-  document: { currentScript: { src: 'tech-support.js?v=1' }, head: el(), documentElement: el(), createElement: el, getElementById: () => null, querySelector: () => null, querySelectorAll: () => [] }
+  document: { currentScript: { src: 'tech-support.js?v=1' }, head: el(), documentElement: el(), createElement: el, getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], addEventListener() {} }
 };
 sandbox.window = sandbox;
 sandbox.SupabaseDB = { client: { from() { calls.db++; throw new Error('db touched'); } } };
@@ -51,7 +60,7 @@ else {
     if (!/\{s\}/.test(D[l]['ts.push.reply'] || '')) fail.push('dict ' + l + " ts.push.reply must keep the {s} placeholder");
   });
   ['account', 'tee_sheet', 'caddy_booking', 'registration', 'scoring', 'society', 'other'].forEach(c => { if (!D.en['ts.cat.' + c]) fail.push('category without a label: ' + c); });
-  ['canBack', 'back', 'open', 'close', 'thread', 'threadHTML', 'supportReply', 'refreshBadge'].forEach(f => { if (typeof TS[f] !== 'function') fail.push('TechSupport.' + f + ' missing'); });
+  ['canBack', 'back', 'open', 'close', 'thread', 'threadHTML', 'supportReply', 'refreshBadge', 'hydrate', 'viewImage'].forEach(f => { if (typeof TS[f] !== 'function') fail.push('TechSupport.' + f + ' missing'); });
 }
 (async () => {
   if (TS) {
@@ -61,7 +70,11 @@ else {
     // escaping: a ticket body is user text rendered with innerHTML
     const h = TS.threadHTML({ body: '<img src=x onerror=alert(1)>', created_at: '2026-10-02T00:00:00Z', reporter_name: '<b>x</b>' }, [], 'support');
     if (/<img|<b>x/.test(h)) fail.push('threadHTML must escape user text');
+    // a screenshot path is DB text inside an attribute — it must be escaped too, and never used as a src directly
+    const h2 = TS.threadHTML({ body: 'x', created_at: '2026-10-02T00:00:00Z', attachments: ['2026-10/a"><script>1</script>.jpg'] }, [{ author: 'support', body: 'y', created_at: '2026-10-02T00:01:00Z', attachments: ['2026-10/b.jpg'] }], 'user');
+    if (/<script>/.test(h2)) fail.push('threadHTML must escape attachment paths');
+    if ((h2.match(/class="ts-att"/g) || []).length !== 2 || /src="2026-10/.test(h2)) fail.push('threadHTML must render one thumb per attachment, with a placeholder src until signed');
   }
   if (fail.length) { console.error('✗ tech support guard:\n  ' + fail.join('\n  ')); process.exit(1); }
-  console.log('✓ tech support: pinned drawer row, back steps, real-ticket-only rules, 4-language parity');
+  console.log('✓ tech support: pinned drawer row, back steps, real-ticket-only rules, private screenshots, 4-language parity');
 })();

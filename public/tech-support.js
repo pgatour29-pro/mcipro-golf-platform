@@ -17,6 +17,11 @@
      and find tickets they never wrote.
    - A LINE push is ONE system_alert per real ticket event, sent from here. A reply on a seeded row
      never pushes (supportReply checks source), and nothing pushes from localhost.
+   - Screenshots (v1439): up to 3 per ticket / reply, shrunk in the browser, stored in the PRIVATE bucket
+     support-attachments and shown through signed URLs. The picker is a plain accept="image/*" input —
+     NEVER add capture= (a forced camera launch is a dead tap inside LINE's browser, and a screenshot
+     comes from the gallery anyway). Not sent through image-screen: only the sender and the help desk
+     ever see them, and a screening outage must not stop someone reporting a problem.
    - Back: #tsDim is in _BACK_OWNED and dashboardGoBack() calls canBack()/back() (thread -> list -> close). */
 (function () {
   'use strict';
@@ -46,6 +51,9 @@
       'ts.newreply': 'New reply', 'ts.you': 'You', 'ts.reply.ph': 'Write a reply…', 'ts.reply.send': 'Send',
       'ts.wait': 'We have your ticket. Our answer will appear here.', 'ts.done': 'This ticket is resolved. Reply to reopen it.',
       'ts.back': 'Back', 'ts.close': 'Close', 'ts.queue': 'Ticket queue', 'ts.loading': 'Loading…',
+      'ts.att.add': 'Add screenshot', 'ts.att.remove': 'Remove screenshot', 'ts.att.view': 'Screenshot',
+      'ts.att.bad': 'Could not use that image. Try a different one.',
+      'ts.att.upfail': 'Could not upload the screenshot. Check your connection and try again.',
       'ts.push.reply': 'Tech Support replied to your ticket "{s}".\n\nOpen MyCaddiPro › Menu › Tech Support.'
     },
     th: {
@@ -64,6 +72,9 @@
       'ts.newreply': 'มีคำตอบใหม่', 'ts.you': 'คุณ', 'ts.reply.ph': 'เขียนข้อความตอบกลับ…', 'ts.reply.send': 'ส่ง',
       'ts.wait': 'เราได้รับเรื่องแล้ว คำตอบจะแสดงที่นี่', 'ts.done': 'เรื่องนี้แก้ไขแล้ว ตอบกลับเพื่อเปิดใหม่',
       'ts.back': 'กลับ', 'ts.close': 'ปิด', 'ts.queue': 'คิวเรื่องทั้งหมด', 'ts.loading': 'กำลังโหลด…',
+      'ts.att.add': 'เพิ่มภาพหน้าจอ', 'ts.att.remove': 'ลบภาพหน้าจอ', 'ts.att.view': 'ภาพหน้าจอ',
+      'ts.att.bad': 'ใช้รูปนี้ไม่ได้ ลองรูปอื่น',
+      'ts.att.upfail': 'อัปโหลดภาพหน้าจอไม่สำเร็จ ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง',
       'ts.push.reply': 'ฝ่ายช่วยเหลือด้านเทคนิคตอบกลับเรื่อง "{s}" ของคุณแล้ว\n\nเปิด MyCaddiPro › เมนู › ช่วยเหลือด้านเทคนิค'
     },
     ko: {
@@ -82,6 +93,9 @@
       'ts.newreply': '새 답변', 'ts.you': '나', 'ts.reply.ph': '답장을 입력하세요…', 'ts.reply.send': '보내기',
       'ts.wait': '문의가 접수되었습니다. 답변이 여기에 표시됩니다.', 'ts.done': '해결된 문의입니다. 답장하면 다시 열립니다.',
       'ts.back': '뒤로', 'ts.close': '닫기', 'ts.queue': '문의 대기열', 'ts.loading': '불러오는 중…',
+      'ts.att.add': '스크린샷 추가', 'ts.att.remove': '스크린샷 삭제', 'ts.att.view': '스크린샷',
+      'ts.att.bad': '이 이미지를 사용할 수 없습니다. 다른 이미지를 선택하세요.',
+      'ts.att.upfail': '스크린샷을 업로드하지 못했습니다. 연결을 확인하고 다시 시도하세요.',
       'ts.push.reply': '기술 지원팀이 "{s}" 문의에 답변했습니다.\n\nMyCaddiPro › 메뉴 › 기술 지원에서 확인하세요.'
     },
     ja: {
@@ -100,6 +114,9 @@
       'ts.newreply': '新しい返信', 'ts.you': 'あなた', 'ts.reply.ph': '返信を入力…', 'ts.reply.send': '送信',
       'ts.wait': '受け付けました。回答はここに表示されます。', 'ts.done': 'この問い合わせは解決済みです。返信すると再開されます。',
       'ts.back': '戻る', 'ts.close': '閉じる', 'ts.queue': '問い合わせ一覧', 'ts.loading': '読み込み中…',
+      'ts.att.add': 'スクリーンショットを追加', 'ts.att.remove': 'スクリーンショットを削除', 'ts.att.view': 'スクリーンショット',
+      'ts.att.bad': 'この画像は使用できません。別の画像をお試しください。',
+      'ts.att.upfail': 'スクリーンショットをアップロードできませんでした。接続を確認して再度お試しください。',
       'ts.push.reply': 'テクニカルサポートが「{s}」に返信しました。\n\nMyCaddiPro › メニュー › テクニカルサポートを開いてください。'
     }
   };
@@ -155,19 +172,37 @@
     /* the form is one screen: the text box takes whatever height the phone has left */
     ".ts-body.ts-form{display:flex;flex-direction:column}\n" +
     "#tsText{flex:1 1 auto;min-height:132px}\n" +
+    /* screenshots: the strip under the text box (thumbs + add), thumbs inside a bubble, the full-screen viewer */
+    ".ts-shots{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:9px}\n" +
+    ".ts-shots:empty{display:none}\n" +
+    ".ts-foot .ts-shots{flex:1 0 100%;margin:0 0 2px}\n" +
+    ".ts-shot{position:relative;flex:none;width:56px;height:56px;border-radius:11px;overflow:hidden;border:1px solid var(--ts-line);background:var(--ts-tile)}\n" +
+    ".ts-shot img{width:100%;height:100%;object-fit:cover;display:block}\n" +
+    ".ts-shot button{position:absolute;top:2px;right:2px;width:22px;height:22px;border:none;border-radius:50%;background:rgba(4,7,10,.72);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}\n" +
+    ".ts-shot button .material-symbols-outlined{font-size:15px}\n" +
+    ".ts-add{min-height:44px;display:inline-flex;align-items:center;gap:7px;padding:0 13px;border-radius:12px;border:1.5px dashed var(--ts-line);background:transparent;color:var(--ts-mut);cursor:pointer;font:600 13px/1.2 'Instrument Sans',sans-serif}\n" +
+    ".ts-add .material-symbols-outlined{font-size:20px;color:var(--ts-onfg)}\n" +
+    ".ts-add.sq{width:56px;height:56px;padding:0;justify-content:center}\n" +
+    ".ts-attbtn{flex:none;width:46px;height:46px;border-radius:14px;border:1.5px solid var(--ts-line);background:var(--ts-field);color:var(--ts-mut);cursor:pointer;display:flex;align-items:center;justify-content:center}\n" +
+    ".ts-attbtn[disabled]{opacity:.45}\n" +
+    ".ts-atts{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}\n" +
+    ".ts-att{width:84px;height:84px;object-fit:cover;border-radius:10px;cursor:zoom-in;background:rgba(127,127,127,.22);display:block}\n" +
+    "#tsImgView{position:fixed;inset:0;z-index:11600;background:rgba(4,7,10,.94);display:flex;align-items:center;justify-content:center;padding:54px 10px calc(70px + env(safe-area-inset-bottom,0px))}\n" +
+    "#tsImgView img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px}\n" +
+    "#tsImgView button{position:absolute;top:10px;right:10px;width:40px;height:40px;border:none;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center}\n" +
     ".ts-auto{display:flex;align-items:center;gap:7px;margin-top:9px;font-size:12px;line-height:1.35;color:var(--ts-dim)}\n" +
     ".ts-auto .material-symbols-outlined{font-size:16px;flex:none}\n" +
     ".ts-err{margin-top:9px;padding:9px 11px;border-radius:11px;background:rgba(220,38,38,.12);color:#fca5a5;font-weight:600;font-size:13px}\n" +
     "body.theme-light .ts-err{background:#fee2e2;color:#b91c1c}\n" +
     /* footer: the floating back button (#dashboardBackBtn, phone only) sits bottom-left — keep a gutter for it */
-    ".ts-foot{flex:none;display:flex;align-items:flex-end;gap:8px;padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px)) 68px;border-top:1px solid var(--ts-line);background:var(--ts-bg)}\n" +
+    ".ts-foot{flex:none;display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px)) 68px;border-top:1px solid var(--ts-line);background:var(--ts-bg)}\n" +
     "@media (min-width:768px){.ts-foot{padding-left:16px}}\n" +
     /* no action in the footer (my tickets): on a phone it still reserves the back-button gutter so the last row is never under it */
     ".ts-foot:empty{min-height:62px;padding:0;border-top:none}\n" +
     "@media (min-width:768px){.ts-foot:empty{display:none}}\n" +
     ".ts-go{flex:1 1 auto;min-height:46px;border:none;border-radius:14px;background:#16a34a;color:#fff;cursor:pointer;font:700 15px/1 'Instrument Sans',sans-serif}\n" +
     ".ts-go[disabled]{opacity:.6;cursor:default}\n" +
-    ".ts-foot textarea{flex:1 1 auto;min-height:46px;max-height:120px}\n" +
+    ".ts-foot textarea{flex:1 1 0;min-width:0;min-height:46px;max-height:120px}\n" +
     ".ts-sendbtn{flex:none;width:46px;height:46px;border:none;border-radius:14px;background:#16a34a;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center}\n" +
     ".ts-sendbtn[disabled]{opacity:.6}\n" +
     ".ts-row{width:100%;display:flex;align-items:center;gap:10px;text-align:left;padding:12px;margin-bottom:8px;border-radius:15px;border:1px solid var(--ts-line);background:var(--ts-tile);color:var(--ts-fg);cursor:pointer;font-family:inherit}\n" +
@@ -292,11 +327,49 @@
   }
   function alertAdmins(text) { var me = uid(); adminIds().forEach(function (a) { if (a !== me) push(a, text); }); }
 
-  var TICKET_COLS = 'id, category, subject, body, status, created_at, updated_at, last_reply_at, last_reply_by, user_seen_at';
+  /* ---------- screenshots ---------- */
+  var BUCKET = 'support-attachments', MAX_SHOTS = 3, MAX_EDGE = 2000, MAX_BYTES = 3 * 1024 * 1024;
+  var BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+  var _signed = {};   // storage path -> { url, exp } (a signed URL, or this phone's own object URL right after sending)
+  function uuid() {
+    try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) { var r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); });
+  }
+  // A phone screenshot is 2-6 MB of PNG. Redrawn as a JPEG no longer than 2000px it is a few hundred KB and still readable.
+  function prep(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file || !/^image\//.test(file.type || '')) { reject(new Error('type')); return; }
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        try {
+          var w = img.naturalWidth, h = img.naturalHeight; if (!w || !h) throw new Error('empty');
+          var k = Math.min(1, MAX_EDGE / Math.max(w, h));
+          var c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+          var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+          c.toBlob(function (b) {
+            URL.revokeObjectURL(url);
+            if (!b || b.size > MAX_BYTES) reject(new Error('size')); else resolve(b);
+          }, 'image/jpeg', 0.82);
+        } catch (e) { URL.revokeObjectURL(url); reject(e); }
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('decode')); };
+      img.src = url;
+    });
+  }
+  function attHTML(paths) {
+    if (!Array.isArray(paths) || !paths.length) return '';
+    return '<div class="ts-atts">' + paths.slice(0, MAX_SHOTS).map(function (p) {
+      var c = _signed[p], ok = c && c.exp > Date.now();
+      return '<img class="ts-att" alt="' + esc(T('ts.att.view')) + '" data-ts-path="' + esc(p) + '"' + (ok ? ' data-ok="1"' : '') + ' src="' + esc(ok ? c.url : BLANK) + '">';
+    }).join('') + '</div>';
+  }
+
+  var TICKET_COLS = 'id, category, subject, body, status, created_at, updated_at, last_reply_at, last_reply_by, user_seen_at, attachments';
 
   var TS = {
     view: 'new', tickets: [], cur: null, msgs: [], unread: 0,
     form: { cat: '', body: '' },
+    shots: { 'new': [], reply: [] },   // picked, not yet sent: { blob, url (object URL), path (once uploaded) }
     _seq: 0, _tseq: 0, _sending: false, _loaded: false, _badgeAt: 0, _err: '',
 
     isAdmin: function () { try { return !!(window.AdminInbox && AdminInbox.isAdmin()); } catch (e) { return false; } },
@@ -321,6 +394,9 @@
           '</div>' +
           '<div class="ts-body" id="tsBody"></div>' +
           '<div class="ts-foot" id="tsFoot"></div>' +
+          // ONE picker for the form and the reply box. Plain accept="image/*" (the OS picker, which still offers
+          // the camera) — a forced-camera input is a dead tap in LINE's browser, and a screenshot is in the gallery.
+          '<input type="file" id="tsFile" accept="image/*" multiple hidden>' +
         '</div>';
       dim.addEventListener('click', function (e) {
         if (e.target === dim) { TS.close(); return; }
@@ -331,12 +407,15 @@
         if (e.target && e.target.id === 'tsText') { TS.form.body = e.target.value; TS._setErr(''); }
         if (e.target && e.target.id === 'tsReply') { e.target.style.height = 'auto'; e.target.style.height = Math.min(120, e.target.scrollHeight + 2) + 'px'; }
       });
+      dim.addEventListener('change', function (e) {
+        if (e.target && e.target.id === 'tsFile') { var fl = Array.prototype.slice.call(e.target.files || []); e.target.value = ''; TS._addFiles(TS._pickKind || 'new', fl); }
+      });
       document.body.appendChild(dim);   // body-mounted: .screen transforms trap position:fixed
       this._err = '';
       this.show(view || (this.unread ? 'list' : 'new'));
       this.loadTickets();
     },
-    close: function () { var d = document.getElementById('tsDim'); if (d) d.remove(); this.cur = null; this.msgs = []; },
+    close: function () { var d = document.getElementById('tsDim'); if (d) d.remove(); this.cur = null; this.msgs = []; this._dropShots('reply'); },
     canBack: function () { return !!document.getElementById('tsDim'); },
     back: function () { if (this.view === 'thread') this.show('list'); else this.close(); return true; },
 
@@ -350,6 +429,82 @@
       else if (a === 'list') this.show('list');
       else if (a === 'reply') this.reply();
       else if (a === 'queue') this.openQueue();
+      else if (a === 'pick') { this._pickKind = b.getAttribute('data-kind') === 'reply' ? 'reply' : 'new'; var fi = document.getElementById('tsFile'); if (fi) fi.click(); }
+      else if (a === 'unshot') this._removeShot(b.getAttribute('data-kind') === 'reply' ? 'reply' : 'new', +b.getAttribute('data-i'));
+    },
+
+    /* ----- screenshots: pick, show, remove, upload ----- */
+    _addFiles: async function (kind, files) {
+      var list = this.shots[kind], bad = false;
+      for (var i = 0; i < files.length && list.length < MAX_SHOTS; i++) {
+        try { var blob = await prep(files[i]); list.push({ blob: blob, url: URL.createObjectURL(blob), path: null }); }
+        catch (e) { bad = true; console.warn('[TechSupport] image:', e && e.message); }
+      }
+      this._paintShots(kind);
+      if (bad) { if (kind === 'new') this._setErr(T('ts.att.bad')); else toast(T('ts.att.bad'), 'error'); }
+      else if (kind === 'new') this._setErr('');
+    },
+    _removeShot: function (kind, i) {
+      var it = this.shots[kind][i]; if (!it) return;
+      try { URL.revokeObjectURL(it.url); } catch (e) {}
+      this.shots[kind].splice(i, 1);
+      this._paintShots(kind);
+    },
+    _dropShots: function (kind) {
+      this.shots[kind].forEach(function (it) { if (!it.path) { try { URL.revokeObjectURL(it.url); } catch (e) {} } });
+      this.shots[kind] = [];
+    },
+    _shotsHTML: function (kind) {
+      var list = this.shots[kind];
+      var h = list.map(function (it, i) {
+        return '<div class="ts-shot"><img src="' + esc(it.url) + '" alt=""><button type="button" data-act="unshot" data-kind="' + kind + '" data-i="' + i + '" aria-label="' + esc(T('ts.att.remove')) + '"><span class="material-symbols-outlined">close</span></button></div>';
+      }).join('');
+      // the form carries its own "Add screenshot" button in the strip; the reply box has an icon button beside the text
+      // with thumbs already in the row the button shrinks to a square, so the row never wraps in a long language
+      if (kind === 'new' && list.length < MAX_SHOTS) h += '<button type="button" class="ts-add' + (list.length ? ' sq' : '') + '" data-act="pick" data-kind="new" aria-label="' + esc(T('ts.att.add')) + '"><span class="material-symbols-outlined">add_photo_alternate</span>' + (list.length ? '' : '<span>' + esc(T('ts.att.add')) + '</span>') + '</button>';
+      return h;
+    },
+    _paintShots: function (kind) {
+      var box = document.getElementById(kind === 'reply' ? 'tsShotsReply' : 'tsShotsNew'); if (box) box.innerHTML = this._shotsHTML(kind);
+      var ab = document.getElementById('tsAttBtn'); if (ab) ab.disabled = this.shots.reply.length >= MAX_SHOTS;
+    },
+    // uploads what is not up yet and returns the storage paths; a retry never uploads the same picture twice
+    _upload: async function (kind) {
+      var db = sb(), list = this.shots[kind], d = new Date();
+      var folder = d.getUTCFullYear() + '-' + ('0' + (d.getUTCMonth() + 1)).slice(-2);
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].path) continue;
+        var path = folder + '/' + uuid() + '.jpg';
+        var up = await db.storage.from(BUCKET).upload(path, list[i].blob, { contentType: 'image/jpeg', upsert: false, cacheControl: '3600' });
+        if (up.error) throw up.error;
+        list[i].path = path;
+        _signed[path] = { url: list[i].url, exp: Date.now() + 6 * 3600000 };   // this phone shows its own copy straight away
+      }
+      return list.map(function (it) { return it.path; });
+    },
+    // fills the thumbs in a rendered thread (the user's sheet and the admin Reports sheet) with signed URLs
+    hydrate: async function (root) {
+      var db = sb(); if (!db) return;
+      var imgs = Array.prototype.slice.call((root || document).querySelectorAll('img.ts-att[data-ts-path]:not([data-ok])'));
+      if (!imgs.length) return;
+      var now = Date.now(), need = [];
+      imgs.forEach(function (im) { var p = im.getAttribute('data-ts-path'); var c = _signed[p]; if ((!c || c.exp <= now) && need.indexOf(p) < 0) need.push(p); });
+      if (need.length) {
+        try {
+          var res = await db.storage.from(BUCKET).createSignedUrls(need, 3600);
+          (res.data || []).forEach(function (x) { if (x && x.signedUrl && !x.error && x.path) _signed[x.path] = { url: x.signedUrl, exp: Date.now() + 50 * 60000 }; });
+        } catch (e) { console.warn('[TechSupport] sign:', e && e.message); }
+      }
+      imgs.forEach(function (im) { var c = _signed[im.getAttribute('data-ts-path')]; if (c && im.isConnected) { im.src = c.url; im.setAttribute('data-ok', '1'); } });
+    },
+    // full-screen look at one screenshot. Body-mounted and NOT registered for back: the back button's catch-all
+    // closes the topmost overlay through its own Close control, which is exactly what this needs.
+    viewImage: function (src) {
+      var old = document.getElementById('tsImgView'); if (old) old.remove();
+      var v = document.createElement('div'); v.id = 'tsImgView'; v.setAttribute('role', 'dialog'); v.setAttribute('aria-modal', 'true');
+      v.innerHTML = '<button type="button" aria-label="' + esc(T('ts.close')) + '"><span class="material-symbols-outlined">close</span></button><img alt="' + esc(T('ts.att.view')) + '" src="' + esc(src) + '">';
+      v.addEventListener('click', function (e) { if (e.target === v || (e.target.closest && e.target.closest('button'))) v.remove(); });
+      document.body.appendChild(v);
     },
 
     show: function (view) {
@@ -374,6 +529,7 @@
         }).join('') + '</div>' +
         '<label class="ts-lbl" for="tsText">' + esc(T('ts.body.label')) + '</label>' +
         '<textarea id="tsText" maxlength="4000" autocomplete="off" placeholder="' + esc(T('ts.body.ph')) + '">' + esc(f.body) + '</textarea>' +
+        '<div class="ts-shots" id="tsShotsNew">' + this._shotsHTML('new') + '</div>' +
         '<div class="ts-auto"><span class="material-symbols-outlined">devices</span><span>' + esc(T('ts.auto')) + ': ' + esc([_appV ? 'app ' + _appV : '', deviceLabel(), who()].filter(Boolean).join(' · ')) + '</span></div>' +
         '<div class="ts-err" id="tsErr"' + (this._err ? '' : ' hidden') + '>' + esc(this._err) + '</div>';
       foot.innerHTML = '<button class="ts-go" id="tsSend" data-act="send"' + (this._sending ? ' disabled' : '') + '>' + esc(T(this._sending ? 'ts.sending' : 'ts.send')) + '</button>';
@@ -400,16 +556,21 @@
       this._sending = true; this._setErr('');
       var btn = document.getElementById('tsSend'); if (btn) { btn.disabled = true; btn.textContent = T('ts.sending'); }
       try {
-        var ctx = context();
+        var ctx = context(), paths = [];
+        // screenshots go up FIRST: a ticket must never say it has a picture that is not there
+        try { paths = await this._upload('new'); }
+        catch (ue) { console.warn('[TechSupport] upload:', ue && ue.message); this._setErr(T('ts.att.upfail')); return; }
         var row = {
           reporter_id: uid(), reporter_name: who().slice(0, 120), lang: lang(), category: cat,
-          subject: subjectOf(text), body: text.slice(0, 4000), society_name: ctx.society, source: 'app', context: ctx
+          subject: subjectOf(text), body: text.slice(0, 4000), society_name: ctx.society, source: 'app', context: ctx,
+          attachments: paths
         };
         var res = await db.from('support_reports').insert(row).select(TICKET_COLS).single();
         if (res.error || !res.data) throw (res.error || new Error('no row'));
         this.form = { cat: '', body: '' };
+        this.shots['new'] = [];   // sent: their object URLs stay alive in _signed for this phone's own thread
         this.tickets.unshift(res.data);
-        alertAdmins('🛟 Tech Support — new ticket\n\n' + row.reporter_name + ' · ' + DICT.en['ts.cat.' + cat] + '\n"' + row.subject + '"\n\nOpen MyCaddiPro › Messages › Reports.');
+        alertAdmins('🛟 Tech Support — new ticket\n\n' + row.reporter_name + ' · ' + DICT.en['ts.cat.' + cat] + '\n"' + row.subject + '"' + (paths.length ? '\n📎 ' + paths.length + (paths.length === 1 ? ' screenshot' : ' screenshots') : '') + '\n\nOpen MyCaddiPro › Messages › Reports.');
         toast(T('ts.sent'), 'success');
         this.cur = res.data; this.msgs = [];
         this.show('thread');
@@ -486,21 +647,21 @@
     // THE read of a thread (the admin Reports sheet uses it too)
     thread: async function (reportId) {
       var db = sb(); if (!db || !reportId) return [];
-      var res = await db.from('support_report_messages').select('id, author, body, created_at').eq('report_id', reportId).order('created_at', { ascending: true }).limit(300);
+      var res = await db.from('support_report_messages').select('id, author, body, created_at, attachments').eq('report_id', reportId).order('created_at', { ascending: true }).limit(300);
       if (res.error) throw res.error;
       return res.data || [];
     },
     // bubbles, viewed by 'user' or by 'support' (whose side is "me"). The ticket body is the first bubble.
     threadHTML: function (r, msgs, viewer) {
-      var all = [{ author: 'user', body: r.body, created_at: r.created_at }].concat(msgs || []);
+      var all = [{ author: 'user', body: r.body, created_at: r.created_at, attachments: r.attachments }].concat(msgs || []);
       var name = function (a) { return a === 'support' ? T('ts.title') : (viewer === 'user' ? T('ts.you') : (r.reporter_name || 'User')); };
       return '<div class="ts-msgs">' + all.map(function (m) {
-        return '<div class="ts-b' + (m.author === viewer ? ' me' : '') + '">' + esc(m.body) + '<small>' + esc(name(m.author)) + ' · ' + esc(when(m.created_at)) + '</small></div>';
+        return '<div class="ts-b' + (m.author === viewer ? ' me' : '') + '">' + esc(m.body) + attHTML(m.attachments) + '<small>' + esc(name(m.author)) + ' · ' + esc(when(m.created_at)) + '</small></div>';
       }).join('') + '</div>';
     },
     openTicket: async function (id) {
       var r = this.tickets.filter(function (x) { return x.id === id; })[0]; if (!r) return;
-      this.cur = r; this.msgs = []; this._threadLoading = true;
+      this.cur = r; this.msgs = []; this._threadLoading = true; this._dropShots('reply');
       this.show('thread');
       var seq = ++this._tseq;   // its own counter: opening a thread must not discard a ticket-list load in flight
       try { var m = await this.thread(r.id); if (seq !== this._tseq || this.cur !== r) return; this.msgs = m; } catch (e) { console.warn('[TechSupport] thread:', e && e.message); }
@@ -528,17 +689,20 @@
         this.threadHTML(r, this.msgs, 'user') +
         '<div class="ts-note">' + esc(this._threadLoading ? T('ts.loading') : r.status === 'resolved' ? T('ts.done') : hasSupport ? '' : T('ts.wait')) + '</div>';
       if (!document.getElementById('tsReply')) {
-        foot.innerHTML = '<textarea id="tsReply" rows="1" maxlength="4000" autocomplete="off" placeholder="' + esc(T('ts.reply.ph')) + '"></textarea>' +
+        foot.innerHTML = '<div class="ts-shots" id="tsShotsReply">' + this._shotsHTML('reply') + '</div>' +
+          '<button type="button" class="ts-attbtn" id="tsAttBtn" data-act="pick" data-kind="reply" aria-label="' + esc(T('ts.att.add')) + '"' + (this.shots.reply.length >= MAX_SHOTS ? ' disabled' : '') + '><span class="material-symbols-outlined">add_photo_alternate</span></button>' +
+          '<textarea id="tsReply" rows="1" maxlength="4000" autocomplete="off" placeholder="' + esc(T('ts.reply.ph')) + '"></textarea>' +
           '<button class="ts-sendbtn" id="tsReplyBtn" data-act="reply" aria-label="' + esc(T('ts.reply.send')) + '"><span class="material-symbols-outlined">send</span></button>';
       }
       body.scrollTop = body.scrollHeight;
+      this.hydrate(body);
     },
 
     // THE write of a thread message + the ticket's "who spoke last" stamp. author: 'user' | 'support'.
-    _post: async function (r, author, text, patch) {
+    _post: async function (r, author, text, patch, paths) {
       var db = sb(); if (!db) throw new Error('offline');
       var now = new Date().toISOString();
-      var ins = await db.from('support_report_messages').insert({ report_id: r.id, author: author, author_id: uid(), body: text }).select('id, author, body, created_at').single();
+      var ins = await db.from('support_report_messages').insert({ report_id: r.id, author: author, author_id: uid(), body: text, attachments: paths || [] }).select('id, author, body, created_at, attachments').single();
       if (ins.error || !ins.data) throw (ins.error || new Error('no row'));
       var p = Object.assign({ last_reply_at: now, last_reply_by: author, updated_at: now }, patch || {});
       var up = await db.from('support_reports').update(p).eq('id', r.id).select('id');
@@ -548,15 +712,21 @@
     reply: async function () {
       if (this._sending) return;
       var ta = document.getElementById('tsReply'), r = this.cur; if (!ta || !r) return;
-      var text = String(ta.value || '').trim(); if (!text) return;
+      var text = String(ta.value || '').trim(), nShots = this.shots.reply.length;
+      if (!text && !nShots) return;
+      if (!text) text = '📎';   // a picture on its own is a valid reply; the thread needs some text
       if (!sb() || navigator.onLine === false) { toast(T('ts.offline'), 'error'); return; }
       this._sending = true;
       var btn = document.getElementById('tsReplyBtn'); if (btn) btn.disabled = true;
       try {
+        var paths = [];
+        try { paths = await this._upload('reply'); }
+        catch (ue) { console.warn('[TechSupport] upload:', ue && ue.message); toast(T('ts.att.upfail'), 'error'); return; }
         // a reply on a resolved ticket reopens it — the user is saying it is not fixed
-        var msg = await this._post(r, 'user', text.slice(0, 4000), r.status === 'resolved' ? { status: 'open', resolved_at: null, resolved_by: null } : null);
+        var msg = await this._post(r, 'user', text.slice(0, 4000), r.status === 'resolved' ? { status: 'open', resolved_at: null, resolved_by: null } : null, paths);
         this.msgs.push(msg); ta.value = ''; ta.style.height = '';
-        alertAdmins('🛟 Tech Support — reply on a ticket\n\n' + who() + '\n"' + r.subject + '"\n\n' + text.slice(0, 200) + '\n\nOpen MyCaddiPro › Messages › Reports.');
+        this.shots.reply = []; this._paintShots('reply');
+        alertAdmins('🛟 Tech Support — reply on a ticket\n\n' + who() + '\n"' + r.subject + '"\n\n' + text.slice(0, 200) + (paths.length ? '\n📎 ' + paths.length + (paths.length === 1 ? ' screenshot' : ' screenshots') : '') + '\n\nOpen MyCaddiPro › Messages › Reports.');
         this._renderThread();
       } catch (e) {
         console.warn('[TechSupport] reply:', e && e.message);
@@ -621,6 +791,12 @@
       g.appendChild(b);
     });
   }
+
+  // a tap on any thumb (user sheet or admin Reports sheet) opens it full screen
+  document.addEventListener('click', function (e) {
+    var im = e.target && e.target.closest ? e.target.closest('img.ts-att[data-ok]') : null;
+    if (im) { e.stopPropagation(); TS.viewImage(im.src); }
+  }, true);
 
   window.TechSupport = TS;
   try { addMoreTiles(); } catch (e) {}

@@ -89209,7 +89209,7 @@ window.AdminSystem = AdminSystem;
     <script defer src="manager-dashboard.js?v=1396"></script>
     <script defer src="caddy-demo.js?v=1436"></script>
     <!-- v1437 Tech Support help desk: the drawer row, the ticket sheet and the thread (Messages > Reports is the admin side) -->
-    <script defer src="tech-support.js?v=1438"></script>
+    <script defer src="tech-support.js?v=1439"></script>
     <script defer src="caddy-work-core.js?v=1436"></script>
     <script defer src="caddy-work.js?v=1436"></script>
     <script defer src="marketing-dashboard.js?v=1396"></script>
@@ -141895,7 +141895,7 @@ const ReportsInbox = {
         const seq = ++this._seq;                       // a filter tap must not be painted over by the previous query
         try {
             let q = sb.from('support_reports')
-                .select('id, reporter_id, reporter_name, lang, category, subject, body, society_name, status, priority, admin_note, created_at, resolved_at, source, context, last_reply_at, last_reply_by', { count: 'exact' })
+                .select('id, reporter_id, reporter_name, lang, category, subject, body, society_name, status, priority, admin_note, created_at, resolved_at, source, context, last_reply_at, last_reply_by, attachments', { count: 'exact' })
                 .order('created_at', { ascending: false })
                 .range(this.page * this.PAGE, this.page * this.PAGE + this.PAGE - 1);
             if (this.status !== 'all') q = q.eq('status', this.status);
@@ -142018,7 +142018,7 @@ const ReportsInbox = {
             '<button class="rpt-close" onclick="ReportsInbox.close()">Close</button>' +
           '</div>';
         document.body.appendChild(dim);   // body-mounted: .screen transforms trap position:fixed
-        if (app) this._loadThread(r);
+        if (app) { TechSupport.hydrate(dim); this._loadThread(r); }   // v1439: screenshots on the ticket paint at once
     },
     close() { document.getElementById('rptSheetDim')?.remove(); this._open = null; },
 
@@ -142027,7 +142027,7 @@ const ReportsInbox = {
             const msgs = await TechSupport.thread(r.id);
             if (this._open !== r) return;               // another ticket was opened meanwhile
             const box = document.getElementById('rptThread');
-            if (box) box.innerHTML = TechSupport.threadHTML(r, msgs, 'support');
+            if (box) { box.innerHTML = TechSupport.threadHTML(r, msgs, 'support'); TechSupport.hydrate(box); }
         } catch (e) { console.warn('[Reports] thread:', e.message); }
     },
     // The answer is written by TechSupport.supportReply (THE writer of the thread): saved on the ticket,
@@ -184636,13 +184636,14 @@ showOrganizerTab = function(tabName) {
          Shown to every role that uses the golf app (Pete 2026-09-10: "send it out to
          everyone"), caddies included. Only the hidden 1on1 partner role is skipped —
          it is not a golf surface, the same exclusion WelcomeIntro makes.
-         The "Try it in a Demo Round" button stays golfer-only: it opens a tab no other
-         dashboard has.
-         The preview below is the REAL block view's markup, generic names, light form.
+         v1439 (Tech Support): the note's button opens the Tech Support sheet, which exists on
+         every dashboard, so it is not golfer-only. A button that opens a golfer-only tab
+         must stay gated on role === 'golfer'.
+         The preview below is the REAL drawer's markup (header + pinned row + first links).
          ============================================================================ -->
     <script>
     window.WhatsNew = {
-        REL: 'v1175-cardswitch',
+        REL: 'v1439-techsupport',
 
         _key(uid) { return 'mcipro_whatsnew_' + this.REL + '_' + (uid || 'anon'); },
         seen(uid) { try { return !!localStorage.getItem(this._key(uid)); } catch (e) { return true; } },
@@ -184683,15 +184684,10 @@ showOrganizerTab = function(tabName) {
             document.body.style.overflow = '';
         },
 
-        tryDemo(uid) {
+        // v1439: the note's own button opens the thing it describes
+        openSupport(uid) {
             this.close(uid);
-            try {
-                if (typeof showGolferTab === 'function') showGolferTab('scorecard');
-                setTimeout(function () {
-                    try { window.PostScoreManager && PostScoreManager.setMode('demo'); } catch (e) {}
-                    try { window.scrollTo(0, 0); } catch (e) {}
-                }, 450);
-            } catch (e) { console.warn('[WhatsNew] demo open failed:', e); }
+            try { if (window.TechSupport) TechSupport.open('new'); } catch (e) { console.warn('[WhatsNew] support open failed:', e); }
         },
 
         show(opts = {}) {
@@ -184700,91 +184696,82 @@ showOrganizerTab = function(tabName) {
             })();
             const W = {
                 en: {
-                    tag: 'NEW', title: 'One switch says who is scoring',
-                    lead: 'Every player card now has a switch above it. Green means this phone is keeping that card. Red means that player is keeping it on their own phone.',
+                    tag: 'NEW', title: 'Tech Support is in the menu',
+                    lead: 'Something not working? Open the menu and tap Tech Support. Tell us what went wrong and we answer you there.',
                     howTitle: 'How it works',
                     how: [
-                        'Green switch: you are scoring that card on this phone. Red switch: that player is scoring it on theirs.',
-                        'Tap the switch once to flip it. Handing a card over no longer takes two taps on the card itself.',
-                        'When someone in your group opens the app and takes their own card back, their switch turns red on your phone \u2014 so the same score can never be entered twice.',
-                        'To score for them again, tap their red switch.',
-                        'Tapping the card itself now only chooses who you are typing for.'
+                        'On a phone it is the first row of the menu. On a computer it is in the top bar.',
+                        'Pick what it is about and say what happened. You can add up to 3 screenshots.',
+                        'Your app version and phone model are sent with it, so you do not have to look them up.',
+                        'We answer inside the ticket. The menu row shows a red number until you have read it, and LINE users also get a LINE message.',
+                        'My tickets keeps every ticket with its status. If a resolved ticket is still not right, reply to reopen it.'
                     ],
-                    demoTitle: 'Try it first \u2014 Demo Round',
-                    demoBody: 'Play Golf \u2192 Demo is a full practice round with every button working. Tap anything, make mistakes, try any game. Nothing is saved \u2014 your handicap, your history and the leaderboards are never touched.',
-                    demoBtn: 'Try it in a Demo Round', ok: 'Got it',
-                    pvYou: 'You', pvNote: 'Green = this phone. Red = their phone.'
+                    sosTitle: 'Emergency on the course?',
+                    sosBody: 'Tech Support is for problems with the app. For an emergency during a round, use Emergency SOS.',
+                    openBtn: 'Open Tech Support', ok: 'Got it', pvNote: 'First row of the menu, on every screen.'
                 },
                 th: {
-                    tag: '\u0e43\u0e2b\u0e21\u0e48', title: '\u0e2a\u0e27\u0e34\u0e15\u0e0a\u0e4c\u0e40\u0e14\u0e35\u0e22\u0e27\u0e1a\u0e2d\u0e01\u0e27\u0e48\u0e32\u0e43\u0e04\u0e23\u0e40\u0e1b\u0e47\u0e19\u0e04\u0e19\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01',
-                    lead: '\u0e15\u0e2d\u0e19\u0e19\u0e35\u0e49\u0e01\u0e32\u0e23\u0e4c\u0e14\u0e1c\u0e39\u0e49\u0e40\u0e25\u0e48\u0e19\u0e17\u0e38\u0e01\u0e43\u0e1a\u0e21\u0e35\u0e2a\u0e27\u0e34\u0e15\u0e0a\u0e4c\u0e2d\u0e22\u0e39\u0e48\u0e14\u0e49\u0e32\u0e19\u0e1a\u0e19 \u0e2a\u0e35\u0e40\u0e02\u0e35\u0e22\u0e27\u0e04\u0e37\u0e2d\u0e40\u0e04\u0e23\u0e37\u0e48\u0e2d\u0e07\u0e19\u0e35\u0e49\u0e40\u0e1b\u0e47\u0e19\u0e04\u0e19\u0e16\u0e37\u0e2d\u0e43\u0e1a\u0e04\u0e30\u0e41\u0e19\u0e19\u0e19\u0e31\u0e49\u0e19 \u0e2a\u0e35\u0e41\u0e14\u0e07\u0e04\u0e37\u0e2d\u0e1c\u0e39\u0e49\u0e40\u0e25\u0e48\u0e19\u0e04\u0e19\u0e19\u0e31\u0e49\u0e19\u0e16\u0e37\u0e2d\u0e44\u0e27\u0e49\u0e1a\u0e19\u0e42\u0e17\u0e23\u0e28\u0e31\u0e1e\u0e17\u0e4c\u0e02\u0e2d\u0e07\u0e15\u0e31\u0e27\u0e40\u0e2d\u0e07',
-                    howTitle: '\u0e43\u0e0a\u0e49\u0e07\u0e32\u0e19\u0e2d\u0e22\u0e48\u0e32\u0e07\u0e44\u0e23',
+                    tag: 'ใหม่', title: 'ช่วยเหลือด้านเทคนิค อยู่ในเมนูแล้ว',
+                    lead: 'มีอะไรใช้งานไม่ได้? เปิดเมนูแล้วแตะ ช่วยเหลือด้านเทคนิค บอกเราว่าเกิดอะไรขึ้น เราจะตอบกลับที่นั่น',
+                    howTitle: 'ใช้งานอย่างไร',
                     how: [
-                        '\u0e2a\u0e27\u0e34\u0e15\u0e0a\u0e4c\u0e40\u0e02\u0e35\u0e22\u0e27: \u0e04\u0e38\u0e13\u0e01\u0e33\u0e25\u0e31\u0e07\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e43\u0e1a\u0e19\u0e31\u0e49\u0e19\u0e1a\u0e19\u0e40\u0e04\u0e23\u0e37\u0e48\u0e2d\u0e07\u0e19\u0e35\u0e49 \u0e2a\u0e27\u0e34\u0e15\u0e0a\u0e4c\u0e41\u0e14\u0e07: \u0e1c\u0e39\u0e49\u0e40\u0e25\u0e48\u0e19\u0e04\u0e19\u0e19\u0e31\u0e49\u0e19\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e40\u0e2d\u0e07',
-                        '\u0e41\u0e15\u0e30\u0e2a\u0e27\u0e34\u0e15\u0e0a\u0e4c\u0e2b\u0e19\u0e36\u0e48\u0e07\u0e04\u0e23\u0e31\u0e49\u0e07\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e2a\u0e25\u0e31\u0e1a \u0e44\u0e21\u0e48\u0e15\u0e49\u0e2d\u0e07\u0e41\u0e15\u0e30\u0e01\u0e32\u0e23\u0e4c\u0e14\u0e2a\u0e2d\u0e07\u0e04\u0e23\u0e31\u0e49\u0e07\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e2a\u0e48\u0e07\u0e15\u0e48\u0e2d\u0e2d\u0e35\u0e01\u0e41\u0e25\u0e49\u0e27',
-                        '\u0e40\u0e21\u0e37\u0e48\u0e2d\u0e04\u0e19\u0e43\u0e19\u0e01\u0e25\u0e38\u0e48\u0e21\u0e40\u0e1b\u0e34\u0e14\u0e41\u0e2d\u0e1b\u0e41\u0e25\u0e49\u0e27\u0e23\u0e31\u0e1a\u0e43\u0e1a\u0e04\u0e30\u0e41\u0e19\u0e19\u0e02\u0e2d\u0e07\u0e15\u0e31\u0e27\u0e40\u0e2d\u0e07\u0e01\u0e25\u0e31\u0e1a\u0e44\u0e1b \u0e2a\u0e27\u0e34\u0e15\u0e0a\u0e4c\u0e02\u0e2d\u0e07\u0e40\u0e02\u0e32\u0e08\u0e30\u0e40\u0e1b\u0e25\u0e35\u0e48\u0e22\u0e19\u0e40\u0e1b\u0e47\u0e19\u0e2a\u0e35\u0e41\u0e14\u0e07\u0e1a\u0e19\u0e40\u0e04\u0e23\u0e37\u0e48\u0e2d\u0e07\u0e04\u0e38\u0e13 \u2014 \u0e04\u0e30\u0e41\u0e19\u0e19\u0e40\u0e14\u0e35\u0e22\u0e27\u0e01\u0e31\u0e19\u0e08\u0e36\u0e07\u0e44\u0e21\u0e48\u0e16\u0e39\u0e01\u0e01\u0e23\u0e2d\u0e01\u0e0b\u0e49\u0e33',
-                        '\u0e16\u0e49\u0e32\u0e15\u0e49\u0e2d\u0e07\u0e01\u0e32\u0e23\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e43\u0e2b\u0e49\u0e40\u0e02\u0e32\u0e2d\u0e35\u0e01\u0e04\u0e23\u0e31\u0e49\u0e07 \u0e43\u0e2b\u0e49\u0e41\u0e15\u0e30\u0e2a\u0e27\u0e34\u0e15\u0e0a\u0e4c\u0e2a\u0e35\u0e41\u0e14\u0e07\u0e02\u0e2d\u0e07\u0e40\u0e02\u0e32',
-                        '\u0e01\u0e32\u0e23\u0e41\u0e15\u0e30\u0e17\u0e35\u0e48\u0e15\u0e31\u0e27\u0e01\u0e32\u0e23\u0e4c\u0e14\u0e15\u0e2d\u0e19\u0e19\u0e35\u0e49\u0e43\u0e0a\u0e49\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e27\u0e48\u0e32\u0e04\u0e38\u0e13\u0e01\u0e33\u0e25\u0e31\u0e07\u0e01\u0e23\u0e2d\u0e01\u0e43\u0e2b\u0e49\u0e43\u0e04\u0e23\u0e40\u0e17\u0e48\u0e32\u0e19\u0e31\u0e49\u0e19'
+                        'บนมือถือจะอยู่แถวแรกของเมนู บนคอมพิวเตอร์จะอยู่ที่แถบด้านบน',
+                        'เลือกหัวข้อแล้วบอกว่าเกิดอะไรขึ้น แนบภาพหน้าจอได้สูงสุด 3 ภาพ',
+                        'เวอร์ชันแอปและรุ่นโทรศัพท์จะถูกส่งไปด้วย คุณไม่ต้องหาเอง',
+                        'เราตอบกลับในเรื่องที่คุณส่ง แถวเมนูจะมีตัวเลขสีแดงจนกว่าคุณจะอ่าน และผู้ใช้ LINE จะได้รับข้อความ LINE ด้วย',
+                        'รายการของฉัน เก็บทุกเรื่องพร้อมสถานะ ถ้าเรื่องที่แก้ไขแล้วยังไม่เรียบร้อย ตอบกลับเพื่อเปิดใหม่ได้'
                     ],
-                    demoTitle: '\u0e25\u0e2d\u0e07\u0e01\u0e48\u0e2d\u0e19\u0e44\u0e14\u0e49 \u2014 \u0e23\u0e2d\u0e1a\u0e17\u0e14\u0e25\u0e2d\u0e07',
-                    demoBody: 'Play Golf \u2192 Demo \u0e04\u0e37\u0e2d\u0e23\u0e2d\u0e1a\u0e0b\u0e49\u0e2d\u0e21\u0e40\u0e15\u0e47\u0e21\u0e23\u0e39\u0e1b\u0e41\u0e1a\u0e1a\u0e17\u0e35\u0e48\u0e17\u0e38\u0e01\u0e1b\u0e38\u0e48\u0e21\u0e43\u0e0a\u0e49\u0e07\u0e32\u0e19\u0e44\u0e14\u0e49\u0e08\u0e23\u0e34\u0e07 \u0e41\u0e15\u0e30\u0e2d\u0e30\u0e44\u0e23\u0e01\u0e47\u0e44\u0e14\u0e49 \u0e17\u0e33\u0e1c\u0e34\u0e14\u0e44\u0e14\u0e49 \u0e25\u0e2d\u0e07\u0e40\u0e01\u0e21\u0e44\u0e2b\u0e19\u0e01\u0e47\u0e44\u0e14\u0e49 \u0e44\u0e21\u0e48\u0e21\u0e35\u0e01\u0e32\u0e23\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e43\u0e14 \u0e46 \u2014 \u0e41\u0e2e\u0e19\u0e14\u0e34\u0e41\u0e04\u0e1b \u0e1b\u0e23\u0e30\u0e27\u0e31\u0e15\u0e34 \u0e41\u0e25\u0e30\u0e25\u0e35\u0e14\u0e40\u0e14\u0e2d\u0e23\u0e4c\u0e1a\u0e2d\u0e23\u0e4c\u0e14\u0e02\u0e2d\u0e07\u0e04\u0e38\u0e13\u0e44\u0e21\u0e48\u0e16\u0e39\u0e01\u0e41\u0e15\u0e30\u0e15\u0e49\u0e2d\u0e07',
-                    demoBtn: '\u0e25\u0e2d\u0e07\u0e43\u0e19\u0e23\u0e2d\u0e1a\u0e17\u0e14\u0e25\u0e2d\u0e07', ok: '\u0e23\u0e31\u0e1a\u0e17\u0e23\u0e32\u0e1a',
-                    pvYou: '\u0e04\u0e38\u0e13', pvNote: '\u0e40\u0e02\u0e35\u0e22\u0e27 = \u0e40\u0e04\u0e23\u0e37\u0e48\u0e2d\u0e07\u0e19\u0e35\u0e49 \u00b7 \u0e41\u0e14\u0e07 = \u0e40\u0e04\u0e23\u0e37\u0e48\u0e2d\u0e07\u0e02\u0e2d\u0e07\u0e40\u0e02\u0e32'
+                    sosTitle: 'เหตุฉุกเฉินในสนาม?',
+                    sosBody: 'ช่วยเหลือด้านเทคนิคมีไว้สำหรับปัญหาของแอป หากมีเหตุฉุกเฉินระหว่างออกรอบ ให้ใช้ Emergency SOS',
+                    openBtn: 'เปิด ช่วยเหลือด้านเทคนิค', ok: 'รับทราบ', pvNote: 'แถวแรกของเมนู ในทุกหน้าจอ'
                 },
                 ko: {
-                    tag: '\uc0c8 \uae30\ub2a5', title: '\ub204\uac00 \uae30\ub85d \uc911\uc778\uc9c0 \uc2a4\uc704\uce58 \ud558\ub098\ub85c',
-                    lead: '\uc774\uc81c \ubaa8\ub4e0 \uc120\uc218 \uce74\ub4dc \uc704\uc5d0 \uc2a4\uc704\uce58\uac00 \uc788\uc2b5\ub2c8\ub2e4. \ucd08\ub85d\uc0c9\uc740 \uc774 \ud734\ub300\ud3f0\uc774 \uadf8 \uce74\ub4dc\ub97c \ub9e1\uace0 \uc788\ub2e4\ub294 \ub73b\uc774\uace0, \ube68\uac04\uc0c9\uc740 \uadf8 \uc120\uc218\uac00 \uc790\uae30 \ud734\ub300\ud3f0\uc5d0\uc11c \uae30\ub85d\ud55c\ub2e4\ub294 \ub73b\uc785\ub2c8\ub2e4.',
-                    howTitle: '\uc0ac\uc6a9 \ubc29\ubc95',
+                    tag: '새 기능', title: '기술 지원이 메뉴에 생겼습니다',
+                    lead: '작동하지 않는 것이 있나요? 메뉴를 열고 기술 지원을 누르세요. 무슨 문제인지 알려주시면 그곳에서 답변드립니다.',
+                    howTitle: '사용 방법',
                     how: [
-                        '\ucd08\ub85d \uc2a4\uc704\uce58: \uc774 \ud734\ub300\ud3f0\uc5d0\uc11c \uadf8 \uce74\ub4dc\ub97c \uae30\ub85d\ud569\ub2c8\ub2e4. \ube68\uac04 \uc2a4\uc704\uce58: \uadf8 \uc120\uc218\uac00 \uc9c1\uc811 \uae30\ub85d\ud569\ub2c8\ub2e4.',
-                        '\uc2a4\uc704\uce58\ub97c \ud55c \ubc88 \ub204\ub974\uba74 \ubc14\ub01d\ub2c8\ub2e4. \uce74\ub4dc\ub97c \ub450 \ubc88 \ub20c\ub7ec \ub118\uae30\ub358 \ubc29\uc2dd\uc740 \uc5c6\uc5b4\uc84c\uc2b5\ub2c8\ub2e4.',
-                        '\uac19\uc740 \uc870\uc758 \ub204\uad70\uac00\uac00 \uc571\uc744 \uc5f4\uc5b4 \uc790\uae30 \uce74\ub4dc\ub97c \uac00\uc838\uac00\uba74 \ub0b4 \ud654\uba74\uc5d0\uc11c \uadf8 \uc2a4\uc704\uce58\uac00 \ube68\uac04\uc0c9\uc73c\ub85c \ubc14\ub01d\ub2c8\ub2e4 \u2014 \uac19\uc740 \uc810\uc218\uac00 \ub450 \ubc88 \uc785\ub825\ub418\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.',
-                        '\ub2e4\uc2dc \ub300\uc2e0 \uae30\ub85d\ud558\ub824\uba74 \uadf8 \ube68\uac04 \uc2a4\uc704\uce58\ub97c \ub204\ub974\uc138\uc694.',
-                        '\uce74\ub4dc \uc790\uccb4\ub97c \ub204\ub974\ub294 \uac83\uc740 \uc774\uc81c \ub204\uad6c\uc758 \uc810\uc218\ub97c \uc785\ub825\ud560\uc9c0 \uace0\ub974\ub294 \uc5ed\ud560\ub9cc \ud569\ub2c8\ub2e4.'
+                        '휴대폰에서는 메뉴의 첫 번째 줄에, 컴퓨터에서는 상단 바에 있습니다.',
+                        '문제 유형을 고르고 무슨 일이 있었는지 적어 주세요. 스크린샷을 최대 3장까지 첨부할 수 있습니다.',
+                        '앱 버전과 휴대폰 기종은 함께 전송되므로 직접 찾아볼 필요가 없습니다.',
+                        '답변은 문의 안에서 드립니다. 읽기 전까지 메뉴에 빨간 숫자가 표시되며, LINE 사용자는 LINE 메시지도 받습니다.',
+                        '내 문의에는 모든 문의와 상태가 보관됩니다. 해결된 문의가 여전히 문제라면 답장해서 다시 열 수 있습니다.'
                     ],
-                    demoTitle: '\uba3c\uc800 \uccb4\ud5d8\ud574 \ubcf4\uc138\uc694 \u2014 \uccb4\ud5d8 \ub77c\uc6b4\ub4dc',
-                    demoBody: 'Play Golf \u2192 Demo\ub294 \ubaa8\ub4e0 \ubc84\ud2bc\uc774 \uc2e4\uc81c\ub85c \ub3d9\uc791\ud558\ub294 \uc5f0\uc2b5 \ub77c\uc6b4\ub4dc\uc785\ub2c8\ub2e4. \ubb34\uc5c7\uc774\ub4e0 \ub20c\ub7ec \ubcf4\uace0, \ud2c0\ub824\ub3c4 \ub418\uace0, \uc5b4\ub5a4 \uac8c\uc784\uc774\ub4e0 \uc2dc\ub3c4\ud574 \ubcf4\uc138\uc694. \uc544\ubb34\uac83\ub3c4 \uc800\uc7a5\ub418\uc9c0 \uc54a\uc73c\uba70 \ud578\ub514\uce21\u00b7\uae30\ub85d\u00b7\ub9ac\ub354\ubcf4\ub4dc\ub294 \uc804\ud600 \uc601\ud5a5\uc744 \ubc1b\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.',
-                    demoBtn: '\uccb4\ud5d8 \ub77c\uc6b4\ub4dc\uc5d0\uc11c \ud574 \ubcf4\uae30', ok: '\ud655\uc778',
-                    pvYou: '\ub098', pvNote: '\ucd08\ub85d = \uc774 \ud734\ub300\ud3f0 \u00b7 \ube68\uac15 = \ubcf8\uc778 \ud734\ub300\ud3f0'
+                    sosTitle: '코스에서 긴급 상황인가요?',
+                    sosBody: '기술 지원은 앱 문제를 위한 곳입니다. 라운드 중 긴급 상황에는 Emergency SOS를 사용하세요.',
+                    openBtn: '기술 지원 열기', ok: '확인', pvNote: '모든 화면에서 메뉴의 첫 번째 줄'
                 },
                 ja: {
-                    tag: '\u65b0\u6a5f\u80fd', title: '\u30b9\u30a4\u30c3\u30c1\u3067\u300c\u8ab0\u304c\u8a18\u9332\u4e2d\u304b\u300d\u304c\u4e00\u76ee\u3067',
-                    lead: '\u3059\u3079\u3066\u306e\u9078\u624b\u30ab\u30fc\u30c9\u306e\u4e0a\u306b\u30b9\u30a4\u30c3\u30c1\u304c\u4ed8\u304d\u307e\u3057\u305f\u3002\u7dd1\u306f\u3053\u306e\u7aef\u672b\u304c\u305d\u306e\u30ab\u30fc\u30c9\u3092\u62c5\u5f53\u4e2d\u3001\u8d64\u306f\u305d\u306e\u9078\u624b\u304c\u81ea\u5206\u306e\u7aef\u672b\u3067\u8a18\u9332\u4e2d\u3068\u3044\u3046\u610f\u5473\u3067\u3059\u3002',
-                    howTitle: '\u4f7f\u3044\u65b9',
+                    tag: '新機能', title: 'テクニカルサポートがメニューに加わりました',
+                    lead: 'うまく動かないことがありますか？メニューを開いて「テクニカルサポート」をタップしてください。問題を教えていただければ、そこで回答します。',
+                    howTitle: '使い方',
                     how: [
-                        '\u7dd1\u306e\u30b9\u30a4\u30c3\u30c1\uff1a\u3053\u306e\u7aef\u672b\u3067\u305d\u306e\u30ab\u30fc\u30c9\u3092\u8a18\u9332\u3057\u307e\u3059\u3002\u8d64\uff1a\u305d\u306e\u9078\u624b\u304c\u81ea\u5206\u3067\u8a18\u9332\u3057\u307e\u3059\u3002',
-                        '\u30b9\u30a4\u30c3\u30c1\u3092\u4e00\u5ea6\u30bf\u30c3\u30d7\u3059\u308b\u3068\u5207\u308a\u66ff\u308f\u308a\u307e\u3059\u3002\u30ab\u30fc\u30c9\u3092\u4e8c\u5ea6\u30bf\u30c3\u30d7\u3057\u3066\u6e21\u3059\u64cd\u4f5c\u306f\u306a\u304f\u306a\u308a\u307e\u3057\u305f\u3002',
-                        '\u7d44\u306e\u8ab0\u304b\u304c\u30a2\u30d7\u30ea\u3092\u958b\u3044\u3066\u81ea\u5206\u306e\u30ab\u30fc\u30c9\u3092\u53d6\u308a\u623b\u3059\u3068\u3001\u305d\u306e\u30b9\u30a4\u30c3\u30c1\u304c\u8d64\u306b\u5909\u308f\u308a\u307e\u3059 \u2014 \u540c\u3058\u30b9\u30b3\u30a2\u304c\u4e8c\u91cd\u306b\u5165\u308b\u3053\u3068\u306f\u3042\u308a\u307e\u305b\u3093\u3002',
-                        '\u307e\u305f\u4ee3\u308f\u308a\u306b\u8a18\u9332\u3057\u305f\u3044\u3068\u304d\u306f\u3001\u305d\u306e\u8d64\u3044\u30b9\u30a4\u30c3\u30c1\u3092\u30bf\u30c3\u30d7\u3057\u3066\u304f\u3060\u3055\u3044\u3002',
-                        '\u30ab\u30fc\u30c9\u81ea\u4f53\u306e\u30bf\u30c3\u30d7\u306f\u3001\u4eca\u306f\u300c\u8ab0\u306e\u30b9\u30b3\u30a2\u3092\u5165\u529b\u3059\u308b\u304b\u300d\u3092\u9078\u3076\u3060\u3051\u3067\u3059\u3002'
+                        'スマートフォンではメニューの一番上、パソコンでは上部のバーにあります。',
+                        '種類を選び、何が起きたかを書いてください。スクリーンショットを3枚まで添付できます。',
+                        'アプリのバージョンと機種は自動で送信されるので、調べる必要はありません。',
+                        '回答は問い合わせの中に届きます。読むまでメニューに赤い数字が表示され、LINEをお使いの方にはLINEメッセージも届きます。',
+                        '問い合わせ履歴にはすべての問い合わせと状況が残ります。解決済みでもまだ直っていなければ、返信して再開できます。'
                     ],
-                    demoTitle: '\u307e\u305a\u8a66\u3059 \u2014 \u4f53\u9a13\u30e9\u30a6\u30f3\u30c9',
-                    demoBody: 'Play Golf \u2192 Demo \u306f\u3001\u3059\u3079\u3066\u306e\u30dc\u30bf\u30f3\u304c\u5b9f\u969b\u306b\u52d5\u304f\u7df4\u7fd2\u30e9\u30a6\u30f3\u30c9\u3067\u3059\u3002\u4f55\u3092\u62bc\u3057\u3066\u3082\u3001\u9593\u9055\u3048\u3066\u3082\u3001\u3069\u306e\u30b2\u30fc\u30e0\u3092\u8a66\u3057\u3066\u3082\u5927\u4e08\u592b\u3002\u4f55\u3082\u4fdd\u5b58\u3055\u308c\u305a\u3001\u30cf\u30f3\u30c7\u30a3\u30ad\u30e3\u30c3\u30d7\u30fb\u5c65\u6b74\u30fb\u30ea\u30fc\u30c0\u30fc\u30dc\u30fc\u30c9\u306b\u306f\u4e00\u5207\u5f71\u97ff\u3057\u307e\u305b\u3093\u3002',
-                    demoBtn: '\u4f53\u9a13\u30e9\u30a6\u30f3\u30c9\u3067\u8a66\u3059', ok: '\u308f\u304b\u308a\u307e\u3057\u305f',
-                    pvYou: '\u3042\u306a\u305f', pvNote: '\u7dd1\uff1d\u3053\u306e\u7aef\u672b\uff0f\u8d64\uff1d\u672c\u4eba\u306e\u7aef\u672b'
+                    sosTitle: 'コースで緊急の場合は？',
+                    sosBody: 'テクニカルサポートはアプリの問題のための窓口です。ラウンド中の緊急時は Emergency SOS を使ってください。',
+                    openBtn: 'テクニカルサポートを開く', ok: 'わかりました', pvNote: 'どの画面でもメニューの一番上'
                 }
             };
             const w = W[lang] || W.en;
             const esc = window.escHtml;
             const uid = opts.userId;
-            const isGolfer = String(opts.role || 'golfer') === 'golfer';
+            // labels the real drawer already owns — read from the app dicts, never retyped here
+            const tr = function (k, fb) { try { const v = t(k, lang); return (v && v !== k) ? v : fb; } catch (e) { return fb; } };
+            const tsTitle = (function () { try { return TechSupport.DICT[lang]['ts.title'] || 'Tech Support'; } catch (e) { return 'Tech Support'; } })();
+            const canOpen = !!window.TechSupport;
 
-            // Preview: the REAL group-card row in light form, generic names. One card is red
-            // \u2014 that player opened the app and took their own card onto their own phone.
-            const pv = [
-                { n: esc(w.pvYou), hcp: 'HCP 0',  pts: '5 PTS', sc: '4', cls: ' is-active', on: true },
-                { n: 'Player 2',   hcp: 'HCP 8',  pts: '8 PTS', sc: '5', cls: '',           on: true },
-                { n: 'Player 3',   hcp: 'HCP 16', pts: '7 PTS', sc: '6', cls: ' is-locked', on: false },
-                { n: 'Player 4',   hcp: 'HCP 24', pts: '8 PTS', sc: '4', cls: '',           on: true }
-            ];
-            const grid = '<div class="wnc-g">' + pv.map(function (c) {
-                return '<div class="wnc-c' + c.cls + '">'
-                    + '<span class="wnc-sw' + (c.on ? ' on' : '') + '"><i></i></span>'
-                    + '<div class="wnc-n">' + c.n + '</div>'
-                    + '<div class="wnc-m"><span>' + c.hcp + '</span><span class="wnc-p">' + c.pts + '</span></div>'
-                    + '<div class="wnc-s">' + c.sc + '</div>'
-                    + '</div>';
-            }).join('') + '</div>';
+            // Preview: the REAL drawer — its header, the pinned Tech Support row, then the first two
+            // menu links — under #whatsNewModal-scoped wnt-* classes (never a screenshot).
+            const pv = '<div class="wnt-drawer">'
+                + '<div class="wnt-head"><b>Menu</b><span class="material-symbols-outlined">close</span></div>'
+                + '<div class="wnt-row"><span class="material-symbols-outlined">headset_mic</span><b>' + esc(tsTitle) + '</b><span class="material-symbols-outlined wnt-chev">chevron_right</span></div>'
+                + '<div class="wnt-link"><span class="material-symbols-outlined">dashboard</span><span>' + esc(tr('golfer.overview', 'Overview')) + '</span></div>'
+                + '<div class="wnt-link"><span class="material-symbols-outlined">event</span><span>' + esc(tr('golfer.booking', 'Booking')) + '</span></div>'
+                + '</div>';
 
             document.getElementById('whatsNewModal')?.remove();
             const m = document.createElement('div');
@@ -184792,49 +184779,30 @@ showOrganizerTab = function(tabName) {
             m.style.cssText = 'position:fixed;inset:0;z-index:10050;background:#fff;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;';
             m.innerHTML = `
                 <style>
-                    #whatsNewModal .wnp-wrap { background:#ffffff; border:1px solid rgba(15,23,42,0.10); border-radius:16px; padding:10px 9px 9px; }
-                    #whatsNewModal .wnp-rail { display:flex; gap:2px; background:#fff; border:1px solid rgba(15,23,42,0.09); border-radius:16px; padding:4px; margin-bottom:9px; }
-                    #whatsNewModal .wnp-rail > span { flex:1; text-align:center; padding:8px 4px; border-radius:10px; font:700 9.5px/1 'JetBrains Mono',monospace; letter-spacing:.06em; color:#46525C; white-space:nowrap; }
-                    #whatsNewModal .wnp-rail > span.on { background:#16a34a; color:#fff; }
-                    #whatsNewModal .wnp-g { display:grid; grid-template-columns:56px repeat(4,1fr); gap:4px; }
-                    #whatsNewModal .wnp-hk { font:700 8px/1 'JetBrains Mono',monospace; letter-spacing:.14em; color:#96A1AC; display:flex; align-items:flex-end; padding-bottom:5px; }
-                    #whatsNewModal .wnp-p { text-align:center; padding-bottom:4px; font:700 11px/1.1 'Instrument Sans',sans-serif; color:#10151B; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-                    #whatsNewModal .wnp-h { display:flex; flex-direction:column; justify-content:center; gap:2px; }
-                    #whatsNewModal .wnp-h b { font:700 15px/1 'Instrument Sans',sans-serif; color:#10151B; }
-                    #whatsNewModal .wnp-h s { text-decoration:none; font:600 8.5px/1.2 'JetBrains Mono',monospace; color:#64748B; white-space:nowrap; }
-                    #whatsNewModal .wnp-c { height:42px; border-radius:11px; display:flex; align-items:center; justify-content:center; font:400 20px/1 'Outfit','Instrument Sans',sans-serif; }
-                    #whatsNewModal .wnp-e { background:#F5F7F8; border:1.5px dashed rgba(15,23,42,0.16); color:#A4AFBA; }
-                    #whatsNewModal .wnp-f { background:rgba(22,163,74,0.10); border:1.5px solid rgba(22,163,74,0.32); color:#10151B; }
-                    #whatsNewModal .wnp-on { background:#16a34a; border:1.5px solid #16a34a; box-shadow:0 0 0 3px rgba(34,197,94,0.22); }
-                    #whatsNewModal .wnp-car { display:block; width:2px; height:20px; background:#fff; border-radius:1px; }
-                    #whatsNewModal .wnp-sep { grid-column:1/-1; height:1px; background:rgba(15,23,42,0.07); margin:7px 0 1px; }
-                    #whatsNewModal .wnp-ftk { font:700 8px/1 'JetBrains Mono',monospace; letter-spacing:.12em; color:#96A1AC; display:flex; align-items:center; }
-                    #whatsNewModal .wnp-pts { text-align:center; font:700 12px/1 'JetBrains Mono',monospace; color:#15803d; padding-top:6px; }
-                    #whatsNewModal .wnp-note { display:flex; align-items:center; gap:6px; margin:8px 2px 0; font:600 9.5px/1.35 'JetBrains Mono',monospace; color:#64748B; }
-                    #whatsNewModal .wnp-note .material-symbols-outlined { font-size:13px; color:#16a34a; }
-                    #whatsNewModal .wnc-g { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; padding-top:20px; }
-                    #whatsNewModal .wnc-c { position:relative; text-align:center; min-width:0; padding:8px 3px 5px; border-radius:11px; background:#F7F9FA; border:1px solid rgba(15,23,42,0.10); }
-                    #whatsNewModal .wnc-c.is-active { background:rgba(22,163,74,0.13); border-color:#16a34a; }
-                    #whatsNewModal .wnc-c.is-locked { background:rgba(220,38,38,0.07); border-color:#dc2626; }
-                    #whatsNewModal .wnc-sw { position:absolute; top:-18px; left:50%; transform:translateX(-50%); display:flex; align-items:center; justify-content:center; }
-                    #whatsNewModal .wnc-sw > i { display:flex; align-items:center; justify-content:flex-start; width:34px; height:14px; padding:0 2px; border-radius:999px; background:#DC2626; border:1px solid rgba(0,0,0,0.32); }
-                    #whatsNewModal .wnc-sw.on > i { background:#16A34A; justify-content:flex-end; }
-                    #whatsNewModal .wnc-sw > i::after { content:''; display:block; width:10px; height:10px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,0.4); }
-                    #whatsNewModal .wnc-n { font:700 12.5px/1.1 'Instrument Sans',sans-serif; color:#10151B; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-                    #whatsNewModal .wnc-m { display:flex; align-items:center; justify-content:space-between; gap:4px; margin-top:3px; font:700 10px/1 'JetBrains Mono',monospace; color:#64748B; white-space:nowrap; }
-                    #whatsNewModal .wnc-m .wnc-p { color:#15803d; }
-                    #whatsNewModal .wnc-s { font:400 23px/1 'Outfit','Instrument Sans',sans-serif; color:#10151B; margin-top:4px; }
+                    #whatsNewModal .wnt-wrap { background:#F3F6F3; border:1px solid rgba(15,23,42,0.10); border-radius:16px; padding:12px 12px 10px; }
+                    #whatsNewModal .wnt-drawer { max-width:300px; margin:0 auto; background:#fff; border-radius:12px; box-shadow:4px 6px 22px rgba(0,0,0,0.14); overflow:hidden; padding-bottom:6px; }
+                    #whatsNewModal .wnt-head { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid #e5e7eb; }
+                    #whatsNewModal .wnt-head b { font-size:15px; font-weight:700; color:#1f2937; }
+                    #whatsNewModal .wnt-head .material-symbols-outlined { font-size:19px; color:#4b5563; }
+                    #whatsNewModal .wnt-row { display:flex; align-items:center; gap:10px; margin:8px 10px 2px; min-height:46px; padding:9px 12px; border-radius:12px; background:#f0fdf4; border:1.5px solid #86efac; color:#14532d; box-shadow:0 0 0 4px rgba(34,197,94,0.18); }
+                    #whatsNewModal .wnt-row b { font-size:15px; font-weight:700; }
+                    #whatsNewModal .wnt-row .material-symbols-outlined { color:#15803d; }
+                    #whatsNewModal .wnt-row .wnt-chev { margin-left:auto; font-size:20px; }
+                    #whatsNewModal .wnt-link { display:flex; align-items:center; gap:10px; padding:10px 16px; font-size:14.5px; color:#4b5563; }
+                    #whatsNewModal .wnt-link .material-symbols-outlined { color:#6b7280; }
+                    #whatsNewModal .wnt-note { display:flex; align-items:center; justify-content:center; gap:6px; margin:10px 2px 0; font:600 12px/1.35 'Instrument Sans',sans-serif; color:#3E4956; }
+                    #whatsNewModal .wnt-note .material-symbols-outlined { font-size:15px; color:#16a34a; }
                 </style>
                 <div style="max-width:600px;margin:0 auto;padding:26px 16px 40px;">
                     <div style="text-align:center;margin-bottom:18px;">
                         <span style="display:inline-block;background:#16a34a;color:#fff;font-size:10px;font-weight:800;letter-spacing:.14em;padding:4px 10px;border-radius:9px;margin-bottom:10px;">${esc(w.tag)}</span>
                         <h1 style="font-size:23px;font-weight:800;color:#111;margin:0 0 8px;">${esc(w.title)}</h1>
-                        <p style="font-size:14px;color:#6b7280;margin:0;line-height:1.6;">${esc(w.lead)}</p>
+                        <p style="font-size:14px;color:#4b5563;margin:0;line-height:1.6;">${esc(w.lead)}</p>
                     </div>
 
-                    <div class="wnp-wrap" style="margin-bottom:16px;">
-                        ${grid}
-                        <div class="wnp-note"><span class="material-symbols-outlined">toggle_on</span><span>${esc(w.pvNote)}</span></div>
+                    <div class="wnt-wrap" style="margin-bottom:16px;">
+                        ${pv}
+                        <div class="wnt-note"><span class="material-symbols-outlined">push_pin</span><span>${esc(w.pvNote)}</span></div>
                     </div>
 
                     <div style="border:1px solid #e5e7eb;border-radius:14px;padding:16px;margin-bottom:16px;">
@@ -184845,18 +184813,18 @@ showOrganizerTab = function(tabName) {
                     </div>
 
                     <div style="background:#fffbeb;border:1px solid #d97706;border-radius:14px;padding:16px;margin-bottom:18px;">
-                        <p style="font-size:14px;font-weight:700;color:#92400e;margin:0 0 6px;">${esc(w.demoTitle)}</p>
-                        <p style="font-size:13px;color:#92400e;margin:0;line-height:1.7;">${esc(w.demoBody)}</p>
+                        <p style="font-size:14px;font-weight:700;color:#92400e;margin:0 0 6px;">${esc(w.sosTitle)}</p>
+                        <p style="font-size:13px;color:#92400e;margin:0;line-height:1.7;">${esc(w.sosBody)}</p>
                     </div>
 
-                    ${isGolfer ? `<button id="whatsNewDemoBtn" style="width:100%;padding:13px;margin-bottom:10px;background:#fff;color:#065f46;border:1.5px solid #059669;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">${esc(w.demoBtn)}</button>` : ''}
+                    ${canOpen ? `<button id="whatsNewOpenBtn" style="width:100%;padding:13px;margin-bottom:10px;background:#fff;color:#065f46;border:1.5px solid #059669;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">${esc(w.openBtn)}</button>` : ''}
                     <button id="whatsNewOkBtn" style="width:100%;padding:14px;background:#065f46;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;">${esc(w.ok)}</button>
                 </div>
             `;
             document.body.appendChild(m);
             document.body.style.overflow = 'hidden';
-            const demoBtn = document.getElementById('whatsNewDemoBtn');
-            if (demoBtn) demoBtn.addEventListener('click', () => this.tryDemo(uid));
+            const openBtn = document.getElementById('whatsNewOpenBtn');
+            if (openBtn) openBtn.addEventListener('click', () => this.openSupport(uid));
             document.getElementById('whatsNewOkBtn').addEventListener('click', () => this.close(uid));
         }
     };

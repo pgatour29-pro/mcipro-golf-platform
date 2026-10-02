@@ -279,6 +279,9 @@
     { tab: 'status', icon: 'receipt_long', k: 'g3.orders', fb: 'Orders' },
     { tab: 'booking', icon: 'sports_golf', k: 'g3.teetime', fb: 'Tee time' },
     { tab: 'conditions', icon: 'grass', k: 'g3.conditions', fb: 'Conditions' },
+    /* v1437: the desktop twin of the phone drawer's pinned Tech Support row. Label key 'ts.title' and the
+       .ts-badge count are owned by tech-support.js (it calls G3Desk.relabel() once its dict is merged). */
+    { act: 'techsupport', icon: 'headset_mic', k: 'ts.title', fb: 'Tech Support', badge: 'ts-badge' },
     /* Pete-only (v1137) — the same six controls the phone drawer has. English only: one person sees them. */
     { grp: 'g3.admin', fb: 'Admin', adm: true },
     { act: 'admin', icon: 'admin_panel_settings', k: null, fb: 'Admin', adm: true },
@@ -411,6 +414,7 @@
         if (act === 'teesheet') { if (window.GolferCubeInfo) GolferCubeInfo.openTeeSheetCube(); return; }
         if (act === 'oo') { if (window.OneOnOne) OneOnOne.open(); return; } /* 1on1 (v1091): its own screen, not a golfer tab */
         if (act === 'chips') { if (window.WinningsWallet) WinningsWallet.open(); return; }
+        if (act === 'techsupport') { if (window.TechSupport) TechSupport.open(); return; }
         /* v1137 Pete-only admin group — every one of these calls the SAME function the phone drawer calls */
         /* ScreenManager is a bare `class` — it lives in the global LEXICAL scope and is NEVER put on
            window, so `window.ScreenManager` is undefined and the guard swallowed the click (v1138).

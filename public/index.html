@@ -6500,14 +6500,14 @@
         #golfer-messages .rpt-f .n { font:700 9px/1 'JetBrains Mono',monospace; opacity:.85; }
         body.theme-light #golfer-messages .rpt-f { background:#fff; border-color:rgba(15,23,42,.09); color:#5B6672; }
         body.theme-light #golfer-messages .rpt-f.on { background:#16a34a; border-color:#16a34a; color:#fff; }
-        #golfer-messages .rpt-st { flex:none; font:800 8px/1 'JetBrains Mono',monospace; letter-spacing:.09em; border-radius:999px; padding:4px 7px; }
-        #golfer-messages .rpt-st.open { background:rgba(251,113,133,.16); color:#fb7185; }
-        #golfer-messages .rpt-st.in_progress { background:rgba(251,191,36,.16); color:#fbbf24; }
-        #golfer-messages .rpt-st.resolved { background:rgba(74,222,128,.14); color:#4ade80; }
-        body.theme-light #golfer-messages .rpt-st.open { background:#fee2e2; color:#b91c1c; }
-        body.theme-light #golfer-messages .rpt-st.in_progress { background:#fef3c7; color:#b45309; }
-        body.theme-light #golfer-messages .rpt-st.resolved { background:#dcfce7; color:#15803d; }
-        #golfer-messages .rpt-cat { font:700 8px/1 'JetBrains Mono',monospace; letter-spacing:.08em; color:#59636E; text-transform:uppercase; }
+        #golfer-messages .rpt-st, .rpt-sheet .rpt-st { flex:none; font:800 8px/1 'JetBrains Mono',monospace; letter-spacing:.09em; border-radius:999px; padding:4px 7px; }
+        #golfer-messages .rpt-st.open, .rpt-sheet .rpt-st.open { background:rgba(251,113,133,.16); color:#fb7185; }
+        #golfer-messages .rpt-st.in_progress, .rpt-sheet .rpt-st.in_progress { background:rgba(251,191,36,.16); color:#fbbf24; }
+        #golfer-messages .rpt-st.resolved, .rpt-sheet .rpt-st.resolved { background:rgba(74,222,128,.14); color:#4ade80; }
+        body.theme-light #golfer-messages .rpt-st.open, body.theme-light .rpt-sheet .rpt-st.open { background:#fee2e2; color:#b91c1c; }
+        body.theme-light #golfer-messages .rpt-st.in_progress, body.theme-light .rpt-sheet .rpt-st.in_progress { background:#fef3c7; color:#b45309; }
+        body.theme-light #golfer-messages .rpt-st.resolved, body.theme-light .rpt-sheet .rpt-st.resolved { background:#dcfce7; color:#15803d; }
+        #golfer-messages .rpt-cat, .rpt-sheet .rpt-cat { font:700 8px/1 'JetBrains Mono',monospace; letter-spacing:.08em; color:#59636E; text-transform:uppercase; }
         #golfer-messages .rpt-lang { font:700 8px/1 'JetBrains Mono',monospace; letter-spacing:.06em; color:#60a5fa;
             border:1px solid rgba(96,165,250,.32); border-radius:4px; padding:2px 4px; }
         body.theme-light #golfer-messages .rpt-lang { color:#2563eb; border-color:rgba(37,99,235,.3); }
@@ -40636,7 +40636,9 @@ Sent from Login Page`;
             // module sheets with their own canBack()/back() (step-by-step inside)
             'cmv2Ovl', 'caddyReviewOverlay', 'pfSheet', 'mkOvl', 'mkRepView', 'mkCoursePicker', 'gfdSheet', 'gfdOverlay',
             // the pro shop course pick is REQUIRED (v1351 course lock) — back must not dismiss it unpicked
-            'psCoursePick']);
+            'psCoursePick',
+            // v1437 Tech Support sheet: thread -> my tickets -> close
+            'tsDim']);
         function _backTopOverlay() {
             const vw = window.innerWidth, vh = window.innerHeight, area = vw * vh;
             const set = new Set(Array.from(document.body.children));
@@ -40697,6 +40699,8 @@ Sent from Login Page`;
                 try { KitchenQueue.close(); } catch (e) {}
                 return;
             }
+            // v1437: the Tech Support sheet is body-mounted over ANY dashboard — back steps thread -> list -> closed.
+            if (window.TechSupport && TechSupport.canBack()) { try { if (TechSupport.back()) return; } catch (e) {} }
             // v1321: the payout formula sheet is body-mounted over the organizer Scoring page — back closes it first.
             if (window.PayoutFormula && PayoutFormula.canBack()) { try { if (PayoutFormula.back()) return; } catch (e) {} }
             // v1255: the post-round caddy review sheet is body-mounted — back closes it first.
@@ -59700,6 +59704,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <span class="material-symbols-outlined text-base">group</span>
                                 <span class="text-xs">Buddies</span>
                                 <span id="buddiesCountBadge" class="header-badge" style="display: none;">0</span>
+                            </button>
+
+                            <!-- v1437 Tech Support (desktop twin of the pinned drawer row) -->
+                            <button onclick="if (window.TechSupport) TechSupport.open();" class="header-btn header-btn-neutral relative flex-shrink-0 flex items-center gap-1" title="Tech Support">
+                                <span class="material-symbols-outlined text-base">headset_mic</span>
+                                <span class="text-xs" data-i18n="ts.title">Tech Support</span>
+                                <span class="ts-badge header-badge" style="display:none;">0</span>
                             </button>
 
                             <!-- FAQ Button -->
@@ -89197,6 +89208,8 @@ window.AdminSystem = AdminSystem;
     <script defer src="weather-integration.js"></script>
     <script defer src="manager-dashboard.js?v=1396"></script>
     <script defer src="caddy-demo.js?v=1436"></script>
+    <!-- v1437 Tech Support help desk: the drawer row, the ticket sheet and the thread (Messages > Reports is the admin side) -->
+    <script defer src="tech-support.js?v=1437"></script>
     <script defer src="caddy-work-core.js?v=1436"></script>
     <script defer src="caddy-work.js?v=1436"></script>
     <script defer src="marketing-dashboard.js?v=1396"></script>
@@ -141882,7 +141895,7 @@ const ReportsInbox = {
         const seq = ++this._seq;                       // a filter tap must not be painted over by the previous query
         try {
             let q = sb.from('support_reports')
-                .select('id, reporter_id, reporter_name, lang, category, subject, body, society_name, status, priority, admin_note, created_at, resolved_at', { count: 'exact' })
+                .select('id, reporter_id, reporter_name, lang, category, subject, body, society_name, status, priority, admin_note, created_at, resolved_at, source, context, last_reply_at, last_reply_by', { count: 'exact' })
                 .order('created_at', { ascending: false })
                 .range(this.page * this.PAGE, this.page * this.PAGE + this.PAGE - 1);
             if (this.status !== 'all') q = q.eq('status', this.status);
@@ -141941,6 +141954,7 @@ const ReportsInbox = {
                   '<span class="rpt-cat">' + this._catLabel(r.category) + '</span>' +
                   (r.lang && r.lang !== 'en' ? '<span class="rpt-lang">' + esc(r.lang.toUpperCase()) + '</span>' : '') +
                   (r.priority === 'urgent' || r.priority === 'high' ? '<span class="rpt-cat" style="color:#fb7185">' + esc(r.priority.toUpperCase()) + '</span>' : '') +
+                  (r.last_reply_by === 'user' && r.status !== 'resolved' ? '<span class="rpt-newreply">NEW REPLY</span>' : '') +
                 '</div>' +
               '</div>' +
               '<div class="rpt-side">' +
@@ -141956,8 +141970,15 @@ const ReportsInbox = {
     open(i) {
         const r = this.rows[i];
         if (!r) return;
+        this._show(r);
+    },
+    // v1437 Tech Support: a REAL ticket (source = 'app', sent from the Tech Support sheet) shows its thread,
+    // what the app captured (version / role / screen / device) and a reply box. A seeded row keeps the plain
+    // sheet — its reporter is a real player who never wrote it, so it must never be answered or pushed.
+    _show(r) {
         this._open = r;
         const esc = window._caddyEsc || ((v) => String(v == null ? '' : v));
+        const app = r.source === 'app' && !!window.TechSupport;
         document.getElementById('rptSheetDim')?.remove();
         const when = new Date(r.created_at).toLocaleString(window._lvLocale ? _lvLocale() : undefined,
             { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -141973,7 +141994,13 @@ const ReportsInbox = {
             '</div>' +
             '<h4>' + esc(r.subject) + '</h4>' +
             '<div class="who">' + esc(r.reporter_name) + ' · ' + esc(when) + (r.society_name ? ' · ' + esc(r.society_name) : '') + '</div>' +
-            '<div class="bd">' + esc(r.body) + '</div>' +
+            (app
+              ? '<div class="rpt-ctx">' + esc(TechSupport.ctxLine(r.context)) + '</div>' +
+                '<div id="rptThread" class="ts-scope" style="margin:12px 0 4px;">' + TechSupport.threadHTML(r, [], 'support') + '</div>' +
+                '<div class="lbl">Reply to ' + esc(this._firstName(r.reporter_name)) + '</div>' +
+                '<textarea id="rptReply" maxlength="4000" placeholder="Your answer. It appears in their Tech Support thread and they get one LINE message."></textarea>' +
+                '<div class="rpt-acts" style="margin-top:9px;"><button class="on" id="rptReplyBtn" onclick="ReportsInbox.sendReply()">Send reply</button></div>'
+              : '<div class="bd">' + esc(r.body) + '</div>') +
             '<div class="lbl">Status</div>' +
             '<div class="rpt-acts">' +
               ['open', 'in_progress', 'resolved'].map(s =>
@@ -141988,8 +142015,39 @@ const ReportsInbox = {
             '<button class="rpt-close" onclick="ReportsInbox.close()">Close</button>' +
           '</div>';
         document.body.appendChild(dim);   // body-mounted: .screen transforms trap position:fixed
+        if (app) this._loadThread(r);
     },
     close() { document.getElementById('rptSheetDim')?.remove(); this._open = null; },
+
+    async _loadThread(r) {
+        try {
+            const msgs = await TechSupport.thread(r.id);
+            if (this._open !== r) return;               // another ticket was opened meanwhile
+            const box = document.getElementById('rptThread');
+            if (box) box.innerHTML = TechSupport.threadHTML(r, msgs, 'support');
+        } catch (e) { console.warn('[Reports] thread:', e.message); }
+    },
+    // The answer is written by TechSupport.supportReply (THE writer of the thread): saved on the ticket,
+    // open -> in progress, and ONE LINE message to the reporter in the language they wrote in.
+    async sendReply() {
+        const r = this._open, el = document.getElementById('rptReply');
+        if (!r || !el || this._replying || !window.TechSupport) return;
+        const text = String(el.value || '').trim();
+        if (!text) return;
+        this._replying = true;
+        const btn = document.getElementById('rptReplyBtn'); if (btn) btn.disabled = true;
+        try {
+            const res = await TechSupport.supportReply(r, text);
+            if (!res.ok) { window.NotificationManager.show('Could not send the reply', 'error'); return; }
+            window.NotificationManager.show('Reply sent', 'success');
+            if (this._open === r) this._show(r);        // repaint: new bubble, status now "in progress"
+            this.refreshCounts();
+            this.load(true);
+        } finally {
+            this._replying = false;
+            const b = document.getElementById('rptReplyBtn'); if (b) b.disabled = false;
+        }
+    },
 
     async _patch(patch) {
         const r = this._open; if (!r) return false;
@@ -181694,6 +181752,16 @@ showOrganizerTab = function(tabName) {
 
             </div>
 
+            <!-- v1437 TECH SUPPORT (Pete 2026-10-02: "something upfront on the hamburger menu section that says Tech
+                 Support"). Pinned ABOVE the scrolling menu, so it is the first thing in the drawer for every role
+                 (golfer / caddie / manager / pro shop / maintenance / admin / organizer) and never scrolls away.
+                 ONE row — do not copy it into the role sections. Sheet + styles: tech-support.js. -->
+            <button id="drawerTechSupport" class="drawer-link ts-drawer" onclick="closeMobileDrawer(); if (window.TechSupport) TechSupport.open();">
+                <span class="material-symbols-outlined">headset_mic</span>
+                <span data-i18n="ts.title">Tech Support</span>
+                <span class="ts-badge" style="display:none;">0</span>
+                <span class="material-symbols-outlined ts-chev">chevron_right</span>
+            </button>
             <!-- Scrollable drawer content -->
             <div style="flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 120px; overscroll-behavior: contain; touch-action: pan-y;">
 
@@ -182088,6 +182156,8 @@ showOrganizerTab = function(tabName) {
                             const golferDash = document.getElementById('golferDashboard');
                             returnBtn.style.display = (golferDash && golferDash.classList.contains('round-active')) ? 'flex' : 'none';
                         }
+                        // v1437: the Tech Support row shows a count when an answer is waiting (one small read, at most once a minute)
+                        try { if (window.TechSupport) TechSupport.refreshBadge(); } catch (e) {}
 
                         overlay.classList.add('show');
 
@@ -185061,7 +185131,7 @@ showOrganizerTab = function(tabName) {
     })();
     </script>
     <script src="oo-1on1.js?v=1278"></script>
-    <script src="g3-desk.js?v=1326"></script>
+    <script src="g3-desk.js?v=1437"></script>
     <script src="g3-org.js?v=1323"></script>
 </body>
 

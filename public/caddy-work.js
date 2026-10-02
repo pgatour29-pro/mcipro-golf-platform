@@ -128,7 +128,9 @@
     .cws-toast .tx small { display:block; font-size:11px; font-weight:600; color:#94a3b8; margin-top:2px; }
     .cws-toast .un { flex:none; padding:8px 12px; border-radius:10px; border:1px solid rgba(148,163,184,.4); background:transparent; color:#fff; font-weight:800; font-size:12px; cursor:pointer; }
     .cws-toast.nodk { bottom:78px; } @media (max-width:767px) { .cws-toast.nodk { left:68px; } }
-    .cws-wknav { display:flex; align-items:center; gap:6px; margin:10px 0; }
+    /* v1436: wraps — at 360px "Request a day off" ran off the right edge (button ended at 385px) */
+    .cws-wknav { display:flex; align-items:center; gap:6px; row-gap:8px; flex-wrap:wrap; margin:10px 0; }
+    .cws-wknav .cws-b2.sm { margin-left:auto; }
     .cws-wknav .lbl { flex:1; text-align:center; font-size:15px; font-weight:800; color:#fff; white-space:nowrap; }
     .cws-wknav .lbl.tight { flex:none; padding:0 4px; }
     .cws-rnd { width:40px; height:40px; border-radius:12px; border:1px solid rgba(148,163,184,.25); background:#151d2b; color:#e2e8f0; display:flex; align-items:center; justify-content:center; flex:none; cursor:pointer; padding:0; }
@@ -270,7 +272,9 @@
             if (!this.sel || this.sel < today) this.sel = today;
             if (!this.weekMon) this.weekMon = WS.mondayOf(today);
             try { this.prof = W.CaddyDashboardData ? await W.CaddyDashboardData.resolveProfile() : null; } catch (e) { this.prof = null; }
-            this.me = this.prof ? Object.assign({}, this.prof, { user_id: this.uid() }) : null;
+            // v1436: no caddy record yet (not registered) — the tabs and controls still paint, on the default
+            // 06:00–16:00 day with nothing booked. Pete: "i want there so they can already see it without the data".
+            this.me = this.prof ? Object.assign({}, this.prof, { user_id: this.uid() }) : { sheet_start: '06:00', sheet_end: '16:00', block_minutes: 255 };
             try { document.querySelectorAll('#caddieDashboard header h1 .user-caddy-number').forEach(n => { const h = n.parentNode; if (h && h.firstElementChild !== n) h.insertBefore(n, h.firstChild); }); } catch (e) {}
             this.paint();
             if (force || !this.loaded) await this.load();
@@ -309,10 +313,13 @@
                 // v1435: day-off requests are filed per course — the ones from a course she has left stay there
                 const offRows = ((offs && offs.data) || []).filter(o => !o.course_name || !key || fk(o.course_name) === key);
                 this.rows = out; this.store = store; this.offs = offRows; this.chk = (chk && chk.data) || null; this.post = post;
+                // v1436: the PIN demo's bookings come with their group / event / handicap already known
+                if (W.CaddyDemo && W.CaddyDemo.on()) W.CaddyDemo.prime(this);
             } catch (e) { console.warn('[CaddyMySchedule] load:', e.message); }
             if (seq !== this._seq) return;
             this.loaded = true;
             this.paint();
+            this.paintComms();
             if (sheetOpen('cwsJobSheet') && this._jobId) this.paintJob();
             this.loadPast();
         },
@@ -321,10 +328,10 @@
         async loadPast() {
             const c = sb(), p = this.prof; if (!c || !p || this.past) return;
             try {
-                const { data } = await c.from('caddy_bookings').select('golfer_id, golfer_name').eq('caddy_id', p.id).lt('booking_date', WS.today()).neq('status', 'cancelled').limit(1000);
-                const m = {};
-                (data || []).forEach(b => { const k = b.golfer_id || String(b.golfer_name || '').trim().toLowerCase(); if (k) m[k] = (m[k] || 0) + 1; });
-                this.past = m; this.paint();
+                const { data } = await c.from('caddy_bookings').select('golfer_id, golfer_name, booking_date').eq('caddy_id', p.id).lt('booking_date', WS.today()).neq('status', 'cancelled').order('booking_date', { ascending: false }).limit(1000);
+                const m = {}, names = [];
+                (data || []).forEach(b => { const k = b.golfer_id || String(b.golfer_name || '').trim().toLowerCase(); if (!k) return; if (!m[k] && b.golfer_name) names.push({ k, name: b.golfer_name, last: b.booking_date }); m[k] = (m[k] || 0) + 1; });
+                this.past = m; this.pastNames = names; this.paint(); this.paintComms();
             } catch (e) {}
         },
         rounds(b) { const k = b.golfer_id || String(b.golfer_name || '').trim().toLowerCase(); return (this.past && k && this.past[k]) || 0; },
@@ -387,6 +394,9 @@
             if (a === 'seg') { this.seg = v; this.paint(); }
             else if (a === 'day') { this.sel = v; this.paint(); }
             else if (a === 'job') this.openJob(v);
+            else if (a === 'register') { try { W.CaddySetup.open(); } catch (er) {} }
+            // v1436: the controls are on screen before she registers; they answer with what to do first
+            else if ((a === 'hours' || a === 'dayoff' || a === 'ask') && !this.prof) say(T('cws.my.needreg', 'Register the golf course you work at first.'), 'warning');
             else if (a === 'hours') this.openHours();
             else if (a === 'dayoff') { try { W.CaddyComms.openDayOffModal(); } catch (er) {} }
             else if (a === 'ask') { try { W.CaddyComms.requestAssistance(); } catch (er) {} }
@@ -397,18 +407,43 @@
         top() {
             const p = this.prof;
             return `<div class="cbk-top"><div style="flex:1;min-width:0"><h2 class="cbk-h1">${esc(T('cws.my.title', 'My Schedule'))}</h2>${p && p.course_name ? `<div class="cws-sub">${esc(p.course_name)}</div>` : ''}</div>
-                ${p ? `<button type="button" class="cbk-mini" data-a="hours">${ic('schedule')}<span>${esc(T('cws.my.hours', 'My hours'))}</span></button>` : ''}</div>
+                <button type="button" class="cbk-mini" data-a="hours">${ic('schedule')}<span>${esc(T('cws.my.hours', 'My hours'))}</span></button></div>
                 <div class="cbk-seg"><button type="button" data-a="seg" data-v="book" class="${this.seg === 'book' ? 'on' : ''}">${ic('event_available')}${esc(T('cws.my.seg.book', 'My bookings'))}</button><button type="button" data-a="seg" data-v="week" class="${this.seg === 'week' ? 'on' : ''}">${ic('date_range')}${esc(T('cws.my.seg.week', 'My work week'))}</button></div>`;
         },
         rule() { return `<div class="cws-note">${ic('lock')}<span>${esc(T('cws.my.rule', 'You cannot cancel or change a booking yourself. Ask the caddy master and the pro shop makes the change.'))}</span></div>`; },
         buttons() { return `<div class="cws-btns"><button type="button" class="cws-b2" data-a="dayoff">${ic('event_busy')}${esc(T('cws.my.dayoff', 'Request a day off'))}</button><button type="button" class="cws-b2" data-a="ask">${ic('support_agent')}${esc(T('cws.my.ask', 'Ask caddy master'))}</button></div>`; },
 
+        // v1436 (Pete 2026-10-02): "My Work and My Work Week populated ... i want the tabs, the dashboards
+        // controls, i don't want it to appear once they register, i want there so they can already see it
+        // without the data". There is no "once your profile is linked" screen any more: both tabs always
+        // paint. With no caddy record the day is the default 06:00–16:00, nothing is booked, and one line
+        // (regNote) says where to register.
+        regNote() {
+            return (this.prof || !this.loaded) ? '' : `<button type="button" class="cbk-whenline" data-a="register" style="margin-top:10px;width:100%;text-align:left;cursor:pointer"><b>${esc(T('cws.my.reg', 'Register the golf course you work at'))}</b><small>${esc(T('cws.my.reg.sub', 'Your bookings and your work week fill in here once you are on your course roster.'))}</small></button>`;
+        },
+        // v1436: the Chat tab's "Today's Assignments / Upcoming / My Golfer / Recent Golfers" cards were
+        // placeholders nothing ever filled. They read the SAME rows as My Schedule now (read-only).
+        paintComms() {
+            try {
+                const $ = id => document.getElementById(id), today = WS.today();
+                const keep = el => { if (el && el._cwsEmpty == null) el._cwsEmpty = el.innerHTML; return el; };
+                const pill = st => { const c = { live: ['#fef3c7', '#92400e'], ok: ['#dcfce7', '#166534'], done: ['#dbeafe', '#1e40af'], wait: ['#fef3c7', '#92400e'] }[st[0]] || ['#e2e8f0', '#334155']; return `<span style="flex:none;font-size:10px;font-weight:800;padding:3px 8px;border-radius:999px;white-space:nowrap;text-transform:uppercase;background:${c[0]};color:${c[1]}">${esc(st[1])}</span>`; };
+                const row = (b, sub) => `<div class="bg-white border border-gray-200 rounded-xl p-3" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div style="min-width:0"><div class="text-sm font-semibold text-gray-900" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(b.golfer_name || T('cws.golfer', 'Golfer'))}</div><div class="text-xs text-gray-600">${esc(sub)}</div></div>${b.status ? pill(this.stOf(b)) : ''}</div>`;
+                const sub = (b, day) => { const cx = this.ctx[b.id] || {}, t = tee(b); return [day ? (b.booking_date === today ? T('cws.today', 'Today') : dayLine(b.booking_date)) : '', t == null ? '' : hhmm(t), cx.forName || srcLabel(b), b.holes ? T('cws.holes', '{n} holes').replace('{n}', b.holes) : ''].filter(Boolean).join(' · '); };
+                const fill = (el, html) => { if (!keep(el)) return; el.innerHTML = html || el._cwsEmpty; };
+                const all = (this.rows || []).slice().sort((a, b) => a.booking_date === b.booking_date ? byTee(a, b) : (a.booking_date < b.booking_date ? -1 : 1));
+                const todays = all.filter(b => b.booking_date === today);
+                fill($('cd-today-assignments'), todays.map(b => row(b, sub(b, false))).join(''));
+                const cnt = $('cd-today-count'); if (cnt) cnt.textContent = todays.length === 1 ? T('cws.booking1', '1 booking') : T('cws.bookingN', '{n} bookings').replace('{n}', todays.length);
+                fill($('cd-upcoming-assignments'), all.filter(b => b.booking_date > today && b.booking_date <= WS.addDays(today, 7)).slice(0, 8).map(b => row(b, sub(b, true))).join(''));
+                const cur = todays.find(b => this.isOut(b)) || todays.find(b => b.status !== 'completed');
+                fill($('cd-current-golfer'), cur ? row(cur, sub(cur, true)) : '');
+                fill($('cd-recent-golfers'), (this.pastNames || []).slice(0, 5).map(g => { const n = (this.past && this.past[g.k]) || 1; return row({ golfer_name: g.name }, [dayLine(g.last), n === 1 ? T('cws.round1', '1 round with you') : T('cws.roundN', '{n} rounds with you').replace('{n}', n)].join(' · ')); }).join(''));
+            } catch (e) {}
+        },
+
         paint() {
             const root = this.root(); if (!root) return;
-            if (!this.prof) {
-                root.innerHTML = `<div class="cbk-page cws">${this.top()}<div class="cbk-empty">${ic('event_busy')}<p>${esc(this.loaded || !sb() ? T('cws.my.nolink', 'Your bookings and work week show here once your caddy profile is linked to your course.') : T('cws.loading', 'Loading…'))}</p></div></div>`;
-                return;
-            }
             root.innerHTML = `<div class="cbk-page cws">${this.top()}${this.seg === 'week' ? this.weekHtml() : this.bookHtml()}</div>`;
             const on = root.querySelector('.cbk-day.on'); if (on) { try { on.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {} }
         },
@@ -460,7 +495,7 @@
             else side = T('cws.my.work', 'Working {a}–{b}').replace('{a}', hhmm(r.start)).replace('{b}', hhmm(r.end));
             if (r.ask) side = T('cws.my.asked', 'You asked for this day off · waiting');
             if (jobs.length) setTimeout(() => this.ensureCtx(jobs), 0);
-            return `${when}
+            return `${this.prof ? when : this.regNote()}
                 <div class="cbk-sched"><div class="cbk-sched-h">${esc(T('cws.my.14', 'My next 14 days'))}<small>${esc(T('cws.my.14.hint', 'What golfers see when they book you'))}</small></div><div class="cbk-days">${chips.join('')}</div>${detail}</div>
                 <div class="cws-h">${esc(head)}<small>${esc(side)}</small></div>
                 ${jobs.length ? jobs.map(b => this.jobCard(b)).join('') : `<div class="cws-none">${esc(T('cws.my.none', 'No bookings this day'))}</div>`}
@@ -499,7 +534,7 @@
             const banner = this.post
                 ? `<div class="cbk-whenline available" style="margin-top:10px"><b>${esc(T('cws.wk.posted', 'Week posted by the caddy master'))}</b><small>${esc(sum + ' · ' + T('cws.wk.sent', 'sent {t}').replace('{t}', stamp(this.post.sent_at)))}</small></div>`
                 : `<div class="cbk-whenline" style="margin-top:10px"><b>${esc(T('cws.wk.notposted', 'Your work week'))}</b><small>${esc(sum + ' · ' + T('cws.wk.maychange', 'not sent yet, it can still change'))}</small></div>`;
-            return `${banner}
+            return `${this.prof ? banner : this.regNote()}
                 <div class="cws-wknav"><button type="button" class="cws-rnd" data-a="wk" data-v="prev" aria-label="${esc(T('cws.prev', 'Previous week'))}">${ic('chevron_left')}</button><span class="lbl tight">${esc(rangeTxt(mon))}</span><button type="button" class="cws-rnd" data-a="wk" data-v="next" aria-label="${esc(T('cws.next', 'Next week'))}">${ic('chevron_right')}</button><span style="flex:1"></span><button type="button" class="cws-b2 sm" style="height:40px" data-a="dayoff">${ic('event_busy')}${esc(T('cws.my.dayoff', 'Request a day off'))}</button></div>
                 ${this.loaded ? rows.join('') : `<div class="cws-none">${esc(T('cws.loading', 'Loading…'))}</div>`}`;
         },

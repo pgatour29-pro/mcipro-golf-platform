@@ -1935,6 +1935,10 @@
     .pill.society{--c:var(--society);background:var(--card)}
     .pill.tournament{--c:var(--tournament);background:var(--card)}
     .pill.hotdeal{--c:#f97316;background:var(--card)}
+    /* v1445: an open tee time put up for societies — dashed, see-through, never a booking */
+    .pill.opentime{--c:var(--brand);background:transparent;border-style:dashed;box-shadow:none;min-height:40px;opacity:.9}
+    .pill.opentime .pill-av{display:none}
+    .pill.opentime .pill-name{color:var(--c);font-weight:800;letter-spacing:.04em}
     .pill:hover{transform:translateY(-2px);border-color:var(--c);box-shadow:0 12px 26px -10px rgba(0,0,0,.5)}
     .pill-av{width:32px;height:32px;border-radius:9px;flex-shrink:0;display:grid;place-items:center;font-size:12px;font-weight:800;color:#fff;background:linear-gradient(145deg,var(--c),color-mix(in srgb,var(--c) 62%,#000));box-shadow:inset 0 1px 0 rgba(255,255,255,.28)}
     .pill-body{min-width:0;flex:1}
@@ -2602,6 +2606,8 @@
           <button id="daysheet-btn" class="today-btn" title="Printable day sheet with caddies" data-i18n="daySheet">Print sheet</button>
           <!-- v1334: society events at this course — live registrations/pairings, slots held, chat with the society -->
           <button id="societies-btn" class="today-btn" title="Society events, slots and messages"><span data-i18n="societiesBtn">Societies</span><span class="cl-count"></span></button>
+          <!-- v1445: open tee times the course puts up for societies (they take them on the spot) -->
+          <button id="opentimes-btn" class="today-btn" title="Put up open tee times for societies" style="display:none"><span data-i18n="openTimesBtn">Open times</span></button>
         </div>
       </div>
 
@@ -2672,6 +2678,7 @@
         <div class="legend-item"><span class="legend-dot vip"></span> <span data-i18n="vip">VIP</span></div>
         <div class="legend-item"><span class="legend-dot society"></span> <span data-i18n="society">Society</span></div>
         <div class="legend-item"><span class="legend-dot hotdeal"></span> <span data-i18n="hotDeal">Hot Deal</span></div>
+        <div class="legend-item"><span class="legend-dot" style="background:transparent;border:1.5px dashed #22c55e"></span> <span data-i18n="openTimesBtn">Open times</span></div>
         <div class="legend-item"><span class="legend-dot tournament"></span> <span data-i18n="tournament">Tournament</span></div>
       </div>
       <div class="ts-kpis" id="ts-kpis"></div>
@@ -3403,6 +3410,7 @@
   <script src="golfer-avatar.js?v=20260830a"></script>
   <script src="name-search.js?v=20260917a"></script>
   <script src="course-society-link.js?v=1396"></script>
+  <script src="course-open-times.js?v=1445"></script>
   <script src="caddy-work-core.js?v=1436"></script>
   <script>
   (function() {
@@ -3684,6 +3692,10 @@
           }
           return slots;
         }).flat();
+        // v1445: open tee times this course put up for societies + what societies took (not already an event block)
+        if (selectedCourseId && window.OpenTimes && OpenTimes.side === 'course') {
+          try { events.push(...OpenTimes.sheetSlots(date)); } catch (e) { console.warn('[TeeSheet] open times', e); }
+        }
 
         societyEventsCache[cacheKey] = events;
         societyEventsLastFetchTime[cacheKey] = now;
@@ -3874,7 +3886,7 @@
         deleteGroup: "Delete Entire Group", confirmDeleteGroup: "Delete all {n} slots in this group?",
         booked: "BOOKED", caddyAlreadyBooked: "This caddy is already booked for this time",
         daySheet: "Print sheet", dsTitle: "Day sheet", dsPrint: "Print", dsClose: "Close", dsBookings: "bookings", dsPlayers: "players", dsCaddies: "caddies assigned", dsEmpty: "Nothing booked on this day", dsReadOnly: "from registrations — edit in the event", dsSaved: "Saved ✓",
-        thmWhite: "WHITE", thmDark: "DARK", thmGlass: "GLASS", denDay: "DAY", denDetail: "DETAIL", societiesBtn: "Societies", nextSoc: "Next society days", regShort: "reg", nextTee: "next", minShort: "min", grp: "Group", held: "held", qfPlaceholder: "Quick find — golfer, caddy, group", qfNone: "no match",
+        thmWhite: "WHITE", thmDark: "DARK", thmGlass: "GLASS", denDay: "DAY", denDetail: "DETAIL", societiesBtn: "Societies", openTimesBtn: "Open times", otOpen: "OPEN", otForSoc: "For societies", nextSoc: "Next society days", regShort: "reg", nextTee: "next", minShort: "min", grp: "Group", held: "held", qfPlaceholder: "Quick find — golfer, caddy, group", qfNone: "no match",
         hotDeal: "Hot Deal", hotDealPost: "Post as Hot Deal", hotDealHint: "Golfers grab it in the app; it holds this slot", hotDealSpots: "Spots",
         hotDealPrice: "Price / player (฿)", hotDealCaddyIncluded: "Caddy included", hotDealCaddyOptional: "Caddy optional, fee extra", hotDealCaddyNone: "No caddy",
         hotDealUntil: "Open until", hotDealLead120: "2 h before tee", hotDealLead60: "1 h before", hotDealLead30: "30 min before", hotDealLead0: "Tee time",
@@ -3939,7 +3951,7 @@
         deleteGroup: "ลบทั้งกลุ่ม", confirmDeleteGroup: "ลบทั้งหมด {n} ช่วงในกลุ่มนี้?",
         booked: "จองแล้ว", caddyAlreadyBooked: "แคดดี้นี้จองแล้วสำหรับเวลานี้",
         daySheet: "พิมพ์ชีต", dsTitle: "ชีตประจำวัน", dsPrint: "พิมพ์", dsClose: "ปิด", dsBookings: "การจอง", dsPlayers: "ผู้เล่น", dsCaddies: "แคดดี้ที่จัดแล้ว", dsEmpty: "วันนี้ยังไม่มีการจอง", dsReadOnly: "จากการลงทะเบียน — แก้ไขในกิจกรรม", dsSaved: "บันทึกแล้ว ✓",
-        thmWhite: "ขาว", thmDark: "มืด", thmGlass: "กระจก", denDay: "ทั้งวัน", denDetail: "ละเอียด", societiesBtn: "สมาคม", nextSoc: "วันสมาคมถัดไป", regShort: "ลงทะเบียน", nextTee: "ถัดไป", minShort: "นาที", grp: "กลุ่ม", held: "กันไว้", qfPlaceholder: "ค้นหาด่วน — นักกอล์ฟ แคดดี้ กลุ่ม", qfNone: "ไม่พบ",
+        thmWhite: "ขาว", thmDark: "มืด", thmGlass: "กระจก", denDay: "ทั้งวัน", denDetail: "ละเอียด", societiesBtn: "สมาคม", openTimesBtn: "ทีไทม์ว่าง", otOpen: "ว่าง", otForSoc: "สำหรับสมาคม", nextSoc: "วันสมาคมถัดไป", regShort: "ลงทะเบียน", nextTee: "ถัดไป", minShort: "นาที", grp: "กลุ่ม", held: "กันไว้", qfPlaceholder: "ค้นหาด่วน — นักกอล์ฟ แคดดี้ กลุ่ม", qfNone: "ไม่พบ",
         hotDeal: "ดีลพิเศษ", hotDealPost: "ลงเป็นดีลพิเศษ", hotDealHint: "นักกอล์ฟจองในแอปได้ทันที และล็อกช่องเวลานี้ไว้", hotDealSpots: "จำนวนที่",
         hotDealPrice: "ราคา / คน (฿)", hotDealCaddyIncluded: "รวมแคดดี้", hotDealCaddyOptional: "เลือกแคดดี้ได้ คิดค่าแคดดี้เพิ่ม", hotDealCaddyNone: "ไม่มีแคดดี้",
         hotDealUntil: "เปิดจองถึง", hotDealLead120: "ก่อนทีออฟ 2 ชม.", hotDealLead60: "ก่อน 1 ชม.", hotDealLead30: "ก่อน 30 นาที", hotDealLead0: "เวลาทีออฟ",
@@ -4004,7 +4016,7 @@
         deleteGroup: "그룹 전체 삭제", confirmDeleteGroup: "이 그룹의 {n}개 슬롯을 모두 삭제하시겠습니까?",
         booked: "예약됨", caddyAlreadyBooked: "이 캐디는 해당 시간에 이미 예약되어 있습니다",
         daySheet: "시트 인쇄", dsTitle: "일일 시트", dsPrint: "인쇄", dsClose: "닫기", dsBookings: "예약", dsPlayers: "플레이어", dsCaddies: "배정된 캐디", dsEmpty: "이 날 예약이 없습니다", dsReadOnly: "등록 정보 — 이벤트에서 수정", dsSaved: "저장됨 ✓",
-        thmWhite: "화이트", thmDark: "다크", thmGlass: "글래스", denDay: "하루", denDetail: "상세", societiesBtn: "단체", nextSoc: "다음 단체 일정", regShort: "등록", nextTee: "다음", minShort: "분", grp: "조", held: "예약", qfPlaceholder: "빠른 찾기 — 골퍼, 캐디, 그룹", qfNone: "없음",
+        thmWhite: "화이트", thmDark: "다크", thmGlass: "글래스", denDay: "하루", denDetail: "상세", societiesBtn: "단체", openTimesBtn: "오픈 티타임", otOpen: "오픈", otForSoc: "소사이어티용", nextSoc: "다음 단체 일정", regShort: "등록", nextTee: "다음", minShort: "분", grp: "조", held: "예약", qfPlaceholder: "빠른 찾기 — 골퍼, 캐디, 그룹", qfNone: "없음",
         hotDeal: "핫딜", hotDealPost: "핫딜로 올리기", hotDealHint: "골퍼가 앱에서 바로 예약하며 이 시간을 잡아둡니다", hotDealSpots: "자리",
         hotDealPrice: "1인 가격 (฿)", hotDealCaddyIncluded: "캐디 포함", hotDealCaddyOptional: "캐디 선택, 요금 별도", hotDealCaddyNone: "캐디 없음",
         hotDealUntil: "마감", hotDealLead120: "티오프 2시간 전", hotDealLead60: "1시간 전", hotDealLead30: "30분 전", hotDealLead0: "티오프 시각",
@@ -4069,7 +4081,7 @@
         deleteGroup: "グループ全体を削除", confirmDeleteGroup: "このグループの{n}スロットをすべて削除しますか?",
         booked: "予約済", caddyAlreadyBooked: "このキャディーはこの時間に既に予約されています",
         daySheet: "シート印刷", dsTitle: "デイシート", dsPrint: "印刷", dsClose: "閉じる", dsBookings: "予約", dsPlayers: "プレーヤー", dsCaddies: "割当済みキャディー", dsEmpty: "この日は予約がありません", dsReadOnly: "登録情報 — イベントで編集", dsSaved: "保存しました ✓",
-        thmWhite: "ホワイト", thmDark: "ダーク", thmGlass: "グラス", denDay: "一日", denDetail: "詳細", societiesBtn: "団体", nextSoc: "次の団体日", regShort: "登録", nextTee: "次", minShort: "分", grp: "組", held: "確保", qfPlaceholder: "クイック検索 — ゴルファー・キャディ・組", qfNone: "該当なし",
+        thmWhite: "ホワイト", thmDark: "ダーク", thmGlass: "グラス", denDay: "一日", denDetail: "詳細", societiesBtn: "団体", openTimesBtn: "空き枠", otOpen: "空き", otForSoc: "ソサエティ向け", nextSoc: "次の団体日", regShort: "登録", nextTee: "次", minShort: "分", grp: "組", held: "確保", qfPlaceholder: "クイック検索 — ゴルファー・キャディ・組", qfNone: "該当なし",
         hotDeal: "ホットディール", hotDealPost: "ホットディールとして掲載", hotDealHint: "ゴルファーがアプリで即予約。この枠を確保します", hotDealSpots: "枠数",
         hotDealPrice: "1人あたり価格 (฿)", hotDealCaddyIncluded: "キャディー込み", hotDealCaddyOptional: "キャディー任意、料金別", hotDealCaddyNone: "キャディーなし",
         hotDealUntil: "受付終了", hotDealLead120: "ティーオフ2時間前", hotDealLead60: "1時間前", hotDealLead30: "30分前", hotDealLead0: "ティータイム",
@@ -6177,12 +6189,12 @@
             if (b.course === col.course && b.tee === col.tee) return true;
             return false;
           });
-          if (slotBookings.length > 0) { colCounts[idx]++; totalBooked++; }
+          if (slotBookings.some(b => b.ot !== 'open')) { colCounts[idx]++; totalBooked++; }   // v1445: an open tee time is not a booking
           let pillsHtml = '';
           slotBookings.forEach(b => {
             const golfers = b.golfers || [];
             const gCount = golfers.length;
-            totalPlayers += gCount || 1;
+            if (b.ot !== 'open') totalPlayers += gCount || 1;
             const isSociety = b.bookingType === 'society' || b.type === 'society' || b.type === 'society_event' || (b.groupId && b.groupName);
 
             let typeClass = b.bookingType || '';
@@ -6206,7 +6218,7 @@
               if (open) caddyLabel += (caddyLabel ? ' ' : '') + '+' + open + ' ' + t('openJobs');   // jobs waiting on the caddy master
             }
 
-            const name = gCount > 0 ? golfers[0].name : (b.name || t('player'));
+            const name = gCount > 0 ? golfers[0].name : (b.ot === 'open' ? t('otOpen') : (b.name || t('player')));
             const displayName = b.groupName ? b.groupName : name;
 
             // Determine group position class for visual styling
@@ -6227,8 +6239,9 @@
             else if (typeClass === 'society') tag = 'SOC';
             else if (typeClass === 'tournament') tag = 'EVENT';
             else if (typeClass === 'hotdeal') tag = b.hotDeal ? '🔥 DEAL' : 'DEAL';   // HOLD pill vs a grabbed deal
+            else if (typeClass === 'opentime') metaHtml = '';   // v1445: "OPEN" alone — the legend + panel say who it is for
 
-            pillsHtml += `<div class="pill ${typeClass} ${groupClass}" data-id="${b.id}" data-group-id="${b.groupId || ''}" data-event-id="${b.eventId || ''}" data-society-id="${b.societyId || ''}" draggable="true">
+            pillsHtml += `<div class="pill ${typeClass} ${groupClass}" data-id="${b.id}" data-group-id="${b.groupId || ''}" data-event-id="${b.eventId || ''}" data-society-id="${b.societyId || ''}" data-ot="${b.ot || ''}" data-ot-id="${b.otId || ''}" draggable="${b.ot ? 'false' : 'true'}">
               <div class="pill-av" data-golfer-face="${(golfers[0] && golfers[0].odoo_id) || ''}">${tsInitials(displayName)}</div>
               <div class="pill-body">
                 <div class="pill-name">${seqTag}${displayName}${grpChip}</div>
@@ -6300,6 +6313,12 @@
       document.querySelectorAll('.pill').forEach(pill => {
         pill.addEventListener('click', e => {
           e.stopPropagation();
+          // v1445: an open tee time / a society's take opens the Open times panel (a linked take → its event)
+          if (pill.dataset.ot) {
+            if (pill.dataset.eventId && window.CourseLink && CourseLink.state.side === 'course' && CourseLink.state.byId[pill.dataset.eventId]) { CourseLink.openPanel(pill.dataset.eventId); return; }
+            if (window.OpenTimes) OpenTimes.open({ focus: pill.dataset.otId });
+            return;
+          }
           // v1334: a society event's slot opens its live panel (registrations, pairings, slots, messages)
           if (pill.dataset.eventId && window.CourseLink && CourseLink.state.side === 'course') { CourseLink.openPanel(pill.dataset.eventId); return; }
           const booking = bookings.find(b => b.id === pill.dataset.id);
@@ -6310,6 +6329,7 @@
 
         // Drag start
         pill.addEventListener('dragstart', e => {
+          if (pill.dataset.ot) { e.preventDefault(); return; }   // v1445: open times move from their panel, never by drag
           e.dataTransfer.setData('text/plain', pill.dataset.id);
           pill.style.opacity = '0.5';
         });
@@ -7085,7 +7105,7 @@
       init() { $('daysheet-btn')?.addEventListener('click', () => this.open()); },
       date() { return el.dateInput.value; },
       rows() {
-        return getDay(this.date()).filter(b => b && b.time).slice()
+        return getDay(this.date()).filter(b => b && b.time && b.ot !== 'open').slice()
           .sort((a, b) => (minutes(a.time) - minutes(b.time)) || String(a.course || '').localeCompare(String(b.course || '')) || ((a.tee || 0) - (b.tee || 0)));
       },
       editable(b) {
@@ -10580,6 +10600,7 @@
       CLk.onChange = () => handleRealtimeEvent();
       CLk.onJump = (date) => { CLk.closePanel(); el.dateInput.value = date; updateHeaderDate(); fetchAndRender(); };
       $('societies-btn').style.display = slug ? '' : 'none';
+      linkOpenTimes(slug, slug ? ((courseDisplayNames && courseDisplayNames[slug]) || slug) : '');   // v1445
       if (!slug) return;
       const label = (courseDisplayNames && courseDisplayNames[slug]) || slug;
       // v1347: the panel's caddy picker = THIS sheet's roster + day state (4:15 block, day-offs), the
@@ -10598,6 +10619,18 @@
         .then(() => paintNextSocieties())
         .catch(e => console.warn('[TeeSheet] CourseLink watch failed', e));
     }
+    // v1445: open tee times for societies — the course puts them up, societies take them (course-open-times.js)
+    function linkOpenTimes(slug, label) {
+      const OTm = window.OpenTimes; const btn = $('opentimes-btn');
+      if (!OTm || !supabaseClient) return;
+      if (btn) btn.style.display = slug ? '' : 'none';
+      OTm.onChange = () => handleRealtimeEvent();
+      OTm.onJump = (date) => { OTm.close(); el.dateInput.value = date; updateHeaderDate(); fetchAndRender(); };
+      OTm.defaults = () => ({ date: el.dateInput.value, start: el.startTime.value, end: el.endTime.value, interval: el.intervalSelect.value });
+      OTm.configure({ sb: supabaseClient, side: 'course', slug: slug || null, courseName: label || courseCtx().name, me: { id: 'course:' + slug, name: label },
+        lang: ['th', 'ko', 'ja'].includes(currentLang) ? currentLang : 'en' }).catch(e => console.warn('[TeeSheet] open times', e));
+    }
+    $('opentimes-btn').addEventListener('click', () => window.OpenTimes && OpenTimes.open());
     // v1440: the next society days at this venue (from CourseLink's 3-week watch), minus the day on screen
     function paintNextSocieties() {
       const box = $('ts-nextsoc'); if (!box) return;

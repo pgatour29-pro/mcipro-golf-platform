@@ -73309,6 +73309,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         <h3 class="text-base font-bold text-gray-900 mb-1">Scheduler</h3>
                         <div class="cube-pill">Add / edit events</div>
                     </button>
+                    <!-- v1445: open tee times golf courses put up for societies — take them on the spot -->
+                    <button onclick="OrgOpenTimes.open()" class="card-hover metric-card cube-poster" style="--p1:#d9efe1;--p2:#f2faf5;position:relative;">
+                        <span data-ot-count style="display:none;position:absolute;top:8px;right:8px;background:#16a34a;color:#fff;font-size:11px;font-weight:800;min-width:20px;height:20px;border-radius:10px;align-items:center;justify-content:center;padding:0 6px;line-height:20px;z-index:3;"></span>
+                        <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuTee"/></svg></div>
+                        <h3 class="text-base font-bold text-gray-900 mb-1" data-ot-label="cube">Tee Times</h3>
+                        <div class="cube-pill" data-ot-label="cubePill">From golf courses</div>
+                    </button>
                     <button onclick="showOrganizerTab('scoring')" class="card-hover metric-card cube-poster" style="--p1:#f4e6c8;--p2:#fcf6e9">
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuTrophy"/></svg></div>
                         <h3 class="text-base font-bold text-gray-900 mb-1">Scores</h3>
@@ -73393,6 +73400,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         <button onclick="SocietyOrganizerSystem.showEventForm(null)" class="btn-primary">
                             <span class="material-symbols-outlined text-sm">add</span>
                             <span data-i18n="organizer.addevent">New Event</span>
+                        </button>
+                        <!-- v1445: open tee times golf courses put up for societies -->
+                        <button onclick="OrgOpenTimes.open()" class="btn-secondary" style="position:relative;">
+                            <span class="material-symbols-outlined text-sm">golf_course</span>
+                            <span data-ot-label="titleSoc">Course tee times</span>
+                            <span data-ot-count style="display:none;margin-left:4px;background:#16a34a;color:#fff;font-size:11px;font-weight:800;border-radius:10px;padding:1px 7px;"></span>
                         </button>
                         <!-- v1323: same society-wide payout formula as the Scoring page -->
                         <button onclick="PayoutFormula.openSheet()" data-trgg-only style="display:none;" class="btn-secondary">
@@ -89249,6 +89262,7 @@ window.AdminSystem = AdminSystem;
     <script defer src="golf-feed.js?v=1325"></script>
     <script defer src="handicap-ledger.js?v=1257"></script>
     <script defer src="course-society-link.js?v=1396"></script>
+    <script defer src="course-open-times.js?v=1445"></script>
     <script defer src="engagement-meter.js?v=1377"></script>
     <script defer src="proshop-dashboard.js?v=1431"></script>
 
@@ -123752,6 +123766,7 @@ class SocietyOrganizerManager {
     // =====================================================
 
     showEventForm(eventId = null) {
+        this._openTimeClaimId = null;   // v1445: only OrgOpenTimes.createEventFrom sets it (after this)
         const form = document.getElementById('eventFormContainer');
         const title = document.getElementById('eventFormTitle');
 
@@ -124456,6 +124471,11 @@ This action cannot be undone.`);
                 console.log('[DEBUG] About to call SocietyGolfDB.createEvent with:', eventData);
                 const result = await SocietyGolfDB.createEvent(eventData);
                 console.log('[DEBUG] createEvent returned:', result);
+                // v1445: made from a course's open tee time → tie the take to it (the course sheet + thread follow)
+                if (this._openTimeClaimId && result && result.id && window.OpenTimes) {
+                    const _cid = this._openTimeClaimId; this._openTimeClaimId = null;
+                    OpenTimes.link(_cid, result.id).then(r => { if (!r || !r.ok) console.warn('[OpenTimes] link failed', r); OpenTimes.load(); });
+                }
                 console.log('[SocietyOrganizer] ✅ Event created in database');
 
                 // If recurring, create additional events in the database
@@ -128851,6 +128871,61 @@ window.loadSocietyDefaultInstructions = loadSocietyDefaultInstructions;
 window.applyInstructionsToAllEvents = applyInstructionsToAllEvents;
 
 // Strict course dropdown for the Add/Edit Event form — sourced from the real `courses` table
+// v1445 OPEN TEE TIMES — the organizer side of course-open-times.js. Golf courses put up blocks of open tee
+// times from their pro shop sheet; the society takes groups out of them on the spot (one locked DB transaction),
+// tied to its event that day or held while it creates the event (form pre-filled from the tee time).
+window.OrgOpenTimes = {
+    _lang() { const l = (typeof currentLanguage !== 'undefined' && currentLanguage) || 'en'; return ['th', 'ko', 'ja'].includes(l) ? l : 'en'; },
+    _events() {
+        const S = window.SocietyOrganizerSystem;
+        return ((S && S.events) || []).map(e => ({ id: e.id, date: e.date, courseName: e.courseName, title: e.name, startTime: e.startTime }));
+    },
+    arm() {
+        const OTm = window.OpenTimes, sb = window.SupabaseDB && SupabaseDB.client;
+        if (!OTm || !sb) return Promise.resolve();
+        const soc = AppState.selectedSociety || null;
+        const me = AppState.currentUser || {};
+        OTm.onCreateEvent = (claim, offer) => this.createEventFrom(claim, offer);
+        OTm.getEvents = () => this._events();
+        const p = OTm.configure({ sb, side: 'society', slug: null, lang: this._lang(),
+            society: soc ? { id: soc.id || null, name: soc.name || soc.society_name || '' } : null,
+            me: { id: me.lineUserId || localStorage.getItem('line_user_id') || null, name: me.name || '' } });
+        document.querySelectorAll('[data-ot-label]').forEach(el => { el.textContent = OTm.t(el.dataset.otLabel); });
+        return p;
+    },
+    open() {
+        this.arm();
+        if (window.OpenTimes) OpenTimes.open();
+    },
+    /* a take held for a new event → the event form, pre-filled; the save ties the take to the new event */
+    async createEventFrom(claim, offer) {
+        const S = window.SocietyOrganizerSystem; if (!S) return;
+        if (typeof showOrganizerTab === 'function') showOrganizerTab('events');
+        S.showEventForm(null);
+        S._openTimeClaimId = claim.id;
+        const CL = window.CourseLink;
+        let courseName = (offer && offer.course_name) || '';
+        try {
+            const list = await window.EventCourseSelect.load();
+            const hit = list.find(c => CL && CL.sameVenue(CL.slugFor(c.name), claim.course_slug || (offer && offer.course_slug)));
+            if (hit) courseName = hit.name;
+        } catch (e) {}
+        document.getElementById('eventDate').value = claim.play_date;
+        const st = document.getElementById('eventStartTime');
+        if (st && window.TimePickerUtils) window.TimePickerUtils.populateSelect(st, { defaultValue: claim.tee_time });
+        await window.EventCourseSelect.populate(courseName);
+        const nm = document.getElementById('eventName');
+        // the society's own naming ("TRGG - …"): the prefix most of its events use, else the society name
+        const pre = {}; (S.events || []).forEach(e => { const m = String(e.name || '').match(/^(.{2,24}?) - /); if (m) pre[m[1]] = (pre[m[1]] || 0) + 1; });
+        const top = Object.keys(pre).sort((a, b) => pre[b] - pre[a])[0];
+        const soc = top || (AppState.selectedSociety && AppState.selectedSociety.name);
+        if (nm && !nm.value && soc && courseName) nm.value = soc + ' - ' + courseName;
+        const mx = document.getElementById('eventMaxPlayers');
+        if (mx && claim.groups) mx.value = String(claim.groups * 4);
+        try { window.EventCourseSelect.onChange(document.getElementById('eventCourse')); } catch (e) {}
+    }
+};
+
 window.EventCourseSelect = {
     _courses: null,
     _esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
@@ -167764,6 +167839,8 @@ function showOrganizerTab(tabName) {
 
     // Show selected tab
     document.getElementById(`organizerTab-${tabName}`).style.display = 'block';
+    // v1445: open tee times count on the cube / Events button stays live
+    try { if (window.OpenTimes && OpenTimes.side === 'society') OpenTimes.close(); if ((tabName === 'home' || tabName === 'events') && window.OrgOpenTimes) OrgOpenTimes.arm(); } catch (e) {}
 
     // (v1172) the on-course board polls every 60s — only while its tab is actually open
     try {

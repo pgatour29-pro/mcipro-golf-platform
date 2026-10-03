@@ -68,6 +68,7 @@ def short_course(name, title):
         ('siam plantation', 'Siam Plantation'), ('bangpra', 'Bangpra'), ('laem chabang', 'Laem Chabang'),
         ('eastern star', 'Eastern Star'), ('hermes', 'Hermes'), ('pattavia', 'Pattavia'),
         ('pleasant valley', 'Pleasant Valley'), ('mountain shadow', 'Mountain Shadow'),
+        ('siam old', 'Siam Old Course'), ('royal lakeside', 'Royal Lakeside'),
     ]:
         if key in s:
             return short
@@ -650,6 +651,141 @@ def gen_caddy():
     return rows
 
 # ----------------------------------------------------------------------------- SQL out
+
+# ----------------------------------------------------------------------------- WAVE 3 (Pete, Telegram 2026-10-03)
+# "continue with the reporting from September 16th to today with request for caddy booking through
+#  MyCaddiPro and why the golf courses are too slow. Also that they stop playing those courses because
+#  booking through the phones are so bad. Mix them up"
+# Three themes interleaved, 16 Sep -> 3 Oct 2026, anchored to the REAL TRGG/JOA days in that window:
+#   'app'  (caddy_booking, PRE)  - please let me book the caddy through MyCaddiPro for this day
+#   'slow' (other, POST)         - the course was far too slow on that day
+#   'quit' (other / caddy_booking, POST) - stopped playing there because booking by phone is so bad
+NOW3 = dt.datetime(2026, 10, 3, 14, 30, tzinfo=TZ)
+W3_START = dt.datetime(2026, 9, 16, 6, 0, tzinfo=TZ)
+W3 = []
+def w3(theme, lang, cat, subj, body, timing, k=(1, 4), hours=(7, 21), w=5, prio=None):
+    W3.append(dict(theme=theme, lang=lang, cat=cat, subj=subj, body=body, timing=timing, k=k, hours=hours, w=w, prio=prio))
+
+# --- app: book the caddy through MyCaddiPro (before the day)
+w3('app', 'en', 'caddy_booking', 'Can I book my caddy for {C} in the app?', "Playing {C} with the {SOC} on {DATE}, off at {TIME}. Is there a way to book caddy {CN} through MyCaddiPro instead of ringing the course? The phone is a lottery.", 'pre', (1, 5), w=8)
+w3('app', 'en', 'caddy_booking', 'Caddy booking through MyCaddiPro for {DATE}', "Please add {C} to the in-app caddy booking. We're four for {DATE} ({SOC} day) and we'd all book through the app in a heartbeat rather than call.", 'pre', (1, 6), w=7)
+w3('app', 'en', 'caddy_booking', 'Book caddy {CN} at {C} via the app?', "Last time at {C} I had caddy {CN} and she was excellent. I'd like her again on {DATE}. Can that request go through MyCaddiPro so it actually reaches the caddy master?", 'pre', (2, 6), w=7)
+w3('app', 'en', 'caddy_booking', 'Why can\'t we book caddies in the app yet?', "Registration, tee sheet, scoring all in the app — but to get a caddy at {C} for {DATE} I still have to phone. When is the caddy booking coming for {C}?", 'pre', (1, 5), w=6)
+w3('app', 'en', 'caddy_booking', '{C} caddy request for the {SOC} day', "Can you put a caddy request in for me at {C} on {DATE}, {TIME} tee? Any caddy is fine. I tried the number twice {WD_PREV} and got nowhere. Happy to pay through the app.", 'pre', (1, 4), (8, 20), w=7)
+w3('app', 'en', 'caddy_booking', 'Group caddy booking {C} {DATE}', "Our group of 4 would like caddies pre-booked at {C} for {DATE}. Can this be done from the registration page? It would save all of us a phone call we dread.", 'pre', (2, 6), w=6)
+w3('app', 'en', 'caddy_booking', 'MyCaddiPro caddy booking - {C}', "Is {C} on the app for caddy booking? I can see Burapha has it. We play there {DATE} and I'd rather tap than call.", 'pre', (1, 5), w=6)
+w3('app', 'en', 'caddy_booking', 'Caddy for {DATE} please', "Hi — {C} on {DATE}, tee {TIME}, one caddy for me. Doing it here because the course doesn't answer. Can the app pass it on?", 'pre', (1, 3), (7, 12), w=6)
+w3('app', 'ko', 'caddy_booking', '{C} 캐디 앱 예약 가능한가요?', "{KDATE} {C} {TIME} 티오프입니다. 캐디 {CN}번을 MyCaddiPro 앱에서 예약할 수 있나요? 골프장에 전화하면 안 받아요.", 'pre', (1, 5), w=5)
+w3('app', 'ko', 'caddy_booking', '앱에서 캐디 예약 요청', "{KDATE} {C} 라운드 4명 캐디 부탁드립니다. 전화 말고 앱으로 예약하고 싶어요. {C}도 앱 예약 추가해 주세요.", 'pre', (1, 6), w=5)
+w3('app', 'ko', 'caddy_booking', '{C} 캐디 예약 앱으로', "지난번 {C}에서 {CN}번 캐디가 정말 좋았어요. {KDATE}에 다시 부탁할 수 있을까요? 앱으로 요청 보내 주세요.", 'pre', (2, 6), w=4)
+
+# --- slow: the course was far too slow (after the day)
+w3('slow', 'en', 'other', '{C} - {HRS} hours on {DATE}', "{HRS} hours for 18 at {C} on {DATE}. Three groups stacked on every par 3. Not one ranger all day. Can the {SOC} raise this with the course?", 'post', (0, 2), (13, 22), w=8, prio='high')
+w3('slow', 'en', 'other', 'Pace of play at {C}', "{C} was painfully slow {WD_EV}. We teed off at {TIME} and walked off after {HRS} hours. Two groups of five let out in front of us. Why does the course do this on our day?", 'post', (0, 2), (14, 22), w=7)
+w3('slow', 'en', 'other', 'Too slow at {C} again', "Second time this month {C} has gone over five hours. {DATE} was {HRS} hours. We lost half the field to the bar by the 14th. Please tell them we won't keep coming if it's like this.", 'post', (0, 3), (14, 22), w=6, prio='high')
+w3('slow', 'en', 'other', '{C} {DATE} - a six hour round', "Honestly, {HRS} hours at {C}. Starter sent a society of 20 out ten minutes before us with no gap. Waited on every tee from the 3rd. This needs to go to the course.", 'post', (0, 2), (15, 22), w=5, prio='high')
+w3('slow', 'en', 'other', 'Slow play {C}', "{C} on {DATE}: {HRS} hours. The app's pace clock had us 40 minutes behind by the turn. Course has no marshals and the caddies just shrug. Is there anything MyCaddiPro can show the course?", 'post', (0, 2), (13, 22), w=6)
+w3('slow', 'en', 'other', 'Why is {C} so slow?', "Every {SOC} day at {C} is {HRS} hours now. It wasn't like this last year. The groups in front weren't even ours. Can you ask them what's changed?", 'post', (0, 3), (12, 22), w=5)
+w3('slow', 'en', 'other', '{C} pace - unacceptable', "{DATE} at {C}: {HRS} hours, in the heat, with a {TIME} start. Half the group said they're not coming back. For the record.", 'post', (0, 2), (14, 22), w=5, prio='high')
+w3('slow', 'ko', 'other', '{C} 너무 느려요', "{KDATE} {C} 라운드 {HRS}시간 걸렸어요. 파3마다 세 팀씩 대기. 마샬 한 명도 없었어요. 골프장에 이야기해 주세요.", 'post', (0, 2), (13, 22), w=5, prio='high')
+w3('slow', 'ko', 'other', '{C} 진행 속도 문제', "{KWD_EV} {C} {TIME} 티오프했는데 {HRS}시간 넘게 걸렸습니다. 앞 팀 5명씩 두 팀. 이러면 다음부터 안 갑니다.", 'post', (0, 3), (14, 22), w=4)
+
+# --- quit: stopped playing there because booking by phone is so bad (after a day, or standing)
+w3('quit', 'en', 'caddy_booking', 'Not booking {C} by phone again', "That's me done with {C}. Rang {N} times over two days for the {DATE} game, got through once, lost the booking anyway. If MyCaddiPro can take the booking I'll come back. Otherwise I'll play somewhere that answers.", 'post', (0, 4), (9, 21), w=8, prio='high')
+w3('quit', 'en', 'other', "I've stopped playing {C}", "Not because of the course — the booking. Their phone line and their LINE are both useless. {DATE} was the last straw: confirmed on the phone, nothing in the book when we arrived. Put {C} in the app and I'd play it every week.", 'post', (0, 5), (9, 21), w=7, prio='high')
+w3('quit', 'en', 'other', '{C} booking by phone is hopeless', "Three of us have quietly dropped {C} from our rota. It's not the golf, it's that nobody picks up and when they do they can't understand us. Can the {SOC} book through MyCaddiPro instead of each of us phoning?", 'post', (1, 6), (9, 21), w=7)
+w3('quit', 'en', 'caddy_booking', 'Why I skipped {C} on {DATE}', "I didn't register for {C} on {DATE} and here's why: I couldn't book a caddy. {N} calls, no answer, no reply on LINE. Until booking goes through the app I'll give {C} a miss.", 'post', (0, 3), (9, 21), w=6)
+w3('quit', 'en', 'other', 'Lost cause booking at {C}', "Spent {WD_PREV} trying to book {C} for the {SOC} and gave up. Playing elsewhere that week. The course is good, the phone booking is a joke. This is exactly what the app should fix.", 'pre', (1, 6), (9, 21), w=6)
+w3('quit', 'en', 'other', 'Please take over bookings for {C}', "Half the {SOC} regulars have stopped going to {C} because booking over the phone is so bad. If MyCaddiPro handled the tee time and caddies for {C} the numbers would come straight back.", 'post', (1, 7), (9, 21), w=6)
+w3('quit', 'ko', 'other', '{C} 전화 예약 포기', "{C} 전화 예약이 너무 힘들어서 이제 안 갑니다. {KDATE}도 {N}번 전화해서 안 받았어요. 앱에서 예약되면 다시 갈게요.", 'post', (0, 4), (9, 21), w=5, prio='high')
+w3('quit', 'ko', 'caddy_booking', '{C} 이제 안 가요', "골프장은 좋은데 예약이 안 돼요. 전화도 LINE도 답이 없어요. {C} 캐디 예약 앱에 넣어 주세요.", 'post', (1, 6), (9, 21), w=4)
+
+NOTES_W3 = {
+    'app':  {'resolved': ["Request passed to the caddy master at the course; booking confirmed by phone and messaged to the reporter.", "Course is not on in-app caddy booking yet. Booked it for them by phone and told them.", "Added to the list of courses asking for in-app caddy booking."],
+             'in_progress': ["Asked the course for a caddy-desk contact.", "Collecting these per course to take to the pro shop.", "Waiting on the caddy master to confirm."]},
+    'slow': {'resolved': ["Sent to the course with the group times from the app. They acknowledged.", "Organizer raised it with the starter; course says they will hold the gap next time.", "Logged for the course meeting. Reporter told."],
+             'in_progress': ["Pulling the pace data from the app for that day.", "Collecting these to send to the course together.", "Waiting on the course to reply."]},
+    'quit': {'resolved': ["Course given the reporter's booking details; they apologised and offered a caddy next visit.", "Told the reporter which courses already book through the app.", "Passed to the course as feedback. Nothing more to do."],
+             'in_progress': ["Taking these to the course with the booking requests.", "Asked the course for a LINE account that is actually answered.", "Collecting these to send to the course together."]},
+}
+
+W3_EV = []
+for e in EVENTS:
+    if dt.date(2026, 9, 10) <= e['date'] <= dt.date(2026, 10, 20):
+        W3_EV.append(e)
+
+def gen_wave3(n=104):
+    global NOW, LATEST
+    NOW, LATEST = NOW3, NOW3 - dt.timedelta(minutes=40)
+    rows = []; seen = set()
+    themes = ['app'] * 40 + ['slow'] * 32 + ['quit'] * 32
+    rnd.shuffle(themes)
+    ko_slots = set(rnd.sample(range(n), 18))
+    for i, theme in enumerate(themes):
+        lang = 'ko' if i in ko_slots else 'en'
+        pool = [t for t in W3 if t['lang'] == lang and t['theme'] == theme]
+        for _ in range(800):
+            t = rnd.choices(pool, weights=[x['w'] for x in pool])[0]
+            rep = pick_reporter(lang, need_member=True)
+            soc = event_society(rep)
+            evs = [e for e in W3_EV if e['soc'] == soc]
+            if not evs:
+                continue
+            ev = rnd.choice(evs)
+            k = rnd.randint(*t['k'])
+            if t['timing'] == 'pre':
+                day = ev['date']; cday = day - dt.timedelta(days=k)
+                if i < 8: cday = NOW3.date()   # "to today": a handful written this morning about the coming days
+                if cday >= day: continue
+            else:
+                day = ev['date']; cday = day + dt.timedelta(days=k)
+            created = at_random_time(cday, *t['hours'])
+            if cday == NOW3.date() and created > LATEST:
+                created = at_random_time(cday, 7, 13)
+            if t['timing'] == 'post' and k == 0:
+                # written after the round that day: not before the tee time + 4h
+                earliest = dt.datetime.combine(day, ev['tee'], tzinfo=TZ) + dt.timedelta(hours=4, minutes=rnd.randrange(0, 90))
+                if created < earliest:
+                    created = earliest
+            if not (W3_START <= created <= LATEST):
+                continue
+            if t['timing'] == 'pre' and not (day > created.date()):
+                continue
+            prev = created.date() - dt.timedelta(days=rnd.randint(1, 2))
+            fields = {
+                'C': ev['course'], 'SOC': soc, 'DATE': fmt_date(day), 'KDATE': fmt_kdate(day), 'TIME': fmt_time(ev['tee']),
+                'HRS': rnd.choice(['5', '5', '5¼', '5½', '5½', '5¾', '6', 'nearly 6']) if lang == 'en' else rnd.choice(['5', '5.5', '6']),
+                'N': rnd.choice([4, 5, 6, 7, 8, 9]), 'CN': rnd.randint(7, 118),
+                'WD_PREV': WD_EN[prev.weekday()], 'KWD_PREV': WD_KO[prev.weekday()],
+                'WD_EV': WD_EN[day.weekday()], 'KWD_EV': WD_KO[day.weekday()],
+            }
+            subj = t['subj'].format_map(fields); body = t['body'].format_map(fields)
+            key = (rep['id'], t['subj'], fields['DATE'])
+            if key in seen:
+                continue
+            seen.add(key)
+            break
+        else:
+            raise SystemExit('could not place wave3 row %d (%s/%s)' % (i, theme, lang))
+        status = age_status(created, recent_bias=True)
+        prio = t['prio'] or rnd.choices(['high', 'normal', 'low'], weights=[20, 70, 10])[0]
+        row = dict(reporter_id=rep['id'], reporter_name=rep['name'], lang=lang, category=t['cat'], subject=subj, body=body,
+                   society_name=soc, priority=prio, source='seed_wave3_20261003')
+        event_dt = dt.datetime.combine(day, ev['tee'], tzinfo=TZ) if t['timing'] == 'pre' else None
+        stamp(row, created, status, event_dt=event_dt, note_pool=NOTES_W3[theme], note_rate=(0.35, 0.5))
+        rows.append(row)
+    rows.sort(key=lambda r: r['created_at'], reverse=True)
+    return rows
+
+OUT_W3 = os.path.join(HERE, 'seed_support_reports_wave3_20261003.sql')
+HDR_W3 = """-- Seeded Reports, wave 3 (Pete via Telegram 2026-10-03): 16 Sep -> 3 Oct 2026, three themes mixed —
+-- caddy booking requests through MyCaddiPro, courses too slow, and golfers dropping courses because
+-- booking by phone is so bad. Anchored to the real TRGG/JOA days in that window. Reporters are real
+-- directory players. Every row carries source='seed_wave3_20261003'.
+-- REMOVE WITH:  delete from public.support_reports where source = 'seed_wave3_20261003';
+-- Generated by sql/seed_support_reports_gen.py wave3 — edit the generator, not this file.
+"""
+
 COLS = ['reporter_id', 'reporter_name', 'lang', 'category', 'subject', 'body', 'society_name', 'status', 'priority',
         'admin_note', 'resolved_at', 'resolved_by', 'source', 'created_at', 'updated_at']
 
@@ -710,7 +846,12 @@ def summarize(name, rows):
     print('  range', min(r['created_at'] for r in rows).date(), '->', max(r['created_at'] for r in rows))
     print('  notes', sum(1 for r in rows if r['admin_note']), 'reporters', len(set(r['reporter_id'] for r in rows)))
 
-if __name__ == '__main__':
+if __name__ == '__main__' and 'wave3' in sys.argv:
+    # wave 3 only — the first two batches are already loaded and must not be regenerated with a new NOW
+    w3rows = gen_wave3()
+    summarize('wave3', w3rows)
+    write_sql(OUT_W3, HDR_W3, 'seed_wave3_20261003', w3rows)
+elif __name__ == '__main__':
     qa = gen_qa()
     caddy = gen_caddy()
     write_sql(OUT_QA, HDR_QA, 'seed_qa_20260914', qa)

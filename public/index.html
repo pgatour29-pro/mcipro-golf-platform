@@ -94540,9 +94540,11 @@ class LiveScorecardSystem {
                 const myCard = state.scorecards?.[me];
                 if (myCard && !String(myCard).startsWith('local_') && window.SupabaseDB?.client) {
                     const { data: row } = await window.SupabaseDB.client.from('scorecards')
-                        .select('status').eq('id', myCard).maybeSingle();
+                        .select('status, auto_closed_at').eq('id', myCard).maybeSingle();
                     // Only act on a POSITIVE read — a network hiccup must not wipe a live round.
-                    if (row && row.status !== 'in_progress') {
+                    // A card the 2-hour idle sweep closed (auto_closed_at) is NOT ended: the golfer
+                    // may be keying a paper card in late — keep it; the next score reopens it in the DB.
+                    if (row && row.status !== 'in_progress' && !(row.status === 'abandoned' && row.auto_closed_at)) {
                         console.log('[LiveScorecard] Saved round is already', row.status, 'in DB — clearing stale local state');
                         this.clearRoundState();
                         state = null;

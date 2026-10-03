@@ -10137,6 +10137,11 @@
         .scv3g-ec .nm img { width:18px; height:18px; border-radius:999px; flex:0 0 auto; }
         .scv3g-ec .s { font:500 9.5px/1.4 'JetBrains Mono',monospace; color:var(--g-mut); margin-top:4px;
             white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        /* v1441: departure + tee row — wraps, never ellipsed; the value is ink so it reads at a glance */
+        .scv3g-ec .tm { display:flex; gap:4px; margin-top:5px; flex-wrap:wrap; }
+        .scv3g-ec .tm span { display:inline-flex; align-items:baseline; gap:4px; font:600 8.5px/1 'JetBrains Mono',monospace;
+            letter-spacing:.04em; color:var(--g-mut); background:var(--g-box); border:1px solid var(--g-hair); border-radius:7px; padding:4px 6px; white-space:nowrap; }
+        .scv3g-ec .tm b { font:700 11px/1 'JetBrains Mono',monospace; letter-spacing:0; color:var(--g-ink); }
         .scv3g-ec .tags { display:flex; gap:4px; margin-top:6px; flex-wrap:wrap; }
         .scv3g-tag { font:600 8px/1 'JetBrains Mono',monospace; border:1px solid var(--g-hair); border-radius:6px; padding:4px 6px; color:var(--g-mut); }
         .scv3g-tag, .scv3g-btn { text-transform:uppercase; }
@@ -10174,10 +10179,16 @@
         .scv3g-mini button .material-symbols-outlined { font-size:12px; }
         /* ---- detail + register page (frames 2/3) ---- */
         #eventDetailModal .modal-container { background:var(--g-bg) !important; color:var(--g-ink); border:1px solid var(--g-hair); border-radius:22px; }
-        #eventDetailModal .scv3g-head { background:transparent !important; border-bottom:1px solid var(--g-hair); padding:14px 16px 10px; display:flex; gap:8px; align-items:flex-start; }
+        #eventDetailModal .scv3g-head { background:transparent !important; border-bottom:1px solid var(--g-hair); padding:14px 16px 10px; display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; }
         #eventDetailModal .scv3g-ovl { font:600 9px/1 'JetBrains Mono',monospace; letter-spacing:.14em; color:var(--g-grn); text-transform:uppercase; margin-bottom:5px; }
         #eventDetailModal .scv3g-h1 { font:600 19px/1.1 'Instrument Sans',sans-serif; color:var(--g-ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         #eventDetailModal .scv3g-meta { font:500 10px/1.4 'JetBrains Mono',monospace; letter-spacing:.06em; color:var(--g-mut); margin-top:4px; }
+        /* v1441: Departure / Tee off chips under the title — labelled, ink values, wrap on a phone */
+        #eventDetailModal .scv3g-times { flex:1 1 100%; display:flex; gap:6px; flex-wrap:wrap; margin-top:2px; }
+        #eventDetailModal .scv3g-times > div { display:inline-flex; align-items:baseline; gap:6px; background:var(--g-card); border:1px solid var(--g-hair);
+            border-radius:9px; padding:6px 9px; white-space:nowrap; }
+        #eventDetailModal .scv3g-times span { font:600 9px/1 'JetBrains Mono',monospace; letter-spacing:.1em; text-transform:uppercase; color:var(--g-mut); }
+        #eventDetailModal .scv3g-times b { font:700 14px/1 'JetBrains Mono',monospace; color:var(--g-ink); }
         #eventDetailModal .scv3g-hbtn { width:34px; height:34px; border-radius:12px; background:var(--g-card); border:1px solid var(--g-hair);
             display:flex; align-items:center; justify-content:center; color:var(--g-mut); cursor:pointer; flex:0 0 auto; padding:0; }
         #eventDetailModal .scv3g-body { background:var(--g-bg) !important; padding:12px !important; display:flex; flex-direction:column; }
@@ -77738,6 +77749,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 <button onclick="GolferEventsSystem.closeEventDetail()" class="scv3g-hbtn" title="Close">
                     <span class="material-symbols-outlined" style="font-size:15px;">close</span>
                 </button>
+                <!-- v1441: full-width row under the title: Departure / Tee off -->
+                <div id="scv3gTimes" class="scv3g-times" style="display:none;"></div>
             </div>
 
             <div class="modal-body max-h-[70vh] overflow-y-auto scv3g-body">
@@ -134956,7 +134969,11 @@ class EventNotificationSystem {
     static getNewRegistrationCount(event) {
         if (!event || !event.id) return 0;
         const key = `mcipro_event_reg_seen_${event.id}`;
-        const lastSeenCount = parseInt(localStorage.getItem(key) || '0');
+        // v1441: "new since you last opened it" only means something once you HAVE opened it —
+        // a never-opened event would otherwise say "14 registered · 14 new".
+        const seen = localStorage.getItem(key);
+        if (seen === null) return 0;
+        const lastSeenCount = parseInt(seen || '0');
         const currentCount = event.registeredCount || 0;
         return Math.max(0, currentCount - lastSeenCount);
     }
@@ -148217,7 +148234,7 @@ class GolferEventsManager {
     // everywhere outside JOA. JOA events still default to Korean + translate toggle.)
     static EVENT_LABELS = {
         ko: {
-            cutoff: '마감', tbd: '미정', joined: '명 참가', cancelled: '취소됨',
+            cutoff: '마감', tbd: '미정', joined: '명 참가', regTag: '{n}명 등록', regTagMax: '{n}/{m}명 등록', newTag: '신규 {n}', teeTime: '티오프', cancelled: '취소됨',
             cancelledMsg: '이 이벤트는 골프장에서 취소되었습니다', dismiss: '삭제',
             results: '결과', viewDetails: '상세보기', share: '공유',
             registered: '등록됨', pending: '승인 대기', pastEvent: '지난 이벤트',
@@ -148236,7 +148253,7 @@ class GolferEventsManager {
             noPlayersYet: '아직 등록 선수 없음', playersCount: '{n}명', noEvents: '이벤트가 없습니다', adjustFilters: '필터를 조정해 보세요', lang: 'ko'
         },
         th: {
-            cutoff: 'ปิดรับ', tbd: 'รอกำหนด', joined: ' คนเข้าร่วม', cancelled: 'ยกเลิกแล้ว',
+            cutoff: 'ปิดรับ', tbd: 'รอกำหนด', joined: ' คนเข้าร่วม', regTag: 'ลงทะเบียน {n} คน', regTagMax: 'ลงทะเบียน {n}/{m}', newTag: 'ใหม่ {n}', teeTime: 'ทีออฟ', cancelled: 'ยกเลิกแล้ว',
             cancelledMsg: 'กิจกรรมนี้ถูกยกเลิกโดยสนามกอล์ฟ', dismiss: 'ปิด',
             results: 'ผลการแข่งขัน', viewDetails: 'ดูรายละเอียด', share: 'แชร์',
             registered: 'ลงทะเบียนแล้ว', pending: 'รออนุมัติ', pastEvent: 'กิจกรรมที่ผ่านมา',
@@ -148255,7 +148272,7 @@ class GolferEventsManager {
             noPlayersYet: 'ยังไม่มีผู้เล่น', playersCount: '{n} คน', noEvents: 'ไม่พบกิจกรรม', adjustFilters: 'ลองปรับตัวกรอง', lang: 'th'
         },
         ja: {
-            cutoff: '締切', tbd: '未定', joined: '名参加', cancelled: 'キャンセル済み',
+            cutoff: '締切', tbd: '未定', joined: '名参加', regTag: '{n}名登録', regTagMax: '{n}/{m}名登録', newTag: '新規 {n}', teeTime: 'ティーオフ', cancelled: 'キャンセル済み',
             cancelledMsg: 'このイベントはゴルフ場によりキャンセルされました', dismiss: '閉じる',
             results: '結果', viewDetails: '詳細を見る', share: '共有',
             registered: '登録済み', pending: '承認待ち', pastEvent: '過去のイベント',
@@ -148274,7 +148291,7 @@ class GolferEventsManager {
             noPlayersYet: 'まだ登録者なし', playersCount: '{n}名', noEvents: 'イベントが見つかりません', adjustFilters: 'フィルターを調整してください', lang: 'ja'
         },
         en: {
-            cutoff: 'Cutoff', tbd: 'TBD', joined: ' joined', cancelled: 'CANCELLED',
+            cutoff: 'Cutoff', tbd: 'TBD', joined: ' joined', regTag: '{n} registered', regTagMax: '{n}/{m} registered', newTag: '{n} new', teeTime: 'Tee off', cancelled: 'CANCELLED',
             cancelledMsg: 'This event was cancelled by the golf course', dismiss: 'Dismiss',
             results: 'Results', viewDetails: 'View Details', share: 'Share',
             registered: 'Registered', pending: 'Pending Approval', pastEvent: 'Past Event',
@@ -148422,10 +148439,13 @@ class GolferEventsManager {
             return '';
         })();
         const _dep = event.departureTime || event.departure_time || '';
-        const _fmtBit = (event.format || event.scoringFormat || '') ? String(event.format || event.scoringFormat).toUpperCase()
-            : (registered > 0 ? (registered + ' ' + L.going) : '');
-        const _meta = [_socShort, _dep ? (L.dep + this.formatTime(_dep, L.lang)) : null,
-            event.startTime ? (L.tee + this.formatTime(event.startTime, L.lang)) : null, _fmtBit || null].filter(Boolean).join(' · ');
+        const _fmtBit = (event.format || event.scoringFormat || '') ? String(event.format || event.scoringFormat).toUpperCase() : '';
+        // v1441: society + format only. The times used to ride this ONE-LINE ellipsis meta, and at
+        // phone width "TRGG · DEP 10:15 AM · T…" clipped the tee time off every card (Pete 2026-10-03).
+        const _meta = [_socShort, _fmtBit || null].filter(Boolean).join(' · ');
+        // v1441: departure + tee on their OWN wrapping row, departure first (v686 rule), value in ink.
+        const _times = [_dep ? `<span>${L.dep.trim()} <b>${this.formatTime(_dep, L.lang)}</b></span>` : '',
+            event.startTime ? `<span>${L.tee.trim()} <b>${this.formatTime(event.startTime, L.lang)}</b></span>` : ''].join('');
         const _tags = [];
         if (isToday && !isPast) _tags.push(`<span class="scv3g-tag g">${L.today}</span>`);
         else if (isTomorrow && !isPast) _tags.push(`<span class="scv3g-tag b">${L.tomorrow}</span>`);
@@ -148449,11 +148469,15 @@ class GolferEventsManager {
         else if (isFull) _tags.push(`<span class="scv3g-tag r">${L.full}</span>`);
         else if (isFillingFast) _tags.push(`<span class="scv3g-tag a">${L.fillingFast} · ${availability} LEFT</span>`);
         else _tags.push(`<span class="scv3g-tag">${L.open}</span>`);
-        if (event.cutoff && !isPast && !isPastCutoff && !isCancelled) _tags.push(`<span class="scv3g-tag">⏰ ${this.formatDateTime(event.cutoff, L.lang)}</span>`);
-        {
-            const nr = EventNotificationSystem.getNewRegistrationCount(event);
-            if (nr > 0) _tags.push(`<span class="scv3g-tag b">+${nr}${L.joined}</span>`);
+        // v1441: the card STATES how many are registered ("14 registered", "14/40 registered"). The old
+        // "+1 joined" tag was only the delta since you last opened the event — nobody could read it
+        // (Pete 2026-10-03). That delta now rides as a suffix: "14 registered · 1 new".
+        if (!isCancelled && (registered > 0 || max > 0)) {
+            const nr = isPast ? 0 : EventNotificationSystem.getNewRegistrationCount(event);
+            const _rt = (max > 0 ? L.regTagMax : L.regTag).replace('{n}', registered).replace('{m}', max);
+            _tags.push(`<span class="scv3g-tag${nr > 0 ? ' b' : ''}">${_rt}${nr > 0 ? ' · ' + L.newTag.replace('{n}', nr) : ''}</span>`);
         }
+        if (event.cutoff && !isPast && !isPastCutoff && !isCancelled) _tags.push(`<span class="scv3g-tag">⏰ ${this.formatDateTime(event.cutoff, L.lang)}</span>`);
         let _stateBtn = '';
         if (isCancelled) _stateBtn = `<button class="scv3g-btn danger" onclick="event.stopPropagation(); GolferEventsSystem.dismissCancelledEvent('${event.id}')">${L.dismiss}</button>`;
         else if (isPast) _stateBtn = event.resultsPublished ? `<button class="scv3g-btn warn" onclick="event.stopPropagation(); GolferEventsSystem.viewEventResults('${event.id}')">${L.results}</button>` : '';
@@ -148502,6 +148526,7 @@ class GolferEventsManager {
                 <div class="m">
                     <div class="nm">${_logo}<span>${event.courseName || event.name}</span></div>
                     <div class="s">${_meta}</div>
+                    ${_times ? `<div class="tm">${_times}</div>` : ''}
                     <div class="tags">${_tags.join('')}</div>
                     <div class="bar"><i style="width:${_pct}%"></i></div>
                     ${EventNoticeBoard.cardSection(event.id)}
@@ -149837,16 +149862,27 @@ class GolferEventsManager {
     _scv3gDetail() {
         const ev = this.currentEvent; if (!ev) return;
         const meta = document.getElementById('scv3gMeta');
+        const dep = ev.departureTime || ev.departure_time || '';
         if (meta) {
-            const dep = ev.departureTime || ev.departure_time || '';
             const bits = [
                 ev.date ? new Date(ev.date).toLocaleDateString(_lvLocale(), { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase().replace(',', '') : '',
-                dep ? 'DEP ' + String(dep).slice(0, 5) : '',
-                ev.startTime ? 'TEE ' + String(ev.startTime).slice(0, 5) : '',
                 (ev.format || ev.scoringFormat || '') ? String(ev.format || ev.scoringFormat).toUpperCase() : '',
                 ev.courseName || ''
             ].filter(Boolean);
             meta.textContent = bits.join(' · ');
+        }
+        // v1441: the two times get their OWN labelled row under the title — they used to be two
+        // 10px grey words inside the meta line and golfers could not find the tee time when
+        // registering (Pete 2026-10-03). Departure first (v686 rule).
+        const times = document.getElementById('scv3gTimes');
+        if (times) {
+            const L = this.getEventLabels(ev);
+            const chip = (lbl, v) => { const d = document.createElement('div'); const l = document.createElement('span'); l.textContent = lbl;
+                const b = document.createElement('b'); b.textContent = this.formatTime(String(v), L.lang); d.appendChild(l); d.appendChild(b); return d; };
+            times.innerHTML = '';
+            if (dep) times.appendChild(chip(L.departure, dep));
+            if (ev.startTime) times.appendChild(chip(L.teeTime, ev.startTime));
+            times.style.display = times.childElementCount ? 'flex' : 'none';
         }
         const top = document.getElementById('scv3gTopPanel');
         const spots = document.getElementById('scv3gSpots');

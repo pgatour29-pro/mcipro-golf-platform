@@ -93,7 +93,7 @@
   };
 
   var OT = window.OpenTimes = {
-    _v: 1445,
+    _v: 1446,
     sb: null, side: null, slug: null, courseName: null, lang: 'en',
     me: null,          // course side: { id: 'course:<slug>', name }; society side: { id: LINE id, name }
     society: null,     // society side: { id, name }
@@ -259,7 +259,8 @@
           for (var i = 0; i < c.groups; i++) {
             out.push({ id: 'society-otc-' + c.id + '-' + i, ot: 'claim', otId: o.id, eventId: c.event_id || '', time: self.slotTime(o, c.slot_index + i),
               course: 'A', tee: 1, col: 0, bookingType: 'society', type: 'society_event', source: 'open-time-db', groupId: 'society-otc-' + c.id,
-              groupName: c.society_name + ' · ' + self.t('held'), societyName: c.society_name,
+              // the sheet's pill template writes groupName as HTML — escape it here (v1446 security review)
+              groupName: self.esc(c.society_name) + ' · ' + self.esc(self.t('held')), societyName: self.esc(c.society_name), name: c.society_name,
               groupIndex: i, groupTotal: c.groups, startTime: c.tee_time, endTime: self.slotTime(o, c.slot_index + c.groups), golfers: [], status: 'confirmed' });
           }
         });

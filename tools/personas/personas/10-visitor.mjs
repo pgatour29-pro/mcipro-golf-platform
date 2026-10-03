@@ -73,5 +73,22 @@ export default {
             },
             check: async (c) => ({ ok: c.sees('Caddy') && c.sees('Pro Shop') && c.sees('Society Organizer'), note: '' }),
         },
+        {
+            name: 'Try the staff door with the obvious PIN (000000) as Society Organizer',
+            expect: 'a stranger with no account is REFUSED; a real society\'s organizer dashboard must not open',
+            do: async (c) => {
+                c.evalJS(`loginWithPin('society')`); await c.sleep(2500);
+                // first society in the list — whichever it is, Nok has no business being its organizer
+                c.evalJS(`(function(){ var b=document.querySelector('[onclick*="SocietySelectorSystem.selectSociety"]'); if (b) b.click(); })()`); await c.sleep(2000);
+                if (c.visible('#societyOrganizerPinModal')) { c.fill('#societyOrganizerPinInput', '000000'); c.evalJS(`SocietyOrganizerAuth.verifyPin()`); await c.sleep(4000); }
+            },
+            check: async (c) => {
+                const r = c.evalJS(`JSON.stringify({ dash: !!(document.getElementById('societyOrganizerDashboard') && document.getElementById('societyOrganizerDashboard').classList.contains('active')), who: (window.AppState && AppState.currentUser && AppState.currentUser.lineUserId) || '', role: (window.AppState && AppState.currentUser && AppState.currentUser.role) || '' })`);
+                const o = typeof r === 'string' ? JSON.parse(r) : r;
+                if (o.dash) return { ok: false, note: `000000 opened the organizer dashboard for organizer ${String(o.who).slice(0, 6)}… (role ${o.role}) with no account at all` };
+                return { ok: true, note: 'refused' };
+            },
+            blocking: false,
+        },
     ],
 };

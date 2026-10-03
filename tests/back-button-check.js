@@ -9,5 +9,8 @@ lowered.forEach(r => { const z = +r.match(/z-index:\s*(\d+)/)[1]; if (z !== 2147
 if (!/function dashboardGoBack\(\) \{\s*\/\/ v1366[^\n]*\n\s*const _top = _backTopOverlay\(\);\s*if \(_top\) \{ _backCloseOverlay\(_top\); return; \}/.test(s)) fail.push('dashboardGoBack must start with the _backTopOverlay() catch-all');
 if (!/v1402 BACK NEVER A DEAD TAP[\s\S]{0,900}if \(!NavHistory\.canGoBack\(\)\) \{[\s\S]{0,400}showGolferTab\('overview', null\)/.test(s)) fail.push('dashboardGoBack must fall back to the golfer home when history is empty (v1402)');
 if (!/if \(dashboardId === 'golferDashboard' && typeof NavHistory !== 'undefined'\) NavHistory\.push\(/.test(s)) fail.push('TabManager.showTab must record golfer tab switches in NavHistory (v1402)');
+// v1442: a PIN organizer (no line_user_id) never leaves the organizer home for the organizer's PERSONAL golfer dashboard
+if (!/org-on-home'\)\) \{ try \{ showOrganizerTab\('home'\); \} catch \(e\) \{\} return; \}[\s\S]{0,900}_ownGolfer = localStorage\.getItem\('line_user_id'\)[\s\S]{0,120}if \(!_ownGolfer\) return;[\s\S]{0,120}ScreenManager\.showScreen\('golferDashboard'\)/.test(s)) fail.push('organizer-home back must check line_user_id before leaving to the golfer dashboard (v1442: PIN entrants have no golfer account)');
+if (/window\.LiveGamesSystem\?\.cleanupOldPools\)\s*\{\s*window\.LiveGamesSystem\.cleanupOldPools\(\);/.test(s)) fail.push('LiveScorecardManager.init must not run the global side_game_pools delete from the browser (v1442)');
 if (fail.length) { console.error('✗ back button guard:\n  ' + fail.join('\n  ')); process.exit(1); }
 console.log('✓ back button: top layer + catch-all in place');

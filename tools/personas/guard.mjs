@@ -14,7 +14,9 @@ export const GUARD_JS = `(function(){
             if (/supabase\\.co\\/(rest|storage|functions)\\//.test(url) && m !== 'GET' && m !== 'HEAD' && m !== 'OPTIONS') {
                 var rpc = /\\/rest\\/v1\\/rpc\\/([a-z0-9_]+)/i.exec(url);
                 var tbl = /\\/rest\\/v1\\/([a-z0-9_]+)/i.exec(url);
-                var ok = (tbl && ALLOW_TABLES[tbl[1]]) || (rpc && !RW.test(rpc[1]));
+                var body = (init && typeof init.body === 'string') ? init.body : '';
+                var dmRead = /functions\\/v1\\/secure-dm/.test(url) && /"action":"(read|read_conversation|unread_count|list|count)"/.test(body);
+                var ok = (tbl && ALLOW_TABLES[tbl[1]]) || (rpc && !RW.test(rpc[1])) || dmRead;
                 if (!ok) {
                     window.__personaBlocked.push({ m: m, url: url.slice(0, 200), at: new Date().toISOString() });
                     return Promise.resolve(new Response('{"error":"persona write guard"}', { status: 403, headers: { 'content-type': 'application/json' } }));

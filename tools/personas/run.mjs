@@ -42,7 +42,21 @@ const ctx = {
         await B.waitFor('document.readyState === "complete"', { timeout: 60000 });
         B.evalJS(GUARD_JS);
     },
-    blocked: () => { const v = B.evalJS('JSON.stringify(window.__personaBlocked || [])'); return typeof v === 'string' ? JSON.parse(v) : (v || []); },
+    blocked: () => { try { const v = B.evalJS('JSON.stringify(window.__personaBlocked || [])'); const a = typeof v === 'string' ? JSON.parse(v) : v; return Array.isArray(a) ? a : []; } catch { return []; } },
+    // things a person sees that no step asked about: icon names leaking as words into <option>s and
+    // placeholders (icon fonts never render there), and any visible text wider than the phone
+    lint: () => {
+        try {
+            const v = B.evalJS(`JSON.stringify((function(){ var out=[]; var ICON=/\\b(expand_less|expand_more|chevron_right|chevron_left|arrow_back|arrow_forward|arrow_upward|arrow_downward|close|menu|check|search|edit|delete|add|remove|refresh|settings|info|warning|error|star|star_outline|schedule|calendar_month|group|groups|person|person_add|badge|flag|sports_golf|golf_course|emoji_events|leaderboard|scoreboard|campaign|share|more_horiz|more_vert|filter_list|sort|visibility|visibility_off|lock|lock_open|logout|dashboard|home|chat|photo_camera|qr_code_2|phone_iphone|android|smartphone|headset_mic|emergency|storefront|point_of_sale|apps|assignment|menu_book|help|school|dialpad|description|grid_on|light_mode|dark_mode|blur_on|brightness_7|filter_1|filter_3|done_all|confirmation_number|grid_view|add_circle|edit_calendar|trophy|casino|west|place|map|directions_car|local_taxi|payments|paid|receipt|print|download|upload|cloud|sync|history|timer|bolt|tune|swap_horiz|open_in_new)\\b/;
+                [...document.querySelectorAll('select')].filter(function(sel){ var r=sel.getBoundingClientRect(); return r.width>0 && r.height>0; }).forEach(function(sel){ [...sel.options].forEach(function(o){ var t=(o.textContent||'').trim(); var m=ICON.exec(t); if (m && /_/.test(m[1])) out.push({ kind:'icon-name-in-dropdown', where:(o.closest('select')&&o.closest('select').id)||'select', text:t.slice(0,60) }); }); });
+                [...document.querySelectorAll('input[placeholder]')].filter(function(i){ var r=i.getBoundingClientRect(); return r.width>0 && r.height>0; }).forEach(function(i){ var m=ICON.exec(i.placeholder||''); if (m && /_/.test(m[1])) out.push({ kind:'icon-name-in-placeholder', where:i.id||'input', text:i.placeholder.slice(0,60) }); });
+                var w = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth); if (w > innerWidth + 1) out.push({ kind:'page-wider-than-phone', where:'document', text: w+'px vs '+innerWidth+'px' });
+                return out; })())`);
+            const a = typeof v === 'string' ? JSON.parse(v) : v; return Array.isArray(a) ? a : [];
+        } catch { return []; }
+    },
+    // native dialogs freeze the CDP bridge; a persona answers them like a person would
+    answerDialogs: (yes = true) => B.evalJS(`(function(){ window.confirm=function(){return ${yes ? 'true' : 'false'};}; window.alert=function(m){ (window.__personaAlerts=window.__personaAlerts||[]).push(String(m)); }; window.prompt=function(){return null;}; return 'dialogs'; })()`),
 };
 
 const results = [];
@@ -50,10 +64,12 @@ for (const p of personas) {
     const t0 = Date.now();
     const rec = { id: p.id, title: p.title, device: p.device, writes: p.writes || 'none', steps: [], blocked: [], errors: '', ms: 0 };
     console.log(`\n== ${p.title} (${p.device.label}, ${p.device.w}x${p.device.h})`);
+    if (p.skip) { rec.skipped = p.skip; console.log('  skipped: ' + p.skip); results.push(rec); continue; }
     B.close();
     try {
         if (p.setup) await p.setup(ctx);
         let stuck = false;
+        const lintSeen = new Map();
         for (const s of p.steps) {
             const st = { name: s.name, expect: s.expect, ms: 0, ok: false, note: '', shot: '' };
             if (stuck) { st.note = 'not reached: persona was stuck on an earlier step'; st.skipped = true; rec.steps.push(st); continue; }
@@ -71,11 +87,13 @@ for (const p of personas) {
                 st.shot = `${p.id}-${String(rec.steps.length + 1).padStart(2, '0')}.png`;
                 B.screenshot(join(OUT, st.shot));
             }
+            for (const l of ctx.lint()) { const k = l.kind + '|' + l.where + '|' + l.text; if (!lintSeen.has(k)) { lintSeen.set(k, { ...l, step: s.name }); } }
             rec.steps.push(st);
             console.log(`  ${st.ok ? 'ok ' : 'XX '} ${String(st.ms).padStart(6)}ms  ${s.name}${st.note ? '  — ' + st.note : ''}`);
             if (!st.ok && s.blocking !== false) stuck = true;
         }
-        rec.blocked = ctx.blocked();
+        rec.blocked = ctx.blocked() || [];
+        rec.lint = [...lintSeen.values()];
         rec.errors = B.pageErrors();
         rec.final = `${p.id}-final.png`; B.screenshot(join(OUT, rec.final));
         if (p.teardown) await p.teardown(ctx);
@@ -96,7 +114,11 @@ for (const r of results) {
     const reached = r.steps.filter((s) => !s.skipped).length;
     const okN = r.steps.filter((s) => s.ok).length;
     if (firstFail) blockers.push({ who: r.title, step: firstFail.name, note: firstFail.note, shot: firstFail.shot, lost: r.steps.length - reached });
-    for (const b of r.blocked) blockers.push({ who: r.title, step: 'tried to WRITE live data', note: `${b.m} ${b.url}`, shot: '', lost: 0, guard: true });
+    const seenW = new Map();
+    for (const b of r.blocked) { const k = b.m + ' ' + b.url.replace(/\?.*$/, ''); seenW.set(k, (seenW.get(k) || 0) + 1); }
+    for (const [k, n] of seenW) blockers.push({ who: r.title, step: 'tried to WRITE live data', note: `${k}${n > 1 ? ` (${n}×)` : ''}`, shot: '', lost: 0, guard: true });
+    for (const l of (r.lint || [])) blockers.push({ who: r.title, step: l.kind, note: `${l.where}: "${l.text}" (seen at: ${l.step})`, shot: '', lost: 0, lint: true });
+    if (r.skipped) { lines.push(`## ${r.title} — skipped: ${r.skipped}`); lines.push(''); continue; }
     lines.push(`## ${r.title} — ${okN}/${r.steps.length} steps, ${r.device.label} ${r.device.w}px, ${(r.ms / 1000).toFixed(1)}s`);
     lines.push('');
     lines.push('| # | step | expected | result | ms |');
@@ -104,6 +126,7 @@ for (const r of results) {
     r.steps.forEach((s, i) => lines.push(`| ${i + 1} | ${s.name} | ${s.expect || ''} | ${s.skipped ? 'not reached' : s.ok ? 'ok' : 'FAIL'}${s.note ? ' — ' + s.note : ''}${s.shot ? ` ([shot](${s.shot}))` : ''} | ${s.skipped ? '' : s.ms} |`));
     const slow = r.steps.filter((s) => s.ok && s.ms > SLOW_MS);
     if (slow.length) lines.push(`\nSlow (> ${SLOW_MS}ms): ${slow.map((s) => `${s.name} ${s.ms}ms`).join('; ')}`);
+    if ((r.lint || []).length) lines.push(`\nSeen on screen: ${r.lint.map((l) => `${l.kind} (${l.where}: "${l.text}", at: ${l.step})`).join('; ')}`);
     if (r.blocked.length) lines.push(`\nWrite guard refused ${r.blocked.length} call(s): ${r.blocked.map((b) => `${b.m} ${b.url}`).join('; ')}`);
     if (r.errors && !/^✗|no errors|^\s*$/i.test(r.errors)) lines.push(`\nPage errors:\n\n\`\`\`\n${r.errors.slice(0, 1500)}\n\`\`\``);
     if (r.fatal) lines.push(`\nFATAL: ${r.fatal}`);
@@ -120,4 +143,4 @@ lines.unshift(`# Persona run ${stamp} — ${BASE}`);
 writeFileSync(join(OUT, 'report.md'), lines.join('\n'));
 writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp, base: BASE, results }, null, 2));
 console.log(`\nreport: ${join(OUT, 'report.md')}`);
-process.exit(blockers.some((b) => !b.guard) ? 1 : 0);
+process.exit(blockers.some((b) => !b.guard && !b.lint) ? 1 : 0);

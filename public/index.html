@@ -40856,6 +40856,13 @@ Sent from Login Page`;
             const _orgDash = document.getElementById('societyOrganizerDashboard');
             if (_orgDash && _orgDash.classList.contains('active') && _orgDash.classList.contains('light-mode')) {
                 if (!_orgDash.classList.contains('org-on-home')) { try { showOrganizerTab('home'); } catch (e) {} return; }
+                // v1442 (persona run 2026-10-03): a PIN entrant has NO golfer account of their own — the
+                // "golfer dashboard" for them is the society organizer's PERSONAL account (handicap,
+                // rounds, unread messages). With no signed-in golfer the organizer home IS the root:
+                // back stays put, exactly like the staff shells (v1361). Logout is the way out.
+                let _ownGolfer = null;
+                try { _ownGolfer = localStorage.getItem('line_user_id'); } catch (e) {}
+                if (!_ownGolfer) return;
                 try { ScreenManager.showScreen('golferDashboard'); showGolferTab('overview', null); } catch (e) {}
                 return;
             }
@@ -96951,10 +96958,11 @@ class LiveScorecardSystem {
         // Clean up old/failed offline data first
         this.cleanupOldOfflineData();
 
-        // Clean up old public game pools from past dates
-        if (window.LiveGamesSystem?.cleanupOldPools) {
-            window.LiveGamesSystem.cleanupOldPools();
-        }
+        // v1442 (persona run 2026-10-03): the client-side "clean up old pools" ran a GLOBAL
+        // `DELETE side_game_pools WHERE id IN (...)` from EVERY phone on EVERY Play Golf open —
+        // other users' pools included. RLS refused it (pools from June are still there), so it was
+        // one wasted write-shaped request per open and a live delete the moment a policy loosens.
+        // Housekeeping belongs server-side (pg_cron), never in a golfer's browser.
 
         // CRITICAL: Each init step is independent — one failure must NOT crash the rest
         // INIT ORDER MATTERS:

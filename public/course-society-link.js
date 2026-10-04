@@ -49,7 +49,22 @@
     ['siam-cc-waterside', [['siam', 'waterside']]],
     ['st-andrews-2000', [['andrews']]],
     ['thai-country-club', [['thai', 'country']]],
-    ['treasure-hill-golf', [['treasure', 'hill']]]
+    ['treasure-hill-golf', [['treasure', 'hill']]],
+    // v1455: every venue on the platform has a sheet (Tee Times) — appended so the venues above keep winning
+    ['siam-rolling-hills', [['rolling', 'hills']]],
+    ['siam-bangkok', [['siam', 'bangkok']]],
+    ['black-mountain', [['black', 'mountain']]],
+    ['springfield-royal', [['springfield']]],
+    ['majestic-creek', [['majestic']]],
+    ['lake-view-huahin', [['lake', 'view']]],
+    ['palm-hills', [['palm', 'hills']]],
+    ['pineapple-valley', [['pineapple', 'valley']]],
+    ['royal-hua-hin', [['royal', 'hua', 'hin']]],
+    ['sea-pines', [['sea', 'pines']]],
+    ['alpine-chiangmai', [['alpine']]],
+    ['highlands-chiangmai', [['highlands']]],
+    ['north-hill-chiangmai', [['north', 'hill']]],
+    ['summit-green-valley', [['summit']]]
   ];
 
   var STR = {

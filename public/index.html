@@ -14400,7 +14400,7 @@
                 'lb.leaders': 'LEADERS',
                 'lb.title': 'Community Leaderboard',
                 'lb.min1': 'Min 1 round',
-                'lb.showinglast': 'Showing last recorded leaderboard',
+                'lb.showinglast': 'Showing last recorded leaderboard', 'lb.moreshots': 'Show {n} more', 'lb.showless': 'Show less',
                 'lb.noroundsyear': 'No rounds yet this year — get out there!',
                 'lb.norecorded': 'No rounds recorded yet this year',
                 'lb.playfirst': 'Play your first round to start climbing the leaderboard!',
@@ -18056,7 +18056,7 @@
                 'lb.leaders': 'ผู้นำ',
                 'lb.title': 'กระดานผู้นำชุมชน',
                 'lb.min1': 'ขั้นต่ำ 1 รอบ',
-                'lb.showinglast': 'แสดงกระดานล่าสุดที่บันทึกไว้',
+                'lb.showinglast': 'แสดงกระดานล่าสุดที่บันทึกไว้', 'lb.moreshots': 'ดูเพิ่มอีก {n} ช็อต', 'lb.showless': 'ย่อลง',
                 'lb.noroundsyear': 'ปีนี้ยังไม่มีรอบ — ออกไปเล่นกันเถอะ!',
                 'lb.norecorded': 'ปีนี้ยังไม่มีรอบที่บันทึก',
                 'lb.playfirst': 'เล่นรอบแรกเพื่อเริ่มไต่อันดับ!',
@@ -21945,7 +21945,7 @@
                 'lb.leaders': '리더',
                 'lb.title': '커뮤니티 리더보드',
                 'lb.min1': '최소 1라운드',
-                'lb.showinglast': '마지막으로 기록된 리더보드 표시',
+                'lb.showinglast': '마지막으로 기록된 리더보드 표시', 'lb.moreshots': '{n}개 더 보기', 'lb.showless': '접기',
                 'lb.noroundsyear': '올해 아직 라운드가 없습니다 — 나가서 플레이하세요!',
                 'lb.norecorded': '올해 기록된 라운드가 없습니다',
                 'lb.playfirst': '첫 라운드를 플레이하고 리더보드에 도전하세요!',
@@ -25394,7 +25394,7 @@
                 'lb.leaders': 'リーダー',
                 'lb.title': 'コミュニティリーダーボード',
                 'lb.min1': '最低1ラウンド',
-                'lb.showinglast': '最後に記録されたリーダーボードを表示',
+                'lb.showinglast': '最後に記録されたリーダーボードを表示', 'lb.moreshots': 'さらに{n}件を表示', 'lb.showless': '閉じる',
                 'lb.noroundsyear': '今年はまだラウンドがありません — さあプレーへ！',
                 'lb.norecorded': '今年の記録されたラウンドはありません',
                 'lb.playfirst': '最初のラウンドをプレーしてリーダーボードを駆け上がろう！',
@@ -52713,6 +52713,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (!_shotLabels[roundId]) {
                         const course = roundCourseMap[roundId] || '';
                         _shotLabels[roundId] = {
+                            ts: Date.parse(roundDateMap[roundId]) || 0,
                             shotDate: roundDateMap[roundId] ? new Date(roundDateMap[roundId]).toLocaleDateString(_lvLocale(), { month: 'short', day: 'numeric' }) : '',
                             courseName: course.replace(/golf|club|course|country|international|resort/gi, '').trim().split(' ').slice(0, 2).join(' ')
                         };
@@ -52788,21 +52789,23 @@ document.addEventListener('DOMContentLoaded', function() {
                         // Special shots! (an ace, or two-plus under par — every branch below needs one of these)
                         if (h.gross_score !== 1 && diff > -2) return;
                         const name = playerNames[playerId] || 'Unknown';
-                        const { shotDate, courseName } = _shotLabel(h.round_id);
+                        const { shotDate, courseName, ts } = _shotLabel(h.round_id);
                         if (h.gross_score === 1) {
                             s.holesInOne++;
-                            specialShots.push({ type: 'ace', emoji: micon('emoji_events'), label: 'HOLE IN ONE', name, hole: h.hole_number, par: h.par, course: courseName, date: shotDate, pid: playerId });
+                            specialShots.push({ type: 'ace', emoji: micon('emoji_events'), label: 'HOLE IN ONE', name, hole: h.hole_number, par: h.par, course: courseName, date: shotDate, ts, pid: playerId });
                         }
                         if (h.par === 5 && diff <= -2) {
                             s.eaglesOnPar5++;
-                            if (diff === -2) specialShots.push({ type: 'eagle5', emoji: micon('flight'), label: 'Eagle on Par 5', name, hole: h.hole_number, par: h.par, course: courseName, date: shotDate, pid: playerId });
-                            if (diff <= -3) specialShots.push({ type: 'albatross', emoji: micon('auto_awesome'), label: 'ALBATROSS', name, hole: h.hole_number, par: h.par, course: courseName, date: shotDate, pid: playerId });
+                            if (diff === -2) specialShots.push({ type: 'eagle5', emoji: micon('flight'), label: 'Eagle on Par 5', name, hole: h.hole_number, par: h.par, course: courseName, date: shotDate, ts, pid: playerId });
+                            if (diff <= -3) specialShots.push({ type: 'albatross', emoji: micon('auto_awesome'), label: 'ALBATROSS', name, hole: h.hole_number, par: h.par, course: courseName, date: shotDate, ts, pid: playerId });
                         }
                         if (h.par === 4 && diff <= -2) {
-                            specialShots.push({ type: 'eagle4', emoji: micon('flight'), label: 'Eagle on Par 4', name, hole: h.hole_number, par: h.par, course: courseName, date: shotDate, pid: playerId });
+                            specialShots.push({ type: 'eagle4', emoji: micon('flight'), label: 'Eagle on Par 4', name, hole: h.hole_number, par: h.par, course: courseName, date: shotDate, ts, pid: playerId });
                         }
                     }
                 });
+                // Best Shots read newest first (played date); same day → by player, then hole
+                specialShots.sort((a, b) => (b.ts - a.ts) || String(a.name).localeCompare(String(b.name)) || (a.hole - b.hole));
 
                 // Add round-level stats using golfer_id (min 55 to exclude test rounds)
                 // Exclude scramble rounds — only individual scores count
@@ -53241,17 +53244,25 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Build special shots card if any exist
                     let specialCard = '';
                     if (specialShots.length > 0) {
-                        const shotRows = specialShots.map(s =>
+                        const shotRow = s =>
                             `<div class="lb-row" style="flex-wrap:wrap;">
                                 <span class="lb-rank" style="color:#ff6b6b">${s.emoji}</span>
                                 <span class="lb-name" data-golfer-av="${s.pid || ''}" data-golfer-av-nm="${String(s.name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${s.name}</span>
                                 <span class="lb-val" style="color:#ff6b6b">H${s.hole} Par ${s.par}</span>
                                 <div style="width:100%;padding-left:28px;margin-top:-2px;"><span style="color:#9ca3af;font-size:10px;">${s.course || ''}${s.course && s.date ? ' • ' : ''}${s.date || ''}</span></div>
-                            </div>`
-                        ).join('');
+                            </div>`;
+                        // The 10 most recent stay on the card; older ones fold away so the card stops growing
+                        const olderShots = specialShots.slice(10);
+                        const moreShots = olderShots.length
+                            ? `<details class="lb-more">
+                                <summary><span class="lb-more-closed">${_lvT('lb.moreshots', 'Show {n} more').replace('{n}', olderShots.length)}</span><span class="lb-more-open">${_lvT('lb.showless', 'Show less')}</span>${micon('expand_more')}</summary>
+                                ${olderShots.map(shotRow).join('')}
+                            </details>`
+                            : '';
                         specialCard = `<div class="lb-card col-span-2 lg:col-span-1" style="border-color:#ff6b6b;background:linear-gradient(135deg,#1a1020,#0f0a18)">
                             <div class="lb-card-header" style="color:#ff6b6b">${micon('emoji_events')} Best Shots</div>
-                            ${shotRows}
+                            ${specialShots.slice(0, 10).map(shotRow).join('')}
+                            ${moreShots}
                         </div>`;
                     }
 
@@ -60354,6 +60365,28 @@ document.addEventListener('DOMContentLoaded', function() {
                         font-weight: 700;
                         flex-shrink: 0;
                     }
+                    .lb-more > summary {
+                        list-style: none;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 4px;
+                        min-height: 36px;
+                        margin-top: 6px;
+                        border-top: 1px solid rgba(255,107,107,0.25);
+                        color: #ff8a8a;
+                        font-size: 12px;
+                        font-weight: 700;
+                        cursor: pointer;
+                        user-select: none;
+                        -webkit-tap-highlight-color: transparent;
+                    }
+                    .lb-more > summary::-webkit-details-marker { display: none; }
+                    .lb-more > summary .material-symbols-outlined { font-size: 18px !important; transition: transform .15s; }
+                    .lb-more[open] > summary .material-symbols-outlined { transform: rotate(180deg); }
+                    .lb-more .lb-more-open, .lb-more[open] .lb-more-closed { display: none; }
+                    .lb-more[open] .lb-more-open { display: inline; }
+                    .lb-more[open] > summary { margin-bottom: 4px; }
                 </style>
                 <script>
                 // Full day leaderboard viewer

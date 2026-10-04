@@ -46,9 +46,14 @@ export default {
             check: async (c) => {
                 const r = c.evalJS(`(function(){ var els=[...document.querySelectorAll('body *')].filter(function(e){ var cs=getComputedStyle(e); var r=e.getBoundingClientRect(); return cs.position==='fixed' && r.height>innerHeight*0.6 && r.width>innerWidth*0.8 && cs.display!=='none' && e.id!=='loginScreen'; }); return els.map(function(e){return e.id||e.className.toString().slice(0,30);}); })()`);
                 const opened = Array.isArray(r) && r.length > 0;
-                c.evalJS(`(function(){ var b=[...document.querySelectorAll('button')].find(function(x){ var r=x.getBoundingClientRect(); return r.width>0 && /close/i.test(x.getAttribute('aria-label')||x.innerText||'') && x.closest('#loginScreen')===null; }); if(b) b.click(); })()`);
+                if (!opened) return { ok: false, note: 'nothing full-screen appeared' };
+                // close it with ITS OWN close control (a page-wide search hit the hidden side menu's "Close Menu"
+                // and left the preview over every later screen), then make sure it is really gone
+                const id = r[0];
+                c.evalJS(`(function(){ var m=document.getElementById(${JSON.stringify(id)}); var b=m && m.querySelector('[aria-label="Close"]'); if(b) b.click(); })()`);
                 await c.sleep(600);
-                return { ok: opened, note: opened ? `opened ${r[0]}` : 'nothing full-screen appeared' };
+                const still = c.evalJS(`(function(){ var m=document.getElementById(${JSON.stringify(id)}); if(!m) return false; var cs=getComputedStyle(m); return cs.display!=='none' && cs.visibility!=='hidden' && m.getBoundingClientRect().height>0; })()`) === true;
+                return { ok: !still, note: still ? `opened ${id} but its Close did not close it` : `opened ${id}, closed` };
             },
             blocking: false,
         },

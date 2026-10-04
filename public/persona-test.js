@@ -94,6 +94,12 @@
         return order.map(function (g) { var x = groups[g]; if (x.open) x.cleared = null; return x; });
     }
     function sev(g) { return g.kind === 'lint' ? 'warn' : 'stop'; }
+    // "since" = start of the current unbroken streak; first seen + the hit count go back further
+    function sinceLine(g) {
+        var since = g.streak_since || g.first_seen, back = g.first_seen && since && g.first_seen < since;
+        return 'In every run since ' + esc(bkk(since)) + ' · first seen ' + (back ? esc(bkk(g.first_seen)) : 'then') +
+            (g.first_version ? ' on ' + esc(g.first_version) : '') + ' · in ' + g.runs_seen + ' of ' + g.runs_since_first + ' runs from then';
+    }
     function issueTitle(g) {
         if (g.kind === 'lint') return esc(LINT[g.lintKind] || human(g.lintKind));
         if (g.kind === 'guard') return 'Tried to write live data on its own';
@@ -186,7 +192,10 @@
                   esc(hm(new Date(new Date(latest.started_at).getTime() + 70 * 60000))) + ' (Bangkok) or right after a deploy</div>';
 
             var groups = groupIssues(d.issues);
-            var open = groups.filter(function (g) { return g.open; });
+            // worst first: what stops a person before what is only flagged, then the longest-running
+            var open = groups.filter(function (g) { return g.open; }).sort(function (a, b) {
+                return (sev(a) === 'stop' ? 0 : 1) - (sev(b) === 'stop' ? 0 : 1) || (a.streak_since < b.streak_since ? -1 : 1);
+            });
             var stops = open.filter(function (g) { return sev(g) === 'stop'; }).length;
             var gone = groups.filter(function (g) { return !g.open && g.cleared; });
             var runs = d.runs || [];
@@ -214,8 +223,7 @@
                     '<span style="font-size:12px;color:#475569;">' + whoLine(g, titles) + '</span></div>' +
                     '<div style="font-size:13px;font-weight:700;color:#0f172a;margin-top:4px;">' + issueTitle(g) + '</div>' +
                     '<div style="font-size:12px;color:#334155;margin-top:2px;overflow-wrap:anywhere;">' + issueNote(g) + '</div>' +
-                    '<div style="font-size:11px;color:#64748b;margin-top:4px;">Since ' + esc(bkk(g.streak_since || g.first_seen)) +
-                    (g.first_version ? ' · first seen on ' + esc(g.first_version) : '') + ' · in ' + g.runs_seen + ' of ' + g.runs_since_first + ' runs since</div></div>' +
+                    '<div style="font-size:11px;color:#64748b;margin-top:4px;">' + sinceLine(g) + '</div></div>' +
                     thumb(shot) + '</div>';
             }).join('');
             return card('Wrong right now', 'from the last run · worst first · tap a picture to see the screen', rows);

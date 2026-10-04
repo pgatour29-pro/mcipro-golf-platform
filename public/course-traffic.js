@@ -41,7 +41,7 @@
       noGroups: 'No group is reporting from the course right now.', noGroupsSub: 'Positions come from golfers scoring in the app and from caddies tapping "Green done". No GPS.',
       finished: 'Finished today', roundTime: 'round', entered: 'scores typed in after the round — not used for pace',
       histT: 'Where it backs up', histSub: 'minutes over target, by hole', worst: 'Worst hole', next: 'Next worst', avgRound: 'Avg round', noHist: 'No live rounds here in the last 30 days.',
-      replay: 'Replay — {d}', replaySub: '{n} groups scored live', tapDay: 'Tap a day to replay it', close: 'Close', noGps: 'No GPS. Positions come from score entries and one caddy tap at every green.',
+      replay: 'Replay — {d}', replaySub: '{n} groups scored live', replaySub1: '1 group scored live', tapDay: 'Tap a day to replay it', close: 'Close', noGps: 'No GPS. Positions come from score entries and one caddy tap at every green.',
       // caddy card
       cOn: 'On hole', cDone: 'Green done → {h}', cLast: 'Finish — last green', cStart: 'Where did your group start?', c1: '1st tee', c10: '10th tee', cHere: '{m} min here (target {t})',
       cHint: 'One tap when your group walks off each green. The pro shop sees it instantly.', cUndo: 'Tap again to undo hole {h}', cFinished: 'Round finished · {d}', cProshop: 'From the pro shop', cMarshal: 'The marshal is on the way to hole {h}',
@@ -58,7 +58,7 @@
       noGroups: 'ตอนนี้ไม่มีกลุ่มรายงานจากสนาม', noGroupsSub: 'ตำแหน่งมาจากนักกอล์ฟที่บันทึกสกอร์ในแอป และแคดดี้ที่แตะ "จบกรีน" ไม่ใช้ GPS',
       finished: 'จบรอบวันนี้', roundTime: 'รอบ', entered: 'กรอกสกอร์หลังจบรอบ — ไม่นำมาคิดความเร็ว',
       histT: 'จุดที่ติดขัดบ่อย', histSub: 'นาทีที่เกินเป้า แยกตามหลุม', worst: 'หลุมแย่สุด', next: 'รองลงมา', avgRound: 'รอบเฉลี่ย', noHist: 'ไม่มีรอบสดที่นี่ใน 30 วันที่ผ่านมา',
-      replay: 'ย้อนดู — {d}', replaySub: '{n} กลุ่มบันทึกสด', tapDay: 'แตะวันเพื่อย้อนดู', close: 'ปิด', noGps: 'ไม่ใช้ GPS ตำแหน่งมาจากการบันทึกสกอร์และการแตะของแคดดี้ทุกกรีน',
+      replay: 'ย้อนดู — {d}', replaySub: '{n} กลุ่มบันทึกสด', replaySub1: '1 กลุ่มบันทึกสด', tapDay: 'แตะวันเพื่อย้อนดู', close: 'ปิด', noGps: 'ไม่ใช้ GPS ตำแหน่งมาจากการบันทึกสกอร์และการแตะของแคดดี้ทุกกรีน',
       cOn: 'อยู่หลุม', cDone: 'จบกรีน → {h}', cLast: 'จบ — กรีนสุดท้าย', cStart: 'กลุ่มเริ่มที่ไหน?', c1: 'ทีหลุม 1', c10: 'ทีหลุม 10', cHere: 'อยู่ {m} นาที (เป้า {t})',
       cHint: 'แตะหนึ่งครั้งเมื่อกลุ่มเดินออกจากแต่ละกรีน โปรช็อปเห็นทันที', cUndo: 'แตะอีกครั้งเพื่อยกเลิกหลุม {h}', cFinished: 'จบรอบ · {d}', cProshop: 'จากโปรช็อป', cMarshal: 'มาร์แชลกำลังไปหลุม {h}',
       cNudge: 'กลุ่มของคุณช้า {m} นาที ช่วยให้เดินเร็วขึ้นด้วย', cNudgeNoMin: 'ช่วยให้กลุ่มเดินทันด้วย', cFail: 'บันทึกไม่สำเร็จ — ลองอีกครั้ง', cPar: 'พาร์ {p}' },
@@ -74,7 +74,7 @@
       noGroups: '지금 코스에서 보고 중인 팀이 없습니다.', noGroupsSub: '위치는 앱에서 스코어를 입력하는 골퍼와 "그린 완료"를 누르는 캐디로부터 옵니다. GPS 없음.',
       finished: '오늘 종료', roundTime: '라운드', entered: '라운드 후 입력된 스코어 — 속도 계산 제외',
       histT: '정체가 생기는 곳', histSub: '홀별 목표 초과 시간', worst: '최악의 홀', next: '다음', avgRound: '평균 라운드', noHist: '최근 30일 이곳의 실시간 라운드가 없습니다.',
-      replay: '다시 보기 — {d}', replaySub: '{n}팀 실시간 기록', tapDay: '날짜를 눌러 다시 보기', close: '닫기', noGps: 'GPS 없음. 위치는 스코어 입력과 매 그린 캐디의 한 번 탭으로 옵니다.',
+      replay: '다시 보기 — {d}', replaySub: '{n}팀 실시간 기록', replaySub1: '1팀 실시간 기록', tapDay: '날짜를 눌러 다시 보기', close: '닫기', noGps: 'GPS 없음. 위치는 스코어 입력과 매 그린 캐디의 한 번 탭으로 옵니다.',
       cOn: '현재 홀', cDone: '그린 완료 → {h}', cLast: '종료 — 마지막 그린', cStart: '어디서 시작했나요?', c1: '1번 티', c10: '10번 티', cHere: '{m}분 경과 (목표 {t})',
       cHint: '팀이 그린을 떠날 때 한 번 누르세요. 프로샵이 바로 봅니다.', cUndo: '한 번 더 누르면 {h}번 홀 취소', cFinished: '라운드 종료 · {d}', cProshop: '프로샵에서', cMarshal: '마샬이 {h}번 홀로 가고 있습니다',
       cNudge: '팀이 {m}분 늦었습니다. 진행을 도와주세요.', cNudgeNoMin: '팀이 따라가도록 도와주세요.', cFail: '저장 실패 — 다시 시도하세요', cPar: '파 {p}' },
@@ -90,7 +90,7 @@
       noGroups: '今コースから報告している組はありません。', noGroupsSub: '位置はアプリでスコアを入力するゴルファーと「グリーン完了」を押すキャディから。GPSなし。',
       finished: '今日終了', roundTime: 'ラウンド', entered: 'ラウンド後に入力されたスコア — ペースには使いません',
       histT: '渋滞する場所', histSub: 'ホール別の目標超過分', worst: '最悪ホール', next: '次点', avgRound: '平均ラウンド', noHist: '過去30日間ここでのライブラウンドはありません。',
-      replay: 'リプレイ — {d}', replaySub: '{n}組がライブ入力', tapDay: '日付をタップしてリプレイ', close: '閉じる', noGps: 'GPSなし。位置はスコア入力と各グリーンでのキャディのワンタップから。',
+      replay: 'リプレイ — {d}', replaySub: '{n}組がライブ入力', replaySub1: '1組がライブ入力', tapDay: '日付をタップしてリプレイ', close: '閉じる', noGps: 'GPSなし。位置はスコア入力と各グリーンでのキャディのワンタップから。',
       cOn: '現在のホール', cDone: 'グリーン完了 → {h}', cLast: '終了 — 最終グリーン', cStart: 'どこからスタート？', c1: '1番ティー', c10: '10番ティー', cHere: '{m}分経過 (目標 {t})',
       cHint: '組がグリーンを離れたら一回タップ。プロショップにすぐ表示されます。', cUndo: 'もう一度タップで{h}番を取り消し', cFinished: 'ラウンド終了 · {d}', cProshop: 'プロショップから', cMarshal: 'マーシャルが{h}番に向かっています',
       cNudge: '組が{m}分遅れています。進行をお願いします。', cNudgeNoMin: '組の進行をお願いします。', cFail: '保存できませんでした — もう一度', cPar: 'パー{p}' }
@@ -516,7 +516,7 @@
     const sel = S.histDay && H.byDay[S.histDay];
     if (sel) {
       const gs = sel.groups.filter(g => !g.typedIn && Object.keys(g.dur).length);
-      h += '<div class="trf-sech"><b>' + esc(T('replay', { d: new Date(S.histDay + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }) })) + '</b><span>' + esc(T('replaySub', { n: gs.length })) + '</span></div>';
+      h += '<div class="trf-sech"><b>' + esc(T('replay', { d: new Date(S.histDay + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }) })) + '</b><span>' + esc(gs.length === 1 ? T('replaySub1') : T('replaySub', { n: gs.length })) + '</span></div>';
       h += '<div class="trf-box trf-gl"><div class="trf-heat">' + hh + gs.map(g => '<span class="hl">' + esc(g.tee || hm(g.startT || g.lastT)) + '</span>' +
         Array.from({ length: 18 }, (_, i) => { const m = g.dur[i + 1]; return '<i style="background:' + cell(m == null ? null : m - TGT(H.pars[i] || 4)) + '" title="' + (m == null ? '' : Math.round(m) + 'm') + '"></i>'; }).join('')).join('') + '</div>' +
         '<div style="padding:0 12px 12px;font-size:12px;font-weight:600;color:var(--trf-sub)">' + gs.map(g => esc((g.tee || '') + ' ' + (g.label || '')) + ': ' + (g.roundMin != null ? dur(g.roundMin) : '—')).join(' · ') + '</div></div>';

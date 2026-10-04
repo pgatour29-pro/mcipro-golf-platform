@@ -11193,8 +11193,11 @@
         $('ob-cancel').value = String(o.cancel_h != null ? o.cancel_h : 24);
         $('ob-allowfull').checked = o.allow_full !== false;
         $('ob-promptpay').value = o.promptpay || '';
-        $('ob-payee').value = o.payee || (el.courseSelect.options[el.courseSelect.selectedIndex] || {}).text || '';
+        $('ob-payee').value = o.payee || '';
+        $('ob-payee').placeholder = (el.courseSelect.options[el.courseSelect.selectedIndex] || {}).text || '';
         this._media = { qr: o.qr_url || '', photo: o.photo_url || '' };
+        // what is stored now — a save sends the payment fields ONLY when one of them was actually changed (they need the PIN)
+        this._payLoaded = { promptpay: (o.promptpay || ''), payee: (o.payee || ''), qr_url: (o.qr_url || '') };
         this._paintMedia(); this._warn();
         if (!this._wired) {
           this._wired = true;
@@ -11248,15 +11251,18 @@
           enabled: $('ob-enabled').checked, from: $('ob-from').value || '06:00', until: $('ob-until').value || '16:00',
           days: $('ob-days').value, lead_min: $('ob-lead').value, show_rates: $('ob-showrates').checked, rule: this._rule(),
           deposit_pp: String(Math.max(0, parseInt($('ob-deposit').value, 10) || 0)), pay_min: $('ob-paymin').value, cancel_h: $('ob-cancel').value,
-          allow_full: $('ob-allowfull').checked, promptpay: $('ob-promptpay').value || '', payee: $('ob-payee').value || '',
-          qr_url: this._media.qr || '', photo_url: this._media.photo || '', by: 'Pro shop'
+          allow_full: $('ob-allowfull').checked, photo_url: this._media.photo || '', by: 'Pro shop'
         };
+        const payNow = { promptpay: ($('ob-promptpay').value || '').replace(/\D/g, ''), payee: ($('ob-payee').value || '').trim(), qr_url: this._media.qr || '' };
+        const was = this._payLoaded || { promptpay: '', payee: '', qr_url: '' };
+        if (payNow.promptpay !== String(was.promptpay).replace(/\D/g, '') || payNow.payee !== String(was.payee).trim() || payNow.qr_url !== was.qr_url) Object.assign(cfg, payNow);
         // where golfers pay = money: the server changes it only with THIS course's own PIN (never stored here)
         const pin = ($('ob-pin').value || '').trim(); $('ob-pin').value = '';
         try {
           const { data, error } = await supabaseClient.rpc('teetime_save_online', { p_slug: slug, p_cfg: cfg, p_pin: pin || null });
           if (!error && data && data.reason === 'pin') { tsAlert(t('obPinNeeded')); return; }
           if (error || !data || !data.ok) throw new Error((error && error.message) || (data && data.reason) || 'failed');
+          const ob = data.online || {}; this._payLoaded = { promptpay: ob.promptpay || '', payee: ob.payee || '', qr_url: ob.qr_url || '' };
           const eff = data.cfg || {};
           if (cfg.rule !== 'none' && eff.rule !== cfg.rule) tsAlert(t('obSavedFallback').replace('{r}', eff.rule === 'none' ? t('obRuleNone') : eff.rule));
         } catch (e) { tsAlert(t('obSaveFail') + ' (' + (e.message || e) + ')'); }

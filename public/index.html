@@ -3401,9 +3401,12 @@
             /* Compact padding on mobile */
             #golferDashboard.round-active #golfer-scorecard {
                 padding: 6px 8px !important;
-                margin: -20px -16px;
-                padding-left: 16px !important;
-                padding-right: 16px !important;
+                /* v1449: pull out exactly as far as the parent pads (px-3 = 12px). -16px with 16px padding
+                   ran 4px past both screen edges (clipped, but the page measured 397 on a 393 phone); this
+                   keeps the content 12px from the edge, where it already sat */
+                margin: -20px -12px;
+                padding-left: 12px !important;
+                padding-right: 12px !important;
             }
 
             /* Hide mode toggle and post score section during active round */
@@ -52485,6 +52488,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Aggregate stats per player + track special shots (exclude scramble rounds)
                 const playerStats = {};
                 const specialShots = []; // Hole-in-ones, eagles on par 5, albatrosses
+                // v1449: a special shot's date + short course name, worked out once per round and only when
+                // one happens. Formatting them for EVERY scored hole (~20k a year, toLocaleDateString each)
+                // froze the app for ~4s a few seconds after it opened, whatever screen the golfer was on.
+                const _shotLabels = {};
+                const _shotLabel = (roundId) => {
+                    if (!_shotLabels[roundId]) {
+                        const course = roundCourseMap[roundId] || '';
+                        _shotLabels[roundId] = {
+                            shotDate: roundDateMap[roundId] ? new Date(roundDateMap[roundId]).toLocaleDateString(_lvLocale(), { month: 'short', day: 'numeric' }) : '',
+                            courseName: course.replace(/golf|club|course|country|international|resort/gi, '').trim().split(' ').slice(0, 2).join(' ')
+                        };
+                    }
+                    return _shotLabels[roundId];
+                };
                 allHoles.forEach(h => {
                     const playerId = roundPlayerMap[h.round_id];
                     if (!playerId) return;
@@ -52551,11 +52568,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (diff === -1) s.birdies++;
                         if (diff === 0) s.pars++;
 
-                        // Special shots!
+                        // Special shots! (an ace, or two-plus under par — every branch below needs one of these)
+                        if (h.gross_score !== 1 && diff > -2) return;
                         const name = playerNames[playerId] || 'Unknown';
-                        const course = roundCourseMap[h.round_id] || '';
-                        const shotDate = roundDateMap[h.round_id] ? new Date(roundDateMap[h.round_id]).toLocaleDateString(_lvLocale(), { month: 'short', day: 'numeric' }) : '';
-                        const courseName = course.replace(/golf|club|course|country|international|resort/gi, '').trim().split(' ').slice(0, 2).join(' ');
+                        const { shotDate, courseName } = _shotLabel(h.round_id);
                         if (h.gross_score === 1) {
                             s.holesInOne++;
                             specialShots.push({ type: 'ace', emoji: micon('emoji_events'), label: 'HOLE IN ONE', name, hole: h.hole_number, par: h.par, course: courseName, date: shotDate, pid: playerId });
@@ -75839,7 +75855,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <div class="space-y-3">
                                             <div>
                                                 <label class="block text-sm font-medium text-gray-700 mb-2">Super Admin PIN</label>
-                                                <input type="password" id="superAdminPin"
+                                                <input type="password" id="superAdminPin" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password"
                                                        placeholder="Enter 4-6 digit PIN"
                                                        maxlength="6"
                                                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center text-2xl tracking-widest">
@@ -75847,7 +75863,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                             </div>
                                             <div>
                                                 <label class="block text-sm font-medium text-gray-700 mb-2">Confirm Super Admin PIN</label>
-                                                <input type="password" id="confirmSuperAdminPin"
+                                                <input type="password" id="confirmSuperAdminPin" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password"
                                                        placeholder="Re-enter PIN"
                                                        maxlength="6"
                                                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center text-2xl tracking-widest">
@@ -75864,7 +75880,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <div class="space-y-3">
                                             <div>
                                                 <label class="block text-sm font-medium text-gray-700 mb-2">Staff PIN</label>
-                                                <input type="password" id="staffPin"
+                                                <input type="password" id="staffPin" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password"
                                                        placeholder="Enter 4-6 digit PIN"
                                                        maxlength="6"
                                                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center text-2xl tracking-widest">
@@ -75872,7 +75888,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                             </div>
                                             <div>
                                                 <label class="block text-sm font-medium text-gray-700 mb-2">Confirm Staff PIN</label>
-                                                <input type="password" id="confirmStaffPin"
+                                                <input type="password" id="confirmStaffPin" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password"
                                                        placeholder="Re-enter PIN"
                                                        maxlength="6"
                                                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center text-2xl tracking-widest">
@@ -75892,6 +75908,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         </div>
                                     </div>
 
+                                    <div id="pinSaveMsg" role="status" style="display:none;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:600;"></div>
                                     <div class="flex space-x-3">
                                         <button onclick="SocietyOrganizerSystem.cancelPinSetup()" class="flex-1 btn-secondary">
                                             Cancel
@@ -127629,7 +127646,26 @@ This action cannot be undone.`);
         }
     }
 
+    // v1449: the PIN form's messages went through the bare NotificationManager.show (the console-only
+    // class), so a mismatch or a failed save looked like Save doing nothing. Say it on the form itself.
+    _pinMsg(text, ok) {
+        const el = document.getElementById('pinSaveMsg');
+        if (el) {
+            el.textContent = text || '';
+            el.style.display = text ? 'block' : 'none';
+            el.style.background = ok ? '#dcfce7' : '#fee2e2';
+            el.style.color = ok ? '#166534' : '#991b1b';
+        }
+        if (text) try { window.NotificationManager.show(text, ok ? 'success' : 'error'); } catch (e) {}
+    }
+
+    _resetPinForm() {
+        ['superAdminPin', 'confirmSuperAdminPin', 'staffPin', 'confirmStaffPin'].forEach((id) => { const i = document.getElementById(id); if (i) i.value = ''; });
+        this._pinMsg('');
+    }
+
     showPinSetup() {
+        this._resetPinForm();
         document.getElementById('pinStatusSection').style.display = 'none';
         document.getElementById('pinSetupForm').style.display = 'block';
         const superAdminInput = document.getElementById('superAdminPin');
@@ -127637,6 +127673,7 @@ This action cannot be undone.`);
     }
 
     showChangePinForm() {
+        this._resetPinForm();
         document.getElementById('changePinSection').style.display = 'none';
         document.getElementById('pinSetupForm').style.display = 'block';
         const superAdminInput = document.getElementById('superAdminPin');
@@ -127646,15 +127683,9 @@ This action cannot be undone.`);
     cancelPinSetup() {
         document.getElementById('pinStatusSection').style.display = 'block';
         document.getElementById('pinSetupForm').style.display = 'none';
-        document.getElementById('changePinSection').style.display = 'block';
-        const superAdminInput = document.getElementById('superAdminPin');
-        const confirmSuperInput = document.getElementById('confirmSuperAdminPin');
-        const staffInput = document.getElementById('staffPin');
-        const confirmStaffInput = document.getElementById('confirmStaffPin');
-        if (superAdminInput) superAdminInput.value = '';
-        if (confirmSuperInput) confirmSuperInput.value = '';
-        if (staffInput) staffInput.value = '';
-        if (confirmStaffInput) confirmStaffInput.value = '';
+        this._resetPinForm();
+        // Set PIN / Change PIN come back from the society's real state, not a guess
+        this.loadPinStatus();
     }
 
     async saveDashboardPin() {
@@ -127669,22 +127700,22 @@ This action cannot be undone.`);
         console.log('[SocietyOrganizer] Selected society:', AppState.selectedSociety?.name);
 
         if (!userId) {
-            NotificationManager.show('User not authenticated. Please select a society first.', 'error');
+            this._pinMsg('No society selected — open the dashboard from your society first.', false);
             return;
         }
 
         // Validate Super Admin PIN if provided
         if (superAdminPin) {
             if (superAdminPin.length < 4) {
-                NotificationManager.show('Super Admin PIN must be at least 4 digits', 'error');
+                this._pinMsg('Super Admin PIN must be at least 4 digits', false);
                 return;
             }
             if (superAdminPin !== confirmSuperAdminPin) {
-                NotificationManager.show('Super Admin PINs do not match', 'error');
+                this._pinMsg('Super Admin PINs do not match', false);
                 return;
             }
             if (!/^\d+$/.test(superAdminPin)) {
-                NotificationManager.show('Super Admin PIN must contain only numbers', 'error');
+                this._pinMsg('Super Admin PIN must contain only numbers', false);
                 return;
             }
         }
@@ -127692,22 +127723,22 @@ This action cannot be undone.`);
         // Validate Staff PIN if provided
         if (staffPin) {
             if (staffPin.length < 4) {
-                NotificationManager.show('Staff PIN must be at least 4 digits', 'error');
+                this._pinMsg('Staff PIN must be at least 4 digits', false);
                 return;
             }
             if (staffPin !== confirmStaffPin) {
-                NotificationManager.show('Staff PINs do not match', 'error');
+                this._pinMsg('Staff PINs do not match', false);
                 return;
             }
             if (!/^\d+$/.test(staffPin)) {
-                NotificationManager.show('Staff PIN must contain only numbers', 'error');
+                this._pinMsg('Staff PIN must contain only numbers', false);
                 return;
             }
         }
 
         // At least one PIN must be provided
         if (!superAdminPin && !staffPin) {
-            NotificationManager.show('Please set at least one PIN', 'error');
+            this._pinMsg('Please set at least one PIN', false);
             return;
         }
 
@@ -127725,7 +127756,7 @@ This action cannot be undone.`);
 
                 if (error) {
                     console.error('[SocietyOrganizer] Error setting Super Admin PIN:', error);
-                    NotificationManager.show('Failed to save Super Admin PIN', 'error');
+                    this._pinMsg('Failed to save Super Admin PIN', false);
                     errorOccurred = true;
                 } else {
                     successCount++;
@@ -127742,7 +127773,7 @@ This action cannot be undone.`);
 
                 if (error) {
                     console.error('[SocietyOrganizer] Error setting Staff PIN:', error);
-                    NotificationManager.show('Failed to save Staff PIN', 'error');
+                    this._pinMsg('Failed to save Staff PIN', false);
                     errorOccurred = true;
                 } else {
                     successCount++;
@@ -127750,7 +127781,7 @@ This action cannot be undone.`);
             }
 
             if (!errorOccurred && successCount > 0) {
-                NotificationManager.show(`PIN(s) saved successfully (${successCount} PIN${successCount > 1 ? 's' : ''})`, 'success');
+                this._pinMsg(`PIN(s) saved successfully (${successCount} PIN${successCount > 1 ? 's' : ''})`, true);
 
                 // Clear form
                 document.getElementById('superAdminPin').value = '';
@@ -127771,7 +127802,7 @@ This action cannot be undone.`);
 
         } catch (error) {
             console.error('[SocietyOrganizer] Exception saving PIN:', error);
-            NotificationManager.show('Failed to save PIN', 'error');
+            this._pinMsg('Failed to save PIN', false);
         }
     }
 

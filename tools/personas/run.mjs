@@ -13,11 +13,19 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as B from './ab.mjs';
 import { GUARD_JS } from './guard.mjs';
+import { issuesFrom, isStuck } from './issues.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BASE = process.env.BASE || 'https://mycaddipro.com';
 const SLOW_MS = Number(process.env.SLOW_MS || 4000);
-const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+const started = new Date();
+const stamp = started.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+// cron.sh sets jpeg (about a quarter of the png size) for runs that get published; a hand run keeps png
+const SHOT_EXT = /jpe?g/i.test(process.env.AGENT_BROWSER_SCREENSHOT_FORMAT || '') ? 'jpg' : 'png';
+const TRIGGER = process.env.PERSONA_TRIGGER || 'manual';
+// the app version the personas saw (SW_VERSION on the site they used)
+const VERSION = process.env.PERSONA_VERSION || await fetch(BASE + '/sw.js').then((r) => r.text())
+    .then((t) => ((/SW_VERSION\s*=\s*'[^']*?(v\d+)'/.exec(t) || [])[1] || null)).catch(() => null);
 const OUT = join(HERE, 'out', stamp);
 mkdirSync(OUT, { recursive: true });
 
@@ -31,9 +39,13 @@ for (const f of files) {
 }
 if (!personas.length) { console.error('no personas matched', wanted); process.exit(2); }
 
+let waited = 0;   // the persona's own pauses in the current step (reading, letting a sheet animate)
+// durations on the monotonic clock: WSL corrects its wall clock mid-run (a step once measured -3.3s)
+const tick = () => Math.round(performance.now());
 const ctx = {
     BASE,
     ...B,
+    sleep: (ms) => { waited += ms; return B.sleep(ms); },
     arm: () => B.evalJS(GUARD_JS),
     // navigate + viewport + arm the guard; personas call this instead of open()
     go: async (path = '/', { w, h }) => {
@@ -61,7 +73,7 @@ const ctx = {
 
 const results = [];
 for (const p of personas) {
-    const t0 = Date.now();
+    const t0 = tick();
     const rec = { id: p.id, title: p.title, device: p.device, writes: p.writes || 'none', steps: [], blocked: [], errors: '', ms: 0 };
     console.log(`\n== ${p.title} (${p.device.label}, ${p.device.w}x${p.device.h})`);
     if (p.skip) { rec.skipped = p.skip; console.log('  skipped: ' + p.skip); results.push(rec); continue; }
@@ -73,7 +85,8 @@ for (const p of personas) {
         for (const s of p.steps) {
             const st = { name: s.name, expect: s.expect, ms: 0, ok: false, note: '', shot: '' };
             if (stuck) { st.note = 'not reached: persona was stuck on an earlier step'; st.skipped = true; rec.steps.push(st); continue; }
-            const s0 = Date.now();
+            const s0 = tick(), c0 = B.stats.calls;
+            waited = 0;
             try {
                 await s.do(ctx);
                 const r = await s.check(ctx);
@@ -82,9 +95,11 @@ for (const p of personas) {
             } catch (e) {
                 st.ok = false; st.note = 'threw: ' + (e && e.message || e);
             }
-            st.ms = Date.now() - s0;
-            if (!st.ok || st.ms > SLOW_MS) {
-                st.shot = `${p.id}-${String(rec.steps.length + 1).padStart(2, '0')}.png`;
+            st.ms = tick() - s0;
+            st.wait = waited;
+            st.calls = B.stats.calls - c0;
+            if (!st.ok || st.ms - st.wait > SLOW_MS) {
+                st.shot = `${p.id}-${String(rec.steps.length + 1).padStart(2, '0')}.${SHOT_EXT}`;
                 B.screenshot(join(OUT, st.shot));
             }
             for (const l of ctx.lint()) { const k = l.kind + '|' + l.where + '|' + l.text; if (!lintSeen.has(k)) { lintSeen.set(k, { ...l, step: s.name }); } }
@@ -92,40 +107,36 @@ for (const p of personas) {
             console.log(`  ${st.ok ? 'ok ' : 'XX '} ${String(st.ms).padStart(6)}ms  ${s.name}${st.note ? '  — ' + st.note : ''}`);
             if (!st.ok && s.blocking !== false) stuck = true;
         }
+        // the tool's round trip on this machine right now (median of 3), for the app time below
+        rec.overhead = [0, 1, 2].map(() => { const t = tick(); B.evalJS('1', { count: false }); return tick() - t; }).sort((a, b) => a - b)[1];
+        for (const st of rec.steps) if (!st.skipped) st.app = Math.max(0, st.ms - st.wait - st.calls * rec.overhead);
         rec.blocked = ctx.blocked() || [];
         rec.lint = [...lintSeen.values()];
         rec.errors = B.pageErrors();
-        rec.final = `${p.id}-final.png`; B.screenshot(join(OUT, rec.final));
+        rec.final = `${p.id}-final.${SHOT_EXT}`; B.screenshot(join(OUT, rec.final));
         if (p.teardown) await p.teardown(ctx);
     } catch (e) {
         rec.fatal = String(e && e.message || e);
         console.log('  FATAL', rec.fatal);
     }
-    rec.ms = Date.now() - t0;
+    rec.ms = tick() - t0;
     results.push(rec);
 }
 B.close();
 
 // ---- report -------------------------------------------------------------------------------------
 const lines = [];
-const blockers = [];
+const blockers = issuesFrom(results);
 for (const r of results) {
-    const firstFail = r.steps.find((s) => !s.ok && !s.skipped);
-    const reached = r.steps.filter((s) => !s.skipped).length;
     const okN = r.steps.filter((s) => s.ok).length;
-    if (firstFail) blockers.push({ who: r.title, step: firstFail.name, note: firstFail.note, shot: firstFail.shot, lost: r.steps.length - reached });
-    const seenW = new Map();
-    for (const b of r.blocked) { const k = b.m + ' ' + b.url.replace(/\?.*$/, ''); seenW.set(k, (seenW.get(k) || 0) + 1); }
-    for (const [k, n] of seenW) blockers.push({ who: r.title, step: 'tried to WRITE live data', note: `${k}${n > 1 ? ` (${n}×)` : ''}`, shot: '', lost: 0, guard: true });
-    for (const l of (r.lint || [])) blockers.push({ who: r.title, step: l.kind, note: `${l.where}: "${l.text}" (seen at: ${l.step})`, shot: '', lost: 0, lint: true });
     if (r.skipped) { lines.push(`## ${r.title} — skipped: ${r.skipped}`); lines.push(''); continue; }
     lines.push(`## ${r.title} — ${okN}/${r.steps.length} steps, ${r.device.label} ${r.device.w}px, ${(r.ms / 1000).toFixed(1)}s`);
     lines.push('');
-    lines.push('| # | step | expected | result | ms |');
-    lines.push('|---|---|---|---|---|');
-    r.steps.forEach((s, i) => lines.push(`| ${i + 1} | ${s.name} | ${s.expect || ''} | ${s.skipped ? 'not reached' : s.ok ? 'ok' : 'FAIL'}${s.note ? ' — ' + s.note : ''}${s.shot ? ` ([shot](${s.shot}))` : ''} | ${s.skipped ? '' : s.ms} |`));
-    const slow = r.steps.filter((s) => s.ok && s.ms > SLOW_MS);
-    if (slow.length) lines.push(`\nSlow (> ${SLOW_MS}ms): ${slow.map((s) => `${s.name} ${s.ms}ms`).join('; ')}`);
+    lines.push('| # | step | expected | result | ms | app ms |');
+    lines.push('|---|---|---|---|---|---|');
+    r.steps.forEach((s, i) => lines.push(`| ${i + 1} | ${s.name} | ${s.expect || ''} | ${s.skipped ? 'not reached' : s.ok ? 'ok' : 'FAIL'}${s.note ? ' — ' + s.note : ''}${s.shot ? ` ([shot](${s.shot}))` : ''} | ${s.skipped ? '' : s.ms} | ${s.skipped || s.app == null ? '' : s.app} |`));
+    const slow = r.steps.filter((s) => s.ok && (s.app ?? s.ms) > SLOW_MS);
+    if (slow.length) lines.push(`\nSlow (app time > ${SLOW_MS}ms, the persona's pauses and the tool's own time taken out): ${slow.map((s) => `${s.name} ${s.app}ms`).join('; ')}`);
     if ((r.lint || []).length) lines.push(`\nSeen on screen: ${r.lint.map((l) => `${l.kind} (${l.where}: "${l.text}", at: ${l.step})`).join('; ')}`);
     if (r.blocked.length) lines.push(`\nWrite guard refused ${r.blocked.length} call(s): ${r.blocked.map((b) => `${b.m} ${b.url}`).join('; ')}`);
     if (r.errors && !/^✗|no errors|^\s*$/i.test(r.errors)) lines.push(`\nPage errors:\n\n\`\`\`\n${r.errors.slice(0, 1500)}\n\`\`\``);
@@ -135,12 +146,12 @@ for (const r of results) {
 lines.unshift('');
 lines.unshift(blockers.length
     ? ['## What blocked people (ranked)', '', ...blockers
-        .sort((a, b) => (b.guard ? 1 : 0) - (a.guard ? 1 : 0) || b.lost - a.lost)
         .map((b, i) => `${i + 1}. **${b.who}** — ${b.step}: ${b.note}${b.lost ? ` (${b.lost} later steps never reached)` : ''}${b.shot ? ` ([shot](${b.shot}))` : ''}`)].join('\n')
     : '## Nothing blocked anyone this run.');
 lines.unshift('');
-lines.unshift(`# Persona run ${stamp} — ${BASE}`);
+lines.unshift(`# Persona run ${stamp} — ${BASE}${VERSION ? ' ' + VERSION : ''}`);
 writeFileSync(join(OUT, 'report.md'), lines.join('\n'));
-writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp, base: BASE, results }, null, 2));
+writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp, base: BASE, version: VERSION, trigger: TRIGGER, started: started.toISOString(),
+    finished: new Date().toISOString(), issues: blockers, results }, null, 2));
 console.log(`\nreport: ${join(OUT, 'report.md')}`);
-process.exit(blockers.some((b) => !b.guard && !b.lint) ? 1 : 0);
+process.exit(blockers.some(isStuck) ? 1 : 0);

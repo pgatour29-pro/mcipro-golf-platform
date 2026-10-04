@@ -2,8 +2,12 @@
 import { execFileSync } from 'node:child_process';
 
 const BIN = process.env.AGENT_BROWSER || 'agent-browser';
+// tool calls made, so run.mjs can take the tool's own time (~0.17s a call) out of a step's timing;
+// waitFor's polls are not counted — the time until the screen is ready is the app's time
+export const stats = { calls: 0 };
 
-export function ab(args, { timeout = 60000 } = {}) {
+export function ab(args, { timeout = 60000, count = true } = {}) {
+    if (count) stats.calls++;
     try {
         return execFileSync(BIN, args, { encoding: 'utf8', timeout, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
     } catch (e) {
@@ -36,10 +40,10 @@ export function close() { return ab(['close']); }
 
 // Wait until a predicate (JS expression returning truthy) holds, or time out.
 export async function waitFor(expr, { timeout = 10000, every = 250 } = {}) {
-    const t0 = Date.now();
-    while (Date.now() - t0 < timeout) {
-        const v = evalJS(`!!(${expr})`);
-        if (v === true) return Date.now() - t0;
+    const t0 = performance.now();
+    while (performance.now() - t0 < timeout) {
+        const v = evalJS(`!!(${expr})`, { count: false });
+        if (v === true) return Math.round(performance.now() - t0);
         await sleep(every);
     }
     return -1;

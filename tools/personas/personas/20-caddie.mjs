@@ -29,7 +29,8 @@ export default {
             do: async (c) => { c.evalJS(`mhvGo('cad','overview')`); await c.sleep(1200); },
             check: async (c) => {
                 const t = c.visibleText(1200);
-                const ok = /\d{1,2}:\d{2}/.test(t) && /Demo Golf Club/.test(t);
+                // a booking in progress shows the course in capitals (MYCADDIPRO DEMO GOLF CLUB) — same words
+                const ok = /\d{1,2}:\d{2}/.test(t) && /Demo Golf Club/i.test(t);
                 return { ok, note: ok ? '' : 'no time + course on My Day' };
             },
         },
@@ -37,7 +38,8 @@ export default {
             name: 'Jobs tab: today and the next 14 days',
             expect: 'My Schedule shows a next booking and a 14-day strip',
             do: async (c) => { c.evalJS(`mhvGo('cad','assignments')`); await c.sleep(1500); },
-            check: async (c) => ({ ok: c.visible('#caddie-assignments') && c.sees('Next:') && c.sees('MY NEXT 14 DAYS'), note: '' }),
+            // while she is out on a loop the banner reads "On course now · back about …" instead of "Next:"
+            check: async (c) => ({ ok: c.visible('#caddie-assignments') && (c.sees('Next:') || c.sees('On course now')) && c.sees('MY NEXT 14 DAYS'), note: '' }),
         },
         {
             name: 'Golfers tab: who have I caddied for',

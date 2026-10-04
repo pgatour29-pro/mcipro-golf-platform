@@ -32,10 +32,14 @@ export default {
             name: 'Society Events: find this weekend',
             expect: 'event cards with DEP and TEE times and how many are registered (v1441); no empty list behind a pre-selected society',
             do: async (c) => {
-                c.evalJS(`showGolferTab('societyevents')`); await c.sleep(3500);
+                c.evalJS(`showGolferTab('societyevents')`);
+                // wait for the society row itself: on a slow load a fixed pause tapped before it was drawn
+                // and the remembered society (with nothing coming up) stayed selected
+                await c.waitFor(`document.querySelectorAll('#gefbSocRail button.gefb-st').length > 0`, { timeout: 15000 });
                 // a golfer taps the society with events, not the one the app remembered
                 c.evalJS(`(function(){ var bs=[...document.querySelectorAll('#gefbSocRail button.gefb-st')]; var best=null, n=-1; bs.forEach(function(b){ var m=/(\\d+)/.exec(b.innerText||''); var v=m?+m[1]:0; if(v>n){n=v;best=b;} }); if(best) best.click(); })()`);
-                await c.sleep(2500);
+                await c.waitFor(`document.querySelectorAll('#eventsViewBrowseContent .scv3g-ec').length > 0`, { timeout: 15000 });
+                await c.sleep(800);
             },
             check: async (c) => {
                 const r = c.evalJS(`JSON.stringify((function(){ var cards=[...document.querySelectorAll('#eventsViewBrowseContent .scv3g-ec')]; var first=cards[0]; var t=first?first.innerText.replace(/\\s+/g,' '):''; return { n: cards.length, dep: /DEP \\d/.test(t), tee: /TEE \\d/.test(t), reg: /\\d+ REGISTERED/.test(t), t: t.slice(0,120) }; })())`);

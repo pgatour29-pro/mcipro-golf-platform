@@ -14,6 +14,25 @@ golfer (393, GOLFER_ID, Demo Round), organizer (393, society PIN, ORG_SOCIETY / 
 
 Exit code 1 when any persona got stuck. Run it after every deploy.
 
+## Constant reporting — Admin → Test (v1447)
+`cron.sh` runs from the test machine's crontab every 10 minutes and starts a full run when the live
+app version changed (a deploy landed) or the last run is an hour old. `publish.mjs` files each run:
+the report into `public.persona_runs`, screenshots (jpeg) into the private `persona-shots` bucket at
+`<stamp>/<file>`, both through the Supabase CLI on the linked project (no key in the repo). Admin →
+Test (`public/persona-test.js`, RPC `admin_persona_report`) shows what is wrong now and since when,
+what got fixed, each persona's last runs, app time per step, and every run in full. SQL:
+`sql/persona_test_runs_v1447.sql`. Keeps rows 90 days, screenshots 14 days, local folders 3 days.
+
+    */10 * * * * /mnt/c/Users/pete/Documents/MciPro/tools/personas/cron.sh     # crontab -e
+    node tools/personas/publish.mjs tools/personas/out/<stamp>                 # file a hand run
+    tail tools/personas/.schedule.log                                          # what the scheduler did
+
+`tools/personas/.env` (git-ignored) holds `GOLFER_ID`. The scheduled run uses its own browser
+session (`AGENT_BROWSER_SESSION=personas`). Step times: `ms` is the whole step, `app` is what is left
+after the persona's own pauses (`c.sleep`) and the tool's round trips (`calls` × measured overhead) —
+slow flags and Admin → Test use `app`. When the machine is off there are no runs; the Test tab turns
+red after 90 minutes without one.
+
 ## Safety (these are the rules, not suggestions)
 - `guard.mjs` is armed in the page after every navigation: any write to a live table or a
   write-shaped RPC is refused with 403 inside the browser and listed in the report. Reads, read

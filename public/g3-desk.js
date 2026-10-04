@@ -69,8 +69,11 @@
   "#g3Rail .g3-it.on{background:rgba(255,255,255,.1);color:#fff}\n" +
   "#g3Rail .g3-it.on .material-symbols-outlined{color:#4ade80;font-variation-settings:'FILL' 1,'wght' 500,'GRAD' 0,'opsz' 24}\n" +
   "#g3Rail .g3-it.on:before{content:'';position:absolute;left:-14px;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:#22c55e}\n" +
-  "#g3Rail .g3-it .g3-n,#g3Rail .g3-it .messagesBadge,#g3Rail .g3-it .marketplaceBadge,#g3Rail .g3-it .gfdRailBadge,#g3Rail .g3-it .enb-events-badge,#g3Rail .g3-it .teeSheetPickBadge,#g3Rail .g3-it .thumbsNewBadge{margin-left:auto;min-width:20px;height:20px;border-radius:10px;background:#B3402F;color:#fff;font-size:11px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 6px;position:static !important;box-shadow:none !important;line-height:1;animation:none}\n" +
+  "#g3Rail .g3-it .g3-n,#g3Rail .g3-it .messagesBadge,#g3Rail .g3-it .marketplaceBadge,#g3Rail .g3-it .gfdRailBadge,#g3Rail .g3-it .enb-events-badge,#g3Rail .g3-it .teeSheetPickBadge,#g3Rail .g3-it .teeSheetCubeBadge,#g3Rail .g3-it .thumbsNewBadge{margin-left:auto;min-width:20px;height:20px;border-radius:10px;background:#B3402F;color:#fff;font-size:11px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 6px;position:static !important;box-shadow:none !important;line-height:1;animation:none}\n" +
   "#g3Rail .g3-it .thumbsNewBadge{background:#16a34a}\n" +
+  /* v1451 Tee sheet wears two badges, like the phone cube: green ⛳ = a sheet was published/changed (PairingsWatch), red = players chose you */
+  "#g3Rail .g3-it .teeSheetCubeBadge{background:#16a34a}\n" +
+  "#g3Rail .g3-it .g3-bdgs{margin-left:auto;display:flex;gap:4px;flex:none}#g3Rail .g3-it .g3-bdgs > span{margin-left:0}\n" +
   "#g3Rail .g3-it .g3-n.turf{background:#22c55e;color:#072A1E}\n" +
   "#g3Rail .g3-me{display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);cursor:pointer;margin-top:10px}\n" +
   "#g3Rail .g3-me img.user-avatar{width:30px;height:30px;border-radius:50%;object-fit:cover;box-shadow:0 0 0 2px rgba(74,222,128,.7);flex:none}\n" +
@@ -119,10 +122,17 @@
   "#g3Band .g3-cell .v{font-size:15px;font-weight:600;color:#17221C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n" +
   "#g3Band .g3-cell .v.disp{font-family:'Fraunces',Georgia,serif;font-size:18px}\n" +
   "#g3Band .g3-btn{height:32px}\n" +
+  "#g3Band .g3-btn .g3-tsb{display:none;min-width:18px;height:18px;border-radius:9px;align-items:center;justify-content:center;padding:0 5px;font-size:10.5px;font-weight:800;color:#fff;line-height:1;background:#B3402F}#g3Band .g3-btn .g3-tsb.teeSheetCubeBadge{background:#16a34a}\n" +
   "#g3Band .g3-cell .v.mono{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}\n" +
   "#g3Band .g3-acts{display:flex;align-items:center;gap:8px;padding:0 16px;flex:none;margin-left:auto}\n" +
   "#g3Band .g3-ev{flex:1 1 240px;min-width:200px}#g3Band .g3-tee{width:150px}#g3Band .g3-mates{flex:0 1 280px;min-width:150px}#g3Band .g3-cad{width:150px}#g3Band .g3-wx{width:170px}\n" +
   "@media (max-width:1499px){#g3Band .g3-leave{width:140px}#g3Band .g3-leave .t{font-size:30px}#g3Band .g3-wx{display:none}#g3Band .g3-tee{width:130px}#g3Band .g3-cad{width:120px}#g3Band .g3-mates{flex:0 1 220px}#g3Band .g3-cell{padding:7px 12px}}\n" +
+  /* v1451: the Tee sheet / Messages buttons NEVER clip. The band is overflow:hidden with fixed cells, so at 1280 the
+     buttons had 0px to spare and at 1024 they sat entirely past the edge. The event name gives way first (ellipsis),
+     then Caddy, then Playing with — the buttons stay. */
+  "@media (max-width:1499px){#g3Band .g3-ev{min-width:0}}\n" +
+  "@media (max-width:1279px){#g3Band .g3-cad{display:none}}\n" +
+  "@media (max-width:1149px){#g3Band .g3-mates{display:none}}\n" +
   "#g3Band.g3-empty .g3-leave .t{font-size:20px;font-family:'Instrument Sans',sans-serif;font-weight:700}\n" +
   ".g3-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:34px;padding:0 12px;border-radius:9px;font-size:13px;font-weight:700;white-space:nowrap;border:1px solid #B9C6BC;background:#fff;color:#17221C;cursor:pointer;font-family:'Instrument Sans',sans-serif}\n" +
   ".g3-btn .material-symbols-outlined{font-size:18px}\n.g3-btn.f{background:#0B3B2A;color:#fff;border-color:#0B3B2A}\n.g3-btn.p{background:#22c55e;color:#072A1E;border-color:#22c55e}\n" +
@@ -269,7 +279,7 @@
     { act: 'chips', icon: 'poker_chip', k: 'g3.chips', fb: 'Chips' },
     { grp: 'g3.around', fb: 'Around the course' },
     { tab: 'schedule', icon: 'calendar_month', k: 'g3.schedule', fb: 'Schedule' },
-    { act: 'teesheet', icon: 'view_list', k: 'g3.teesheet', fb: 'Tee sheet', badge: 'teeSheetPickBadge' },   /* players chose you (PartnerPickWatch paints it) */
+    { act: 'teesheet', icon: 'view_list', k: 'g3.teesheet', fb: 'Tee sheet', badge: 'teeSheetPickBadge', badge0: 'teeSheetCubeBadge' },   /* ⛳ new/changed sheet (PairingsWatch) + players chose you (PartnerPickWatch) */
     { tab: 'caddies', icon: 'person_pin_circle', k: 'g3.caddies', fb: 'My Caddies' },
     /* v1274: the 1on1 rail item is gone — 1on1 is no longer developed (Pete, 2026-09-19) */
     { tab: 'messages', icon: 'chat', k: 'g3.messages', fb: 'Messages', badge: 'messagesBadge' },
@@ -334,6 +344,7 @@
         if (it.grp !== undefined) { if (it.grp) h += '<div class="g3-grp"' + adm + '>' + esc(T(it.grp, it.fb)) + '</div>'; return; }
         var label = it.k ? T(it.k, it.fb) : it.fb;
         var badge = it.badge ? '<span class="' + it.badge + '">0</span>' : (it.badgeId ? '<span class="g3-n turf" id="' + it.badgeId + '">0</span>' : '');
+        if (it.badge0) badge = '<span class="g3-bdgs"><span class="' + it.badge0 + '"></span>' + badge + '</span>';
         h += '<button type="button" class="g3-it" data-tab="' + (it.tab || '') + '" data-act="' + (it.act || '') + '"' + adm + ' title="' + esc(label) + '"><span class="material-symbols-outlined">' + it.icon + '</span><span>' + esc(label) + '</span>' + badge + '</button>';
       });
       h += '</nav><div class="g3-me" title="Profile"><img class="user-avatar" alt="" style="display:none"><div style="min-width:0;flex:1"><div class="g3-nm"><span class="user-name-display">Golfer</span></div><div class="g3-sb">HCP <span class="user-handicap">--</span></div></div><span class="material-symbols-outlined" style="color:rgba(255,255,255,.6);font-size:20px">unfold_more</span></div>';
@@ -344,6 +355,7 @@
       });
       dash.insertBefore(rail, dash.firstChild);
       try { if (window.PartnerPickWatch && PartnerPickWatch._ready) PartnerPickWatch.renderBadges(); } catch (e) {}   /* rail built after the first paint */
+      try { if (window.PairingsWatch) PairingsWatch.paint(); } catch (e) {}
       /* title in the header */
       var hdrRow = dash.querySelector(':scope > header.nav-header .flex.justify-between');
       if (hdrRow) {
@@ -543,7 +555,10 @@
         '<div class="g3-cell g3-mates"><div class="k">' + esc(T('g3.playingwith', 'Playing with')) + '</div><div class="v"' + (g && g.names.length ? '' : ' style="color:#6B7A70;font-weight:500"') + '>' + esc(mates) + '</div></div>' +
         '<div class="g3-cell g3-cad"><div class="k">' + esc(T('g3.caddy', 'Caddy')) + '</div><div class="v">' + esc(caddy) + '</div></div>' +
         (w ? '<div class="g3-cell g3-wx"><div class="k">' + esc(T('g3.weather', 'Weather')) + '</div><div class="v">' + esc(w) + '</div></div>' : '') +
-        '<div class="g3-acts"><button class="g3-btn" onclick="GolferCubeInfo.openTeeSheetCube()"><span class="material-symbols-outlined">view_list</span>' + esc(T('g3.teesheet', 'Tee sheet')) + '</button><button class="g3-btn f" onclick="showGolferTab(\'messages\', event)"><span class="material-symbols-outlined">chat</span>' + esc(T('g3.messagegroup', 'Messages')) + '</button></div>';
+        '<div class="g3-acts"><button class="g3-btn" onclick="GolferCubeInfo.openTeeSheetCube()"><span class="material-symbols-outlined">view_list</span>' + esc(T('g3.teesheet', 'Tee sheet')) + '<span class="g3-tsb teeSheetCubeBadge"></span><span class="g3-tsb teeSheetPickBadge"></span></button><button class="g3-btn f" onclick="showGolferTab(\'messages\', event)"><span class="material-symbols-outlined">chat</span>' + esc(T('g3.messagegroup', 'Messages')) + '</button></div>';
+      /* v1451: the band is rewritten on every 60s poll — repaint its Tee sheet badges from the watchers' state */
+      try { if (window.PairingsWatch) PairingsWatch.paint(); } catch (x) {}
+      try { if (window.PartnerPickWatch && PartnerPickWatch._ready) PartnerPickWatch.renderBadges(); } catch (x) {}
     },
 
     /* ---------- THIS WEEK: the golfer's browse list (same source/visibility as the Events tab) ---------- */

@@ -14366,6 +14366,7 @@
                 'ppw.picked': 'Picked you to play with them',
                 'ppw.added': 'Added you to their group',
                 'ppw.badgetip': '{n} chose to play with you',
+                'pw.badgetip': '{n} tee sheet new or updated',
                 'orgreg.recentevents': 'Recent events',
                 'orgreg.expected': 'Expected',
                 'orgreg.outstanding': 'Outstanding',
@@ -17970,6 +17971,7 @@
                 'ppw.picked': 'เลือกเล่นกับคุณ',
                 'ppw.added': 'เพิ่มคุณเข้ากลุ่มของเขา',
                 'ppw.badgetip': '{n} คนเลือกเล่นกับคุณ',
+                'pw.badgetip': 'ตารางออกรอบใหม่หรืออัปเดต {n} รายการ',
                 'orgreg.recentevents': 'อีเวนต์ล่าสุด',
                 'orgreg.expected': 'ที่คาดไว้',
                 'orgreg.outstanding': 'ค้างชำระ',
@@ -21814,6 +21816,7 @@
                 'ppw.picked': '함께 치자고 나를 선택함',
                 'ppw.added': '나를 자기 조에 추가함',
                 'ppw.badgetip': '{n}명이 나와 함께 치기를 선택했습니다',
+                'pw.badgetip': '새로 나오거나 바뀐 조편성 {n}개',
                 'orgreg.recentevents': '최근 이벤트',
                 'orgreg.expected': '예상',
                 'orgreg.outstanding': '미수금',
@@ -25218,6 +25221,7 @@
                 'ppw.picked': '一緒に回る相手にあなたを指名',
                 'ppw.added': 'あなたを自分の組に追加',
                 'ppw.badgetip': '{n}人があなたと回ることを選びました',
+                'pw.badgetip': '新しい・更新された組み合わせ {n}件',
                 'orgreg.recentevents': '最近のイベント',
                 'orgreg.expected': '予定額',
                 'orgreg.outstanding': '未収',
@@ -41621,13 +41625,32 @@ Sent from Login Page`;
             },
 
             renderBadges() {
+                this.paint();
+                // repaint TEE SHEET tags on rendered event cards
+                try { if (typeof GolferEventsSystem !== 'undefined' && GolferEventsSystem.allEvents?.length) GolferEventsSystem.renderEvents(); } catch (e) {}
+            },
+
+            // Badges only, no event-card repaint. EVERY Tee Sheet button wears .teeSheetCubeBadge —
+            // phone cubes AND the desktop rail + Today band (v1451: desktop had only the "chose you"
+            // badge, so a new sheet never showed there). g3-desk.js calls this after it rebuilds the band.
+            paint() {
                 const n = this.unseenCount();
+                const tip = (typeof _lvT === 'function' ? _lvT('pw.badgetip', '{n} tee sheet new or updated') : '{n} tee sheet new or updated').replace('{n}', n);
                 document.querySelectorAll('.teeSheetCubeBadge').forEach(b => {
                     b.style.display = n > 0 ? 'flex' : 'none';
                     b.textContent = '⛳ ' + n;
+                    b.title = tip;
+                    b.setAttribute('aria-label', tip);
                 });
-                // repaint TEE SHEET tags on rendered event cards
-                try { if (typeof GolferEventsSystem !== 'undefined' && GolferEventsSystem.allEvents?.length) GolferEventsSystem.renderEvents(); } catch (e) {}
+                this.paintChips();
+            },
+
+            // The open tee sheet's event pills: the sheet that is new carries the ⛳ mark
+            paintChips() {
+                document.querySelectorAll('#playersModalEvChips [data-evid]').forEach(btn => {
+                    const el = btn.querySelector('.pw-chip-new');
+                    if (el) el.style.display = this.isUnseen(btn.getAttribute('data-evid')) ? 'inline-flex' : 'none';
+                });
             }
         };
         window.PairingsWatch = PairingsWatch;
@@ -150835,6 +150858,9 @@ class GolferEventsManager {
         // An empty roster still bails for every OTHER caller (a dead modal helps nobody there);
         // the week's chip row passes allowEmpty so it can show "nobody yet" for that event.
         if (regs.length === 0 && !allowEmpty) return;
+        // Looking at the sheet IS seeing it — the ⛳ badge used to clear only from the event page,
+        // so a golfer who opened the sheet from the Tee Sheet button kept the badge (v1451)
+        try { if (event && event.id) window.PairingsWatch?.markSeen(event.id); } catch (e) {}
 
         // Remove existing modal
         document.getElementById('playersListModal')?.remove();
@@ -151113,6 +151139,7 @@ class GolferEventsManager {
                 return '<button data-evid="' + e.id + '" onclick="GolferEventsSystem.switchSheetEvent(\'' + e.id + '\')" style="display:inline-flex;flex:none;align-items:center;gap:6px;margin-right:8px;font-size:10.5px;font-weight:700;border-radius:999px;padding:7px 12px;cursor:pointer;max-width:' + (phone ? '170px' : '230px') + ';white-space:nowrap;vertical-align:middle;' + (on ? 'background:#065f46;color:#fff;border:1px solid #065f46;' : 'background:#fff;color:#334155;border:1px solid #d1d5db;') + '">' +
                     (e.reg && !on ? '<span style="flex:none;width:6px;height:6px;border-radius:50%;background:#15803d;"></span>' : '') +
                     '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;">' + String(lbl).replace(/</g, '&lt;') + '</span>' +
+                    '<span class="pw-chip-new" style="display:none;flex:none;align-items:center;justify-content:center;height:18px;padding:0 5px;border-radius:9px;background:#16a34a;color:#fff;font-size:10px;font-weight:800;line-height:1;">⛳</span>' +
                     '<span class="ppw-chip-n" style="display:none;flex:none;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#ef4444;color:#fff;font-size:10.5px;font-weight:800;line-height:1;"></span>' +
                 '</button>';
             }).join('') + '</div>';
@@ -151132,10 +151159,13 @@ class GolferEventsManager {
             // by the row's own left offset and cut the start off the active pill ("3 WED · …")
             // phone: the Society dropdown heads this row, so only scroll when the active pill is actually cut off
             if (act && !(phone && act.getBoundingClientRect().right <= evRow.getBoundingClientRect().right)) evRow.scrollLeft = Math.max(0, evRow.scrollLeft + act.getBoundingClientRect().left - evRow.getBoundingClientRect().left - 10);
-            if (W) {
-                W.paintChips();
+            const PW = window.PairingsWatch;
+            if (W) W.paintChips();
+            if (PW) PW.paintChips();
+            if (W || PW) {
                 // a badged pill scrolled out of sight is no badge at all — bring the first one into view
-                const hot = Array.from(strip.querySelectorAll('[data-evid]')).find(b => b.getAttribute('data-evid') !== String(curId) && W.unseenFor(b.getAttribute('data-evid')) > 0);
+                // (red = players chose you there, ⛳ = that sheet is new or changed)
+                const hot = Array.from(strip.querySelectorAll('[data-evid]')).find(b => { const id = b.getAttribute('data-evid'); return id !== String(curId) && ((W && W.unseenFor(id) > 0) || (PW && PW.isUnseen(id))); });
                 if (hot) { const over = hot.getBoundingClientRect().right - evRow.getBoundingClientRect().right; if (over > 0) evRow.scrollLeft += over + 10; }
             }
         } catch (e) { console.warn('[GolferEvents] sheet chips', e); }
@@ -185281,7 +185311,7 @@ showOrganizerTab = function(tabName) {
     })();
     </script>
     <script src="oo-1on1.js?v=1278"></script>
-    <script src="g3-desk.js?v=1437"></script>
+    <script src="g3-desk.js?v=1451"></script>
     <script src="g3-org.js?v=1323"></script>
 </body>
 

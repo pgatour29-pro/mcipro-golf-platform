@@ -122,15 +122,17 @@
   "#g3Band .g3-cell .v{font-size:15px;font-weight:600;color:#17221C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n" +
   "#g3Band .g3-cell .v.disp{font-family:'Fraunces',Georgia,serif;font-size:18px}\n" +
   "#g3Band .g3-btn{height:32px}\n" +
-  "#g3Band .g3-btn .g3-tsb{display:none;min-width:18px;height:18px;border-radius:9px;align-items:center;justify-content:center;padding:0 5px;font-size:10.5px;font-weight:800;color:#fff;line-height:1;background:#B3402F}#g3Band .g3-btn .g3-tsb.teeSheetCubeBadge{background:#16a34a}\n" +
+  /* v1452: the badges sit ON the Tee sheet chip's corner — inside it they widened the chip and pushed Messages out of the band */
+  "#g3Band .g3-tsbtn{position:relative}#g3Band .g3-tsbs{position:absolute;top:-9px;right:-6px;display:flex;gap:3px;pointer-events:none}\n" +
+  "#g3Band .g3-tsb{display:none;min-width:18px;height:18px;border-radius:9px;align-items:center;justify-content:center;padding:0 5px;font-size:10.5px;font-weight:800;color:#fff;line-height:1;background:#B3402F;box-shadow:0 1px 3px rgba(0,0,0,.25)}#g3Band .g3-tsb.teeSheetCubeBadge{background:#16a34a}\n" +
   "#g3Band .g3-cell .v.mono{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}\n" +
   "#g3Band .g3-acts{display:flex;align-items:center;gap:8px;padding:0 16px;flex:none;margin-left:auto}\n" +
-  "#g3Band .g3-ev{flex:1 1 240px;min-width:200px}#g3Band .g3-tee{width:150px}#g3Band .g3-mates{flex:0 1 280px;min-width:150px}#g3Band .g3-cad{width:150px}#g3Band .g3-wx{width:170px}\n" +
+  "#g3Band .g3-ev{flex:1 1 240px;min-width:0}#g3Band .g3-tee{width:150px}#g3Band .g3-mates{flex:0 1 280px;min-width:150px}#g3Band .g3-cad{width:150px}#g3Band .g3-wx{width:170px}\n" +
   "@media (max-width:1499px){#g3Band .g3-leave{width:140px}#g3Band .g3-leave .t{font-size:30px}#g3Band .g3-wx{display:none}#g3Band .g3-tee{width:130px}#g3Band .g3-cad{width:120px}#g3Band .g3-mates{flex:0 1 220px}#g3Band .g3-cell{padding:7px 12px}}\n" +
   /* v1451: the Tee sheet / Messages buttons NEVER clip. The band is overflow:hidden with fixed cells, so at 1280 the
      buttons had 0px to spare and at 1024 they sat entirely past the edge. The event name gives way first (ellipsis),
-     then Caddy, then Playing with — the buttons stay. */
-  "@media (max-width:1499px){#g3Band .g3-ev{min-width:0}}\n" +
+     then Caddy, then Playing with — the buttons stay. (v1452: min-width:0 on .g3-ev at every width; the Weather column at
+     >=1500 pushed Messages out too.) */
   "@media (max-width:1279px){#g3Band .g3-cad{display:none}}\n" +
   "@media (max-width:1149px){#g3Band .g3-mates{display:none}}\n" +
   "#g3Band.g3-empty .g3-leave .t{font-size:20px;font-family:'Instrument Sans',sans-serif;font-weight:700}\n" +
@@ -555,7 +557,7 @@
         '<div class="g3-cell g3-mates"><div class="k">' + esc(T('g3.playingwith', 'Playing with')) + '</div><div class="v"' + (g && g.names.length ? '' : ' style="color:#6B7A70;font-weight:500"') + '>' + esc(mates) + '</div></div>' +
         '<div class="g3-cell g3-cad"><div class="k">' + esc(T('g3.caddy', 'Caddy')) + '</div><div class="v">' + esc(caddy) + '</div></div>' +
         (w ? '<div class="g3-cell g3-wx"><div class="k">' + esc(T('g3.weather', 'Weather')) + '</div><div class="v">' + esc(w) + '</div></div>' : '') +
-        '<div class="g3-acts"><button class="g3-btn" onclick="GolferCubeInfo.openTeeSheetCube()"><span class="material-symbols-outlined">view_list</span>' + esc(T('g3.teesheet', 'Tee sheet')) + '<span class="g3-tsb teeSheetCubeBadge"></span><span class="g3-tsb teeSheetPickBadge"></span></button><button class="g3-btn f" onclick="showGolferTab(\'messages\', event)"><span class="material-symbols-outlined">chat</span>' + esc(T('g3.messagegroup', 'Messages')) + '</button></div>';
+        '<div class="g3-acts"><button class="g3-btn g3-tsbtn" onclick="GolferCubeInfo.openTeeSheetCube()"><span class="material-symbols-outlined">view_list</span>' + esc(T('g3.teesheet', 'Tee sheet')) + '<span class="g3-tsbs"><span class="g3-tsb teeSheetCubeBadge"></span><span class="g3-tsb teeSheetPickBadge"></span></span></button><button class="g3-btn f" onclick="showGolferTab(\'messages\', event)"><span class="material-symbols-outlined">chat</span>' + esc(T('g3.messagegroup', 'Messages')) + '</button></div>';
       /* v1451: the band is rewritten on every 60s poll — repaint its Tee sheet badges from the watchers' state */
       try { if (window.PairingsWatch) PairingsWatch.paint(); } catch (x) {}
       try { if (window.PartnerPickWatch && PartnerPickWatch._ready) PartnerPickWatch.renderBadges(); } catch (x) {}

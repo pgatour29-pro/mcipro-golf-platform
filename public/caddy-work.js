@@ -447,6 +447,7 @@
             const root = this.root(); if (!root) return;
             root.innerHTML = `<div class="cbk-page cws">${this.top()}${this.seg === 'week' ? this.weekHtml() : this.bookHtml()}</div>`;
             const on = root.querySelector('.cbk-day.on'); if (on) { try { on.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {} }
+            const trf = root.querySelector('.trf-cad[data-trf-job]'); if (trf && W.CourseTraffic) W.CourseTraffic.caddyFill(trf.getAttribute('data-trf-job'));
         },
 
         jobCard(b) {
@@ -466,6 +467,8 @@
             if (out) {
                 const t = tee(out);
                 when = `<div class="cbk-whenline mine" style="margin-top:10px"><b>${esc(T('cws.my.out', 'On course now · back about {t}').replace('{t}', t == null ? '—' : hhmm(t + bl)))}</b><small>${esc([out.golfer_name || T('cws.golfer', 'Golfer'), t == null ? '' : T('cws.my.teed', 'teed off {t}').replace('{t}', hhmm(t)), out.holes ? T('cws.holes', '{n} holes').replace('{n}', out.holes) : ''].filter(Boolean).join(' · '))}</small></div>`;
+                // v1458 Course traffic: her one tap per green ("Green done") — the pro shop's live pace map
+                if (W.CourseTraffic && out.booking_date === today) when += W.CourseTraffic.caddyCard(out);
             } else if (next) {
                 const t = tee(next);
                 when = `<div class="cbk-whenline available" style="margin-top:10px"><b>${esc(T('cws.my.next', 'Next: {d} at {t}').replace('{d}', next.booking_date === today ? T('cws.today', 'Today') : dayLine(next.booking_date)).replace('{t}', t == null ? '—' : hhmm(t)))}</b><small>${esc([next.golfer_name || T('cws.golfer', 'Golfer'), next.holes ? T('cws.holes', '{n} holes').replace('{n}', next.holes) : ''].filter(Boolean).join(' · '))}</small></div>`;

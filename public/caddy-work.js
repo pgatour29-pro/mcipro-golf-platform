@@ -255,13 +255,14 @@
             if (b.status === 'completed') return false;
             if (b.started_at) return true;
             const t = tee(b), now = WS.nowMins();
-            return b.booking_date === WS.today() && b.status === 'confirmed' && t != null && t <= now && now < t + this.block();
+            // v1453: a golfer's booking is her job the moment it is made — booked (pending) or confirmed, she is out at its time
+            return b.booking_date === WS.today() && b.status !== 'cancelled' && t != null && t <= now && now < t + this.block();
         },
         stOf(b) {
             if (b.status === 'completed') return ['done', T('cws.st.done', 'Done')];
             if (this.isOut(b)) return ['live', T('cws.st.live', 'On course')];
             if (b.status === 'confirmed') return ['ok', T('cws.st.ok', 'Confirmed')];
-            return ['wait', T('cws.st.wait', 'Pending')];
+            return ['wait', T('cws.st.wait', 'Booked')];
         },
 
         async init(force) {
@@ -710,7 +711,7 @@
                 if (seq !== this._wkSeq) return;
                 const jobs = {}, needs = {};
                 (data || []).forEach(b => {
-                    if (b.status === 'pending' && !b.caddy_id) { needs[b.booking_date] = (needs[b.booking_date] || 0) + 1; return; }
+                    if (D._needs(b)) { needs[b.booking_date] = (needs[b.booking_date] || 0) + 1; return; }   // v1453: no caddy NUMBER, not merely no id
                     const r = D._caddyOf(b); if (!r) return;
                     const k = r.id + '|' + b.booking_date; jobs[k] = (jobs[k] || 0) + 1;
                 });

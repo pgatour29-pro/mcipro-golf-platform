@@ -1076,7 +1076,7 @@
                 const live = { courseLayout: v('complex-select'), interval: v('interval-select'), startTime: v('start-time'), endTime: v('end-time'), teesPerCourse: v('tees-select') };
                 Object.keys(live).forEach(k => { if (live[k]) ts[k] = live[k]; });
             } catch (e) { }
-            ts = Object.assign({ courseLayout: '18', interval: '7', startTime: '06:00', endTime: '18:00', teesPerCourse: '2' }, ts);
+            ts = Object.assign({ courseLayout: '18', interval: '5', startTime: '06:00', endTime: '18:00', teesPerCourse: '2' }, ts);
             const configs = (window.ProShopTeeSheetSettings && window.ProShopTeeSheetSettings.courseConfigs) || {};
             // v1351: the tee sheet course comes FROM the dashboard course. This list only offers that venue's
             // own layouts (Burapha A+C / C+D / East) — it can no longer point the sheet at another course.
@@ -1150,7 +1150,7 @@
             const cfgBasic = {
                 golfCourse: slug,
                 courseLayout: (document.getElementById('ps-ts-layout') || {}).value || '18',
-                interval: (document.getElementById('ps-ts-interval') || {}).value || '7',
+                interval: (document.getElementById('ps-ts-interval') || {}).value || '5',
                 startTime: (document.getElementById('ps-ts-start') || {}).value || '06:00',
                 endTime: (document.getElementById('ps-ts-end') || {}).value || '18:00',
                 teesPerCourse: (document.getElementById('ps-ts-tees') || {}).value || '2'

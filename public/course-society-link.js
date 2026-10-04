@@ -67,7 +67,7 @@
       newMsg: 'New message', alertRegs: '{e}: {n} registered (+{d})', unmatched: 'This event\'s course could not be matched to a course tee sheet.',
       // v1347 caddies per player
       groupsCaddies: 'Pairings & caddies', booked: '{n} booked', toConfirm: '{n} to confirm', withoutCaddy: '{n} without caddy',
-      players: 'players', caddyOne: 'caddy', caddyMany: 'caddies', addCaddy: '+ Caddy', pending: 'PENDING', confirmed: 'CONFIRMED',
+      players: 'players', caddyOne: 'caddy', caddyMany: 'caddies', addCaddy: '+ Caddy', pending: 'BOOKED', confirmed: 'CONFIRMED',
       confirmT: 'Confirm', changeT: 'Change', cancelT: 'Cancel', sure: 'Sure?', pickCaddy: 'Caddy number or name…',
       free: 'Free', outAt: 'Out {a}–{b}', dayOff: 'Day off', inGroup: 'In this group', noCaddyOpt: 'No caddy',
       notPaired: 'Registered — not paired yet', loading: 'Loading…', noRoster: 'No caddies on this course\'s roster yet.',
@@ -87,7 +87,7 @@
       noMsgs: 'ยังไม่มีข้อความ', open: 'ว่าง', you: 'คุณ', courseSide: 'สนาม', close: 'ปิด', slotsSaved: 'บันทึกแล้ว',
       newMsg: 'ข้อความใหม่', alertRegs: '{e}: ลงทะเบียน {n} (+{d})', unmatched: 'ไม่พบตารางทีไทม์ของสนามนี้',
       groupsCaddies: 'การจับกลุ่ม & แคดดี้', booked: 'จองแล้ว {n}', toConfirm: 'รอยืนยัน {n}', withoutCaddy: 'ไม่มีแคดดี้ {n}',
-      players: 'คน', caddyOne: 'แคดดี้', caddyMany: 'แคดดี้', addCaddy: '+ แคดดี้', pending: 'รอยืนยัน', confirmed: 'ยืนยันแล้ว',
+      players: 'คน', caddyOne: 'แคดดี้', caddyMany: 'แคดดี้', addCaddy: '+ แคดดี้', pending: 'จองแล้ว', confirmed: 'ยืนยันแล้ว',
       confirmT: 'ยืนยัน', changeT: 'เปลี่ยน', cancelT: 'ยกเลิก', sure: 'แน่ใจ?', pickCaddy: 'หมายเลขหรือชื่อแคดดี้…',
       free: 'ว่าง', outAt: 'ไม่ว่าง {a}–{b}', dayOff: 'วันหยุด', inGroup: 'อยู่ในกลุ่มนี้แล้ว', noCaddyOpt: 'ไม่ใช้แคดดี้',
       notPaired: 'ลงทะเบียนแล้ว — ยังไม่จับกลุ่ม', loading: 'กำลังโหลด…', noRoster: 'สนามนี้ยังไม่มีรายชื่อแคดดี้',

@@ -200,13 +200,19 @@
             var gone = groups.filter(function (g) { return !g.open && g.cleared; });
             var runs = d.runs || [];
             var stuckRuns = runs.filter(function (r) { return r.stuck > 0; }).length;
-            var slowest = (d.speed || []).slice().sort(function (a, b) { return b.med - a.med; })[0];
+            // the slowest screen in the LATEST run (a median over the period lags a fix by days); the period's
+            // usual time for that step rides underneath
+            var slowest = null;
+            (latest.results || []).forEach(function (r) {
+                (r.steps || []).forEach(function (s) { if (s.ok && appMs(s) != null && (!slowest || s.app > slowest.app)) slowest = { pid: r.id, step: s.name, app: s.app }; });
+            });
+            var usual = slowest && (d.speed || []).filter(function (x) { return x.pid === slowest.pid && x.step === slowest.step; })[0];
             var tl = tiles([
                 tile(open.length ? open.length : 'All clear', 'Wrong right now', open.length ? plural(stops, 'issue stops someone', 'issues stop someone') + ' · ' + (open.length - stops) + ' flagged' : 'nothing open in the last run', open.length ? (stops ? RED : AMBER) : GREEN),
                 tile(latest.steps_ok + '/' + latest.steps, 'Latest run', 'steps passed · ' + plural((latest.personas || []).length, 'persona', 'personas')),
                 tile(runs.length, 'Runs', (days === 1 ? 'last 24h' : 'last ' + days + ' days') + ' · ' + stuckRuns + ' with someone stopped'),
                 tile(gone.length, 'Fixed', 'issues gone in this period', gone.length ? GREEN : null),
-                tile(slowest ? secs(slowest.med) : '–', 'Slowest screen', slowest ? esc(who(slowest.pid).role + ' · ' + slowest.step) : 'app timings start with the next run', slowest && slowest.med > SLOW_MS ? AMBER : null)
+                tile(slowest ? secs(slowest.app) : '–', 'Slowest screen', slowest ? esc(who(slowest.pid).role + ' · ' + slowest.step) + (usual && usual.n > 1 ? ' · usually ' + secs(usual.med) : '') : 'app timings start with the next run', slowest && slowest.app > SLOW_MS ? AMBER : null)
             ]);
             el.innerHTML = head + beat + tl + this._openHtml(open, titles) + this._gridHtml(d) + this._latestHtml(latest) +
                 this._fixedHtml(gone, titles) + this._speedHtml(d) + this._runsHtml(runs, days);

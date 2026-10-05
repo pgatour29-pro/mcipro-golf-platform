@@ -138546,8 +138546,14 @@ window.EventNoticeBoard = {
         var unread = anns.filter(function (a) { return !x.readSet.has(a.id); });
         var id = this._esc(ev.id);
         var title = this._esc(ev.title || ev.course_name || 'Event');
+        // v1464 (Pete 2026-10-05, rain out notice: "Why is the rain out popup keep asking if I got the
+        // message. Once is enough"): READ decides it, not this browser. The slim bar used to need a
+        // per-device localStorage flag, so the same golfer opening the app anywhere else (another phone,
+        // or LINE's in-app browser, which has its own storage) got the full window and "Got it" again
+        // although his read was already in event_announcement_reads. Now every update read = slim bar
+        // everywhere; only a tap on the bar opens it again, for this session.
         var min = false;
-        try { min = !full && !unread.length && localStorage.getItem('enbStatusMin:' + ev.id) === latest.id; } catch (e) {}
+        try { min = !full && !unread.length && sessionStorage.getItem('enbStatusOpen:' + ev.id) !== latest.id; } catch (e) { min = !full && !unread.length; }
         if (min) {
             return '<button onclick="EventNoticeBoard.expandStatus(\'' + id + '\')" style="width:100%;display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:10px 12px;background:#78350f;color:#fff;border:none;border-radius:12px;cursor:pointer;text-align:left;box-shadow:0 2px 10px rgba(120,53,15,.25);">' +
                 '<span class="material-symbols-outlined" style="font-size:20px;color:#fcd34d;">campaign</span>' +
@@ -138597,7 +138603,7 @@ window.EventNoticeBoard = {
         if (!x) return;
         var me = this._me(), sb = this._sb();
         var unread = x.anns.filter(function (a) { return !x.readSet.has(a.id); });
-        try { localStorage.setItem('enbStatusMin:' + eventId, x.anns[0].id); } catch (e) {}
+        try { sessionStorage.removeItem('enbStatusOpen:' + eventId); } catch (e) {}
         unread.forEach(function (a) { x.readSet.add(a.id); });
         this.closeStatusModal();
         this._renderStatus(this._statusData);
@@ -138611,7 +138617,8 @@ window.EventNoticeBoard = {
         }
     },
     expandStatus(eventId) {
-        try { localStorage.removeItem('enbStatusMin:' + eventId); } catch (e) {}
+        var x = (this._statusData || []).find(function (i) { return i.ev.id === eventId; });
+        try { if (x && x.anns[0]) sessionStorage.setItem('enbStatusOpen:' + eventId, x.anns[0].id); } catch (e) {}
         this._renderStatus(this._statusData);
     },
 

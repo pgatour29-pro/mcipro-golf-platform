@@ -57,7 +57,9 @@ begin
                updated_at   = (now() at time zone 'UTC')
          where sc.event_id = p_event_id::text
            and (sc.status = 'in_progress' or (sc.status = 'abandoned' and sc.auto_closed_at is not null))
-           and exists (select 1 from scores s where s.scorecard_id = sc.id::text)
+           -- short rounds only: a full 18 still in progress is a round that never got its FINISH tap —
+           -- leave it for sweep_stale_scorecards to post to history exactly as FINISH would
+           and (select count(*) from scores s where s.scorecard_id = sc.id::text and s.gross_score is not null) between 1 and 17
         returning sc.id::text
     )
     select coalesce(array_agg(id), '{}') into v_ids from closed;

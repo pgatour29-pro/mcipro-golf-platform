@@ -20,7 +20,7 @@
     'use strict';
     var ID = '00000000-0000-4000-8000-00000000de30';        // uuid-shaped: the work-schedule resolver only reads uuids
     var COURSE = { id: 'mycaddipro-demo', name: 'MyCaddiPro Demo Golf Club' };
-    var NUM = '27', NAME = 'Ploy', FEE = 450, BLOCK = 255, ROUND = 240;   // a round takes 4h00 here (13.3 min a hole = on pace)
+    var NUM = '27', NAME = 'Ploy', FEE = 450, BLOCK = 270, ROUND = 240;   // a round takes 4h00 here (13.3 min a hole = on pace)
     var SOC = 'Sunrise Golf Society';
     var G = {
         g1: ['DEMO-G-01', 'John Smith', 14.2], g2: ['DEMO-G-02', 'David Miller', 18.6], g3: ['DEMO-G-03', 'Kenji Tanaka', 9.8],

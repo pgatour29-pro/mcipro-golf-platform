@@ -972,7 +972,7 @@
       if (S.sheet !== sh) return;
       const tm = mins(sh.t);
       sh.roster = (ro.data || []).filter(r => r.caddy_number != null && String(r.caddy_number).trim()).map(r => {
-        const num = String(r.caddy_number).trim(), blk = Math.max(255, +r.block_minutes || 255);
+        const num = String(r.caddy_number).trim(), blk = Math.max(270, +r.block_minutes || 270);
         const job = (jobs.data || []).find(j => (j.caddy_id === r.id || (!j.caddy_id && j.caddie_name === 'Caddy #' + num && (j.course_id === sh.slug || String(j.course_name || '').toLowerCase().startsWith(prefix))))
           && Math.abs(mins(j.tee_time || j.start_time) - tm) < blk);
         const off = (offs.data || []).some(o => String(o.caddy_number || '').trim() === num && (!o.course_name || String(o.course_name).toLowerCase().startsWith(prefix)));

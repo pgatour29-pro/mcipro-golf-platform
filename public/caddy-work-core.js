@@ -24,7 +24,7 @@
 
     W.CaddyWorkSchedule = {
         client: null,                     // proshop-teesheet.html sets its own client here
-        FLOOR: 255,
+        FLOOR: 270,
         mins: mins, hhmm: hhmm, addDays: addDays, dow: dow,
         _sb: function () { return this.client || (W.SupabaseDB && W.SupabaseDB.client) || null; },
         today: function () { return new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10); },   // Bangkok

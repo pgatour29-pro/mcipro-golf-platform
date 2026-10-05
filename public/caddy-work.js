@@ -275,7 +275,7 @@
             try { this.prof = W.CaddyDashboardData ? await W.CaddyDashboardData.resolveProfile() : null; } catch (e) { this.prof = null; }
             // v1436: no caddy record yet (not registered) — the tabs and controls still paint, on the default
             // 06:00–16:00 day with nothing booked. Pete: "i want there so they can already see it without the data".
-            this.me = this.prof ? Object.assign({}, this.prof, { user_id: this.uid() }) : { sheet_start: '06:00', sheet_end: '16:00', block_minutes: 255 };
+            this.me = this.prof ? Object.assign({}, this.prof, { user_id: this.uid() }) : { sheet_start: '06:00', sheet_end: '16:00', block_minutes: 270 };
             try { document.querySelectorAll('#caddieDashboard header h1 .user-caddy-number').forEach(n => { const h = n.parentNode; if (h && h.firstElementChild !== n) h.insertBefore(n, h.firstChild); }); } catch (e) {}
             this.paint();
             if (force || !this.loaded) await this.load();
@@ -605,11 +605,11 @@
         // her own default hours (the caddy master can still set a single day differently)
         openHours() {
             const p = this.prof; if (!p) return;
-            const blocks = [255, 270, 285, 300, 330];
+            const blocks = [270, 285, 300, 330];
             const w = sheet('cwsHoursSheet', `
                 <div class="cbk-whenline" style="margin-right:44px"><b>${esc(T('cws.hrs.title', 'My working hours'))}</b><small>${esc(T('cws.hrs.sub', 'Golfers can book you between these times. The caddy master can set a single day differently.'))}</small></div>
                 <div class="cbk-form"><div class="cbk-row2"><label class="cbk-field"><span>${esc(T('cws.from', 'From'))}</span><input type="time" id="ctsFrom" value="${esc(String(p.sheet_start || '06:00').slice(0, 5))}"></label><label class="cbk-field"><span>${esc(T('cws.to', 'To (last start)'))}</span><input type="time" id="ctsTo" value="${esc(String(p.sheet_end || '16:00').slice(0, 5))}"></label></div>
-                <label class="cbk-field"><span>${esc(T('cws.hrs.block', 'One round blocks me for'))}</span><select id="ctsBlock" data-set="1">${blocks.map(v => `<option value="${v}"${Math.max(255, +p.block_minutes || 255) === v ? ' selected' : ''}>${span(v)}</option>`).join('')}</select></label>
+                <label class="cbk-field"><span>${esc(T('cws.hrs.block', 'One round blocks me for'))}</span><select id="ctsBlock" data-set="1">${blocks.map(v => `<option value="${v}"${Math.max(270, +p.block_minutes || 270) === v ? ' selected' : ''}>${span(v)}</option>`).join('')}</select></label>
                 <button type="button" class="cbk-primary" id="cwsHoursSave">${ic('check_circle')}<span>${esc(T('cws.save', 'Save'))}</span></button></div>`);
             w.querySelector('#cwsHoursSave').onclick = async () => {
                 try { if (W.CaddyTeeSheet) { W.CaddyTeeSheet.prof = this.prof; await W.CaddyTeeSheet.saveWindow(); } } catch (e) {}
@@ -731,7 +731,7 @@
             const rot = D._rotMap();
             const useChk = isToday && this.chk && this.chk.date === date && this.chk.set.size > 0;
             const list = this.roster().map(r => {
-                const res = this.res(r, date), block = Math.max(255, +r.block_minutes || 255);
+                const res = this.res(r, date), block = Math.max(270, +r.block_minutes || 270);
                 const hers = rows.filter(b => D._isHers(b, r) && b.status !== 'completed').sort(byTee);
                 const clash = at == null ? null : (hers.find(b => { const t = tee(b); return t != null && Math.abs(t - at) < block; }) || null);
                 const s = isToday ? D._stateOf(r) : null;
@@ -921,7 +921,7 @@
             const nextRot = !inactive && this._firstFit === r.id;
             let lead = '', prop = null;
             if (job && me) {
-                const at = tee(job), block = Math.max(255, +r.block_minutes || 255);
+                const at = tee(job), block = Math.max(270, +r.block_minutes || 270);
                 const after = me.hers.find(b => tee(b) != null && tee(b) > at);
                 if (me.fit) {
                     if (job.booking_date === day) prop = { from: at, to: at + block };
@@ -941,13 +941,13 @@
             }
             const chips = [];
             for (let i = 0; i < 14; i++) {
-                const d = WS.addDays(today, i), x = this.res(r, d), jobsD = this.cadJobs(r, d), bl = Math.max(255, +r.block_minutes || 255);
+                const d = WS.addDays(today, i), x = this.res(r, d), jobsD = this.cadJobs(r, d), bl = Math.max(270, +r.block_minutes || 270);
                 const w = jobsD.filter(b => b.status !== 'completed').map(b => { const f = tee(b); return { from: f, to: f == null ? null : f + bl }; });
                 let st = 'free';
                 if (x.state !== 'working') st = 'closed'; else if (w.length) st = WS.freeWindows(x, w, d).length ? 'part' : 'full';
                 chips.push(`<button type="button" class="cbk-day ${st}${d === day ? ' on' : ''}" data-c="day" data-v="${d}" style="cursor:pointer"><span>${esc(dayShort(d))}</span><b>${dayNum(d)}</b><i></i></button>`);
             }
-            const x = this.res(r, day), jobsD = this.cadJobs(r, day), bl = Math.max(255, +r.block_minutes || 255);
+            const x = this.res(r, day), jobsD = this.cadJobs(r, day), bl = Math.max(270, +r.block_minutes || 270);
             const wins = jobsD.filter(b => b.status !== 'completed').map(b => { const f = tee(b); return { from: f, to: f == null ? null : f + bl }; });
             let detail;
             if (x.state !== 'working') detail = `<div class="cbk-slots-none" style="margin-top:10px">${esc(x.state === 'leave' ? T('cws.leave', 'Leave') : T('cws.dayoff', 'Day off'))} · ${esc(dayLine(day))}</div>`;
@@ -1015,7 +1015,7 @@
                 closeSheet('cwsCmSheet'); try { W.showCaddyMasterTab('teesheet'); } catch (e) {}
                 return;
             }
-            const x = this.res(r, b.booking_date), block = Math.max(255, +r.block_minutes || 255);
+            const x = this.res(r, b.booking_date), block = Math.max(270, +r.block_minutes || 270);
             const others = this.cadJobs(r, b.booking_date).filter(j => j.id !== b.id && j.status !== 'completed');
             const opts = [];
             for (let m = Math.floor(x.start / 10) * 10; m <= x.end; m += 10) {
@@ -1045,7 +1045,7 @@
         paintPicker() {
             const D = CM(), pk = this._pick; if (!pk) return;
             const r = (D.roster || []).find(x => x.id === pk.id); if (!r) { closeSheet('cwsPickSheet'); return; }
-            const date = this.date, block = Math.max(255, +r.block_minutes || 255), x = this.res(r, date);
+            const date = this.date, block = Math.max(270, +r.block_minutes || 270), x = this.res(r, date);
             const all = this.rowsFor(date).filter(b => b.status !== 'cancelled' && b.status !== 'completed').sort(byTee);
             const hers = all.filter(b => D._isHers(b, r));
             const fits = b => { const t = tee(b); if (x.state !== 'working') return [false, x.state === 'leave' ? T('cws.leave', 'Leave') : T('cws.dayoff', 'Day off')]; if (t == null) return [true, '']; const cl = hers.find(j => j.id !== b.id && tee(j) != null && Math.abs(tee(j) - t) < block); if (cl) return [false, T('cws.clash', 'Clash {t}').replace('{t}', hhmm(tee(cl)))]; if (t < x.start || t > x.end) return [false, hhmm(x.start) + '–' + hhmm(x.end)]; return [true, '']; };

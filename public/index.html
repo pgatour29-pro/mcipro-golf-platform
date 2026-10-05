@@ -14395,6 +14395,14 @@
                 'scorecard.resume.finish': 'Finish & Save Round',
                 'scorecard.resume.discard': 'Discard Round',
                 'scorecard.resume.confirmdiscard': 'Are you sure? This will permanently delete the unfinished round.',
+                'scorecard.join.title': 'Your group is playing',
+                'scorecard.join.sub': 'Join to score your own card. Everyone in the group sees it live.',
+                'scorecard.join.join': 'Join the Round',
+                'scorecard.join.notmine': 'I\'m not in this group',
+                'scorecard.join.leavetitle': 'Leave this group?',
+                'scorecard.join.leavebody': 'Your card comes out of this group and the others stop seeing your scores.',
+                'scorecard.join.leave': 'Leave Group',
+                'scorecard.join.back': 'Back',
                 'scorecard.starting.title': 'Starting your round...',
                 'scorecard.starting.sub': 'Preparing scorecards and loading course data',
                 'lb.leaders': 'LEADERS',
@@ -18051,6 +18059,14 @@
                 'scorecard.resume.finish': 'จบและบันทึกรอบ',
                 'scorecard.resume.discard': 'ยกเลิกรอบนี้',
                 'scorecard.resume.confirmdiscard': 'แน่ใจหรือไม่? รอบที่ยังไม่จบจะถูกลบถาวร',
+                'scorecard.join.title': 'กลุ่มของคุณกำลังเล่นอยู่',
+                'scorecard.join.sub': 'เข้าร่วมเพื่อกรอกสกอร์การ์ดของคุณเอง ทุกคนในกลุ่มจะเห็นแบบสด',
+                'scorecard.join.join': 'เข้าร่วมรอบนี้',
+                'scorecard.join.notmine': 'ฉันไม่ได้อยู่ในกลุ่มนี้',
+                'scorecard.join.leavetitle': 'ออกจากกลุ่มนี้?',
+                'scorecard.join.leavebody': 'การ์ดของคุณจะถูกนำออกจากกลุ่มนี้ และคนอื่นจะไม่เห็นสกอร์ของคุณอีก',
+                'scorecard.join.leave': 'ออกจากกลุ่ม',
+                'scorecard.join.back': 'กลับ',
                 'scorecard.starting.title': 'กำลังเริ่มรอบ...',
                 'scorecard.starting.sub': 'กำลังเตรียมสกอร์การ์ดและโหลดข้อมูลสนาม',
                 'lb.leaders': 'ผู้นำ',
@@ -21940,6 +21956,14 @@
                 'scorecard.resume.finish': '라운드 종료 및 저장',
                 'scorecard.resume.discard': '라운드 삭제',
                 'scorecard.resume.confirmdiscard': '정말입니까? 미완료 라운드가 영구 삭제됩니다.',
+                'scorecard.join.title': '그룹이 라운드 중입니다',
+                'scorecard.join.sub': '참여해서 내 카드를 직접 입력하세요. 그룹 모두가 실시간으로 봅니다.',
+                'scorecard.join.join': '라운드 참여',
+                'scorecard.join.notmine': '이 그룹이 아닙니다',
+                'scorecard.join.leavetitle': '이 그룹에서 나갈까요?',
+                'scorecard.join.leavebody': '내 카드가 이 그룹에서 빠지고, 다른 사람들은 내 스코어를 더 이상 볼 수 없습니다.',
+                'scorecard.join.leave': '그룹 나가기',
+                'scorecard.join.back': '뒤로',
                 'scorecard.starting.title': '라운드 시작 중...',
                 'scorecard.starting.sub': '스코어카드 준비 및 코스 데이터 로딩 중',
                 'lb.leaders': '리더',
@@ -25389,6 +25413,14 @@
                 'scorecard.resume.finish': 'ラウンドを終了して保存',
                 'scorecard.resume.discard': 'ラウンドを破棄',
                 'scorecard.resume.confirmdiscard': '本当によろしいですか？未完了のラウンドは完全に削除されます。',
+                'scorecard.join.title': 'グループがプレー中です',
+                'scorecard.join.sub': '参加して自分のカードを入力しましょう。グループ全員にライブで表示されます。',
+                'scorecard.join.join': 'ラウンドに参加',
+                'scorecard.join.notmine': 'このグループではありません',
+                'scorecard.join.leavetitle': 'このグループから抜けますか？',
+                'scorecard.join.leavebody': 'あなたのカードがこのグループから外れ、他のメンバーにはスコアが表示されなくなります。',
+                'scorecard.join.leave': 'グループを抜ける',
+                'scorecard.join.back': '戻る',
                 'scorecard.starting.title': 'ラウンドを開始しています…',
                 'scorecard.starting.sub': 'スコアカードを準備しコースデータを読み込み中',
                 'lb.leaders': 'リーダー',
@@ -94599,10 +94631,93 @@ class LiveScorecardSystem {
         const playerNames = state.players.map(p => p.name).join(', ');
         const currentHole = state.currentHole || 1;
         const savedTime = state.savedAt ? new Date(state.savedAt).toLocaleString() : 'Unknown';
+        // v1462: a round found in the DB (nothing saved on this phone) whose cards another phone
+        // holds is a group playing RIGHT NOW, not a leftover. It used to get the same "Unfinished
+        // Round Found" + Discard as a dead round: Billy (Pattaya County, 2026-10-05) tapped Discard
+        // on Pete's group after hole 1, his card left the group and his phone started a solo round.
+        // With no scores yet that same tap abandoned the WHOLE group, other phones' cards included.
+        // So: Join is the action, leaving is a deliberate second step, and only MY card ever goes.
+        const _me = this._deviceUser();
+        const _heldElsewhere = (owners) => Object.values(owners || {})
+            .some(o => o && String(o) !== String(_me));
+        const joiningLiveGroup = !!state._fromDb && _heldElsewhere(state.cardOwner);
 
         return new Promise((resolve) => {
             const modal = document.createElement('div');
             modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4';
+            if (joiningLiveGroup) {
+                modal.innerHTML = `
+                <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+                    <div data-step="join">
+                        <div class="text-center mb-4">
+                            <div class="text-4xl mb-2 text-green-600"><span class="material-symbols-outlined" style="font-size:inherit;vertical-align:middle;line-height:1;">groups</span></div>
+                            <h2 class="text-xl font-bold text-gray-800">${_lvT('scorecard.join.title', 'Your group is playing')}</h2>
+                            <p class="text-sm text-gray-600 mt-1">${_lvT('scorecard.join.sub', 'Join to score your own card. Everyone in the group sees it live.')}</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4 mb-4 text-sm">
+                            <p class="font-medium text-gray-700 mb-2">${courseName}</p>
+                            <p class="text-gray-600">${_lvT('scorecard.resume.players', 'Players:')} ${playerNames}</p>
+                            <p class="text-gray-600">${_lvT('scorecard.resume.hole', 'Current Hole:')} ${currentHole}</p>
+                        </div>
+                        <div class="space-y-2">
+                            <button id="resumeRoundBtn" class="w-full py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors">
+                                ${_lvT('scorecard.join.join', 'Join the Round')}
+                            </button>
+                            <button id="leaveGroupAskBtn" class="w-full py-2 text-gray-600 hover:text-red-600 transition-colors text-sm">
+                                ${_lvT('scorecard.join.notmine', "I'm not in this group")}
+                            </button>
+                        </div>
+                    </div>
+                    <div data-step="leave" style="display:none">
+                        <div class="text-center mb-4">
+                            <h2 class="text-xl font-bold text-gray-800">${_lvT('scorecard.join.leavetitle', 'Leave this group?')}</h2>
+                            <p class="text-sm text-gray-600 mt-2">${_lvT('scorecard.join.leavebody', 'Your card comes out of this group and the others stop seeing your scores.')}</p>
+                        </div>
+                        <div class="space-y-2">
+                            <button id="leaveGroupBackBtn" class="w-full py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors">
+                                ${_lvT('scorecard.join.back', 'Back')}
+                            </button>
+                            <button id="leaveGroupBtn" class="w-full py-3 bg-white border border-red-300 text-red-700 font-bold rounded-xl hover:bg-red-50 transition-colors">
+                                ${_lvT('scorecard.join.leave', 'Leave Group')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+                document.body.appendChild(modal);
+                const step = (name) => modal.querySelectorAll('[data-step]').forEach(el => {
+                    el.style.display = el.getAttribute('data-step') === name ? '' : 'none';
+                });
+                modal.querySelector('#leaveGroupAskBtn').onclick = () => step('leave');
+                modal.querySelector('#leaveGroupBackBtn').onclick = () => step('join');
+                modal.querySelector('#leaveGroupBtn').onclick = async () => {
+                    // Only MY card leaves — the group keeps playing on the other phones.
+                    try {
+                        const myCard = state.scorecards?.[_me];
+                        const sb = window.SupabaseDB?.client;
+                        if (sb && myCard && !String(myCard).startsWith('local_')) {
+                            await sb.from('scorecards').update({ status: 'abandoned' })
+                                .eq('id', myCard).eq('status', 'in_progress');
+                        }
+                    } catch (e) { console.warn('[LiveScorecard] Leave group: DB abandon failed (non-fatal):', e); }
+                    this.clearRoundState();
+                    if (modal.parentNode) document.body.removeChild(modal);
+                    resolve(false);
+                };
+                modal.querySelector('#resumeRoundBtn').onclick = () => {
+                    this.restoreRoundState(state);
+                    if (modal.parentNode) document.body.removeChild(modal);
+                    this.showLiveScorecard();
+                    let retries = 0;
+                    const retryRender = setInterval(() => {
+                        const g = document.getElementById('groupScorecardGrid');
+                        if (g && g.children.length === 0 && this.players.length > 0) { this.renderHole(); retries++; }
+                        if ((g && g.children.length > 0) || retries >= 10) clearInterval(retryRender);
+                    }, 300);
+                    resolve(true);
+                };
+                return;
+            }
             modal.innerHTML = `
                 <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
                     <div class="text-center mb-4">
@@ -94674,7 +94789,9 @@ class LiveScorecardSystem {
                             // Group has scores → someone may still be playing; only drop MY card.
                             // Zero scores anywhere → dead false start; clear the whole group so
                             // groupmates don't inherit the same nag.
-                            const ids = anyScores
+                            // v1462: ...and a card another phone holds is someone still playing,
+                            // scores or not — the whole-group sweep only runs when nobody else is in.
+                            const ids = (anyScores || _heldElsewhere(state.cardOwner))
                                 ? [state.scorecards?.[me]]
                                 : Object.values(state.scorecards || {});
                             const dbIds = ids.filter(id => id && !String(id).startsWith('local_'));

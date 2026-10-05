@@ -173,7 +173,7 @@
     '@media (max-width:520px){#crmOv .kp{grid-template-columns:repeat(2,minmax(0,1fr))}#crmOv .hb{grid-template-columns:88px 1fr 26px}#crmOv .hr{grid-template-columns:84px 42px 1fr}}';
 
   var CRM = window.CourseCRM = {
-    _v: 1469,
+    _v: 1471,
     sb: null, lang: 'en', course: null,          // course: { slug, name }
     _cache: null, _seq: 0, _cur: null, _prof: {},
 

@@ -177,7 +177,8 @@
     '#bk-rail .bb-skel{height:14px;border-radius:7px;background:var(--card-hi);margin:10px 0;animation:bbp 1.1s ease-in-out infinite}' +
     '@keyframes bbp{50%{opacity:.45}}' +
     /* the one-line standing under each golfer name */
-    '.bb-strip{display:flex;align-items:center;gap:6px;width:100%;min-width:0;margin-top:5px;padding:0;border:0;background:transparent;color:var(--muted);font:600 11.5px "Hanken Grotesk",Inter,sans-serif;text-align:left;cursor:pointer;text-transform:none;letter-spacing:0}' +
+    /* width:0 + min-width:100% — the line fills its field but never WIDENS it (its nowrap text pushed the row's remove button off a 336px sheet) */
+    '.bb-strip{display:flex;align-items:center;gap:6px;width:0;min-width:100%;overflow:hidden;margin-top:5px;padding:0;border:0;background:transparent;color:var(--muted);font:600 11.5px "Hanken Grotesk",Inter,sans-serif;text-align:left;cursor:pointer;text-transform:none;letter-spacing:0}' +
     '.bb-strip .tx{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}' +
     '.bb-strip.sel .tx{color:var(--ink)}' +
     '.bb-strip svg{flex:none;width:13px;height:13px;color:#f59e0b}' +
@@ -196,7 +197,7 @@
   };
 
   var BB = window.BookingBrief = {
-    _v: 1469,
+    _v: 1471,
     host: null, dialog: null, rail: null,
     S: { sel: null, noteEdit: null, html: '', seq: 0 },
     prof: {},            // golfer id -> { prof, favs } once loaded

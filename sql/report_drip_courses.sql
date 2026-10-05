@@ -107,7 +107,6 @@ insert into public.report_drip_reporters (reporter_id, name, lang, society, weig
 ('TRGG-GUEST-0121', 'Brocksopp, Roger', 'en', 'Travellers Rest Golf Group', 2),
 ('Ubf3b7121aee6641bfd82e03566de1550', 'Folan, Mick', 'en', 'Travellers Rest Golf Group', 1),
 ('Ufb0ef229b46553027f43171096eec373', 'Nabbe, Rodney', 'en', 'Travellers Rest Golf Group', 1),
-('U8f371b8f895c9d722596e52bf8dec357', 'Thorogood, Derek', 'en', 'Travellers Rest Golf Group', 5),
 ('TRGG-HCP-20260629170837-8', 'Fleming, Gordon', 'en', 'Travellers Rest Golf Group', 1),
 ('Udb12b92d028efee5a017a03a6c4c1ad4', 'Jason Kang', 'en', 'JOA Golf Pattaya', 3),
 ('TRGG-HCP-1784630681781-2', 'Takashi, Komatsu', 'en', 'Travellers Rest Golf Group', 2),
@@ -222,7 +221,6 @@ insert into public.report_drip_reporters (reporter_id, name, lang, society, weig
 ('TRGG-GUEST-0900', 'Senior, Ted', 'en', 'Travellers Rest Golf Group', 3),
 ('TRGG-GUEST-0437', 'Inggall, Kenny', 'en', 'Travellers Rest Golf Group', 3),
 ('TRGG-GUEST-1173', 'Moss, Ray', 'en', 'Travellers Rest Golf Group', 7),
-('U2d73fb4e83969dd5caaadd413ede87cb', 'Flanagan, Louis', 'en', 'Travellers Rest Golf Group', 3),
 ('TRGG-GUEST-0139', 'Byung-Un, Yoo', 'en', 'Travellers Rest Golf Group', 4),
 ('TRGG-GUEST-0174', 'Cleaver, Jim', 'en', 'Travellers Rest Golf Group', 2),
 ('TRGG-GUEST-0773', 'Orchard, Mark', 'en', 'Travellers Rest Golf Group', 2),
@@ -329,7 +327,6 @@ insert into public.report_drip_reporters (reporter_id, name, lang, society, weig
 ('TRGG-GUEST-1046', 'Watts, Simon', 'en', 'Travellers Rest Golf Group', 1),
 ('U52e2027819244a204c43127e8a4d29df', 'Alex ', 'en', 'Travellers Rest Golf Group', 1),
 ('TRGG-GUEST-0851', 'Raavi, Janne', 'en', 'Travellers Rest Golf Group', 2),
-('Ue2e8d0624f400d568cc6fe2e6342780b', 'See-Hoe, Perry', 'en', 'Travellers Rest Golf Group', 1),
 ('TRGG-GUEST-0015', 'An, Sang Jin', 'en', 'Travellers Rest Golf Group', 1);
 
 -- short course name as golfers write it

@@ -89,8 +89,16 @@ EV_BY_SOC = defaultdict(list)
 for e in EVENTS:
     EV_BY_SOC[e['soc']].append(e)
 
+# Real people who must NEVER be the reporter on a made-up report (Pete 2026-10-05). Ids only, on purpose:
+# their names stay out of these scripts. Same ids (five people, one with an old guest id too) as sql/report_never_reporters_20261005.sql, which
+# also blocks them in the DB (drip pool + any non-'app' report). A fresh inputs pull may list them again
+# (they are real registrants) — they are dropped here, before any wave can pick them.
+NEVER_REPORTERS = {'U8f371b8f895c9d722596e52bf8dec357', 'U2d73fb4e83969dd5caaadd413ede87cb', 'Ud2a1832c01d2ca470854e0385ac7fbff',
+                   'U8e1e7241961a2747032dece7929adbde', 'Ue2e8d0624f400d568cc6fe2e6342780b', 'TRGG-GUEST-0009'}
+
 REPORTERS = []
 for r in INP['reporters']:
+    if r['id'] in NEVER_REPORTERS: continue
     socs = [SOC_COL[s] for s in r['socs'] if s in SOC_COL]
     REPORTERS.append({'id': r['id'], 'name': r['name'], 'lang': r['lang'], 'socs': socs, 'w': r['weight']})
 
@@ -846,7 +854,166 @@ def summarize(name, rows):
     print('  range', min(r['created_at'] for r in rows).date(), '->', max(r['created_at'] for r in rows))
     print('  notes', sum(1 for r in rows if r['admin_note']), 'reporters', len(set(r['reporter_id'] for r in rows)))
 
-if __name__ == '__main__' and 'wave3' in sys.argv:
+# ----------------------------------------------------------------------------- WAVE 4 (Pete, Telegram 2026-10-04)
+# "i want two courses Burapha and Eastern Star to be peppered with booking caddy issues from no caddies
+#  available to staff not speaking English and booking taking too long. Also add Pattaya country club issues
+#  with the greens and especially the back nine which is the worst its ever been the last 4 years and golfers
+#  will stop playing pattaya cc"
+# Anchored to the REAL society days at those courses (sql/seed_support_reports_inputs_w4.json, pulled live
+# 2026-10-04): booking problems are written BEFORE the day (or on the day at the caddy desk), greens complaints
+# AFTER a played Monday at Pattaya CC; POST reporters are players who were actually registered that day.
+NOW4 = dt.datetime(2026, 10, 4, 19, 0, tzinfo=TZ)
+W4_START = dt.datetime(2026, 8, 25, 6, 0, tzinfo=TZ)
+with open(os.path.join(HERE, 'seed_support_reports_inputs_w4.json'), encoding='utf-8') as f:
+    W4_EV = json.load(f)['events']
+for e in W4_EV:
+    e['d'] = dt.date.fromisoformat(e['date']); hh, mm = int(e['tee'][:2]), int(e['tee'][3:5]); e['t'] = dt.time(hh, mm)
+    e['players'] = [p for p in e['players'] if p['id'] not in NEVER_REPORTERS]
+W4_NAME = {'burapha': 'Burapha', 'eastern-star': 'Eastern Star', 'pattaya-golf': 'Pattaya CC'}
+W4_KO = {'burapha': '부라파', 'eastern-star': '이스턴스타', 'pattaya-golf': '파타야CC'}
+W4 = []
+def w4(theme, lang, cat, subj, body, timing, k=(1, 4), hours=(7, 21), w=5, prio=None, venues=None):
+    W4.append(dict(theme=theme, lang=lang, cat=cat, subj=subj, body=body, timing=timing, k=k, hours=hours, w=w, prio=prio, venues=venues))
+CAD = ('burapha', 'eastern-star')
+# --- no caddies available (Burapha / Eastern Star)
+w4('nocad', 'en', 'caddy_booking', 'No caddies at {C} for {DATE}', "Tried to book a caddy at {C} for the {SOC} day on {DATE} ({TIME} tee). Told there are no caddies left. It's {LEAD} days away. How can a course that size run out?", 'pre', (1, 4), w=8, venues=CAD)
+w4('nocad', 'en', 'caddy_booking', '{C} says no caddies - again', "Second time at {C} I've been told 'no caddy' for a {SOC} day. {DATE} is the {WD_EV} and they're 'full'. Do they actually have caddies on the roster any more?", 'pre', (1, 5), w=7, prio='high', venues=CAD)
+w4('nocad', 'en', 'caddy_booking', 'Carried my own bag at {C}', "{DATE} at {C}: booked a caddy on the phone, got there and the desk said there were no caddies for our group. Four of us pulled our own trolleys in the heat. Not acceptable for a {SOC} day.", 'post', (0, 2), (13, 22), w=7, prio='high', venues=CAD)
+w4('nocad', 'en', 'caddy_booking', 'Caddy shortage at {C}', "Half our flight had no caddy at {C} on {DATE}. The caddy master said 'too many golfers today'. They knew the {SOC} was coming — we're on their sheet every month.", 'post', (0, 2), (13, 22), w=6, venues=CAD)
+w4('nocad', 'ko', 'caddy_booking', '{KC} 캐디가 없대요', "{KDATE} {KC} {TIME} 티오프인데 캐디 예약하려니 캐디가 없다고 합니다. 이렇게 큰 골프장에서 어떻게 캐디가 없나요?", 'pre', (1, 4), w=5, venues=CAD)
+w4('nocad', 'ko', 'caddy_booking', '{KC} 캐디 없이 쳤어요', "{KDATE} {KC}에서 예약한 캐디가 없었습니다. 캐디 데스크에서 오늘 캐디가 부족하다고만 하네요. 골프장에 꼭 전달해 주세요.", 'post', (0, 2), (13, 22), w=4, prio='high', venues=CAD)
+# --- staff not speaking English (Burapha / Eastern Star)
+w4('english', 'en', 'caddy_booking', '{C} - nobody speaks English on the phone', "Rang {C} {N} times to book a caddy for {DATE}. Every time the person answering put the phone down or handed it round. Nobody could take a booking in English.", 'pre', (1, 5), w=8, venues=CAD)
+w4('english', 'en', 'caddy_booking', 'Language problem at {C} caddy desk', "On {DATE} at {C} the caddy desk couldn't understand which caddy I'd booked. I showed the number on my phone and still ended up with someone else. Is there anyone there who speaks English?", 'post', (0, 2), (12, 22), w=6, venues=CAD)
+w4('english', 'en', 'caddy_booking', 'Can\'t book {C} - language barrier', "{C} LINE replies only in Thai and the phone staff don't speak English. I just want a caddy for the {SOC} day on {DATE}. Can MyCaddiPro book it for us?", 'pre', (1, 6), w=7, venues=CAD)
+w4('english', 'en', 'caddy_booking', '{C} booking in English please', "Our whole {SOC} group struggles with {C}. The caddy master doesn't speak English, the pro shop barely does. {DATE} we have {N} players wanting caddies and no way to ask.", 'pre', (2, 6), w=5, prio='high', venues=CAD)
+w4('english', 'ko', 'caddy_booking', '{KC} 영어가 안 통해요', "{KC}에 캐디 예약하려고 {N}번 전화했는데 영어를 하는 직원이 없어요. {KDATE} 라운드 캐디 예약 부탁드립니다.", 'pre', (1, 5), w=5, venues=CAD)
+w4('english', 'ko', 'caddy_booking', '{KC} 캐디 데스크 의사소통 문제', "{KDATE} {KC} 캐디 데스크에서 제가 예약한 캐디 번호를 이해하지 못했어요. 결국 다른 캐디와 쳤습니다.", 'post', (0, 2), (12, 22), w=4, venues=CAD)
+# --- booking taking too long (Burapha / Eastern Star)
+w4('slowbook', 'en', 'caddy_booking', '{C} took {HRS} days to confirm a caddy', "Asked {C} for a caddy for {DATE} and it took {HRS} days and four messages to get a yes. By then half the group had given up and booked elsewhere.", 'pre', (1, 3), w=7, venues=CAD)
+w4('slowbook', 'en', 'caddy_booking', '{MIN} minutes at the {C} caddy desk', "{DATE}: {MIN} minutes standing at the caddy desk at {C} waiting to be given a caddy. We nearly missed our {TIME} tee. Why isn't it sorted before we arrive?", 'post', (0, 1), (12, 22), w=7, prio='high', venues=CAD)
+w4('slowbook', 'en', 'caddy_booking', 'Still waiting on {C}', "Sent my caddy request to {C} on {WD_PREV} for the {DATE} round. Still no reply. Booking a caddy shouldn't take longer than booking the flight here.", 'pre', (1, 4), (8, 21), w=6, venues=CAD)
+w4('slowbook', 'en', 'caddy_booking', 'Why is booking at {C} so slow?', "Every {SOC} day at {C} it's the same: call, wait, call back, wait. {DATE} took three days to confirm one caddy. Please get {C} onto the app.", 'pre', (1, 5), w=6, venues=CAD)
+w4('slowbook', 'ko', 'caddy_booking', '{KC} 예약이 너무 오래 걸려요', "{KDATE} 라운드 캐디 예약 확인 받는 데 {HRS}일 걸렸어요. 앱으로 바로 예약되면 좋겠습니다.", 'pre', (1, 3), w=4, venues=CAD)
+# --- Pattaya CC greens (after a played Monday)
+PCC = ('pattaya-golf',)
+w4('greens', 'en', 'other', 'Pattaya CC greens on {DATE}', "The greens at Pattaya CC on {DATE} were shocking. Bumpy, slow, bare patches on half of them. You can't putt on them — it's a lottery. What is the course doing?", 'post', (0, 2), (13, 22), w=8, prio='high', venues=PCC)
+w4('greens', 'en', 'other', 'Pattaya CC - greens getting worse every week', "{DATE} was worse than the week before. Sanded, sandy, and brown on the edges. Ball bounces off line from three feet. The {SOC} pays good money for this course every Monday.", 'post', (0, 3), (13, 22), w=7, venues=PCC)
+w4('greens', 'en', 'other', 'Greens report - Pattaya CC {DATE}', "Played Pattaya CC {DATE}. Front nine just about OK, back nine greens are dead. 11th and 13th are mostly sand. Someone needs to tell the superintendent.", 'post', (0, 2), (14, 22), w=6, venues=PCC)
+w4('greens', 'ko', 'other', '파타야CC 그린 상태 너무 나빠요', "{KDATE} 파타야CC 그린이 울퉁불퉁하고 느려요. 모래가 많고 잔디가 없는 곳도 있어요. 골프장에 꼭 전달해 주세요.", 'post', (0, 2), (13, 22), w=5, prio='high', venues=PCC)
+# --- the back nine: worst in four years
+w4('back9', 'en', 'other', 'Pattaya CC back nine - worst in 4 years', "I've played Pattaya CC every Monday for four years and the back nine greens on {DATE} were the worst I've ever seen them. 10 through 18, not one decent green.", 'post', (0, 3), (13, 22), w=9, prio='urgent', venues=PCC)
+w4('back9', 'en', 'other', 'Back nine at Pattaya CC is a disgrace', "{DATE}: the back nine greens at Pattaya CC are in the worst state since I started playing here {YRS} years ago. Holes 14 to 17 were more sand than grass. Please pass this to the course.", 'post', (0, 2), (14, 22), w=8, prio='high', venues=PCC)
+w4('back9', 'en', 'other', 'Pattaya CC back 9 greens', "Everyone in our flight said the same thing on {DATE}: the back nine at Pattaya CC hasn't been this bad in four years. The front is fine, so it's not the weather. Something's gone wrong on 10–18.", 'post', (0, 3), (13, 22), w=7, venues=PCC)
+w4('back9', 'ko', 'other', '파타야CC 후반 9홀 최악', "4년 동안 파타야CC를 쳤는데 {KDATE} 후반 9홀 그린이 지금까지 본 것 중 최악이었어요. 10번부터 18번까지 퍼팅이 안 됩니다.", 'post', (0, 2), (13, 22), w=5, prio='urgent', venues=PCC)
+# --- golfers will stop playing Pattaya CC
+w4('quitpcc', 'en', 'other', 'Not playing Pattaya CC until the greens are fixed', "That's me done with Pattaya CC until the greens come back. {DATE} was the last straw — the back nine was unplayable. I'll skip the {SOC} Mondays there and play elsewhere.", 'post', (0, 4), (13, 22), w=8, prio='high', venues=PCC)
+w4('quitpcc', 'en', 'other', 'Our group is dropping Pattaya CC', "{N} of the regulars in our {SOC} flight have said they won't play Pattaya CC again after {DATE}. The greens, especially the back nine, are driving people away. The course needs to hear this.", 'post', (1, 5), (13, 22), w=7, prio='high', venues=PCC)
+w4('quitpcc', 'en', 'other', 'Should we keep Pattaya CC on the schedule?', "With the greens the way they are, is the {SOC} keeping Pattaya CC every Monday? Several of us are thinking of dropping {DATE} unless the course says what they're doing about the back nine.", 'pre', (1, 4), (8, 21), w=7, venues=PCC)
+w4('quitpcc', 'en', 'other', 'Pattaya CC losing golfers', "Pattaya CC used to be our favourite Monday. After {DATE} I honestly think golfers will stop going. Four years of good greens and now this. Please make sure the course knows how bad it's got.", 'post', (1, 6), (13, 22), w=6, venues=PCC)
+w4('quitpcc', 'ko', 'other', '파타야CC 이제 안 갈 것 같아요', "{KDATE} 이후로 우리 조 {N}명이 파타야CC는 그린이 고쳐질 때까지 안 간다고 합니다. 특히 후반 9홀이 너무 심해요.", 'post', (1, 4), (13, 22), w=5, prio='high', venues=PCC)
+
+NOTES_W4 = {
+    'nocad':    {'resolved': ["Called the caddy master; two caddies found for the group and the reporter told.", "Course confirmed a caddy once the TRGG list was sent the day before. Reporter told.", "Passed to the course with the dates. They say they'll hold caddies for society days."],
+                 'in_progress': ["Asked the course how many caddies they hold for society days.", "Collecting these to take to the caddy master together.", "Waiting on the course to reply."]},
+    'english':  {'resolved': ["Booked the caddy for them by phone in Thai and confirmed back in English.", "Course gave a LINE contact that answers in English; sent to the reporter.", "Passed to the pro shop manager. Reporter told."],
+                 'in_progress': ["Asked the course for an English-speaking contact at the caddy desk.", "Collecting these per course for the pro shop meeting.", "Waiting on the course."]},
+    'slowbook': {'resolved': ["Chased the course; caddy confirmed and the reporter told.", "Sent the course the request again with the group list; confirmed same day.", "Logged with the course as feedback. Reporter told."],
+                 'in_progress': ["Chasing the course for an answer.", "Collecting these to show the course how long bookings take.", "Waiting on the caddy master."]},
+    'greens':   {'resolved': ["Sent to Pattaya CC with the date; they say the greens were sanded that week.", "Passed to the course. They replied that the greens are being worked on.", "Logged for the course meeting. Reporter told."],
+                 'in_progress': ["Collecting the greens reports to send to Pattaya CC together.", "Asked Pattaya CC what work is planned on the greens.", "Waiting on the course to reply."]},
+    'back9':    {'resolved': ["Sent to Pattaya CC with the holes named. They acknowledged the back nine needs work.", "Course says the back nine greens are being re-turfed in stages. Reporter told.", "Passed to the course with the other back nine reports."],
+                 'in_progress': ["Collecting back nine reports to send to Pattaya CC together.", "Asked the course for a date the back nine will be fixed.", "Waiting on Pattaya CC."]},
+    'quitpcc':  {'resolved': ["Passed to Pattaya CC and the TRGG organizer as feedback.", "Told the reporter we've sent the greens reports to the course.", "Logged with the course. Nothing more to do here."],
+                 'in_progress': ["Taking these to Pattaya CC with the greens reports.", "Asked the organizer whether Pattaya CC stays on the schedule.", "Collecting these to send to the course together."]},
+}
+W4_PLAN = {'burapha': ['nocad'] * 10 + ['english'] * 9 + ['slowbook'] * 9,
+           'eastern-star': ['nocad'] * 9 + ['english'] * 9 + ['slowbook'] * 8,
+           'pattaya-golf': ['greens'] * 11 + ['back9'] * 12 + ['quitpcc'] * 11}
+REP_BY_ID = {r['id']: r for r in REPORTERS}
+
+def gen_wave4():
+    global NOW, LATEST
+    NOW, LATEST = NOW4, NOW4 - dt.timedelta(minutes=40)
+    rows = []; seen = set()
+    slots = [(v, th) for v, ths in W4_PLAN.items() for th in ths]
+    rnd.shuffle(slots)
+    ko_slots = set(rnd.sample(range(len(slots)), 14))
+    for i, (venue, theme) in enumerate(slots):
+      for lang in (['ko', 'en'] if i in ko_slots else ['en']):   # a Korean slot with no Korean player that day -> English
+        pool = [t for t in W4 if t['lang'] == lang and t['theme'] == theme and venue in t['venues']]
+        placed = False
+        for _ in range(1500):
+            t = rnd.choices(pool, weights=[x['w'] for x in pool])[0]
+            evs = [e for e in W4_EV if e['venue'] == venue]
+            # recent days carry most of the noise (Pete wants these courses loud now)
+            ev = rnd.choices(evs, weights=[1 + max(0, 40 - (NOW4.date() - e['d']).days) / 6 for e in evs])[0]
+            k = rnd.randint(*t['k'])
+            if t['timing'] == 'pre':
+                cday = ev['d'] - dt.timedelta(days=k)
+                if cday >= ev['d']: continue
+            else:
+                cday = ev['d'] + dt.timedelta(days=k)
+            if cday > NOW4.date(): continue
+            created = at_random_time(cday, *t['hours'])
+            if cday == NOW4.date() and created > LATEST:
+                created = at_random_time(cday, 7, 17)
+            if t['timing'] == 'post' and k == 0:
+                earliest = dt.datetime.combine(ev['d'], ev['t'], tzinfo=TZ) + dt.timedelta(hours=4, minutes=rnd.randrange(0, 90))
+                if created < earliest: created = earliest
+            if not (W4_START <= created <= LATEST): continue
+            if t['timing'] == 'pre' and not (ev['d'] > created.date()): continue
+            # reporter: a player who was registered that day (POST), else a society member of the right language
+            if t['timing'] == 'post':
+                if not ev['players']: continue
+                cands = [p for p in ev['players'] if REP_BY_ID.get(p['id'], {}).get('lang', 'en') == lang]
+                if not cands: continue
+                p = rnd.choice(cands); rep = {'id': p['id'], 'name': REP_BY_ID[p['id']]['name'] if p['id'] in REP_BY_ID else p['name']}
+            else:
+                rr = pick_reporter(lang, need_member=True); rep = {'id': rr['id'], 'name': rr['name']}
+            soc = ev['soc']
+            prev = created.date() - dt.timedelta(days=rnd.randint(1, 2))
+            fields = {
+                'C': W4_NAME[venue], 'KC': W4_KO[venue], 'SOC': 'TRGG' if soc.startswith('Travellers') else ('JOA' if soc.startswith('JOA') else soc),
+                'DATE': fmt_date(ev['d']), 'KDATE': fmt_kdate(ev['d']), 'TIME': fmt_time(ev['t']),
+                'LEAD': max(1, (ev['d'] - created.date()).days), 'N': rnd.choice([3, 4, 5, 6, 7, 8]),
+                'HRS': rnd.choice([2, 3, 3, 4]), 'MIN': rnd.choice([25, 30, 35, 40, 45]), 'YRS': rnd.choice(['four', 'four', 'five']),
+                'WD_PREV': WD_EN[prev.weekday()], 'WD_EV': WD_EN[ev['d'].weekday()],
+            }
+            subj = t['subj'].format_map(fields); body = t['body'].format_map(fields)
+            key = (rep['id'], venue, fields['DATE'])   # one report per player per course day
+            if key in seen: continue
+            seen.add(key)
+            placed = True
+            break
+        if placed: break
+      else:
+        raise SystemExit('could not place wave4 row %d (%s/%s)' % (i, venue, theme))
+      if True:
+        status = age_status(created, recent_bias=True)
+        prio = t['prio'] or rnd.choices(['high', 'normal', 'low'], weights=[25, 65, 10])[0]
+        row = dict(reporter_id=rep['id'], reporter_name=rep['name'], lang=lang, category=t['cat'], subject=subj, body=body,
+                   society_name=soc, priority=prio, source='seed_wave4_20261004')
+        event_dt = dt.datetime.combine(ev['d'], ev['t'], tzinfo=TZ) if t['timing'] == 'pre' else None
+        stamp(row, created, status, event_dt=event_dt, note_pool=NOTES_W4[theme], note_rate=(0.35, 0.5))
+        rows.append(row)
+    rows.sort(key=lambda r: r['created_at'], reverse=True)
+    return rows
+
+OUT_W4 = os.path.join(HERE, 'seed_support_reports_wave4_20261004.sql')
+HDR_W4 = """-- Seeded Reports, wave 4 (Pete via Telegram 2026-10-04): Burapha + Eastern Star caddy booking (no caddies
+-- available, staff not speaking English, booking taking too long) and Pattaya CC greens (back nine the worst in
+-- four years, golfers will stop playing it). Anchored to the real society days at those courses; reporters on
+-- greens/day-of reports were registered that day. MADE-UP test data. Every row carries source='seed_wave4_20261004'.
+-- REMOVE WITH:  delete from public.support_reports where source = 'seed_wave4_20261004';
+-- Generated by sql/seed_support_reports_gen.py wave4 — edit the generator, not this file.
+"""
+
+if __name__ == '__main__' and 'wave4' in sys.argv:
+    w4rows = gen_wave4()
+    summarize('wave4', w4rows)
+    write_sql(OUT_W4, HDR_W4, 'seed_wave4_20261004', w4rows)
+elif __name__ == '__main__' and 'wave3' in sys.argv:
     # wave 3 only — the first two batches are already loaded and must not be regenerated with a new NOW
     w3rows = gen_wave3()
     summarize('wave3', w3rows)

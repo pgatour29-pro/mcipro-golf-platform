@@ -191,6 +191,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="golfer-avatar.js?v=20260830a"></script>
+    <script src="rain-out.js?v=1463"></script>
     <script>
         const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
@@ -896,8 +897,27 @@
                 entries.forEach(en => { en._cb = {
                     sb9: cbSum(en.hole_pts, 10, 18), sb6: cbSum(en.hole_pts, 13, 18), sb3: cbSum(en.hole_pts, 16, 18), sb1: cbSum(en.hole_pts, 18, 18),
                     gr9: cbSum(en.hole_scores, 10, 18), gr6: cbSum(en.hole_scores, 13, 18), gr3: cbSum(en.hole_scores, 16, 18), gr1: cbSum(en.hole_scores, 18, 18) }; });
+                // v1463 RAIN OUT: a stopped Stableford round ranks on the 18-hole figure (rain-out.js — the
+                // one copy of the maths every board shares). Rows without hole detail fall back to totals.
+                const rain = (scoreType !== 'stroke_play' && window.RainOut) ? await window.RainOut.get(sb, eventId) : null;
+                if (seq !== state.evSeq) return;
+                if (rain) {
+                    const res = window.RainOut.score(entries.filter(e => !e._notStarted).map(e => {
+                        const hp = {}; let any = false;
+                        (e.hole_scores || []).forEach((g, k) => { if (g != null) { hp[k + 1] = Number((e.hole_pts || [])[k]) || 0; any = true; } });
+                        return any ? { key: String(e.player_id), holePts: hp } : { key: String(e.player_id), raw: e.pts || 0, holes: e.holes || 0 };
+                    }), rain.method);
+                    entries.forEach(e => { if (!e._notStarted) e.rain = res.byKey[String(e.player_id)]; });
+                }
+                const rainV = e => (e.rain && e.rain.value != null) ? e.rain.value : null;
                 const cmpScore = (a,b) => {
                     const higher = scoreType !== 'stroke_play';
+                    if (higher && rain) {
+                        const ra = rainV(a), rb = rainV(b);
+                        if (ra == null && rb != null) return 1;
+                        if (rb == null && ra != null) return -1;
+                        if (ra != null && rb != null) { const dr = (rb - ra) || ((b.pts||0) - (a.pts||0)); if (dr) return dr; }
+                    }
                     if (higher) { const d0 = (b.pts||0) - (a.pts||0); if (d0) return d0; }
                     else { const d0 = (a.net||999) - (b.net||999) || (a.gross||999) - (b.gross||999); if (d0) return d0; }
                     const ca = a._cb || {}, cb = b._cb || {};
@@ -998,7 +1018,7 @@
                                 if (i > 0 && cmpScore(en, list[i-1]) !== 0) pos = i + 1;   // dead heat after countback shares the place
                                 en.prov = { position: pos, placed: pos <= places };
                                 rows.push({ player_id: en.player_id, player_name: en.player_name, position: pos, placed: pos <= places,
-                                            score: scoreType === 'stroke_play' ? en.net : en.pts, division: en.division || null, prelim: true });
+                                            score: scoreType === 'stroke_play' ? en.net : (rainV(en) != null ? rainV(en) : en.pts), division: en.division || null, prelim: true });
                             });
                         });
                         if (rows.length) prelim = { places, players: entries.length, rows, divs: buckets.size };
@@ -1007,7 +1027,7 @@
                 state.loadingEventId = null;
 
                 state.eventData = {
-                    event, results, entries: ordered, teamBoards, twos, aces, divisions,
+                    event, results, entries: ordered, teamBoards, twos, aces, divisions, rainOut: rain,
                     officialTwos: winnings.filter(w => w.category==='2s_pot'),
                     officialAces: winnings.filter(w => w.category==='hio_pot'),
                     scoreType, published: results.length > 0, prelim,
@@ -1376,6 +1396,12 @@
             if (!silent) setUrl();
         }
 
+        // v1463 rain out: one band naming the method, above Winners and the Field
+        function rainBandHtml(d){
+            if (!d || !d.rainOut || !window.RainOut) return '';
+            const R = window.RainOut;
+            return '<div style="margin:0 0 10px;padding:8px 12px;border-radius:10px;background:#f0f9ff;border:1px solid #bae6fd;color:#0c4a6e;font-size:12px;"><span class="msym" style="font-size:16px;vertical-align:middle;color:#0369a1;">thunderstorm</span> <b>' + R.word('badge') + '</b> · ' + esc(R.label(d.rainOut.method)) + ' — ' + esc(R.describe(d.rainOut.method)) + ' ' + esc(R.word('key')) + '</div>';
+        }
         function medal(pos){ return pos===1?'🥇':pos===2?'🥈':pos===3?'🥉':String(pos==null?'':pos); }
         function scoreLabel(r, scoreType){
             if (r.score==null) return '';
@@ -1443,7 +1469,7 @@
                         </div>
                     </div>`).join('');
             });
-            el.innerHTML = html || `<div class="sub text-sm text-center py-8">${esc(rt('notPublished'))}</div>`;
+            el.innerHTML = rainBandHtml(d) + (html || `<div class="sub text-sm text-center py-8">${esc(rt('notPublished'))}</div>`);
             // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
             if (window._golferChipDecorate) window._golferChipDecorate(el, 20);
         }
@@ -1482,7 +1508,7 @@
                         <td class="text-center sub">${en.hcp!=null ? esc(en.hcp) : '-'}</td>
                         <td class="text-center" style="font-weight:700;">${en.gross || '-'}</td>
                         <td class="text-center" style="font-weight:700;">${en.net || '-'}</td>
-                        <td class="text-center" style="font-weight:800;color:var(--green);">${en.pts || '-'}</td>
+                        <td class="text-center" style="font-weight:800;color:var(--green);">${(d.rainOut && en.rain && en.rain.value != null) ? window.RainOut.fmt(en.rain.value) + '<div style="font-size:10px;font-weight:500;opacity:.75;white-space:nowrap;">' + window.RainOut.basisShort(en.rain) + '</div>' : (en.pts || '-')}</td>
                     </tr>
                     ${hasHoles ? renderHoleDetails(en, 6, pid) : ''}`;
             };
@@ -1521,7 +1547,7 @@
 
             // 2-Man Scramble: the board IS the teams — don't also dump the individual list ("not individuals").
             const scrambleOnly = !!(d.teamBoards && d.teamBoards.scramble && !d.teamBoards.waltz && !d.teamBoards.matches);
-            el.innerHTML = `
+            el.innerHTML = rainBandHtml(d) + `
                 ${teamHtml}
                 ${(teamHtml && !scrambleOnly) ? `<div class="px-4 pt-3 pb-1" style="font-size:11px;font-weight:800;color:var(--sub);text-transform:uppercase;">${esc(rt('individual'))}</div>` : ''}
                 ${scrambleOnly ? '' : `${prov ? `<div class="prelim-banner" style="margin:10px 12px 0;"><span class="msym">hourglass_top</span><span>${esc(rt('prelimShort'))}</span></div>` : ''}<div class="px-3 pt-2 pb-1 sub" style="font-size:11px;">${esc(rt('tapHint'))}</div>${boards}`}`;

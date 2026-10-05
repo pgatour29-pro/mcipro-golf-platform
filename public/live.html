@@ -211,6 +211,7 @@
     <!-- Supabase Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="golfer-avatar.js?v=20260830a"></script>
+    <script src="rain-out.js?v=1463"></script>
     <script>
         // Supabase configuration
         const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
@@ -1051,6 +1052,7 @@
                     holes_played: (sc.scores || []).length,
                     hole_scores: holeScores,
                     hole_pars: holePars,
+                    _hp: window.RainOut ? window.RainOut.holePtsFromScores(sc.scores) : null,   // v1463 rain out
                     status: sc.status
                 };
             });
@@ -1085,8 +1087,18 @@
                     return aAvg - bAvg;
                 });
             } else {
+                // v1463 RAIN OUT: a stopped round ranks on the 18-hole figure (rain-out.js — the one
+                // copy of the maths every board shares), raw points next.
+                const rain = window.RainOut ? await window.RainOut.get(supabaseClient, eventId) : null;
+                if (rain) {
+                    const res = window.RainOut.score(leaderboard.map((e, i) => ({ key: String(i), holePts: e._hp || {} })), rain.method);
+                    leaderboard.forEach((e, i) => { e.rain = res.byKey[String(i)]; });
+                    leaderboard.rainOut = rain;
+                }
+                const rv = e => (e.rain && e.rain.value != null) ? e.rain.value : -1;
                 // Stableford and others: highest points wins
                 leaderboard.sort((a, b) => {
+                    if (rain && rv(b) !== rv(a)) return rv(b) - rv(a);
                     // Higher stableford is better
                     if (b.total_stableford !== a.total_stableford) {
                         return b.total_stableford - a.total_stableford;
@@ -1097,6 +1109,7 @@
             }
 
             // Team-format standings (Waltz / Scramble / Match Play) ride along on the array
+            // (as does leaderboard.rainOut, set above when the round was rained out)
             leaderboard.teamBoards = await buildTeamBoards(uniqueScorecards, eventId);
             leaderboard.courseName = playingCourseName(uniqueScorecards);
 
@@ -1826,14 +1839,17 @@
                                 </span>
                             </td>
                             <td class="py-3 px-4 text-center">${entry.holes_played}</td>
-                            <td class="py-3 px-4 text-center font-bold text-green-600">${entry.total_stableford}</td>
+                            <td class="py-3 px-4 text-center font-bold text-green-600">${(entry.rain && entry.rain.value != null && window.RainOut) ? window.RainOut.fmt(entry.rain.value) + '<div style="font-size:10px;font-weight:500;color:#64748b;white-space:nowrap;">' + window.RainOut.basisShort(entry.rain) + '</div>' : entry.total_stableford}</td>
                         </tr>
                         ${renderHoleDetails(entry, 4, playerId)}
                     `;
                 }
             }).join('');
 
-            return `
+            const rainBand = (leaderboard.rainOut && window.RainOut && !isStrokePlay)
+                ? '<div style="padding:8px 12px;background:#f0f9ff;border-bottom:1px solid #bae6fd;color:#0c4a6e;font-size:12px;"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;color:#0369a1;">thunderstorm</span> <b>' + window.RainOut.word('badge') + '</b> · ' + window.RainOut.label(leaderboard.rainOut.method) + ' — ' + window.RainOut.describe(leaderboard.rainOut.method) + ' ' + window.RainOut.word('key') + '</div>'
+                : '';
+            return rainBand + `
                 <table class="w-full text-sm">
                     <caption class="sr-only">Leaderboard standings</caption>
                     <thead class="bg-gray-50 border-b">

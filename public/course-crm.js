@@ -173,9 +173,9 @@
     '@media (max-width:520px){#crmOv .kp{grid-template-columns:repeat(2,minmax(0,1fr))}#crmOv .hb{grid-template-columns:88px 1fr 26px}#crmOv .hr{grid-template-columns:84px 42px 1fr}}';
 
   var CRM = window.CourseCRM = {
-    _v: 1467,
+    _v: 1469,
     sb: null, lang: 'en', course: null,          // course: { slug, name }
-    _cache: null, _seq: 0, _cur: null,
+    _cache: null, _seq: 0, _cur: null, _prof: {},
 
     t: function (k, vars) {
       var d = STR[this.lang] || STR.en, s = d[k] != null ? d[k] : (STR.en[k] != null ? STR.en[k] : k);
@@ -267,6 +267,42 @@
       return p;
     },
 
+    /* v1469 — what is already in memory for this course, however old (the booking dialog paints from this at once and refreshes behind it) */
+    peek: function () { var c = this._cache; return (c && this.course && c.slug === this.course.slug) ? c.data : null; },
+    noteKey: function (p, who) { var id = (p && p.id) || (who && who.id) || null; return id ? 'id:' + id : 'n:' + this.norm((p && p.name) || (who && who.name)); },
+    /* the golfer's own account card + their 5-star caddies at this venue (cached 5 min per golfer) */
+    profile: function (id) {
+      if (!id || !this.ready()) return Promise.resolve({ prof: null, favs: [] });
+      var self = this, k = this.course.slug + '|' + id, c = this._prof[k];
+      if (c && Date.now() - c.at < 300000) return c.p;
+      var p = Promise.all([
+        this.sb.from('user_profiles').select('line_user_id,name,display_name,handicap_index,profile_data,society_name,home_club').eq('line_user_id', id).maybeSingle(),
+        this.sb.from('caddy_notebook').select('caddy_number,caddy_name,course_name,rating,times_used').eq('golfer_id', id)
+      ]).then(function (r) {
+        return { prof: r[0].data || null, favs: (r[1].data || []).filter(function (f) { return +f.rating >= 5 && self.atVenue(f.course_name); }) };
+      });
+      p.catch(function () { delete self._prof[k]; });
+      this._prof[k] = { at: Date.now(), p: p };
+      return p;
+    },
+    saveNote: async function (noteKey, name, note, vip) {
+      var row = { venue: this.venueKey(), golfer_key: noteKey, golfer_name: name || '', note: String(note || '').trim(), vip: !!vip, updated_at: new Date().toISOString() };
+      var r = await this.sb.from('course_golfer_notes').upsert(row, { onConflict: 'venue,golfer_key' }).select('note,vip,updated_at');
+      if (r.error || !r.data || !r.data.length) throw new Error(r.error ? r.error.message : 'not saved');
+      var d = this.peek(); if (d && d.notes) d.notes[noteKey] = r.data[0];
+      if (typeof this.onNote === 'function') this.onNote(noteKey, r.data[0]);
+      return r.data[0];
+    },
+    /* a society (or its short code, or a booking's group name that starts with it) -> its record at this venue */
+    findSociety: function (data, text) {
+      var self = this, n = this.norm(text); if (!n || !data || !data.socs) return null;
+      var toks = n.split(' '), hits = data.socs.filter(function (s) {
+        var nm = self.norm(s.name), sh = self.norm(s.short);
+        return (nm && nm === n) || (sh && sh === n) || (sh && toks[0] === sh) || (nm && nm.split(' ').length > 1 && (' ' + n + ' ').indexOf(' ' + nm + ' ') >= 0);
+      });
+      return hits.length === 1 ? hits[0] : null;
+    },
+
     _build: async function () {
       var self = this, sb = this.sb, CL = window.CourseLink, today = this.today();
       var res = await Promise.all([
@@ -274,8 +310,10 @@
         this._byWords('rounds', 'id,golfer_id,player_name,course_name,played_at,started_at,status,society_event_id', 'course_name'),
         this._byWords('caddy_bookings', 'id,booking_date,tee_time,start_time,status,golfer_id,user_id,golfer_name,caddie_name,caddy_id,booking_source,course_name', 'course_name'),
         this._byWords('caddy_profiles', 'id,caddy_number,name,photo_url,course_name', 'course_name'),
-        this._all(function () { return sb.from('bookings').select('id,date,time,name,golfer_id,golfer_name,course_id,course_name,phone,booking_type,deleted,booking_data').neq('deleted', true).order('id'); })
+        this._all(function () { return sb.from('bookings').select('id,date,time,name,golfer_id,golfer_name,course_id,course_name,phone,booking_type,deleted,booking_data').neq('deleted', true).order('id'); }),
+        this._all(function () { return sb.from('course_golfer_notes').select('golfer_key,note,vip,updated_at').eq('venue', self.venueKey()).order('golfer_key'); })
       ]);
+      var notes = {}; res[5].forEach(function (n) { notes[n.golfer_key] = n; });
       var evs = res[0], rounds = res[1], cbs = res[2], cads = res[3];
       var bks = res[4].filter(function (b) { return (b.course_id && CL.sameVenue(String(b.course_id), self.course.slug)) || self.atVenue(b.course_name); });
       var evById = {}; evs.forEach(function (e) { evById[String(e.id)] = e; });
@@ -304,15 +342,19 @@
         return p;
       }
       function visit(p, date) {
-        return p.visits[date] || (p.visits[date] = { date: date, time: '', tsrc: 9, src: {}, soc: '', title: '', caddies: {}, played: false, partners: {} });
+        return p.visits[date] || (p.visits[date] = { date: date, time: '', tsrc: 9, src: {}, soc: '', title: '', caddies: {}, played: false, partners: {}, pid: {} });
       }
       function setTime(v, t, rank) { t = self.hm(t); if (t && rank < v.tsrc) { v.time = t; v.tsrc = rank; } }
 
+      var evStat = {};   // event id -> { n: players, cad: players with a caddy by number, who: { person key: name } }
       regs.forEach(function (r) {
         if (String(r.status || '').toLowerCase() === 'cancelled') return;
         var ev = evById[String(r.event_id)]; if (!ev || !ev.event_date) return;
         if (String(ev.status || '').toLowerCase() === 'cancelled') return;
+        var es = evStat[String(r.event_id)] || (evStat[String(r.event_id)] = { n: 0, cad: 0, who: {} });
+        es.n++; if (CL.nums(r.caddy_numbers).length) es.cad++;
         var p = person(r.player_id, r.player_name); if (!p) return;
+        es.who[p.key] = self.nice(r.player_name || '');
         var v = visit(p, String(ev.event_date).slice(0, 10));
         v.src.event = 1; v.soc = CL.shortName(ev); v.title = ev.title || ''; setTime(v, ev.start_time, 4);
         CL.nums(r.caddy_numbers).forEach(function (n) { v.caddies[n] = 1; });
@@ -327,7 +369,7 @@
             var p = people[(x.playerId || x.id) ? 'id:' + (x.playerId || x.id) : 'n:' + self.norm(x.playerName || x.name)];
             var v = p && p.visits[date]; if (!v) return;          // pairings only decorate a registered visit
             setTime(v, g.teeTime || g.tee_time, 1);
-            pl.forEach(function (y) { var nm = y && self.nice(y.playerName || y.name); if (y && y !== x && nm) v.partners[nm] = 1; });
+            pl.forEach(function (y) { var nm = y && self.nice(y.playerName || y.name); if (y && y !== x && nm) { v.partners[nm] = 1; if (y.playerId || y.id) v.pid[nm] = y.playerId || y.id; } });
           });
         });
       });
@@ -356,7 +398,7 @@
           var v = visit(p, String(b.date).slice(0, 10)); v.src.sheet = 1; setTime(v, b.time, 3);
           if (g.caddyNumber) v.caddies[String(parseInt(g.caddyNumber, 10))] = 1;
           if (gi === 0 && b.phone && !p.phone) p.phone = String(b.phone);
-          gs.forEach(function (y) { var nm = y && self.nice(y.name); if (y && y !== g && nm && !GENERIC[self.norm(nm)]) v.partners[nm] = 1; });
+          gs.forEach(function (y) { var nm = y && self.nice(y.name); if (y && y !== g && nm && !GENERIC[self.norm(nm)]) { v.partners[nm] = 1; if (y.odoo_id) v.pid[nm] = y.odoo_id; } });
         });
       });
 
@@ -370,7 +412,7 @@
         Object.keys(p.visits).forEach(function (d) {
           var a = p.visits[d], b = t.visits[d];
           if (!b) { t.visits[d] = a; return; }
-          Object.assign(b.src, a.src); Object.assign(b.caddies, a.caddies); Object.assign(b.partners, a.partners);
+          Object.assign(b.src, a.src); Object.assign(b.caddies, a.caddies); Object.assign(b.partners, a.partners); Object.assign(b.pid, a.pid);
           b.played = b.played || a.played; if (a.tsrc < b.tsrc) { b.time = a.time; b.tsrc = a.tsrc; } if (!b.soc) { b.soc = a.soc; b.title = a.title; }
         });
         if (!t.phone) t.phone = p.phone;
@@ -380,19 +422,70 @@
       var list = Object.keys(people).map(function (k) { return self._stats(people[k], today, cadByNum); });
       list.sort(function (a, b) { return b.v12 - a.v12 || b.visits - a.visits || (b.last > a.last ? 1 : -1); });
       var byKey = {}; list.forEach(function (p) { byKey[p.key] = p; });
-      return { list: list, byKey: byKey, cadByNum: cadByNum, today: today };
+      var socs = await this._socs(evs, evStat, today);
+      return { list: list, byKey: byKey, cadByNum: cadByNum, today: today, notes: notes, socs: socs };
+    },
+
+    /* v1469 — every society that has brought a day to this venue: how often, how many, when, who */
+    _socs: async function (evs, evStat, today) {
+      var self = this, CL = window.CourseLink, ids = {}, sp = {};
+      evs.forEach(function (e) { if (e.society_id) ids[e.society_id] = 1; });
+      ids = Object.keys(ids);
+      if (ids.length) {
+        var r = await this.sb.from('society_profiles').select('id,society_name,society_logo').in('id', ids);
+        (r.data || []).forEach(function (x) { sp[String(x.id)] = x; });
+      }
+      var live = evs.filter(function (e) { return e.event_date && String(e.status || '').toLowerCase() !== 'cancelled'; });
+      var by = {}, codes = {};
+      function add(key, e, name, logo) {
+        var s = by[key] || (by[key] = { key: 'soc:' + key, id: e.society_id || null, name: name || '', short: '', logo: logo || '', ev: [] });
+        var st = evStat[String(e.id)] || { n: 0, cad: 0, who: {} }, sh = CL.shortName({ title: e.title, societyName: name });
+        if (!s.id && e.society_id) s.id = e.society_id;
+        if (sh && sh.length <= 8 && !/\s/.test(sh)) { codes[self.norm(sh)] = key; if (!s.short) s.short = sh; }
+        s.ev.push({ id: e.id, date: String(e.event_date).slice(0, 10), time: self.hm(e.start_time), title: e.title || '', n: st.n, cad: st.cad, who: st.who });
+      }
+      // named societies first, so an event with no profile can join one by its title's short code ("TRGG - ...")
+      live.forEach(function (e) { var p = sp[String(e.society_id)]; if (p && p.society_name) add(self.norm(p.society_name), e, p.society_name, p.society_logo); });
+      live.forEach(function (e) {
+        var p = sp[String(e.society_id)]; if (p && p.society_name) return;
+        var sh = CL.shortName({ title: e.title, societyName: '' }), k = self.norm(sh); if (!k) return;
+        if (sh.length > 8 || /\s/.test(sh)) return;          // a free-text title is not a society
+        add(codes[k] || k, e, by[codes[k] || k] ? by[codes[k] || k].name : sh, '');
+      });
+      return Object.keys(by).map(function (k) {
+        var s = by[k]; s.ev.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+        var past = s.ev.filter(function (e) { return e.date < today; }), up = s.ev.filter(function (e) { return e.date >= today; });
+        var fields = past.filter(function (e) { return e.n > 0; }).slice(-6), wd = [0, 0, 0, 0, 0, 0, 0], tm = [], who = {};   // the field it brings NOW: its last 6 days, not its first small ones
+        past.forEach(function (e) {
+          wd[(new Date(e.date + 'T00:00:00').getDay() + 6) % 7]++;
+          var m = self.mins(e.time); if (m != null) tm.push(m);
+          Object.keys(e.who).forEach(function (pk) { var w = who[pk] || (who[pk] = { key: pk, name: e.who[pk], n: 0 }); w.n++; });
+        });
+        tm.sort(function (a, b) { return a - b; });
+        var topDay = -1; wd.forEach(function (n, i) { if (n > 0 && (topDay < 0 || n > wd[topDay])) topDay = i; });
+        var c365 = new Date(today + 'T00:00:00'); c365.setDate(c365.getDate() - 365); c365 = c365.getFullYear() + '-' + String(c365.getMonth() + 1).padStart(2, '0') + '-' + String(c365.getDate()).padStart(2, '0');
+        s.name = s.name || s.short; s.short = s.short || s.name;
+        s.past = past.length; s.p12 = past.filter(function (e) { return e.date > c365; }).length; s.upcoming = up;
+        s.last = past[past.length - 1] || null; s.next = up[0] || null;
+        s.avg = fields.length ? Math.round(fields.reduce(function (a, e) { return a + e.n; }, 0) / fields.length) : null;
+        s.max = fields.length ? Math.max.apply(null, fields.map(function (e) { return e.n; })) : null;
+        s.avgCad = fields.length ? Math.round(fields.reduce(function (a, e) { return a + e.cad; }, 0) / fields.length) : null;
+        s.topDay = past.length >= 3 ? topDay : -1; s.medTime = tm.length ? tm[Math.floor((tm.length - 1) / 2)] : null;
+        s.members = Object.keys(who).map(function (pk) { return who[pk]; }).sort(function (a, b) { return b.n - a.n; });
+        return s;
+      }).sort(function (a, b) { return b.p12 - a.p12 || b.past - a.past; });
     },
 
     _stats: function (p, today, cadByNum) {
       var self = this, dates = Object.keys(p.visits).sort(), past = dates.filter(function (d) { return d <= today; }), fut = dates.filter(function (d) { return d > today; });
       var name = Object.keys(p.names).sort(function (a, b) { return p.names[b] - p.names[a] || b.length - a.length; })[0] || '';
-      var wd = [0, 0, 0, 0, 0, 0, 0], bands = [0, 0, 0, 0], tm = [], soc = {}, cad = {}, part = {}, withCad = 0;
+      var wd = [0, 0, 0, 0, 0, 0, 0], bands = [0, 0, 0, 0], tm = [], soc = {}, cad = {}, part = {}, pids = {}, withCad = 0;
       past.forEach(function (d) {
         var v = p.visits[d], dow = (new Date(d + 'T00:00:00').getDay() + 6) % 7; wd[dow]++;
         var m = self.mins(v.time);
         if (m != null) { tm.push(m); bands[m < 450 ? 0 : m < 600 ? 1 : m < 720 ? 2 : 3]++; }
         var s = v.soc || '__own'; soc[s] = (soc[s] || 0) + 1;
-        Object.keys(v.partners).forEach(function (n) { if (self.norm(n) !== self.norm(name)) part[n] = (part[n] || 0) + 1; });
+        Object.keys(v.partners).forEach(function (n) { if (self.norm(n) !== self.norm(name)) { part[n] = (part[n] || 0) + 1; if (v.pid[n]) pids[n] = v.pid[n]; } });
       });
       dates.forEach(function (d) {
         var ks = Object.keys(p.visits[d].caddies); if (ks.length && d <= today) withCad++;
@@ -412,7 +505,7 @@
         key: p.key, id: p.id, name: name, phone: p.phone, visitsMap: p.visits, dates: dates,
         visits: past.length, v12: past.filter(function (d) { return d > ago(365); }).length, v90: v90, first: first, last: last, next: fut[0] || '', upcoming: fut.length,
         gap: gaps.length >= 2 ? Math.round(gaps.reduce(function (a, b) { return a + b; }, 0) / gaps.length) : null,
-        wd: wd, bands: bands, medTime: med, topDay: (topDay >= 0 && past.length >= 3) ? topDay : -1, soc: soc, cads: cads, withCad: withCad, partners: part, seg: seg
+        wd: wd, bands: bands, medTime: med, topDay: (topDay >= 0 && past.length >= 3) ? topDay : -1, soc: soc, cads: cads, withCad: withCad, partners: part, partnerIds: pids, seg: seg
       };
     },
 
@@ -425,6 +518,12 @@
       if (data.byKey['n:' + nm]) return data.byKey['n:' + nm];
       var self = this, hits = data.list.filter(function (p) { return self.norm(p.name) === nm; });
       return hits.length === 1 ? hits[0] : null;
+    },
+
+    /* everyone in the book who goes by this name (an account and a guest record can share one) */
+    matches: function (data, name) {
+      var self = this, nm = this.norm(name); if (!nm || !data) return [];
+      return data.list.filter(function (p) { return self.norm(p.name) === nm; });
     },
 
     // ---------- profile panel ----------
@@ -482,11 +581,8 @@
         var ta = document.getElementById('crmNote'), vip = document.getElementById('crmVip');
         a.disabled = true;
         try {
-          var row = { venue: this.venueKey(), golfer_key: c.noteKey, golfer_name: (c.p && c.p.name) || this.nice(c.who.name || ''), note: ta ? ta.value.trim() : '', vip: !!(vip && vip.checked), updated_at: new Date().toISOString() };
-          var r = await this.sb.from('course_golfer_notes').upsert(row, { onConflict: 'venue,golfer_key' }).select('note,vip,updated_at');
-          if (r.error || !r.data || !r.data.length) throw new Error(r.error ? r.error.message : 'not saved');
-          c.note = r.data[0]; this._paint(); var b = document.querySelector('#crmOv [data-a=save]'); if (b) b.textContent = '✓ ' + this.t('saved');
-          if (typeof this.onNote === 'function') this.onNote(c.noteKey, c.note);
+          c.note = await this.saveNote(c.noteKey, (c.p && c.p.name) || this.nice(c.who.name || ''), ta ? ta.value : '', !!(vip && vip.checked));
+          this._paint(); var b = document.querySelector('#crmOv [data-a=save]'); if (b) b.textContent = '✓ ' + this.t('saved');
         } catch (err) { console.error('[CourseCRM] note', err); a.disabled = false; a.textContent = this.t('err'); }
       }
     },

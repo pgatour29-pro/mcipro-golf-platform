@@ -2070,7 +2070,7 @@
     .recurring-preview{color:var(--ink-2)}
     .range-toggle,.recurring-toggle{color:var(--ink)}
     .range-toggle{background:color-mix(in srgb,var(--society) 12%,var(--card));border-color:var(--line-2)}
-    .recurring-toggle{background:color-mix(in srgb,var(--tournament) 12%,var(--card));border-color:var(--line-2)}
+    .recurring-toggle{background:color-mix(in srgb,var(--brand) 9%,var(--card));border-color:var(--line-2)}   /* v1469: was a pink wash (the tournament tint) — no pink/purple */
     .range-toggle label,.recurring-toggle label{color:var(--ink)}
     .range-toggle .range-hint,.recurring-toggle .recurring-hint{color:var(--muted)}
     .modal-footer .btn-primary,#save-booking,#save-btn{background:linear-gradient(145deg,#22c55e,#16a34a)!important;border-color:transparent!important;color:#fff!important}
@@ -2443,9 +2443,6 @@
     .cd-act.go{background:var(--brand);color:var(--badge-ink);border-color:var(--brand)} .cd-act.go small{color:inherit;opacity:.75}
     .cd-act.done{border-color:rgba(34,197,94,.55);color:var(--cd-green)}
     .cd-jl{display:flex;flex-direction:column;gap:6px}
-    .crm-link{border:0;background:transparent;color:#15803d;font:700 11px 'Hanken Grotesk',sans-serif;cursor:pointer;padding:0 0 0 6px;text-transform:none;letter-spacing:0}
-    .crm-link:hover{text-decoration:underline}
-    [data-theme="dark"] .crm-link,[data-theme="glass"] .crm-link{color:#4ade80}
     .cd-crm{border:0;background:transparent;color:inherit;font:inherit;padding:0;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
     .cd-jr{background:var(--card);border:1px solid var(--line-2);border-radius:9px;padding:7px 10px}
     .cd-jr .top{display:flex;gap:9px;align-items:center}
@@ -2864,6 +2861,8 @@
       <button class="modal-close" id="close-dialog">&times;</button>
     </div>
     <div class="modal-body">
+     <!-- v1469: the form, and beside it (under the golfers on a phone) WHO this booking is for — booking-brief.js -->
+     <div class="bk-form">
       <input type="hidden" id="booking-id">
       <input type="hidden" id="booking-group-id">
 
@@ -3059,6 +3058,8 @@
           <div class="recurring-preview" id="recurring-preview"></div>
         </div>
       </div>
+     </div>
+     <aside id="bk-rail" aria-live="polite"></aside>
     </div>
     <div class="modal-footer">
       <button class="btn btn-delete" id="delete-booking" style="display:none" data-i18n="delete">Delete</button>
@@ -3626,7 +3627,8 @@
   <script src="golfer-avatar.js?v=20260830a"></script>
   <script src="name-search.js?v=20260917a"></script>
   <script src="course-society-link.js?v=1467"></script>
-  <script src="course-crm.js?v=1467"></script>
+  <script src="course-crm.js?v=1469"></script>
+  <script src="booking-brief.js?v=1469"></script>
   <script src="course-open-times.js?v=1446"></script>
   <script src="caddy-work-core.js?v=1466"></script>
   <script src="course-traffic.js?v=1459"></script>
@@ -5045,6 +5047,7 @@
         state.unverified = true;
       }
       caddyDayState = state;
+      if (window.BookingBrief && BookingBrief.host) BookingBrief.refresh();   // "Book" on the usual caddy follows who is out / off
       return state;
     }
 
@@ -5207,6 +5210,7 @@
           input.dataset.userId = p.id;
           hide();
           if (onPick) onPick(p);
+          input.dispatchEvent(new CustomEvent('golfer:pick', { bubbles: true }));   // v1469: the booking brief shows who this is
         };
         const render = () => {
           dropdown.innerHTML = '';
@@ -5225,7 +5229,9 @@
             const opt = document.createElement('div');
             opt.className = 'caddy-option gs-row' + (i === st.active ? ' active' : '');
             const hc = this._hcp(p.handicap);
-            opt.innerHTML = `<span class="caddy-option-name" data-golfer-av="${this._esc(p.id)}" data-golfer-av-nm="${this._esc(p.name)}" data-golfer-av-sz="20">${this._esc(p.name)}</span>${hc ? `<span class="gs-hcp">HCP ${hc}</span>` : ''}`;
+            // v1469: where this match stands at THIS course ("12 visits · 3 Oct") — the right John is the one who plays here
+            const vt = p._v ? `<span class="gs-venue${p._v.vip ? ' vip' : ''}">${this._esc(p._v.text)}</span>` : (p._walk ? `<span class="gs-venue">${this._esc(window.BookingBrief.t('here'))}</span>` : '');
+            opt.innerHTML = `<span class="caddy-option-name" data-golfer-av="${this._esc(p.id)}" data-golfer-av-nm="${this._esc(p.name)}" data-golfer-av-sz="20">${this._esc(p.name)}</span>${vt}${hc ? `<span class="gs-hcp">HCP ${hc}</span>` : ''}`;
             opt.addEventListener('mousedown', e => { e.preventDefault(); pick(i); });   // mousedown fires before the input blurs
             opt.addEventListener('mouseenter', () => { st.active = i; highlight(); });
             dropdown.appendChild(opt);
@@ -5245,7 +5251,7 @@
             dropdown.classList.add('show');
             window.searchProfilesByName(supabaseClient, st.term, 100).then(list => {
               if (seq !== st.seq) return;
-              st.list = list || [];
+              st.list = (window.BookingBrief && BookingBrief.host) ? BookingBrief.rank(list || [], st.term) : (list || []);   // known at this course first
               st.active = st.list.length ? 0 : -1;
               render();
             }).catch(e => {
@@ -6672,14 +6678,112 @@
       if (!C || !supabaseClient || !slug) return null;
       return C.init({ sb: supabaseClient, lang: currentLang, course: { slug, name: (courseDisplayNames && courseDisplayNames[slug]) || slug } });
     }
-    function openCrm(who) { const C = crmSync(); if (C && C.ready()) C.open(who); }
-    function crmLinkHtml() { const C = crmSync(); return C ? ' <button type="button" class="crm-link" tabindex="-1">' + C.esc(C.t('profile')) + ' ›</button>' : ''; }
-    document.addEventListener('click', (e) => {
-      const b = e.target.closest('.crm-link'); if (!b) return;
-      e.preventDefault(); e.stopPropagation();
-      const row = b.closest('.golfer-row'), inp = row && row.querySelector('.golfer-name, .slot-golfer-name');
-      if (inp && inp.value.trim()) openCrm({ id: inp.dataset.userId || null, name: inp.value.trim() });
+
+    // v1469 BookingBrief (booking-brief.js): the Book Slot dialog shows WHO the booking is for — standing, course
+    // note, clashes, usual caddy (one tap, if she is free at this tee time), partners, a society's days here.
+    const _bbNum = n => String(parseInt(n, 10));
+    const _bbNorm = n => String(n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const _bbSlot = row => { const i = row && row.querySelector('.slot-golfer-name'); return i ? +i.dataset.slot : -1; };
+    function _bbFillCaddy(input, caddy) {
+      input.value = `${caddy.number} - ${(currentLang !== 'en' && caddy.localName) ? caddy.localName : caddy.name}`;
+      input.dataset.caddyId = caddy.id; input.dataset.caddyNumber = caddy.number; input.dataset.caddyName = caddy.name; input.dataset.caddyLocalName = caddy.localName || '';
+      if (input._updateClearBtn) input._updateClearBtn();
+    }
+    const briefHost = {
+      crm: () => crmSync(),
+      lang: () => currentLang,
+      date: () => el.dateInput.value,
+      isRange: () => !!el.rangeModeToggle.checked,
+      groupName: () => el.rangeGroupName.value || '',
+      setGroupName: (n) => { el.rangeGroupName.value = n; },
+      // the same golfer already on this day's sheet, in another booking
+      dayHits(who, row) {
+        const nm = _bbNorm(who.name), gid = el.bookingGroupId.value, hits = [];
+        if (!who.id && !nm) return hits;
+        getDay(el.dateInput.value).forEach(b => {
+          if (!b || b.id === currentEditingBookingId || (gid && b.groupId === gid)) return;
+          const gs = (b.golfers && b.golfers.length) ? b.golfers : [{ name: b.name, odoo_id: null }];
+          if (gs.some(g => g && ((who.id && g.odoo_id === who.id) || (nm && _bbNorm(g.name) === nm)))) hits.push({ time: b.time, where: [b.course ? t('course') + ' ' + b.course : '', b.groupName || ''].filter(Boolean).join(' · ') });
+        });
+        return hits.sort((a, b) => String(a.time).localeCompare(String(b.time)));
+      },
+      // can THIS caddy take THIS row's tee time?
+      caddy(num, row) {
+        num = _bbNum(num);
+        const c = allCaddies.find(x => _bbNum(x.number) === num && x.status === 'available');
+        if (!c) return { st: 'gone' };
+        const caddy = { number: c.number, name: (currentLang !== 'en' && c.localName) ? c.localName : c.name, photo: c.photoUrl || c.photo_url || c.photo || '' };
+        const si = _bbSlot(row), mine = row.querySelector('.caddy-input, .slot-caddy-input');
+        if (mine && mine.dataset.caddyNumber && _bbNum(mine.dataset.caddyNumber) === num) return { st: 'picked', caddy };
+        const time = si >= 0 ? (rangeSlots[si] && rangeSlots[si].time) : el.bookingTime.value;
+        const others = si >= 0
+          ? rangeSlots.filter(s => s.time === time).flatMap(s => s.golfers.map(g => g.caddyNumber))
+          : Array.from(el.golfersList.querySelectorAll('.caddy-input')).filter(i => i !== mine).map(i => i.dataset.caddyNumber);
+        if (others.some(n => n && _bbNum(n) === num)) return { st: 'group', caddy };
+        if (Object.keys(caddyDayState.off || {}).some(n => _bbNum(n) === num)) return { st: 'off', caddy };
+        if (caddyDayState.time === time) { const k = Object.keys(caddyDayState.out || {}).find(n => _bbNum(n) === num); if (k) return { st: 'out', until: caddyDayState.out[k].until, caddy }; }
+        const booked = getBookedCaddiesForSlot(el.dateInput.value, time, si >= 0 ? ((rangeSlots[si] && rangeSlots[si].id) || null) : currentEditingBookingId);
+        if (Array.from(booked).some(n => n && _bbNum(n) === num)) return { st: 'booked', caddy };
+        return { st: 'ok', caddy };
+      },
+      pickCaddy(row, num) {
+        num = _bbNum(num);
+        const c = allCaddies.find(x => _bbNum(x.number) === num && x.status === 'available'), si = _bbSlot(row);
+        const input = row && row.querySelector('.caddy-input, .slot-caddy-input');
+        if (!c || !input || this.caddy(num, row).st !== 'ok') return false;
+        _bbFillCaddy(input, c);
+        if (si >= 0) {
+          const g = rangeSlots[si].golfers[+input.dataset.golfer];
+          if (g) { g.caddyId = c.id; g.caddyNumber = c.number; g.caddyName = c.name; g.caddyLocalName = c.localName || ''; }
+          updateSlotCardSummary(si);
+        }
+        return true;
+      },
+      hasRoom(row) {
+        const si = _bbSlot(row);
+        if (si >= 0) { const s = rangeSlots[si]; return !!s && (s.golfers.length < 4 || s.golfers.some(g => !g.name)); }
+        return el.golfersList.children.length < 4 || Array.from(el.golfersList.querySelectorAll('.golfer-name')).some(i => !i.value.trim());
+      },
+      // put a golfer on the booking: the first empty row, else a new row (max 4). Returns the name box it filled.
+      addGolfer(name, id, row) {
+        if (el.rangeModeToggle.checked) {
+          let si = _bbSlot(row); if (si < 0) si = 0;
+          const slot = rangeSlots[si]; if (!slot) return null;
+          let gi = slot.golfers.findIndex(g => !g.name);
+          if (gi < 0) { if (slot.golfers.length >= 4) return null; slot.golfers.push({ name: '', caddyId: null, caddyNumber: '', caddyName: '' }); gi = slot.golfers.length - 1; }
+          slot.golfers[gi].name = name; slot.golfers[gi].odoo_id = id || null;
+          slot.collapsed = false;
+          const card = document.querySelector(`.slot-card[data-slot-idx="${si}"]`), body = document.getElementById(`slot-body-${si}`);
+          if (card) card.classList.remove('collapsed');
+          if (body) renderSlotGolfers(body, slot, si);
+          updateSlotCardSummary(si);
+          return body ? body.querySelector(`.slot-golfer-name[data-golfer="${gi}"]`) : null;
+        }
+        let inp = Array.from(el.golfersList.querySelectorAll('.golfer-name')).find(i => !i.value.trim());
+        if (!inp) {
+          if (el.golfersList.children.length >= 4) return null;
+          const r = createGolferRow(el.golfersList.children.length, {});
+          el.golfersList.appendChild(r); inp = r.querySelector('.golfer-name');
+        }
+        inp.value = name; inp.dataset.userId = id || '';
+        return inp;
+      },
+      // a society that usually needs n tee times: stretch the block from its start time
+      blockSlots(n) {
+        const step = parseInt(el.intervalSelect.value) || 5, last = el.rangeEndTime.options[el.rangeEndTime.options.length - 1];
+        const want = minutes(el.rangeStartTime.value) + (Math.max(1, n) - 1) * step;
+        el.rangeEndTime.value = hhmm(Math.min(want, last ? minutes(last.value) : want));
+        updateRangeSlots();
+      },
+      openFull: (who) => openCrm(who)
+    };
+    BookingBrief.mount({ host: briefHost, dialog: el.dialog, rail: $('bk-rail') });
+    el.dialog.addEventListener('golfer:link', (e) => {   // the brief said WHICH golfer of that name: a block's slot keeps its own copy
+      const i = e.target; if (!i.classList || !i.classList.contains('slot-golfer-name')) return;
+      const g = rangeSlots[+i.dataset.slot] && rangeSlots[+i.dataset.slot].golfers[+i.dataset.golfer];
+      if (g) g.odoo_id = i.dataset.userId || null;
     });
+    function openCrm(who) { const C = crmSync(); if (C && C.ready()) C.open(who); }
 
     // ==================== GOLFER ROWS ====================
     function createGolferRow(index, golfer = {}) {
@@ -6690,7 +6794,7 @@
         <div class="golfer-num">${index + 1}</div>
         <div class="golfer-fields">
           <div class="golfer-field">
-            <label>${t('golferName')}${crmLinkHtml()}</label>
+            <label>${t('golferName')}</label>
             <div class="caddy-select-wrapper">
               <input type="text" class="golfer-name" placeholder="${t('golferName')}" value="${golfer.name || ''}"
                 data-user-id="${golfer.odoo_id || ''}" autocomplete="off">
@@ -8617,7 +8721,7 @@
         <div class="golfer-num">${gIdx + 1}</div>
         <div class="golfer-fields">
           <div class="golfer-field">
-            <label>${t('golferName')}${crmLinkHtml()}</label>
+            <label>${t('golferName')}</label>
             <div class="caddy-select-wrapper">
               <input type="text" class="slot-golfer-name" placeholder="${t('golferName')}" value="${golfer.name || ''}"
                 data-slot="${slotIdx}" data-golfer="${gIdx}" data-user-id="${golfer.odoo_id || ''}" autocomplete="off">
@@ -8939,6 +9043,7 @@
 
       el.deleteBooking.style.display = seed.id ? '' : 'none';
       el.dialog.showModal();
+      BookingBrief.open();   // v1469: who this booking is for
     }
 
     el.closeDialog.addEventListener('click', () => el.dialog.close());
@@ -9565,7 +9670,7 @@
           card.classList.remove('collapsed');
           if (!first || hit) first = hit || card;
         });
-        const body = el.dialog.querySelector('.modal-body');
+        const body = el.dialog.querySelector(el.dialog.classList.contains('bb-wide') ? '.bk-form' : '.modal-body');
         if (first && body) body.scrollTop += first.getBoundingClientRect().top - body.getBoundingClientRect().top - 80;
       });
     }
@@ -10962,6 +11067,7 @@
       linkOpenTimes(slug, slug ? ((courseDisplayNames && courseDisplayNames[slug]) || slug) : '');   // v1445
       if (!slug) return;
       crmSync();   // v1467: player names in the society panel open the course's history of that golfer
+      { const C = window.CourseCRM; if (C && C.ready()) C.load().catch(e => console.warn('[TeeSheet] player book', e)); }   // v1469: warm, so the booking dialog knows the golfer the moment a name lands
       const label = (courseDisplayNames && courseDisplayNames[slug]) || slug;
       // v1347: the panel's caddy picker = THIS sheet's roster + day state (4:30 block, day-offs), the
       // same rules the booking dialog applies; jobs it writes carry the canonical course name.

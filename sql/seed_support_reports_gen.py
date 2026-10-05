@@ -933,12 +933,16 @@ W4_PLAN = {'burapha': ['nocad'] * 10 + ['english'] * 9 + ['slowbook'] * 9,
 REP_BY_ID = {r['id']: r for r in REPORTERS}
 
 def gen_wave4():
+    return gen_course_wave(W4, W4_PLAN, NOTES_W4, NOW4, W4_START, 'seed_wave4_20261004', ko_n=14)
+
+def gen_course_wave(W4, W4_PLAN, NOTES_W4, NOW4, W4_START, source, ko_n, seen=None, more_fields=None):
+    # one placement loop for every course-anchored wave (4, 5, ...); the parameters keep wave 4's names
     global NOW, LATEST
     NOW, LATEST = NOW4, NOW4 - dt.timedelta(minutes=40)
-    rows = []; seen = set()
+    rows = []; seen = set() if seen is None else seen
     slots = [(v, th) for v, ths in W4_PLAN.items() for th in ths]
     rnd.shuffle(slots)
-    ko_slots = set(rnd.sample(range(len(slots)), 14))
+    ko_slots = set(rnd.sample(range(len(slots)), ko_n))
     for i, (venue, theme) in enumerate(slots):
       for lang in (['ko', 'en'] if i in ko_slots else ['en']):   # a Korean slot with no Korean player that day -> English
         pool = [t for t in W4 if t['lang'] == lang and t['theme'] == theme and venue in t['venues']]
@@ -980,27 +984,91 @@ def gen_wave4():
                 'HRS': rnd.choice([2, 3, 3, 4]), 'MIN': rnd.choice([25, 30, 35, 40, 45]), 'YRS': rnd.choice(['four', 'four', 'five']),
                 'WD_PREV': WD_EN[prev.weekday()], 'WD_EV': WD_EN[ev['d'].weekday()],
             }
+            if more_fields: fields.update(more_fields())
             subj = t['subj'].format_map(fields); body = t['body'].format_map(fields)
             key = (rep['id'], venue, fields['DATE'])   # one report per player per course day
-            if key in seen: continue
+            if key in seen or (rep['id'], venue) in seen: continue
             seen.add(key)
             placed = True
             break
         if placed: break
       else:
-        raise SystemExit('could not place wave4 row %d (%s/%s)' % (i, venue, theme))
+        raise SystemExit('could not place %s row %d (%s/%s)' % (source, i, venue, theme))
       if True:
         status = age_status(created, recent_bias=True)
         prio = t['prio'] or rnd.choices(['high', 'normal', 'low'], weights=[25, 65, 10])[0]
         row = dict(reporter_id=rep['id'], reporter_name=rep['name'], lang=lang, category=t['cat'], subject=subj, body=body,
-                   society_name=soc, priority=prio, source='seed_wave4_20261004')
+                   society_name=soc, priority=prio, source=source)
         event_dt = dt.datetime.combine(ev['d'], ev['t'], tzinfo=TZ) if t['timing'] == 'pre' else None
         stamp(row, created, status, event_dt=event_dt, note_pool=NOTES_W4[theme], note_rate=(0.35, 0.5))
         rows.append(row)
     rows.sort(key=lambda r: r['created_at'], reverse=True)
     return rows
 
+# ----------------------------------------------------------------------------- WAVE 5 (Pete 2026-10-05)
+# "add more reports for Burapha about booking caddies issues being slow and getting it wrong along with
+#  Eastern Star"
+# Same real society days as wave 4 (Burapha / Eastern Star rows of seed_support_reports_inputs_w4.json). Two
+# themes: SLOW (days to confirm, queue at the caddy desk) and WRONG (wrong caddy, wrong day, wrong count, booking
+# not in the book). Nobody who already reported on a course in wave 4 reports on it again here.
+NOW5 = dt.datetime(2026, 10, 5, 22, 45, tzinfo=TZ)
+W5_START = dt.datetime(2026, 9, 6, 6, 0, tzinfo=TZ)
+W5 = []
+def w5(theme, lang, subj, body, timing, k=(1, 4), hours=(7, 21), w=5, prio=None):
+    W5.append(dict(theme=theme, lang=lang, cat='caddy_booking', subj=subj, body=body, timing=timing, k=k, hours=hours, w=w, prio=prio, venues=CAD))
+# --- slow
+w5('slow', 'en', '{C}: {HRS} days and still no caddy confirmed', "Asked {C} for a caddy for the {SOC} day on {DATE} {HRS} days ago. Two follow-ups, no answer. The round is {LEAD} days away and I still don't know if I have one.", 'pre', (1, 4), w=8, prio='high')
+w5('slow', 'en', 'Caddy booking at {C} takes forever', "Why does one caddy booking at {C} need {N} messages? Asked on {WD_PREV} for {DATE}, got 'wait', then 'tomorrow', then nothing. Other courses confirm in ten minutes.", 'pre', (1, 5), w=7)
+w5('slow', 'en', '{MIN} minutes waiting for a caddy at {C}', "{DATE} at {C}: booked in advance and still stood {MIN} minutes at the caddy desk while they worked out who was going with who. Our {TIME} tee time went without us.", 'post', (0, 1), (13, 22), w=8, prio='high')
+w5('slow', 'en', '{C} confirmed my caddy the night before', "{C} only confirmed my caddy for {DATE} at 9pm the night before, after I'd asked {HRS} days earlier. I'd already told the group I might not have one. Far too slow.", 'post', (0, 2), (9, 22), w=6)
+w5('slow', 'en', 'No reply from {C} caddy desk', "Third message to {C} about a caddy for {DATE} ({TIME} tee). Read, not answered. How long is this supposed to take? The {SOC} day is {LEAD} days off.", 'pre', (1, 3), (8, 21), w=7)
+w5('slow', 'en', 'Slow caddy handover at {C}', "The whole {SOC} group queued at {C} on {DATE} while caddies were handed out one at a time from a paper list. {MIN} minutes for {N} flights. It was all booked days before — why isn't it ready?", 'post', (0, 2), (13, 22), w=6)
+w5('slow', 'ko', '{KC} 캐디 예약 답이 없어요', "{KDATE} 라운드 캐디를 {HRS}일 전에 {KC}에 요청했는데 아직 답이 없습니다. 메시지는 읽고 답을 안 해요. 확인 부탁드립니다.", 'pre', (1, 4), w=5)
+w5('slow', 'ko', '{KC} 캐디 배정 {MIN}분 기다렸어요', "{KDATE} {KC} 캐디 데스크에서 캐디 배정받는 데 {MIN}분 걸렸습니다. 미리 예약했는데도 {TIME} 티타임을 놓칠 뻔했어요.", 'post', (0, 1), (13, 22), w=4, prio='high')
+# --- getting it wrong
+w5('wrong', 'en', 'Wrong caddy at {C}', "Booked caddy {NUM} at {C} for {DATE}. Turned up and was given {NUM2}. Desk said {NUM} was 'already out'. What is the point of booking a number if they give her to someone else?", 'post', (0, 2), (13, 22), w=9, prio='high')
+w5('wrong', 'en', '{C} booked my caddy for the wrong day', "{C} had my caddy down for the day after. I asked for {DATE}, the {SOC} day, clearly in writing. When I got there she wasn't even at the course. Had to take whoever was left.", 'post', (0, 2), (13, 22), w=8, prio='high')
+w5('wrong', 'en', '{C} lost our caddy booking', "{DATE} at {C}: the desk had no record of our booking at all. {N} of us booked together by phone the week before. They found caddies in the end but it took {MIN} minutes and nobody got the one they asked for.", 'post', (0, 2), (13, 22), w=8, prio='high')
+w5('wrong', 'en', 'Confirmation from {C} has the wrong date', "{C} just confirmed my caddy — for the wrong date. I asked for {DATE} with the {SOC}, {TIME} tee. Tried to correct it and got no reply. Can someone sort this before the day?", 'pre', (1, 4), w=8)
+w5('wrong', 'en', '{C} booked {N} caddies, we asked for 4', "Asked {C} for four caddies for our flight on {DATE}. The confirmation says {N}. I've corrected it twice and it keeps coming back wrong. Who is writing these bookings down?", 'pre', (1, 4), w=6)
+w5('wrong', 'en', 'Caddy mix-up at {C} again', "Second {SOC} day running that {C} got the caddies wrong. On {DATE} my caddy {NUM} was sent out with a different group and I got someone on her first week. This happens every time we book by phone.", 'post', (0, 3), (13, 22), w=7)
+w5('wrong', 'en', 'Booked under the wrong name at {C}', "{C} put my caddy booking for {DATE} under another {SOC} player's name, so he got my caddy and I got nobody until {MIN} minutes after our tee time. They take the names down wrong on the phone.", 'post', (0, 2), (13, 22), w=6)
+w5('wrong', 'en', '{C} says I never booked', "Called {C} to check my caddy for {DATE} and was told there's no booking. I have their LINE message from {WD_PREV} saying caddy {NUM} confirmed. Which is it?", 'pre', (1, 3), (8, 21), w=7, prio='high')
+w5('wrong', 'ko', '{KC} 다른 캐디가 나왔어요', "{KDATE} {KC}에 {NUM}번 캐디를 예약했는데 {NUM2}번 캐디가 나왔습니다. 데스크에서는 이미 나갔다고만 해요. 번호로 예약하는 의미가 없네요.", 'post', (0, 2), (13, 22), w=5, prio='high')
+w5('wrong', 'ko', '{KC} 예약 날짜가 틀려요', "{KC}에서 캐디 예약 확인이 왔는데 날짜가 틀립니다. {KDATE} {TIME} 티오프로 요청했어요. 수정 요청했는데 답이 없습니다.", 'pre', (1, 4), w=5)
+w5('wrong', 'ko', '{KC} 예약 기록이 없대요', "{KDATE} {KC}에 도착했더니 캐디 예약 기록이 없다고 합니다. 일주일 전에 전화로 예약했어요. 결국 {MIN}분 기다렸습니다.", 'post', (0, 2), (13, 22), w=4, prio='high')
+
+NOTES_W5 = {
+    'slow':  {'resolved': ["Chased the caddy desk; caddy confirmed and the reporter told.", "Course confirmed once we sent the group list again. Reporter told.", "Logged with the course as feedback on how long bookings take. Reporter told."],
+              'in_progress': ["Chasing the course for an answer.", "Collecting these to show the course how long bookings take.", "Waiting on the caddy master to reply."]},
+    'wrong': {'resolved': ["Course checked their book: booking was written on the wrong day. They apologised; reporter told.", "Caddy desk corrected the booking and confirmed the right caddy. Reporter told.", "Passed to the caddy master with the caddy number and date. They say the phone bookings were copied wrong."],
+              'in_progress': ["Asked the course to check their book for this booking.", "Asked the reporter for the confirmation message from the course.", "Collecting the mix-ups to take to the caddy master together."]},
+}
+W5_PLAN = {'burapha': ['slow'] * 16 + ['wrong'] * 18, 'eastern-star': ['slow'] * 12 + ['wrong'] * 14}
 OUT_W4 = os.path.join(HERE, 'seed_support_reports_wave4_20261004.sql')
+OUT_W5 = os.path.join(HERE, 'seed_support_reports_wave5_20261005.sql')
+
+def gen_wave5():
+    rnd.seed(20261005)
+    # (reporter, course) pairs already used by wave 4, read from its SQL
+    seen = set()
+    with open(OUT_W4, encoding='utf-8') as f:
+        for ln in f:
+            if ln.startswith("('") and "'caddy_booking'" in ln:
+                for v in CAD:
+                    if W4_NAME[v] in ln or W4_KO[v] in ln: seen.add((ln[2:ln.index("'", 2)], v))
+    def more():
+        a = rnd.randint(12, 240)   # N never 4: one template says 'booked {N}, we asked for 4'
+        return {'NUM': a, 'NUM2': a + rnd.choice([-7, -3, 4, 11, 26]), 'N': rnd.choice([3, 5, 6, 7, 8])}
+    return gen_course_wave(W5, W5_PLAN, NOTES_W5, NOW5, W5_START, 'seed_wave5_20261005', ko_n=9, seen=seen, more_fields=more)
+
+HDR_W5 = """-- Seeded Reports, wave 5 (Pete 2026-10-05): more Burapha + Eastern Star caddy booking — booking being SLOW
+-- (days to confirm, queues at the caddy desk) and the course GETTING IT WRONG (wrong caddy, wrong day, wrong
+-- count, booking not in the book). Anchored to the real society days at those courses; day-of reporters were
+-- registered that day. MADE-UP test data. Every row carries source='seed_wave5_20261005'.
+-- REMOVE WITH:  delete from public.support_reports where source = 'seed_wave5_20261005';
+-- Generated by sql/seed_support_reports_gen.py wave5 — edit the generator, not this file.
+"""
 HDR_W4 = """-- Seeded Reports, wave 4 (Pete via Telegram 2026-10-04): Burapha + Eastern Star caddy booking (no caddies
 -- available, staff not speaking English, booking taking too long) and Pattaya CC greens (back nine the worst in
 -- four years, golfers will stop playing it). Anchored to the real society days at those courses; reporters on
@@ -1009,7 +1077,11 @@ HDR_W4 = """-- Seeded Reports, wave 4 (Pete via Telegram 2026-10-04): Burapha + 
 -- Generated by sql/seed_support_reports_gen.py wave4 — edit the generator, not this file.
 """
 
-if __name__ == '__main__' and 'wave4' in sys.argv:
+if __name__ == '__main__' and 'wave5' in sys.argv:
+    w5rows = gen_wave5()
+    summarize('wave5', w5rows)
+    write_sql(OUT_W5, HDR_W5, 'seed_wave5_20261005', w5rows)
+elif __name__ == '__main__' and 'wave4' in sys.argv:
     w4rows = gen_wave4()
     summarize('wave4', w4rows)
     write_sql(OUT_W4, HDR_W4, 'seed_wave4_20261004', w4rows)

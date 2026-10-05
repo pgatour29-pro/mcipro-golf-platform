@@ -2443,6 +2443,10 @@
     .cd-act.go{background:var(--brand);color:var(--badge-ink);border-color:var(--brand)} .cd-act.go small{color:inherit;opacity:.75}
     .cd-act.done{border-color:rgba(34,197,94,.55);color:var(--cd-green)}
     .cd-jl{display:flex;flex-direction:column;gap:6px}
+    .crm-link{border:0;background:transparent;color:#15803d;font:700 11px 'Hanken Grotesk',sans-serif;cursor:pointer;padding:0 0 0 6px;text-transform:none;letter-spacing:0}
+    .crm-link:hover{text-decoration:underline}
+    [data-theme="dark"] .crm-link,[data-theme="glass"] .crm-link{color:#4ade80}
+    .cd-crm{border:0;background:transparent;color:inherit;font:inherit;padding:0;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
     .cd-jr{background:var(--card);border:1px solid var(--line-2);border-radius:9px;padding:7px 10px}
     .cd-jr .top{display:flex;gap:9px;align-items:center}
     .cd-jr .tm{font:700 13px 'IBM Plex Mono',monospace;min-width:42px}
@@ -3621,7 +3625,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="golfer-avatar.js?v=20260830a"></script>
   <script src="name-search.js?v=20260917a"></script>
-  <script src="course-society-link.js?v=1455"></script>
+  <script src="course-society-link.js?v=1467"></script>
+  <script src="course-crm.js?v=1467"></script>
   <script src="course-open-times.js?v=1446"></script>
   <script src="caddy-work-core.js?v=1466"></script>
   <script src="course-traffic.js?v=1459"></script>
@@ -6658,6 +6663,21 @@
       return moved.ok;
     }
 
+    // v1467 Course CRM (course-crm.js): the course taps a player and sees their whole history at THIS venue
+    function crmSync() {
+      const C = window.CourseCRM, slug = el.courseSelect && el.courseSelect.value;
+      if (!C || !supabaseClient || !slug) return null;
+      return C.init({ sb: supabaseClient, lang: currentLang, course: { slug, name: (courseDisplayNames && courseDisplayNames[slug]) || slug } });
+    }
+    function openCrm(who) { const C = crmSync(); if (C && C.ready()) C.open(who); }
+    function crmLinkHtml() { const C = crmSync(); return C ? ' <button type="button" class="crm-link" tabindex="-1">' + C.esc(C.t('profile')) + ' ›</button>' : ''; }
+    document.addEventListener('click', (e) => {
+      const b = e.target.closest('.crm-link'); if (!b) return;
+      e.preventDefault(); e.stopPropagation();
+      const row = b.closest('.golfer-row'), inp = row && row.querySelector('.golfer-name, .slot-golfer-name');
+      if (inp && inp.value.trim()) openCrm({ id: inp.dataset.userId || null, name: inp.value.trim() });
+    });
+
     // ==================== GOLFER ROWS ====================
     function createGolferRow(index, golfer = {}) {
       const row = document.createElement('div');
@@ -6667,7 +6687,7 @@
         <div class="golfer-num">${index + 1}</div>
         <div class="golfer-fields">
           <div class="golfer-field">
-            <label>${t('golferName')}</label>
+            <label>${t('golferName')}${crmLinkHtml()}</label>
             <div class="caddy-select-wrapper">
               <input type="text" class="golfer-name" placeholder="${t('golferName')}" value="${golfer.name || ''}"
                 data-user-id="${golfer.odoo_id || ''}" autocomplete="off">
@@ -7933,7 +7953,7 @@
           if (!j.done && D.isToday) b.push('<button type="button" class="cd-btn' + (j.out || j.state === 'late' ? '' : ' o') + '" data-a="backin" data-j="' + this.esc(j.id) + '">' + t('cdBackIn') + '</button>');
           if (j.fee) b.push('<button type="button" class="cd-btn ' + (j.paid ? 'paid' : 'o') + '" data-a="paid" data-j="' + this.esc(j.id) + '">' + (j.paid ? '✓ ' + t('cdPaid') : t('cdMarkPaid')) + ' ' + this.baht(j.fee) + '</button>');
           if (j.linked) b.push('<button type="button" class="cd-btn o" data-a="openbk" data-j="' + this.esc(j.id) + '">' + t('cdOpenBk') + '</button>');
-          return '<div class="cd-jr"><div class="top"><div class="tm">' + j.t + '</div><div class="g">' + this.esc(j.golfer) + ' <small>· ' + t('cdBack').replace('{t}', hhmmOf(j.e)) + '</small></div><span class="cd-st ' + k[1] + '">' + t(k[0]) + '</span></div>'
+          return '<div class="cd-jr"><div class="top"><div class="tm">' + j.t + '</div><div class="g"><button type="button" class="cd-crm" data-a="crm" data-j="' + this.esc(j.id) + '">' + this.esc(j.golfer) + '</button> <small>· ' + t('cdBack').replace('{t}', hhmmOf(j.e)) + '</small></div><span class="cd-st ' + k[1] + '">' + t(k[0]) + '</span></div>'
             + (b.length ? '<div class="acts">' + b.join('') + '</div>' : '') + '</div>';
         };
         const qpos = D.queue.indexOf(r);
@@ -8066,6 +8086,7 @@
         const D = this.data;
         if (act === 'x') return this.toggle(false);
         if (act === 'desk') return this.toggle(true);
+        if (act === 'crm') { const cj = D && D.jobs.concat(D.open).find(x => String(x.id) === a.dataset.j); if (cj) openCrm({ id: cj.row.golfer_id || cj.row.user_id || null, name: cj.golfer }); return; }
         if (act === 'tab') { this.sel = null; this._close = false; this._pick = null; this._give = null; return this.paint(); }
         if (act === 'giveto') {   // v1413: the picker of every golfer on the day, on her card
           e.stopPropagation();
@@ -8593,7 +8614,7 @@
         <div class="golfer-num">${gIdx + 1}</div>
         <div class="golfer-fields">
           <div class="golfer-field">
-            <label>${t('golferName')}</label>
+            <label>${t('golferName')}${crmLinkHtml()}</label>
             <div class="caddy-select-wrapper">
               <input type="text" class="slot-golfer-name" placeholder="${t('golferName')}" value="${golfer.name || ''}"
                 data-slot="${slotIdx}" data-golfer="${gIdx}" data-user-id="${golfer.odoo_id || ''}" autocomplete="off">
@@ -10937,6 +10958,7 @@
       $('societies-btn').style.display = slug ? '' : 'none';
       linkOpenTimes(slug, slug ? ((courseDisplayNames && courseDisplayNames[slug]) || slug) : '');   // v1445
       if (!slug) return;
+      crmSync();   // v1467: player names in the society panel open the course's history of that golfer
       const label = (courseDisplayNames && courseDisplayNames[slug]) || slug;
       // v1347: the panel's caddy picker = THIS sheet's roster + day state (4:30 block, day-offs), the
       // same rules the booking dialog applies; jobs it writes carry the canonical course name.

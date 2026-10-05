@@ -632,6 +632,7 @@
       var self = this;
       try {
         if (a === 'close') return this.closePanel();
+        if (a === 'crm') { if (window.CourseCRM) window.CourseCRM.open({ id: b.getAttribute('data-gid') || null, name: b.getAttribute('data-gn') }); return; }
         if (a === 'toggle' && ev) {
           this._pick = null;
           if (this.state.openId === ev.id && this.state.side === 'course') { this.state.openId = null; this.renderPanel(); return; }
@@ -703,14 +704,17 @@
       var hlc = (this._hl && this._hl.ev === ev.id && this._hl.key === key) ? ' cl-hl' : '';
       // QR guest (no-app venue page q.html) — amber pill so the counter knows why there is no app profile
       var qrp = /^QR-GUEST-/.test(String(p.id || '')) ? '<span class="cl-qr">QR</span>' : '';
+      // v1467: on the course side the name opens the player's history at this venue (course-crm.js)
+      var crm = canEdit && window.CourseCRM && window.CourseCRM.ready();
+      var nmH = '<span class="cl-p-n' + (crm ? ' crm" data-a="crm" data-gid="' + E(p.id || '') + '" data-gn="' + E(p.name) + '" role="button" tabindex="0' : '') + '">' + E(p.name) + qrp + '</span>';
       if (c) {
-        h = '<div class="cl-p has' + (open ? ' open' : '') + hlc + '" data-pk="' + E(key) + '"><span class="cl-p-n">' + E(p.name) + qrp + '</span>' +
+        h = '<div class="cl-p has' + (open ? ' open' : '') + hlc + '" data-pk="' + E(key) + '">' + nmH +
           '<span class="cl-cd">' + this._photo(c.num, c.photo, 22) + '<b>#' + E(c.num) + '</b><i class="cl-st ' + (c.status === 'confirmed' ? 'conf' : 'pend') + '">' + E(this.t(c.status === 'confirmed' ? 'confirmed' : 'pending')) + '</i></span>' +
           (canEdit ? '<span class="cl-acts">' + (c.status !== 'confirmed' ? '<button class="cl-ic ok" data-a="cadok" title="' + E(this.t('confirmT')) + '" aria-label="' + E(this.t('confirmT')) + '">✓</button>' : '') +
             '<button class="cl-ic" data-a="cadpick" title="' + E(this.t('changeT')) + '" aria-label="' + E(this.t('changeT')) + '">✎</button>' +
             '<button class="cl-ic x" data-a="cadx" title="' + E(this.t('cancelT')) + '" aria-label="' + E(this.t('cancelT')) + '">✕</button></span>' : '') + '</div>';
       } else {
-        h = '<div class="cl-p' + (open ? ' open' : '') + hlc + '" data-pk="' + E(key) + '"><span class="cl-p-n">' + E(p.name) + qrp + '</span>' +
+        h = '<div class="cl-p' + (open ? ' open' : '') + hlc + '" data-pk="' + E(key) + '">' + nmH +
           (canEdit ? '<button class="cl-add' + (open ? ' on' : '') + '" data-a="cadpick">' + E(this.t('addCaddy')) + '</button>' : '<span class="cl-none">—</span>') + '</div>';
       }
       if (open) h += '<div class="cl-pick" data-pk="' + E(key) + '"><input class="cl-pick-in" type="text" autocomplete="off" placeholder="' + E(this.t('pickCaddy')) + '" value="' + E(pk.q || '') + '"><div class="cl-pick-list">' + this._pickListHtml(ev, p) + '</div></div>';
@@ -943,6 +947,7 @@
         '#clPanel .cl-p.has{border-left-color:var(--cl-green)}',
         '#clPanel .cl-p.open{border-left-color:#f59e0b}',
         '#clPanel .cl-p.cl-hl{background:rgba(250,204,21,.2);border-left:3px solid #facc15;border-radius:6px}',
+        '#clPanel .cl-p-n.crm{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}',
         '#clPanel .cl-p-n{flex:1 1 80px;min-width:0;font-size:14px;color:var(--cl-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
         '#clPanel .cl-none{color:var(--cl-muted);padding:0 10px}',
         '#clPanel .cl-add{height:28px;padding:0 10px;border-radius:8px;border:1px dashed var(--cl-line2);background:transparent;color:var(--cl-muted);font:700 12px system-ui,sans-serif;cursor:pointer}',

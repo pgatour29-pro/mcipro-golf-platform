@@ -821,44 +821,32 @@
         },
 
         // ================= CUSTOMERS =================
+        /* v1467: the Customers tab is the course's player book (course-crm.js) — everyone who has played,
+           registered, booked a caddy or been on the tee sheet AT THIS VENUE, all time. Tap a row for the
+           full history. It used to be a 90-day name count off two tables. */
+        crm() {
+            const C = window.CourseCRM;
+            if (!C || !PS.course || !db()) return null;
+            const lang = (typeof currentLanguage !== 'undefined' && currentLanguage) || 'en';
+            C.init({ sb: db(), lang: lang, course: { slug: PS.teeSheetSlug(), name: PS.course.name } });
+            C.onNote = (key, note) => { PS._custVip = PS._custVip || {}; PS._custVip[key] = !!(note && note.vip); PS.renderCustomers(); };
+            return C.ready() ? C : null;
+        },
         async loadCustomers(silent) {
             const host = document.getElementById('ps-customers-body');
             if (!host) return;
             const seq = (PS._seq.cust = (PS._seq.cust || 0) + 1);
-            if (!PS._loaded.cust && !silent) host.innerHTML = `<div class="text-center text-gray-500 py-10">${tr('common.loading', 'Loading')}…</div>`;
+            const C = PS.crm();
+            if (!C) { host.innerHTML = PS.errorBox(); return; }
+            if (!PS._loaded.cust && !silent) host.innerHTML = `<div class="text-center text-gray-500 py-10">${esc(C.t('loading'))}</div>`;
             try {
-                const since = daysAgoISO(90).split('T')[0];
-                const [bk, cb] = await Promise.all([
-                    db().from('bookings').select('id,date,time,name,golfer_name,course_id,course_name,players,booking_type,deleted,booking_data')
-                        .gte('date', since).neq('deleted', true).order('date', { ascending: false }).limit(1000),
-                    db().from('caddy_bookings').select('id,booking_date,tee_time_iso,golfer_name,course_id,course_name')
-                        .gte('booking_date', since).order('booking_date', { ascending: false }).limit(1000)
+                const [data, notes] = await Promise.all([
+                    C.load(!!silent),
+                    db().from('course_golfer_notes').select('golfer_key,vip').eq('venue', C.venueKey()).eq('vip', true).limit(1000)
                 ]);
                 if (seq !== PS._seq.cust) return;
-                const stem = PS.course.stem[0];
-                const mine = (cid, cname) => {
-                    if (cid && cid === PS.course.id) return true;
-                    const n = String(cname || '').toLowerCase();
-                    return stem && n.includes(stem);
-                };
-                const byName = {};
-                const add = (name, date, src) => {
-                    const key = String(name || '').trim();
-                    if (!key) return;
-                    const rec = byName[key] || (byName[key] = { name: key, visits: 0, last: '', next: '', srcs: {} });
-                    rec.visits++;
-                    rec.srcs[src] = true;
-                    const today = localDateStr();
-                    if (date <= today && date > rec.last) rec.last = date;
-                    if (date > today && (!rec.next || date < rec.next)) rec.next = date;
-                };
-                (bk.data || []).filter(b => mine(b.course_id, b.course_name)).forEach(b => {
-                    const golfers = ((b.booking_data || {}).golfers || []);
-                    if (golfers.length) golfers.forEach(g => add(g.name, b.date, 'teesheet'));
-                    else add(b.golfer_name || b.name, b.date, 'booking');
-                });
-                (cb.data || []).filter(b => mine(b.course_id, b.course_name)).forEach(b => add(b.golfer_name, b.booking_date, 'caddy'));
-                PS._custRows = Object.values(byName).sort((a, b) => b.visits - a.visits || (b.last > a.last ? 1 : -1));
+                PS._custRows = data.list;
+                PS._custVip = {}; (notes.data || []).forEach(n => { PS._custVip[n.golfer_key] = true; });
                 PS.renderCustomers();
                 PS._loaded.cust = true;
             } catch (e) {
@@ -868,37 +856,66 @@
         },
         renderCustomers() {
             const host = document.getElementById('ps-customers-body');
-            if (!host) return;
-            const q = (PS._custQ || '').toLowerCase();
-            const list = PS._custRows.filter(r => !q || r.name.toLowerCase().includes(q));
+            const C = window.CourseCRM;
+            if (!host || !C) return;
+            const T = (k, v) => esc(C.t(k, v));
+            const q = C.norm(PS._custQ || ''), seg = PS._custSeg || '';
+            const rows = PS._custRows || [], vip = PS._custVip || {};
+            const isVip = (r) => !!(vip[r.key] || vip['n:' + C.norm(r.name)]);
+            const list = rows.filter(r => (!q || C.norm(r.name).includes(q)) && (!seg || (seg === 'next' ? !!r.next : seg === 'v90' ? r.v90 > 0 : r.seg === seg)));
+            const SEG = { 'new': ['segNew', 'bg-sky-100 text-sky-800'], regular: ['segRegular', 'bg-green-100 text-green-800'], lapsing: ['segLapsing', 'bg-amber-100 text-amber-800'], occ: ['segOcc', 'bg-gray-100 text-gray-700'], up: ['segUp', 'bg-sky-100 text-sky-800'] };
+            const tile = (k, n, label) => `<button type="button" data-seg="${k}" class="text-left rounded-xl border px-3 py-2 ${seg === k ? 'border-green-600 bg-green-50' : 'border-gray-200 bg-white'}">
+                    <div class="text-xl font-bold text-gray-900">${fmtN(n)}</div><div class="text-xs font-medium text-gray-600">${label}</div></button>`;
+            const dshort = (d) => d ? esc(C.dfmt(d, { day: 'numeric', month: 'short', year: '2-digit' })) : '—';
             host.innerHTML = `
-              <div class="flex items-center justify-between gap-2 mb-3">
-                <h3 class="font-bold text-gray-900">${tr('ps.customers90', 'Customers — last 90 days on the tee sheet')}</h3>
-                <input id="ps-cust-q" value="${esc(PS._custQ || '')}" placeholder="${tr('common.search', 'Search')}..." class="border border-gray-300 rounded-lg px-3 py-2 text-sm w-52">
+              <div class="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                <div><h3 class="font-bold text-gray-900">${T('listTitle')}</h3><div class="text-xs text-gray-600">${T('listSub')}</div></div>
+                <input id="ps-cust-q" value="${esc(PS._custQ || '')}" placeholder="${T('search')}" autocomplete="off" class="border border-gray-300 rounded-lg px-3 py-2 text-sm w-56 max-w-full">
               </div>
-              <div class="grid grid-cols-2 gap-3 mb-4">
-                ${PS.statTile('group', fmtN(PS._custRows.length), tr('ps.uniquegolfers', 'Unique golfers'))}
-                ${PS.statTile('event_upcoming', fmtN(PS._custRows.filter(r => r.next).length), tr('ps.upcoming', 'With upcoming bookings'), 'bg-sky-50 text-sky-600')}
+              <div class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
+                ${tile('', rows.length, T('kAll'))}
+                ${tile('v90', rows.filter(r => r.v90 > 0).length, T('k90'))}
+                ${tile('new', rows.filter(r => r.seg === 'new').length, T('kNew'))}
+                ${tile('lapsing', rows.filter(r => r.seg === 'lapsing').length, T('kLap'))}
+                ${tile('next', rows.filter(r => r.next).length, T('kUp'))}
               </div>
               <div class="bg-white border border-gray-200 rounded-xl overflow-x-auto">
                 <table class="w-full text-sm">
                   <thead><tr class="text-left text-xs text-gray-600 border-b border-gray-200">
-                    <th class="px-3 py-2">${tr('ps.golfer', 'Golfer')}</th><th class="px-3 py-2 text-center">${tr('ps.visits', 'Visits')}</th>
-                    <th class="px-3 py-2">${tr('ps.lastvisit', 'Last visit')}</th><th class="px-3 py-2">${tr('ps.nextbooking', 'Next booking')}</th>
+                    <th class="px-3 py-2">${T('cGolfer')}</th><th class="px-3 py-2">${T('cSeg')}</th>
+                    <th class="px-3 py-2 text-center">${T('visits')}</th><th class="px-3 py-2 text-center">${T('last12')}</th>
+                    <th class="px-3 py-2">${T('lastVisit')}</th><th class="px-3 py-2">${T('next')}</th>
+                    <th class="px-3 py-2">${T('cUsual')}</th><th class="px-3 py-2">${T('cCaddy')}</th>
                   </tr></thead>
                   <tbody>
-                    ${list.slice(0, 200).map(r => `
-                      <tr class="border-b border-gray-100">
-                        <td class="px-3 py-2 font-medium text-gray-900">${esc(r.name)}</td>
-                        <td class="px-3 py-2 text-center text-gray-700">${r.visits}</td>
-                        <td class="px-3 py-2 text-gray-700">${esc(r.last || '—')}</td>
-                        <td class="px-3 py-2 ${r.next ? 'text-green-700 font-semibold' : 'text-gray-500'}">${esc(r.next || '—')}</td>
-                      </tr>`).join('') || `<tr><td colspan="4" class="text-center text-gray-500 py-8">${tr('ps.nocustomers', 'No tee sheet activity found for this course yet')}</td></tr>`}
+                    ${list.slice(0, 300).map(r => {
+                        const sg = SEG[r.seg] || SEG.occ, cd = r.cads[0];
+                        return `
+                      <tr class="border-b border-gray-100 cursor-pointer hover:bg-green-50" data-k="${esc(r.key)}" tabindex="0">
+                        <td class="px-3 py-2 font-semibold text-gray-900 whitespace-nowrap">${esc(r.name)}${isVip(r) ? ' <span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-400 text-gray-900">VIP</span>' : ''}</td>
+                        <td class="px-3 py-2"><span class="text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${sg[1]}">${T(sg[0])}</span></td>
+                        <td class="px-3 py-2 text-center text-gray-900 font-semibold">${r.visits}</td>
+                        <td class="px-3 py-2 text-center text-gray-700">${r.v12}</td>
+                        <td class="px-3 py-2 text-gray-700 whitespace-nowrap">${dshort(r.last)}</td>
+                        <td class="px-3 py-2 whitespace-nowrap ${r.next ? 'text-green-700 font-semibold' : 'text-gray-500'}">${dshort(r.next)}</td>
+                        <td class="px-3 py-2 text-gray-700 whitespace-nowrap">${r.topDay >= 0 ? esc(C.dayName(r.topDay, true)) : '—'}</td>
+                        <td class="px-3 py-2 text-gray-700 whitespace-nowrap">${cd ? '#' + esc(cd.num) + (cd.name && !/^caddy\s*#/i.test(cd.name) ? ' ' + esc(cd.name) : '') + ' <span class="text-gray-500">×' + cd.n + '</span>' : '—'}</td>
+                      </tr>`; }).join('') || `<tr><td colspan="8" class="text-center text-gray-500 py-8">${T('noList')}</td></tr>`}
                   </tbody>
                 </table>
               </div>`;
             const qEl = document.getElementById('ps-cust-q');
             if (qEl) qEl.addEventListener('input', (e) => { PS._custQ = e.target.value; PS.renderCustomers(); setTimeout(() => { const x = document.getElementById('ps-cust-q'); if (x) { x.focus(); x.setSelectionRange(x.value.length, x.value.length); } }, 0); });
+            if (!host._crmBound) {
+                host._crmBound = true;
+                host.addEventListener('click', (e) => {
+                    const sgb = e.target.closest('[data-seg]');
+                    if (sgb) { PS._custSeg = sgb.dataset.seg; PS.renderCustomers(); return; }
+                    const trEl = e.target.closest('tr[data-k]');
+                    if (trEl && PS.crm()) window.CourseCRM.open({ key: trEl.dataset.k });
+                });
+                host.addEventListener('keydown', (e) => { const trEl = e.key === 'Enter' && e.target.closest('tr[data-k]'); if (trEl && PS.crm()) window.CourseCRM.open({ key: trEl.dataset.k }); });
+            }
         },
 
         // ================= MESSAGES (staff_messages, shared with Manager) =================

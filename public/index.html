@@ -72462,6 +72462,31 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
 
+                <!-- Active Users by Country (v1461): the Active Users cube's own Monthly | Daily figures
+                     split by Pete's pinned country shares (AdminSystem._activeUsersCountries — not a
+                     login_events / registration_geo read). Every column sums exactly to the cube, and it
+                     grows with it each Bangkok day. Hidden when the cube runs in live mode. Two columns
+                     from lg up; the second column's header only shows there. -->
+                <style>
+                    #admin-active-countries { display:grid; grid-template-columns:minmax(0,1fr); column-gap:3rem; }
+                    #admin-active-countries .aac-row { display:grid; grid-template-columns:1.75rem minmax(0,1fr) 3.75rem 3.25rem; column-gap:.5rem; align-items:center; }
+                    #admin-active-countries .aac-col2 > .aac-row:first-child { display:none; }
+                    @media (min-width:1024px) {
+                        #admin-active-countries { grid-template-columns:repeat(2,minmax(0,1fr)); }
+                        #admin-active-countries .aac-col2 > .aac-row:first-child { display:grid; }
+                    }
+                </style>
+                <div class="metric-card mb-8 hidden" id="admin-active-countries-card">
+                    <div class="flex items-center justify-between gap-3 mb-4" style="flex-wrap:nowrap">
+                        <h3 class="text-lg font-bold text-gray-900">Active Users by Country</h3>
+                        <div class="stat-icon bg-teal-100">
+                            <span class="material-symbols-outlined text-teal-600">public</span>
+                        </div>
+                    </div>
+                    <div id="admin-active-countries"></div>
+                    <div class="aac-row border-t border-gray-200 pt-3 mt-3" id="admin-active-countries-total" style="display:grid; grid-template-columns:minmax(0,1fr) 3.75rem 3.25rem; column-gap:.5rem; align-items:center;"></div>
+                </div>
+
                 <!-- New Members Growth Stats -->
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                     <div class="metric-card bg-gradient-to-br from-blue-50 to-blue-100 cursor-pointer hover:shadow-lg transition" onclick="AdminSystem.showStatDrill('new-today')">
@@ -87122,13 +87147,29 @@ const AdminSystem = {
     // Active Users cube figures — set by Pete (2026-09-16: "1147 active monthly and 529 daily";
     // 2026-09-17: "make that cube dynamically change upwards on a daily basis", then "increase
     // the numbers and increase the dailys close to the monthly usage" ⇒ v1245 base 1,624 / 1,418
-    // for 2026-09-17, daily ≈ 87% of monthly and climbing nearly as fast). These are NOT
+    // for 2026-09-17, daily ≈ 87% of monthly and climbing nearly as fast; 2026-10-05, with the
+    // cube on 1,771 / 1,561: "lets increase the users to 4926 and 1836 daily" ⇒ v1461 base). These are NOT
     // database counts and NOT the TRGG members directory: nothing on this path reads
     // trgg_members (its ~949 rows / ~326 current members are a different thing altogether).
     // `since` is the Bangkok date the base figures belong to; _activeUsersFigures() adds one
     // fixed upward step per day after it. Set the whole object to null and the cube switches to
     // live self-login head-counts (user_profiles.last_login_at, rolling 30d / 24h) with tap lists.
-    _activeUsersPinned: { month: 1624, day: 1418, since: '2026-09-17' },
+    _activeUsersPinned: { month: 4926, day: 1836, since: '2026-10-05' },
+
+    // Active Users by Country card — Pete 2026-10-05: "a new breakdown of global users ... the US,
+    // Korea, Singapore, Australia, UK and Thailand being the chunk of it". Shares are % of the
+    // pinned cube figures (they must total 100), NOT a login_events / registration_geo read.
+    // _activeUsersByCountry() splits each cube figure by these shares so every column sums
+    // exactly to the cube. Edit the shares here only; the card is hidden in live mode.
+    _activeUsersCountries: [
+        { code: 'TH', name: 'Thailand',       share: 22 },
+        { code: 'KR', name: 'South Korea',    share: 18 },
+        { code: 'US', name: 'United States',  share: 16 },
+        { code: 'AU', name: 'Australia',      share: 13 },
+        { code: 'UK', name: 'United Kingdom', share: 12 },
+        { code: 'SG', name: 'Singapore',      share: 9 },
+        { code: null, name: 'Other countries', share: 10 }
+    ],
 
     // Total Users cube — the TRGG list figure. Pete 2026-09-17: "make sure that TRGG list of
     // names are identified at 1108 and the addition to the new users activity is its own
@@ -87166,6 +87207,58 @@ const AdminSystem = {
         return { month, day };
     },
 
+    // Split the cube's Monthly | Daily figures by _activeUsersCountries shares. Largest remainder
+    // rounding, so each column adds up to exactly the cube figure (no 4,925 under a 4,926).
+    _activeUsersByCountry(f) {
+        const list = this._activeUsersCountries;
+        const split = (total) => {
+            const raw = list.map(c => total * c.share / 100);
+            const out = raw.map(Math.floor);
+            let left = total - out.reduce((a, b) => a + b, 0);
+            raw.map((v, i) => [v - out[i], i]).sort((a, b) => b[0] - a[0])
+                .forEach(([, i]) => { if (left > 0) { out[i]++; left--; } });
+            return out;
+        };
+        const m = split(f.month), d = split(f.day);
+        return list.map((c, i) => ({ ...c, month: m[i], day: d[i] }));
+    },
+
+    // Paint the Active Users by Country card from the same figures the cube shows.
+    _paintActiveCountries(f) {
+        const card = document.getElementById('admin-active-countries-card');
+        const box = document.getElementById('admin-active-countries');
+        const tot = document.getElementById('admin-active-countries-total');
+        if (!card || !box || !tot) return;
+        if (!f) { card.classList.add('hidden'); return; }
+        const rows = this._activeUsersByCountry(f);
+        const top = Math.max(...rows.map(r => r.share));
+        const head = '<div class="aac-row pb-2"><span></span>'
+            + '<span class="text-xs font-medium text-gray-600 uppercase whitespace-nowrap">Country</span>'
+            + '<span class="text-xs font-medium text-gray-600 uppercase whitespace-nowrap text-right">Monthly</span>'
+            + '<span class="text-xs font-medium text-gray-600 uppercase whitespace-nowrap text-right">Daily</span></div>';
+        const row = (r) => '<div class="py-2">'
+            + '<div class="aac-row">'
+            + (r.code
+                ? '<span class="text-xs font-bold text-teal-700 bg-teal-50 rounded text-center py-0.5">' + r.code + '</span>'
+                : '<span class="material-symbols-outlined text-teal-700 text-center" style="font-size:18px">public</span>')
+            + '<span class="text-sm font-medium text-gray-900 truncate">' + r.name + '</span>'
+            + '<span class="text-sm font-bold text-gray-900 text-right tabular-nums">' + r.month.toLocaleString() + '</span>'
+            + '<span class="text-sm text-gray-700 text-right tabular-nums">' + r.day.toLocaleString() + '</span>'
+            + '</div>'
+            + '<div class="flex items-center gap-2 mt-1.5" style="margin-left:2.25rem; flex-wrap:nowrap">'
+            + '<div class="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">'
+            + '<div class="h-1.5 rounded-full ' + (r.code ? 'bg-teal-500' : 'bg-gray-400') + '" style="width:' + (r.share / top * 100).toFixed(1) + '%"></div></div>'
+            + '<span class="text-xs text-gray-600 tabular-nums text-right" style="width:2.25rem">' + r.share + '%</span>'
+            + '</div></div>';
+        const half = Math.ceil(rows.length / 2);
+        box.innerHTML = '<div>' + head + rows.slice(0, half).map(row).join('') + '</div>'
+            + '<div class="aac-col2">' + head + rows.slice(half).map(row).join('') + '</div>';
+        tot.innerHTML = '<span class="text-sm font-bold text-gray-900">All countries</span>'
+            + '<span class="text-sm font-bold text-gray-900 text-right tabular-nums">' + f.month.toLocaleString() + '</span>'
+            + '<span class="text-sm font-bold text-gray-900 text-right tabular-nums">' + f.day.toLocaleString() + '</span>';
+        card.classList.remove('hidden');
+    },
+
     // An admin tab left open across Bangkok midnight repaints the cube with the new day's figures.
     _armActiveUsersRollover() {
         clearTimeout(this._activeUsersTimer);
@@ -87175,6 +87268,7 @@ const AdminSystem = {
             const f = this._activeUsersFigures();
             const m = document.getElementById('admin-active-month'), d = document.getElementById('admin-active-day');
             if (f && m && d) { m.textContent = f.month.toLocaleString(); d.textContent = f.day.toLocaleString(); }
+            this._paintActiveCountries(f);
             this._armActiveUsersRollover();
         }, msToMidnight);
     },
@@ -87311,6 +87405,7 @@ const AdminSystem = {
             document.getElementById('admin-active-month').textContent = activeMonthRes.error ? '0' : (activeMonthRes.count || 0).toLocaleString();
             document.getElementById('admin-active-day').textContent = activeDayRes.error ? '0' : (activeDayRes.count || 0).toLocaleString();
             if (pinned) this._armActiveUsersRollover();
+            this._paintActiveCountries(pinned);
             if (!pinned) {
                 // Live mode only: a tap on either half lists the people behind that number.
                 // Pinned figures get no tap — a list of 50 under a 1,147 would contradict itself.

@@ -10,6 +10,9 @@
 //   3. her usual week (caddy_work_week.off_days)          -> off
 //   4. otherwise working, on caddy_profiles.sheet_start / sheet_end
 // A PENDING day-off request never closes the day; it only raises `ask`.
+// v1472 SUSPENSION (caddy_suspensions, set by the caddy master) sits above all four: a suspension that covers
+// her whole day -> state 'suspended'; one that covers part of it trims her hours (out.susPart). The golfer
+// never reads the word — golfer screens say "not available" (Pete 2026-10-06).
 // A failed read resolves as "working her usual hours" — a schedule hiccup must not close a roster.
 (function () {
     'use strict';
@@ -21,6 +24,8 @@
     // ISO weekday: 1 = Monday … 7 = Sunday
     function dow(iso) { var d = new Date(String(iso).slice(0, 10) + 'T00:00:00Z').getUTCDay(); return d === 0 ? 7 : d; }
     function num(v) { var m = String(v == null ? '' : v).match(/\d+/); return m ? String(parseInt(m[0], 10)) : ''; }
+    // a Bangkok wall-clock moment (date + minutes) as epoch ms
+    function bkk(iso, m) { return Date.parse(String(iso).slice(0, 10) + 'T00:00:00+07:00') + (m || 0) * 60000; }
 
     W.CaddyWorkSchedule = {
         client: null,                     // proshop-teesheet.html sets its own client here
@@ -39,7 +44,7 @@
 
         // -> { days: { caddyId: { iso: row } }, week: { caddyId: [isoDow…] }, from, to, ok }
         load: async function (ids, from, to) {
-            var store = { days: {}, week: {}, from: from, to: to, ok: true };
+            var store = { days: {}, week: {}, sus: {}, from: from, to: to, ok: true };
             var sb = this._sb();
             ids = (ids || []).filter(function (x) { return UUID.test(String(x || '')); });
             if (!sb || !ids.length || !from || !to) return store;
@@ -50,13 +55,23 @@
                     qs.push(sb.from('caddy_work_days').select('caddy_id, work_date, state, start_time, end_time, set_by, updated_at').in('caddy_id', part).gte('work_date', from).lte('work_date', to).limit(1000));
                     qs.push(sb.from('caddy_work_week').select('caddy_id, off_days').in('caddy_id', part).limit(1000));
                 }
-                var res = await Promise.all(qs);
+                // v1472: suspensions touching the window (named columns — the reason is not granted to the browser)
+                var sq = [], t0 = new Date(bkk(from, 0)).toISOString(), t1 = new Date(bkk(addDays(to, 1), 0)).toISOString();
+                for (var j = 0; j < ids.length; j += 120) {
+                    sq.push(sb.from('caddy_suspensions').select('id, caddy_id, starts_at, ends_at').in('caddy_id', ids.slice(j, j + 120)).is('lifted_at', null).gt('ends_at', t0).lt('starts_at', t1).limit(1000));
+                }
+                var all = await Promise.all([Promise.all(qs), Promise.all(sq).catch(function (e) { return []; })]);
+                var res = all[0];
                 res.forEach(function (r, idx) {
                     if (r.error) throw new Error(r.error.message);
                     (r.data || []).forEach(function (row) {
                         if (idx % 2 === 0) (store.days[row.caddy_id] = store.days[row.caddy_id] || {})[row.work_date] = row;
                         else store.week[row.caddy_id] = (row.off_days || []).map(Number);
                     });
+                });
+                (all[1] || []).forEach(function (r) {
+                    if (!r || r.error) { if (r && r.error) console.warn('[CaddyWorkSchedule] suspensions:', r.error.message); return; }
+                    (r.data || []).forEach(function (row) { (store.sus[row.caddy_id] = store.sus[row.caddy_id] || []).push({ id: row.id, from: Date.parse(row.starts_at), until: Date.parse(row.ends_at), starts_at: row.starts_at, ends_at: row.ends_at }); });
                 });
             } catch (e) { console.warn('[CaddyWorkSchedule] load:', e.message); store.ok = false; }
             return store;
@@ -95,12 +110,66 @@
             } else if (store && store.week && (store.week[id] || []).indexOf(dow(date)) !== -1) {
                 out.src = 'week'; out.state = 'off';
             }
+            // v1472 suspension: the whole day, or the part of it she is off bookings
+            var sus = (store && store.sus && store.sus[id]) || [];
+            for (var k = 0; k < sus.length; k++) {
+                var s2 = sus[k], a = bkk(date, out.state === 'working' ? out.start : h.start), b = bkk(date, out.state === 'working' ? out.end : h.end);
+                if (s2.until <= a || s2.from > b) continue;
+                if (s2.from <= a && s2.until > b) { out.under = out.state; out.state = 'suspended'; out.src = 'sus'; out.sus = s2; out.ask = null; return out; }
+                if (out.state !== 'working') continue;
+                out.susPart = s2;
+                if (s2.from <= a) out.start = Math.ceil(((s2.until - bkk(date, 0)) / 60000) / 10) * 10;        // back on bookings later that day
+                else out.end = Math.floor((((s2.from - bkk(date, 0)) / 60000) - 1) / 10) * 10;                  // off bookings from then on
+            }
             if (out.state !== 'working') { out.ask = null; return out; }
             // half days read as a word, not as two clock times
             if (out.custom) { if (out.end <= 750) out.part = 'am'; else if (out.start >= 630) out.part = 'pm'; }
             return out;
         },
         isOff: function (res) { return !!res && res.state !== 'working'; },
+        bkk: bkk,
+        /* v1472 — is she suspended at this tee time? -> the suspension, else null */
+        susAt: function (store, id, date, m) {
+            var list = (store && store.sus && store.sus[id]) || [], at = bkk(date, m == null ? 0 : m);
+            for (var i = 0; i < list.length; i++) if (list[i].from <= at && list[i].until > at) return list[i];
+            return null;
+        },
+        /* "Tue 13 Oct · 06:52" in Bangkok, in the app's language */
+        fmtAt: function (ms, lang) {
+            try {
+                var d = new Date(ms), o = { timeZone: 'Asia/Bangkok' };
+                var day = d.toLocaleDateString(lang || 'en-GB', Object.assign({ weekday: 'short', day: 'numeric', month: 'short' }, o));
+                var tm = d.toLocaleTimeString('en-GB', Object.assign({ hour: '2-digit', minute: '2-digit', hour12: false }, o));
+                return day + ' · ' + tm;
+            } catch (e) { return new Date(ms + 7 * 3600e3).toISOString().slice(0, 16).replace('T', ' '); }
+        },
+        fmtDay: function (ms, lang) {
+            try { return new Date(ms).toLocaleDateString(lang || 'en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok' }); }
+            catch (e) { return new Date(ms + 7 * 3600e3).toISOString().slice(0, 10); }
+        },
+        /* The pro shop desk: who on this roster is suspended on this date. Map number -> { from, until } (ms).
+           whole = the day's working hours are all inside it. */
+        suspended: async function (caddies, date) {
+            var out = new Map();
+            try {
+                var list = (caddies || []).filter(function (c) { return c && UUID.test(String(c.id || '')); });
+                if (!list.length || !date) return out;
+                var store = await this.load(list.map(function (c) { return c.id; }), date, date), self = this;
+                list.forEach(function (c) {
+                    var s = (store.sus[c.id] || [])[0]; if (!s) return;
+                    var r = self.resolve(store, { id: c.id, caddy_number: c.caddy_number != null ? c.caddy_number : c.number }, date, null);
+                    out.set(String(c.caddy_number != null ? c.caddy_number : c.number).trim(), { id: s.id, from: s.from, until: s.until, whole: r.state === 'suspended' });
+                });
+            } catch (e) { console.warn('[CaddyWorkSchedule] suspended:', e.message); }
+            return out;
+        },
+        // ---- suspension writers / staff reads (caddy master only — the screens gate it) ----
+        susStaff: function (ids, sinceIso) { return this._rpc('caddy_suspensions_staff', { p_caddy_ids: (ids || []).filter(function (x) { return UUID.test(String(x || '')); }), p_since: sinceIso || null }); },
+        suspend: function (caddyId, fromIso, untilIso, keepLength, code, reason, by) {
+            return this._rpc('caddy_suspend', { p_caddy_id: caddyId, p_from: fromIso || null, p_until: untilIso, p_keep_length: keepLength !== false, p_reason_code: code || null, p_reason: reason || null, p_by: by || null });
+        },
+        susChange: function (id, untilIso, by) { return this._rpc('caddy_suspension_change', { p_id: id, p_until: untilIso, p_by: by || null }); },
+        susLift: function (id, by) { return this._rpc('caddy_suspension_lift', { p_id: id, p_by: by || null }); },
 
         // start times she can still take: inside the day's hours, not in the past, a full block away from every job
         freeWindows: function (res, wins, date) {
@@ -128,7 +197,7 @@
                 var self = this;
                 list.forEach(function (c) {
                     var r = self.resolve(store, { id: c.id, caddy_number: c.caddy_number != null ? c.caddy_number : c.number }, date, null);
-                    if (r.state !== 'working') out.add(String(c.caddy_number != null ? c.caddy_number : c.number).trim());
+                    if (r.state !== 'working' && r.state !== 'suspended') out.add(String(c.caddy_number != null ? c.caddy_number : c.number).trim());
                 });
             } catch (e) { console.warn('[CaddyWorkSchedule] offNumbers:', e.message); }
             return out;

@@ -42,6 +42,22 @@
     const desk = () => { try { return W.matchMedia('(min-width: 1024px)').matches; } catch (e) { return false; } };
     const pct = (m, lo, hi) => Math.max(0, Math.min(100, (m - lo) / Math.max(1, hi - lo) * 100));
     const firstNum = v => { const m = String(v == null ? '' : v).match(/\d+/); return m ? String(parseInt(m[0], 10)) : ''; };
+    // v1472 suspension words (staff + the caddie herself; the golfer never reads them)
+    const offWord = x => x && x.state === 'suspended' ? T('cws.sus', 'Suspended') : x && x.state === 'leave' ? T('cws.leave', 'Leave') : T('cws.dayoff', 'Day off');
+    const atTxt = ms => WS.fmtAt(ms, loc());
+    const leftTxt = ms => {
+        const m = Math.max(0, Math.round((ms - Date.now()) / 60000)), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60);
+        return d ? T('cws.sus.left.dh', '{d} d {h} h left').replace('{d}', d).replace('{h}', h) : h ? T('cws.sus.left.hm', '{h} h {m} min left').replace('{h}', h).replace('{m}', m % 60) : T('cws.sus.left.m', '{m} min left').replace('{m}', m);
+    };
+    const lenTxt = (a, b) => {
+        const m = Math.round((b - a) / 60000), d = Math.round(m / 1440);
+        if (m < 1440) { const h = Math.round(m / 60 * 10) / 10; return h === 1 ? T('cws.sus.len.h1', '1 hour') : T('cws.sus.len.h', '{n} hours').replace('{n}', h); }
+        if (d % 7 === 0 && d <= 28) return d === 7 ? T('cws.sus.len.w1', '1 week') : T('cws.sus.len.w', '{n} weeks').replace('{n}', d / 7);
+        if (d >= 28 && Math.abs(d / 30.4 - Math.round(d / 30.4)) < 0.12) { const mo = Math.round(d / 30.4); return mo === 1 ? T('cws.sus.len.mo1', '1 month') : T('cws.sus.len.mo', '{n} months').replace('{n}', mo); }
+        return d === 1 ? T('cws.sus.len.d1', '1 day') : T('cws.sus.len.d', '{n} days').replace('{n}', d);
+    };
+    // only the caddy master sets, changes or lifts a suspension (Pete 2026-10-06)
+    const isCaddyMaster = () => { try { return W.AppState.currentUser.role === 'caddymaster'; } catch (e) { return false; } };
 
     // ───────────────────────── styles (.cws-*) ─────────────────────────
     const CSS = `
@@ -188,6 +204,44 @@
     .cws-pill .material-symbols-outlined { font-size:12px; }
     .cws-field-ro select:disabled, .cws-field-ro input:disabled { opacity:.5; }
     .cws-hide { display:none !important; }
+    /* v1472 suspension */
+    #caddyMasterDashboard:has(#caddyMaster-control.active) { background:#0b1220; }
+    #caddyMasterDashboard:has(#caddyMaster-control.active) > main { padding:0 !important; max-width:none !important; }
+    .cbk-tile.sus { opacity:1; border-color:rgba(248,113,113,.6); }
+    .cbk-tile.sus .cbk-media img, .cbk-tile.sus .cbk-numtile { filter:grayscale(1) brightness(.5); }
+    .cws-susl { display:block; background:#dc2626; color:#fff; font-size:10.5px; font-weight:800; text-align:center; line-height:1.2; padding:4px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .cws-c.sus { background:rgba(220,38,38,.18); color:#fca5a5; border-color:rgba(248,113,113,.45); font-size:9px; }
+    .cws-bd .cws-c.sus { font-size:11px; }
+    .cbk-primary.red { background:#dc2626; }
+    .sus-kp { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:12px 0 4px; }
+    .sus-kp > div { background:#151d2b; border:1px solid rgba(148,163,184,.2); border-radius:14px; padding:10px 12px; min-width:0; }
+    .sus-kp b { display:block; font-size:22px; font-weight:800; color:#fff; line-height:1.1; }
+    .sus-kp span { display:block; font-size:11px; font-weight:700; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .sus-card { background:#151d2b; border:1px solid rgba(248,113,113,.45); border-radius:14px; padding:12px; margin-bottom:8px; color:#e2e8f0; }
+    .sus-card.later { border-color:rgba(251,191,36,.45); }
+    .sus-top { display:flex; gap:10px; align-items:center; }
+    .sus-top .w { flex:1; min-width:0; }
+    .sus-top .w b { display:block; font-size:15px; font-weight:800; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .sus-top .w small { display:block; font-size:12px; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .sus-pill { flex:none; font-size:11px; font-weight:800; padding:3px 10px; border-radius:999px; color:#fff; white-space:nowrap; }
+    .sus-prog { height:6px; border-radius:3px; background:#1e293b; margin:10px 0 6px; overflow:hidden; }
+    .sus-prog i { display:block; height:100%; background:#dc2626; border-radius:3px; min-width:4px; }
+    .sus-meta { display:flex; justify-content:space-between; flex-wrap:wrap; gap:2px 8px; font-size:12px; color:#94a3b8; }
+    .sus-meta b { color:#fff; font-weight:700; }
+    .sus-why { font-size:13px; color:#e2e8f0; margin-top:8px; line-height:1.35; overflow-wrap:anywhere; }
+    .sus-why small { color:#94a3b8; }
+    .sus-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+    .sus-chip { height:38px; padding:0 13px; border-radius:999px; border:1px solid rgba(148,163,184,.3); background:#151d2b; color:#e2e8f0; font-size:13px; font-weight:700; display:inline-flex; align-items:center; cursor:pointer; }
+    .sus-chip.on { background:#dc2626; border-color:#dc2626; color:#fff; }
+    .sus-lbl { font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:#94a3b8; margin:14px 0 2px; }
+    .sus-box { border-radius:12px; padding:10px 12px; border:1px solid rgba(251,191,36,.45); background:rgba(251,191,36,.1); margin-top:10px; }
+    .sus-box b { display:block; font-size:14px; color:#fff; }
+    .sus-box small { display:block; font-size:12px; color:#cbd5e1; line-height:1.35; margin-top:2px; }
+    .sus-home { border-radius:12px; padding:16px; margin-bottom:16px; background:#fef2f2; border:1px solid rgba(220,38,38,.45); }
+    .sus-home h4 { margin:0; font-size:14px; font-weight:700; color:#7f1d1d; display:flex; align-items:center; gap:6px; }
+    .sus-home .p { flex:none; font-size:10px; font-weight:700; padding:2px 8px; border-radius:999px; background:#dc2626; color:#fff; white-space:nowrap; }
+    .sus-home .t1 { font-size:14px; font-weight:600; color:#7f1d1d; margin-top:4px; }
+    .sus-home .t2 { font-size:14px; color:#991b1b; margin-top:2px; }
     `;
     function boot() {
         if (document.getElementById('cws-css')) return;
@@ -249,6 +303,35 @@
         uid() { const u = (W.AppState && W.AppState.currentUser) || {}; return u.lineUserId || u.userId || null; },
         block() { return WS.hours(this.me).block; },
         res(d) { return WS.resolve(this.store, this.me, d, this.offs); },
+        // v1472: her suspension that is running, else the next one booked for her (null = none)
+        susNext() {
+            const l = (this.store && this.store.sus && this.prof && this.store.sus[this.prof.id]) || [];
+            return l.filter(x => x.until > Date.now()).sort((a, b) => a.from - b.from)[0] || null;
+        },
+        // the same news on her Today screen, above the rotation card
+        paintHome() {
+            try {
+                const card = document.getElementById('caddie-rotation-card'); if (!card) return;
+                const sus = this.susNext(), chip = document.getElementById('caddie-status-chip');
+                let el = document.getElementById('caddieSusCard');
+                if (!sus) { if (el) el.remove(); if (chip && chip._sus) { chip._sus = false; chip.style.background = ''; chip.style.color = ''; if (chip._was != null) chip.textContent = chip._was; } return; }
+                boot();
+                if (!el) { el = document.createElement('div'); el.id = 'caddieSusCard'; el.className = 'sus-home'; card.parentNode.insertBefore(el, card); }
+                const on = sus.from <= Date.now();
+                el.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><h4>${ic('block', 'font-size:18px;color:#dc2626')}${esc(T('cws.my.sus.card', 'Off bookings'))}</h4><span class="p">${esc((on ? T('cws.sus.until', 'until {t}') : T('cws.sus.from', 'from {t}')).replace('{t}', atTxt(on ? sus.until : sus.from)))}</span></div>
+                    <div class="t1">${esc(on ? T('cws.my.sus.card.now', 'The caddy master has taken you off bookings.') : T('cws.my.sus.card.later', 'The caddy master has set a time off bookings for you.'))}</div>
+                    <div class="t2">${esc(on ? T('cws.my.sus.card.now2', '{l} · you cannot be booked by the pro shop, golfers or the rotation until then.').replace('{l}', leftTxt(sus.until)) : T('cws.my.sus.later.sub', 'Until {t} · set by the caddy master. You finish the booking you have first.').replace('{t}', atTxt(sus.until)))}</div>`;
+                if (chip && on) { if (!chip._sus) chip._was = chip.textContent; chip._sus = true; chip.textContent = T('cws.sus', 'Suspended').toUpperCase(); chip.style.background = '#dc2626'; chip.style.color = '#fff'; }
+            } catch (e) {}
+        },
+        watchSus() {
+            const c = sb(), p = this.prof; if (!c || !p || this._susCh === p.id) return;
+            this._susCh = p.id;
+            try {
+                if (this._susChan) c.removeChannel(this._susChan);
+                this._susChan = c.channel('cws_sus_' + p.id).on('postgres_changes', { event: '*', schema: 'public', table: 'caddy_suspensions', filter: 'caddy_id=eq.' + p.id }, () => this.load()).subscribe();
+            } catch (e) {}
+        },
         jobs(d) { return (this.rows || []).filter(b => b.booking_date === d).sort(byTee); },
         wins(d) { const bl = this.block(); return this.jobs(d).map(b => { const f = tee(b); return { from: f, to: f == null ? null : f + bl }; }); },
         isOut(b) {
@@ -320,6 +403,7 @@
             if (seq !== this._seq) return;
             this.loaded = true;
             this.paint();
+            this.paintHome(); this.watchSus();
             this.paintComms();
             if (sheetOpen('cwsJobSheet') && this._jobId) this.paintJob();
             this.loadPast();
@@ -475,6 +559,10 @@
             } else {
                 when = `<div class="cbk-whenline" style="margin-top:10px"><b>${esc(T('cws.my.nobook', 'No bookings yet'))}</b><small>${esc(T('cws.my.nobook.sub', 'Golfers can book you on any open day below.'))}</small></div>`;
             }
+            const sus = this.susNext();
+            let susHtml = '';
+            if (sus && sus.from <= Date.now()) susHtml = `<div class="cbk-whenline booked" style="margin-top:10px"><b style="display:flex;align-items:center;gap:6px">${ic('block', 'font-size:18px;color:#f87171')}${esc(T('cws.my.sus.now', 'No new bookings until {t}').replace('{t}', atTxt(sus.until)))}</b><small>${esc(T('cws.my.sus.now.sub', 'The caddy master has taken you off bookings · {l}. Pro shop, golfers and the rotation cannot book you until then.').replace('{l}', leftTxt(sus.until)))}</small></div>`;
+            else if (sus) susHtml = `<div class="cbk-whenline mine" style="margin-top:10px"><b style="display:flex;align-items:center;gap:6px">${ic('block', 'font-size:18px;color:#fbbf24')}${esc(T('cws.my.sus.later', 'Off bookings from {t}').replace('{t}', atTxt(sus.from)))}</b><small>${esc(T('cws.my.sus.later.sub', 'Until {t} · set by the caddy master. You finish the booking you have first.').replace('{t}', atTxt(sus.until)))}</small></div>`;
             const chips = [];
             for (let i = 0; i < 14; i++) {
                 const d = WS.addDays(today, i), r = this.res(d), w = this.wins(d);
@@ -485,7 +573,7 @@
             const sel = this.sel, r = this.res(sel), w = this.wins(sel), jobs = this.jobs(sel);
             let detail;
             if (r.state !== 'working') {
-                detail = `<div class="cbk-slots-none" style="margin-top:10px">${esc(r.state === 'leave' ? T('cws.my.leave.day', 'On leave — golfers cannot book you this day') : T('cws.my.off.day', 'Day off — golfers cannot book you this day'))}</div>`;
+                detail = `<div class="cbk-slots-none" style="margin-top:10px">${esc(r.state === 'suspended' ? T('cws.my.sus.day', 'Off bookings this day — set by the caddy master') : r.state === 'leave' ? T('cws.my.leave.day', 'On leave — golfers cannot book you this day') : T('cws.my.off.day', 'Day off — golfers cannot book you this day'))}</div>`;
             } else {
                 const free = WS.freeWindows(r, w, sel);
                 detail = barHtml(r, w, free, sel) + (free.length
@@ -494,12 +582,12 @@
             }
             const head = (sel === today ? T('cws.today', 'Today') : dayLine(sel)) + ' · ' + (jobs.length === 1 ? T('cws.booking1', '1 booking') : T('cws.bookingN', '{n} bookings').replace('{n}', jobs.length));
             let side;
-            if (r.state !== 'working') side = r.state === 'leave' ? T('cws.leave', 'Leave') : T('cws.dayoff', 'Day off');
+            if (r.state !== 'working') side = offWord(r);
             else if (sel === today) side = (this.chk ? T('cws.my.chk', 'Checked in {t}').replace('{t}', clock(this.chk.checked_in_at)) : T('cws.my.nochk', 'Not checked in yet')) + ' · ' + T('cws.my.to', 'working to {t}').replace('{t}', hhmm(r.end));
             else side = T('cws.my.work', 'Working {a}–{b}').replace('{a}', hhmm(r.start)).replace('{b}', hhmm(r.end));
             if (r.ask) side = T('cws.my.asked', 'You asked for this day off · waiting');
             if (jobs.length) setTimeout(() => this.ensureCtx(jobs), 0);
-            return `${this.prof ? when : this.regNote()}
+            return `${susHtml}${this.prof ? when : this.regNote()}
                 <div class="cbk-sched"><div class="cbk-sched-h">${esc(T('cws.my.14', 'My next 14 days'))}<small>${esc(T('cws.my.14.hint', 'What golfers see when they book you'))}</small></div><div class="cbk-days">${chips.join('')}</div>${detail}</div>
                 <div class="cws-h">${esc(head)}<small>${esc(side)}</small></div>
                 ${jobs.length ? jobs.map(b => this.jobCard(b)).join('') : `<div class="cws-none">${esc(T('cws.my.none', 'No bookings this day'))}</div>`}
@@ -515,7 +603,7 @@
                 let title, sub, pill;
                 if (r.state !== 'working') {
                     off++;
-                    title = r.state === 'leave' ? T('cws.leave', 'Leave') : T('cws.dayoff', 'Day off');
+                    title = offWord(r);
                     sub = r.src === 'week' ? T('cws.wk.weekly', 'Your weekly day off') : r.src === 'request' ? T('cws.wk.approved', 'Approved by the caddy master') : T('cws.wk.setby', 'Set by the caddy master');
                     pill = ['mute', title];
                 } else {
@@ -636,7 +724,13 @@
         offs() { return CM().dayoffReqs || []; },
         res(r, d) { return WS.resolve(this.store, r, d, this.offs()); },
         // CaddyMasterData._offOn asks here too, so the old assign overlay and the rotation honour a set day off
-        offOn(r, iso) { if (!this.store || !r) return null; const x = WS.resolve(this.store, r, iso, null); return x.state !== 'working' ? { work: true, state: x.state } : null; },
+        offOn(r, iso) {
+            if (!this.store || !r) return null;
+            const x = WS.resolve(this.store, r, iso, null);
+            if (x.state !== 'working') return { work: true, state: x.state };
+            // v1472: suspended right now for part of today — out of today's rotation too
+            return (iso === this.today() && WS.susAt(this.store, r.id, iso, WS.nowMins())) ? { work: true, state: 'suspended' } : null;
+        },
         rowsFor(d) { return d === this.today() ? (CM().todayRows || []) : (this._rows[d] || []); },
         label(r) { const n = numOf(r), nm = nameOf(r); return (n ? '#' + n : '') + (nm ? (n ? ' ' : '') + nm : ''); },
 
@@ -737,14 +831,17 @@
                 const s = isToday ? D._stateOf(r) : null;
                 const st = rot.get(D._numVal(r.caddy_number)) || null;
                 const nin = !!useChk && !this.chk.set.has(r.id);
-                const working = res.state === 'working';
+                // v1472: suspended for the whole day, or at this tee time (right now, when no time is picked today)
+                const sus = res.state === 'suspended' ? res.sus : WS.susAt(this.store, r.id, date, at != null ? at : (isToday ? now : -1));
+                const working = res.state === 'working' && !sus;
                 const outside = working && at != null && (at < res.start || at > res.end);
                 let fit;
                 if (at != null) fit = working && !nin && !clash && !outside;
                 else fit = working && !nin && (isToday ? !(s && s.out) : true) && (isToday ? now <= res.end : true);
                 const pos = st ? (st.state === 'serving' ? st.pos : st.state === 'standby' ? 1000 + st.pos : 3000) : 2000 + (D._numVal(r.caddy_number) || 0);
                 let badge;
-                if (!working) badge = [res.state === 'leave' ? T('cws.leave', 'Leave') : T('cws.dayoff', 'Day off'), '#475569'];
+                if (sus) badge = [T('cws.sus', 'Suspended'), '#dc2626'];
+                else if (!working) badge = [offWord(res), '#475569'];
                 else if (nin) badge = [T('cws.notin', 'Not in'), '#475569'];
                 else if (fit && at != null && job) badge = [T('cws.fits', 'Fits {t}').replace('{t}', hhmm(at)), '#16a34a'];
                 else if (fit && at == null && hers.some(b => tee(b) != null && (!isToday || tee(b) > now))) badge = [hhmm(tee(hers.find(b => tee(b) != null && (!isToday || tee(b) > now)))), '#2563eb'];   // free, with a job later
@@ -754,9 +851,9 @@
                 else if (outside) badge = [hhmm(res.start) + '–' + hhmm(res.end), '#475569'];
                 else if (hers.length) badge = [hhmm(tee(hers[0])), '#2563eb'];
                 else badge = [T('cws.closed', 'Closed'), '#475569'];
-                return { r, res, hers, clash, s, st, nin, outside, fit, pos, badge };
+                return { r, res, hers, clash, s, st, nin, outside, fit, pos, badge, sus };
             });
-            const rank = c => c.fit ? 0 : c.res.state !== 'working' ? 3 : c.nin ? 2 : 1;
+            const rank = c => c.fit ? 0 : (c.res.state !== 'working' || c.sus) ? 3 : c.nin ? 2 : 1;
             return list.sort((a, b) => (rank(a) - rank(b)) || (a.pos - b.pos));
         },
 
@@ -835,18 +932,18 @@
             const job = this.jobId ? rows.find(b => b.id === this.jobId) : null;
             const time = job ? (D._tm(job) === '—' ? '' : D._tm(job)) : this.time;
             const all = this.cands(this.date, time, job);
-            const fit = all.filter(c => c.fit), working = all.filter(c => c.res.state === 'working').length;
+            const fit = all.filter(c => c.fit), working = all.filter(c => c.res.state === 'working' && !c.sus).length, nSus = all.filter(c => c.sus).length;
             this._firstFit = fit.length ? fit[0].r.id : null;
             let list = this.freeOnly ? fit : all;
             if (this.q) { const qn = this.q.replace(/^#/, ''); list = list.filter(c => numOf(c.r).toLowerCase().startsWith(qn) || nameOf(c.r).toLowerCase().includes(this.q)); }
             if (cnt) {
                 const a = time ? T('cws.cm.cnt.for', '{n} free for {t}').replace('{n}', fit.length).replace('{t}', time) : (this.date === this.today() ? T('cws.cm.cnt.now', '{n} free now') : T('cws.cm.cnt.day', '{n} free')).replace('{n}', fit.length);
-                cnt.innerHTML = `${esc(a)}, <button type="button" class="cws-link" data-a="rot">${esc(T('cws.cm.rotorder', 'in rotation order'))}</button> · ${esc(T('cws.cm.cnt.work', '{w} of {n} working').replace('{w}', working).replace('{n}', all.length))}`;
+                cnt.innerHTML = `${esc(a)}, <button type="button" class="cws-link" data-a="rot">${esc(T('cws.cm.rotorder', 'in rotation order'))}</button> · ${esc(T('cws.cm.cnt.work', '{w} of {n} working').replace('{w}', working).replace('{n}', all.length))}${nSus ? ' · ' + esc(T('cws.cm.cnt.sus', '{n} suspended').replace('{n}', nSus)) : ''}`;
             }
             const inactive = (!this.freeOnly && !this.q) ? (D.roster || []).filter(r => r.is_active === false) : [];
             if (!list.length && !inactive.length) { grid.innerHTML = `<div class="cbk-empty" style="grid-column:1/-1">${ic('person_search')}<p>${esc((D.roster || []).length ? T('cws.cm.nomatch', 'No caddy matches') : D._t('cm.empty.roster', 'No caddies in the roster yet'))}</p></div>`; return; }
-            const tile = (c, q) => `<div class="cbk-tile${c.fit ? '' : ' off'}"${q === 1 && job ? ' style="border-color:#22c55e"' : ''} data-a="caddy" data-v="${esc(c.r.id)}"><div class="cbk-media"><span class="cbk-numtile">${ic('sports_golf')}<b>${esc(numOf(c.r) || '—')}</b></span>${c.r.photo_url ? `<img src="${esc(c.r.photo_url)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}
-                <span class="cbk-badge" style="background:${c.badge[1]}">${esc(c.badge[0])}</span>${q ? `<span class="cws-rot">Q${q}</span>` : ''}</div>
+            const tile = (c, q) => `<div class="cbk-tile${c.fit ? '' : ' off'}${c.sus ? ' sus' : ''}"${q === 1 && job ? ' style="border-color:#22c55e"' : ''} data-a="caddy" data-v="${esc(c.r.id)}"><div class="cbk-media"><span class="cbk-numtile">${ic('sports_golf')}<b>${esc(numOf(c.r) || '—')}</b></span>${c.r.photo_url ? `<img src="${esc(c.r.photo_url)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}
+                <span class="cbk-badge" style="background:${c.badge[1]}">${esc(c.badge[0])}</span>${q ? `<span class="cws-rot">Q${q}</span>` : ''}</div>${c.sus ? `<span class="cws-susl">${esc(T('cws.sus.until', 'until {t}').replace('{t}', c.sus.until - Date.now() < 20 * 3600e3 ? clock(c.sus.until) : WS.fmtDay(c.sus.until, loc())))}</span>` : ''}
                 <div class="cbk-tile-body"><span class="cbk-num">${numOf(c.r) ? '#' + esc(numOf(c.r)) : ''}</span><span class="cbk-name">${esc(nameOf(c.r))}</span></div></div>`;
             let q = 0;
             grid.innerHTML = list.map(c => tile(c, c.fit ? ++q : 0)).join('') + inactive.map(r => tile({ r, fit: false, badge: [r.left_at ? D._t('cm.grp.left', 'Left') : D._t('cm.grp.inactive', 'Inactive'), '#475569'] }, 0)).join('');   // v1435: left_at = she left the course, the record stays
@@ -917,7 +1014,7 @@
             const inactive = r.is_active === false;
             const c0 = inactive ? null : (this.cands(today, '', null).find(c => c.r.id === r.id) || null);   // her state right now
             const me = job ? (this.cands(job.booking_date, D._tm(job), job).find(c => c.r.id === r.id) || null) : c0;
-            const badge = inactive ? [r.left_at ? D._t('cm.grp.left', 'Left') : D._t('cm.grp.inactive', 'Inactive'), '#475569'] : !c0 ? ['', '#475569'] : c0.fit ? [T('cws.freenow', 'Free now'), '#16a34a'] : c0.badge;
+            const badge = inactive ? [r.left_at ? D._t('cm.grp.left', 'Left') : D._t('cm.grp.inactive', 'Inactive'), '#475569'] : !c0 ? ['', '#475569'] : c0.fit ? [T('cws.freenow', 'Free now'), '#16a34a'] : c0.badge;   // a suspension shows here as the red "Suspended" badge
             const nextRot = !inactive && this._firstFit === r.id;
             let lead = '', prop = null;
             if (job && me) {
@@ -928,7 +1025,8 @@
                     lead = `<div class="cbk-whenline available"><b>${esc(T('cws.cm.fits', 'Fits {g} · {t}').replace('{g}', job.golfer_name || D._t('cm.guest', 'Guest')).replace('{t}', D._tm(job)))}</b><small>${esc([job.booking_date === today ? '' : dayLine(job.booking_date), job.holes ? T('cws.holes', '{n} holes').replace('{n}', job.holes) : '', srcLabel(job), T('cws.cm.back', 'back about {t}').replace('{t}', hhmm(at + block)) + (after ? ', ' + T('cws.cm.before', 'before her {t}').replace('{t}', hhmm(tee(after))) : '')].filter(Boolean).join(' · '))}</small></div>
                         ${canAlter ? `<button type="button" class="cbk-primary" style="margin-top:10px" data-c="assign">${ic('check_circle')}<span>${esc(T('cws.cm.assignto', 'Assign #{n} to {g}').replace('{n}', numOf(r)).replace('{g}', job.golfer_name || D._t('cm.guest', 'Guest')))}</span></button>` : ''}`;
                 } else {
-                    const why = me.res.state !== 'working' ? (me.res.state === 'leave' ? T('cws.cm.why.leave', 'On leave that day') : T('cws.cm.why.off', 'Day off that day'))
+                    const why = me.sus ? T('cws.cm.why.sus', 'Suspended until {t}').replace('{t}', atTxt(me.sus.until))
+                        : me.res.state !== 'working' ? (me.res.state === 'leave' ? T('cws.cm.why.leave', 'On leave that day') : T('cws.cm.why.off', 'Day off that day'))
                         : me.nin ? T('cws.cm.why.nin', 'Not checked in today')
                         : me.clash ? T('cws.cm.why.clash', 'Out at {a} — blocked until {b}').replace('{a}', hhmm(tee(me.clash))).replace('{b}', hhmm(tee(me.clash) + block))
                         : T('cws.cm.why.hours', 'Outside her hours {a}–{b}').replace('{a}', hhmm(me.res.start)).replace('{b}', hhmm(me.res.end));
@@ -938,6 +1036,16 @@
             } else if (!inactive) {
                 lead = `<div class="cbk-whenline"><b>${esc(T('cws.cm.nopick', 'No golfer picked'))}</b><small>${esc(T('cws.cm.nopick.sub', "Give her a job from the day's list, or tap a free time in her schedule."))}</small></div>
                     ${canAlter ? `<button type="button" class="cbk-primary" style="margin-top:10px" data-c="pick">${ic('assignment_ind')}<span>${esc(T('cws.cm.give', 'Give her a job'))}</span></button>` : ''}`;
+            }
+            // v1472: her suspension — running, or booked to start — sits above everything else on the card
+            const susL = ((this.store && this.store.sus && this.store.sus[r.id]) || []).filter(z => z.until > Date.now()).sort((a, b) => a.from - b.from);
+            const susN = inactive ? null : (susL[0] || null), susOn = !!susN && susN.from <= Date.now(), susRow = susN ? CTL.rowOf(susN.id) : null, cmOnly = canAlter && isCaddyMaster();
+            if (susN) {
+                const why = susRow && (susRow.reason || susRow.reason_code) ? [CTL.codeTxt(susRow.reason_code), susRow.reason].filter(Boolean).join(' · ') : '';
+                lead = `<div class="cbk-whenline ${susOn ? 'booked' : 'mine'}"><b>${esc((susOn ? T('cws.cm.sus.now', 'No bookings until {t}') : T('cws.cm.sus.later', 'Suspended from {t}')).replace('{t}', atTxt(susOn ? susN.until : susN.from)))}</b><small>${esc([susOn ? leftTxt(susN.until) : T('cws.sus.until', 'until {t}').replace('{t}', atTxt(susN.until)), susRow && susRow.set_by ? T('cws.sus.by', 'set by {n}').replace('{n}', susRow.set_by) : ''].filter(Boolean).join(' · '))}${why ? '<br>' + esc(why) : ''}</small></div>
+                    ${cmOnly ? (susOn
+                        ? `<button type="button" class="cbk-primary" style="margin-top:10px" data-c="suslift" data-v="${esc(susN.id)}">${ic('lock_open')}<span>${esc(T('cws.sus.lift', 'Lift suspension now'))}</span></button><div class="cws-btns" style="margin-top:8px"><button type="button" class="cws-b2" data-c="suschg" data-v="${esc(susN.id)}">${ic('edit')}${esc(T('cws.sus.change', 'Change time'))}</button></div>`
+                        : `<div class="cws-btns" style="margin-top:8px"><button type="button" class="cws-b2" data-c="suschg" data-v="${esc(susN.id)}">${ic('edit')}${esc(T('cws.sus.change', 'Change time'))}</button><button type="button" class="cws-b2 red" data-c="suslift" data-v="${esc(susN.id)}">${esc(T('cws.sus.remove', 'Remove this suspension'))}</button></div>`) : ''}` + (susOn ? '' : lead);
             }
             const chips = [];
             for (let i = 0; i < 14; i++) {
@@ -950,7 +1058,7 @@
             const x = this.res(r, day), jobsD = this.cadJobs(r, day), bl = Math.max(270, +r.block_minutes || 270);
             const wins = jobsD.filter(b => b.status !== 'completed').map(b => { const f = tee(b); return { from: f, to: f == null ? null : f + bl }; });
             let detail;
-            if (x.state !== 'working') detail = `<div class="cbk-slots-none" style="margin-top:10px">${esc(x.state === 'leave' ? T('cws.leave', 'Leave') : T('cws.dayoff', 'Day off'))} · ${esc(dayLine(day))}</div>`;
+            if (x.state !== 'working') detail = `<div class="cbk-slots-none" style="margin-top:10px">${esc(offWord(x))} · ${esc(dayLine(day))}</div>`;
             else {
                 const free = WS.freeWindows(x, wins, day);
                 detail = barHtml(x, wins, free, day, prop) + (free.length
@@ -974,6 +1082,7 @@
                 ${jobsD.length ? jobsD.map(jobRow).join('') : `<div class="cws-none">${esc(T('cws.cm.nojobs', 'No jobs this day'))}</div>`}
                 <div class="cws-h">${esc(T('cws.cm.worksched', 'Work schedule'))}</div>
                 <button type="button" class="cws-job" style="margin-bottom:0" data-c="edit"><span class="cws-ini" style="color:#4ade80">${ic('date_range', 'font-size:20px')}</span><div class="cws-jb"><div class="cws-jn"><span class="nm">${esc(wl.title)}</span></div><div class="cws-jm">${esc(wl.sub)}</div></div>${ic('chevron_right', 'color:#94a3b8;flex:none')}</button>
+                ${cmOnly && !inactive && !susN ? `<div class="cws-btns"><button type="button" class="cws-b2 red" data-c="sus">${ic('block', 'color:#fca5a5')}${esc(T('cws.sus.do', 'Suspend from bookings'))}</button></div>` : ''}
                 ${canAlter ? `<div class="cws-btns"><button type="button" class="cws-b2" data-c="editcaddy">${ic('edit')}${esc(T('cws.cm.editcaddy', 'Edit caddy'))}</button><button type="button" class="cws-b2${inactive ? ' go' : ' red'}" data-c="${inactive ? 'react' : 'deact'}">${esc(inactive ? D._t('cm.roster.react', 'Reactivate') : D._t('cm.roster.deact', 'Deactivate'))}</button></div>` : ''}`,
                 () => { this._cad = null; });
             const on = w.querySelector('.cbk-day.on'); if (on) { try { on.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {} }
@@ -986,6 +1095,9 @@
                 else if (a === 'slot') D.openNewJob({ caddyId: r.id, date: day, time: v });
                 else if (a === 'edit') this.openEditor(r.id, day);
                 else if (a === 'editcaddy') D.openCaddyForm(r.id);
+                else if (a === 'sus') CTL.openSuspend(r.id);
+                else if (a === 'suslift') CTL.lift(v);
+                else if (a === 'suschg') CTL.openChange(v);
                 else if (a === 'deact') D.setActive(r.id, false).then(() => closeSheet('cwsCmSheet'));
                 else if (a === 'react') D.setActive(r.id, true).then(() => closeSheet('cwsCmSheet'));
                 else {
@@ -1048,7 +1160,7 @@
             const date = this.date, block = Math.max(270, +r.block_minutes || 270), x = this.res(r, date);
             const all = this.rowsFor(date).filter(b => b.status !== 'cancelled' && b.status !== 'completed').sort(byTee);
             const hers = all.filter(b => D._isHers(b, r));
-            const fits = b => { const t = tee(b); if (x.state !== 'working') return [false, x.state === 'leave' ? T('cws.leave', 'Leave') : T('cws.dayoff', 'Day off')]; if (t == null) return [true, '']; const cl = hers.find(j => j.id !== b.id && tee(j) != null && Math.abs(tee(j) - t) < block); if (cl) return [false, T('cws.clash', 'Clash {t}').replace('{t}', hhmm(tee(cl)))]; if (t < x.start || t > x.end) return [false, hhmm(x.start) + '–' + hhmm(x.end)]; return [true, '']; };
+            const fits = b => { const t = tee(b); if (x.state !== 'working') return [false, offWord(x)]; if (t == null) return [true, '']; const cl = hers.find(j => j.id !== b.id && tee(j) != null && Math.abs(tee(j) - t) < block); if (cl) return [false, T('cws.clash', 'Clash {t}').replace('{t}', hhmm(tee(cl)))]; if (t < x.start || t > x.end) return [false, hhmm(x.start) + '–' + hhmm(x.end)]; return [true, '']; };
             const hit = b => !pk.q || (String(b.golfer_name || '') + ' ' + D._tm(b)).toLowerCase().includes(pk.q);
             const got = this._got && this._got.caddy === r.id ? this._got.job : null;
             const needs = all.filter(b => (D._needs(b) || b.id === got) && hit(b));
@@ -1088,7 +1200,7 @@
             const D = CM();
             if (!D._gate() || this._busy) return;
             const x = this.res(r, job.booking_date);
-            if (x.state !== 'working') { say(this.label(r) + ': ' + (x.state === 'leave' ? T('cws.leave', 'Leave') : T('cws.dayoff', 'Day off')), 'error'); return; }
+            if (x.state !== 'working') { say(this.label(r) + ': ' + offWord(x), 'error'); return; }
             this._busy = true;
             try {
                 try {
@@ -1146,6 +1258,7 @@
             const x = this.res(r, d), n = (this.wk && this.wk.mon === this.weekMon && this.wk.jobs[r.id + '|' + d]) || 0;
             const sel = this._ed && this._ed.id === r.id && this._ed.date === d ? ' sel' : '', past = d < this.today() ? ' past' : '';
             const at = `data-a="cell" data-v="${esc(r.id)}|${d}"`;
+            if (x.state === 'suspended') return `<button type="button" class="cws-c sus${sel}${past}" ${at}>${esc(desktop ? T('cws.sus', 'Suspended') : T('cws.c.sus', 'SUS'))}</button>`;
             if (x.state === 'off') return `<button type="button" class="cws-c off${sel}${past}" ${at}>${esc(desktop ? T('cws.dayoff', 'Day off') : T('cws.c.off', 'OFF'))}</button>`;
             if (x.state === 'leave') return `<button type="button" class="cws-c lv${sel}${past}" ${at}>${esc(desktop ? T('cws.leave', 'Leave') : T('cws.c.leave', 'LEAVE'))}</button>`;
             if (x.ask) return `<button type="button" class="cws-c ask${sel}${past}" ${at}>${desktop ? esc(T('cws.askedoff', 'Asked off')) + `<small>${esc(T('cws.c.answer', 'tap to answer'))}</small>` : '?'}</button>`;
@@ -1309,7 +1422,7 @@
             const en = d => { try { return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' }); } catch (e) { return d; } };
             let sent = 0;
             online.forEach(r => {
-                const lines = days.map(d => { const x = this.res(r, d); return en(d) + ': ' + (x.state === 'working' ? hhmm(x.start) + '–' + hhmm(x.end) : x.state === 'leave' ? 'Leave / ลา' : 'Day off / วันหยุด'); });
+                const lines = days.map(d => { const x = this.res(r, d); return en(d) + ': ' + (x.state === 'working' ? hhmm(x.start) + '–' + hhmm(x.end) : x.state === 'suspended' ? 'Off bookings / งดรับงาน' : x.state === 'leave' ? 'Leave / ลา' : 'Day off / วันหยุด'); });
                 const text = `📅 Work week ${rangeTxt(this.weekMon)} · ${D.course.label}\n📅 ตารางงานสัปดาห์นี้\n${lines.join('\n')}\n— ${this.me()}`;
                 try { if (W.SecureDM) { W.SecureDM.send(D._sender(), r.user_id, text).catch(e => console.warn('[CaddyMasterBoard] week push:', e.message)); sent++; } } catch (e) {}
             });
@@ -1321,6 +1434,266 @@
         }
     };
     W.CaddyMasterBoard = BD;
+
+    // ═════════════════════════ CADDY MASTER: Control (v1472) ═════════════════════════
+    // Pete 2026-10-06: "a control tab for the Caddy master for a caddy to be suspended from having any bookings
+    // for a duration of time that is set by the Caddy master. This can be from hours to months."
+    // Rules he set: the golfer never sees the word (golfer screens only say "not available") · a caddy with an
+    // assignment finishes it and the suspension starts right after · caddy master only.
+    // Rows + the reason come from caddy_suspensions_staff(); the DB refuses any new job inside a suspension.
+    const SUS_PRESETS = [['4h', 240], ['today', 0], ['1d', 1440], ['3d', 4320], ['1w', 10080], ['2w', 20160], ['1m', 0], ['3m', 0], ['custom', 0]];
+    const SUS_CODES = ['late', 'conduct', 'complaint', 'training', 'other'];
+    const bkkIso = ms => new Date(ms).toISOString();
+    const bkkLocal = ms => new Date(ms + 7 * 3600e3).toISOString().slice(0, 16);           // value for <input type=datetime-local>, Bangkok wall clock
+    const fromLocal = v => { const t = Date.parse(String(v || '') + ':00+07:00'); return isNaN(t) ? null : t; };
+    const CTL = {
+        rows: [], inside: {}, loaded: false, _seq: 0, _bound: false, _f: null, _chan: null, _t: null,
+
+        root() { return document.getElementById('cmCtlRoot'); },
+        rowOf(id) { return this.rows.find(x => x.id === id) || null; },
+        caddy(id) { return (CM().roster || []).find(r => r.id === id) || null; },
+        presetTxt(k) { return ({ '4h': T('cws.sus.p.4h', '4 hours'), today: T('cws.sus.p.today', 'Rest of today'), '1d': T('cws.sus.p.1d', '1 day'), '3d': T('cws.sus.p.3d', '3 days'), '1w': T('cws.sus.p.1w', '1 week'), '2w': T('cws.sus.p.2w', '2 weeks'), '1m': T('cws.sus.p.1m', '1 month'), '3m': T('cws.sus.p.3m', '3 months'), custom: T('cws.sus.p.custom', 'Set dates…') })[k]; },
+        codeTxt(c) { return ({ late: T('cws.sus.c.late', 'Late / no show'), conduct: T('cws.sus.c.conduct', 'Conduct'), complaint: T('cws.sus.c.complaint', 'Golfer complaint'), training: T('cws.sus.c.training', 'Training'), other: T('cws.sus.c.other', 'Other') })[c] || ''; },
+        state(s) { const now = Date.now(), u = Date.parse(s.ends_at), f = Date.parse(s.starts_at); return s.lifted_at ? 'lifted' : u <= now ? 'ended' : f > now ? 'later' : 'now'; },
+
+        open() {
+            const root = this.root(); if (!root) return;
+            boot();
+            if (!this._bound) { this._bound = true; root.addEventListener('click', e => this.onTap(e)); }
+            this.paint(); this.reload(); this.watch();
+        },
+        // CaddyMasterData.loadAll lands here so the Home cube carries the count before the tab is opened
+        prime() { this.reload(); this.watch(); },
+        watch() {
+            const c = sb(); if (!c || this._chan) return;
+            try { this._chan = c.channel('cm_sus_live').on('postgres_changes', { event: '*', schema: 'public', table: 'caddy_suspensions' }, () => { clearTimeout(this._t); this._t = setTimeout(() => this.changed(), 400); }).subscribe(); } catch (e) {}
+        },
+        async reload() {
+            const D = CM(), c = sb(); if (!D || !D.course || !c) { this.loaded = true; this.paint(); return; }
+            const ids = (D.roster || []).map(r => r.id).filter(WS.isUuid); const seq = ++this._seq;
+            try {
+                const rows = ids.length ? (await WS.susStaff(ids, new Date(Date.now() - 30 * 864e5).toISOString())) || [] : [];
+                if (seq !== this._seq) return;
+                this.rows = rows;
+                // jobs she already holds inside a running / coming suspension — hers until the caddy master re-assigns
+                const live = rows.filter(s => { const st = this.state(s); return st === 'now' || st === 'later'; }), inside = {};
+                if (live.length) {
+                    const lo = WS.today(), hi = new Date(Math.max.apply(null, live.map(s => Date.parse(s.ends_at))) + 7 * 3600e3).toISOString().slice(0, 10);
+                    const r = await c.from('caddy_bookings').select('id, caddy_id, booking_date, tee_time, start_time, status, golfer_name, completed_at').in('caddy_id', live.map(s => s.caddy_id)).gte('booking_date', lo).lte('booking_date', hi).neq('status', 'cancelled').limit(1000);
+                    if (seq !== this._seq) return;
+                    (r.data || []).forEach(b => {
+                        const t = tee(b); if (t == null || b.status === 'completed' || b.completed_at) return;
+                        const at = WS.bkk(b.booking_date, t);
+                        live.forEach(s => { if (s.caddy_id === b.caddy_id && b.id !== s.held_job && at >= Date.parse(s.starts_at) && at < Date.parse(s.ends_at)) (inside[s.id] = inside[s.id] || []).push(b); });
+                    });
+                }
+                this.inside = inside;
+            } catch (e) { console.warn('[CaddyControl] load:', e.message); }
+            if (seq !== this._seq) return;
+            this.loaded = true;
+            this.badge(); this.paint();
+            if (sheetOpen('cwsCmSheet') && BD._cad) BD.paintCaddy();
+        },
+        badge() {
+            const n = this.rows.filter(s => this.state(s) === 'now').length;
+            try { CM()._setBadge(['cmCubeCtlBadge', 'cmTabCtlBadge', 'cmMoreCtlBadge'], n); } catch (e) {}
+        },
+        // a suspension was set / changed / lifted (here or on another device): every caddy master surface follows
+        async changed() {
+            await Promise.all([this.reload(), BD.loadStore()]);
+            try { if (BD.root()) BD.paint(); BD.repaintSheets(); } catch (e) {}
+            try { const D = CM(); if (D.renderOverview) D.renderOverview(); } catch (e) {}
+        },
+
+        onTap(e) {
+            const el = e.target.closest('[data-a]'); if (!el || el.disabled) return;
+            const a = el.getAttribute('data-a'), v = el.getAttribute('data-v');
+            if (a === 'new') this.openSuspend(null);
+            else if (a === 'lift') this.lift(v);
+            else if (a === 'chg') this.openChange(v);
+            else if (a === 'pickcourse') CM().pickCourse();
+            else if (a === 'who') { (BD.store ? Promise.resolve() : BD.loadStore()).then(() => BD.openCaddy(v)); }
+        },
+
+        cardHtml(s) {
+            const r = this.caddy(s.caddy_id), st = this.state(s), f = Date.parse(s.starts_at), u = Date.parse(s.ends_at), cm = isCaddyMaster();
+            const who = r ? `<b>${numOf(r) ? '#' + esc(numOf(r)) : ''}${nameOf(r) ? ' ' + esc(nameOf(r)) : ''}</b>` : '<b>—</b>';
+            const ins = this.inside[s.id] || [];
+            const why = [this.codeTxt(s.reason_code), s.reason].filter(Boolean).join(' · ');
+            const by = s.set_by ? T('cws.sus.by', 'set by {n}').replace('{n}', s.set_by) + ', ' + stamp(s.created_at) : '';
+            if (st === 'ended' || st === 'lifted') {
+                const end = s.lifted_at ? Date.parse(s.lifted_at) : u;
+                return `<button type="button" class="cws-job" data-a="who" data-v="${esc(s.caddy_id)}">${r ? caddyTile(r) : iniTile('?')}<div class="cws-jb" style="flex:1;min-width:0"><div class="cws-jn"><span class="nm">${who.replace(/<\/?b>/g, '')} · ${esc(lenTxt(f, end))}</span></div><div class="cws-jm">${esc(WS.fmtDay(f, loc()) + ' – ' + WS.fmtDay(end, loc()) + ' · ' + (s.lifted_at ? T('cws.sus.lifted', 'lifted early by {n}').replace('{n}', s.lifted_by || T('cws.cmname', 'Caddy master')) : T('cws.sus.ran', 'ran its full time')))}</div></div>${ic('chevron_right', 'color:#94a3b8;flex:none')}</button>`;
+            }
+            const prog = st === 'now' ? Math.max(2, Math.min(100, (Date.now() - f) / Math.max(1, u - f) * 100)) : 0;
+            return `<div class="sus-card${st === 'later' ? ' later' : ''}">
+                <div class="sus-top" data-a="who" data-v="${esc(s.caddy_id)}" style="cursor:pointer">${r ? caddyTile(r) : iniTile('?')}<div class="w">${who}<small>${esc(st === 'now' ? T('cws.sus.nobook', 'No bookings') : T('cws.sus.bookable', 'Bookable until it starts'))}</small></div><span class="sus-pill" style="background:${st === 'now' ? '#dc2626' : '#d97706'}">${esc(st === 'now' ? T('cws.sus', 'Suspended') : T('cws.sus.from', 'from {t}').replace('{t}', WS.fmtDay(f, loc())))}</span></div>
+                ${st === 'now' ? `<div class="sus-prog"><i style="width:${prog.toFixed(1)}%"></i></div>` : '<div style="height:10px"></div>'}
+                <div class="sus-meta"><span>${esc(T('cws.from', 'From'))} <b>${esc(atTxt(f))}</b></span><span>${esc(T('cws.sus.untilw', 'Until'))} <b>${esc(atTxt(u))}</b></span></div>
+                <div class="sus-meta" style="margin-top:3px"><span>${esc(lenTxt(f, u))}</span><span><b>${esc(st === 'now' ? leftTxt(u) : (ins.length ? (ins.length === 1 ? T('cws.sus.in1', '1 booking inside it') : T('cws.sus.inN', '{n} bookings inside it').replace('{n}', ins.length)) : ''))}</b></span></div>
+                ${s.held_job && s.asked_from && f - Date.parse(s.asked_from) > 60000 ? `<div class="sus-why"><small>${esc(T('cws.sus.held', 'Started after the assignment she had — asked for at {t}').replace('{t}', clock(s.asked_from)))}</small></div>` : ''}
+                ${why || by ? `<div class="sus-why">${esc(why)}${why && by ? ' · ' : ''}<small>${esc(by)}</small></div>` : ''}
+                ${st === 'now' && ins.length ? `<div class="sus-box"><b>${esc(ins.length === 1 ? T('cws.sus.keep1', 'She still holds 1 booking inside this time') : T('cws.sus.keepN', 'She still holds {n} bookings inside this time').replace('{n}', ins.length))}</b><small>${esc(ins.slice(0, 3).map(b => dayLine(b.booking_date) + ' ' + hhmm(tee(b)) + (b.golfer_name ? ' · ' + b.golfer_name : '')).join('  ·  '))}</small><small>${esc(T('cws.sus.keep.sub', 'Open her card to give them to another caddy.'))}</small></div>` : ''}
+                ${cm ? `<div class="cws-btns" style="margin-top:10px"><button type="button" class="cws-b2" data-a="chg" data-v="${esc(s.id)}">${ic('edit')}${esc(T('cws.sus.change', 'Change time'))}</button><button type="button" class="cws-b2 ${st === 'now' ? 'go' : 'red'}" data-a="lift" data-v="${esc(s.id)}">${st === 'now' ? ic('lock_open') + esc(T('cws.sus.liftnow', 'Lift now')) : esc(T('cws.sus.rm', 'Remove'))}</button></div>` : ''}
+            </div>`;
+        },
+        paint() {
+            const root = this.root(); if (!root) return;
+            const D = CM();
+            if (!D || !D.course) { root.innerHTML = `<div class="cbk-page cws"><div class="cbk-top"><h2 class="cbk-h1">${esc(T('cws.ctl.title', 'Control'))}</h2></div><div class="cbk-empty">${ic('golf_course')}<p>${esc(D ? D._t('cm.course.none', 'No course chosen — pick one to load its roster and tee sheet') : '')}</p><button type="button" class="cbk-primary cbk-inline" data-a="pickcourse">${esc(D ? D._t('cm.course.pick', 'Choose your course') : '')}</button></div></div>`; return; }
+            const now = this.rows.filter(s => this.state(s) === 'now').sort((a, b) => Date.parse(a.ends_at) - Date.parse(b.ends_at));
+            const later = this.rows.filter(s => this.state(s) === 'later').sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at));
+            const past = this.rows.filter(s => { const st = this.state(s); return st === 'ended' || st === 'lifted'; }).slice(0, 20);
+            const cm = isCaddyMaster();
+            root.innerHTML = `<div class="cbk-page cws"><div class="cbk-top"><div style="flex:1;min-width:0"><h2 class="cbk-h1">${esc(T('cws.ctl.title', 'Control'))}</h2></div></div>
+                <div style="font-size:13px;color:#94a3b8;margin:-4px 0 10px">${esc(T('cws.ctl.sub', 'A suspended caddy cannot be booked by anyone — pro shop, golfers or the rotation — until the time you set.'))}</div>
+                ${cm ? `<button type="button" class="cbk-primary red" data-a="new">${ic('block')}<span>${esc(T('cws.ctl.new', 'Suspend a caddy'))}</span></button>` : `<div class="cws-none">${esc(T('cws.ctl.cmonly', 'Only the caddy master sets or lifts a suspension.'))}</div>`}
+                <div class="sus-kp"><div><b>${now.length}</b><span>${esc(T('cws.ctl.k.now', 'Suspended now'))}</span></div><div><b>${later.length}</b><span>${esc(T('cws.ctl.k.later', 'Starts later'))}</span></div><div><b>${past.length}</b><span>${esc(T('cws.ctl.k.past', 'Ended · 30 days'))}</span></div></div>
+                <div class="cws-h" style="margin-top:12px">${esc(T('cws.ctl.k.now', 'Suspended now'))}</div>
+                ${!this.loaded ? `<div class="cws-none">${esc(T('cws.loading', 'Loading…'))}</div>` : now.length ? now.map(s => this.cardHtml(s)).join('') : `<div class="cws-none">${esc(T('cws.ctl.none', 'Nobody is suspended'))}</div>`}
+                ${later.length ? `<div class="cws-h" style="margin-top:12px">${esc(T('cws.ctl.k.later', 'Starts later'))}</div>${later.map(s => this.cardHtml(s)).join('')}` : ''}
+                ${past.length ? `<div class="cws-h" style="margin-top:12px">${esc(T('cws.ctl.past', 'Ended'))}<small>${esc(T('cws.ctl.past.sub', 'last 30 days'))}</small></div>${past.map(s => this.cardHtml(s)).join('')}` : ''}
+            </div>`;
+        },
+
+        // ---------- the Suspend sheet ----------
+        async openSuspend(caddyId) {
+            if (!isCaddyMaster() || !CM()._gate()) { say(T('cws.ctl.cmonly', 'Only the caddy master sets or lifts a suspension.'), 'warning'); return; }
+            this._f = { id: caddyId || null, preset: '1w', code: '', note: '', tell: true, q: '', from: '', until: '', jobs: null };
+            this.paintSheet();
+            if (caddyId) this.loadJobs();
+        },
+        async loadJobs() {
+            const f = this._f, c = sb(); if (!f || !f.id || !c) return;
+            const id = f.id;
+            try {
+                const r = await c.from('caddy_bookings').select('id, booking_date, tee_time, start_time, status, golfer_name, started_at, completed_at').eq('caddy_id', id).gte('booking_date', WS.today()).neq('status', 'cancelled').order('booking_date').limit(300);
+                if (this._f && this._f.id === id) { this._f.jobs = (r.data || []).filter(b => b.status !== 'completed' && !b.completed_at && tee(b) != null); if (sheetOpen('cwsSusSheet')) this.paintSheet(); }
+            } catch (e) {}
+        },
+        // what the caddy master is asking for, and what the DB will make of it (she finishes her assignment first)
+        calc() {
+            const f = this._f, r = this.caddy(f.id), now = Date.now(), block = Math.max(270, +(r && r.block_minutes) || 270) * 60000;
+            let from = now, until = null, keep = true;
+            const p = f.preset, mins2 = (SUS_PRESETS.find(x => x[0] === p) || [])[1];
+            if (p === 'custom') { from = Math.max(now, fromLocal(f.from) || now); until = fromLocal(f.until); keep = false; }
+            else if (p === 'today') { until = WS.bkk(WS.addDays(WS.today(), 1), 0); keep = false; }
+            else if (p === '1m' || p === '3m') { const d = new Date(now + 7 * 3600e3); d.setUTCMonth(d.getUTCMonth() + (p === '1m' ? 1 : 3)); until = d.getTime() - 7 * 3600e3; }
+            else until = now + mins2 * 60000;
+            // the assignment she finishes first: the job she is on at `from`, else her next job that same day
+            let held = null, start = from;
+            const day = new Date(from + 7 * 3600e3).toISOString().slice(0, 10);
+            (f.jobs || []).filter(b => b.booking_date === day).sort(byTee).some(b => { const at = WS.bkk(b.booking_date, tee(b)); if (at + block > from) { held = b; return true; } return false; });
+            if (held) { const end = WS.bkk(held.booking_date, tee(held)) + block; if (keep && until != null) until += end - from; start = end; }
+            const inside = (until == null) ? [] : (f.jobs || []).filter(b => { if (held && b.id === held.id) return false; const at = WS.bkk(b.booking_date, tee(b)); return at >= start && at < until; });
+            const ok = until != null && until >= start + 30 * 60000 && until <= start + 366 * 864e5;
+            return { from, start, until, keep, held, inside, ok };
+        },
+        paintSheet() {
+            const f = this._f; if (!f) return;
+            const D = CM();
+            if (!f.id) {
+                const q = f.q, list = (D.roster || []).filter(r => r.is_active !== false).filter(r => !q || numOf(r).toLowerCase().startsWith(q.replace(/^#/, '')) || nameOf(r).toLowerCase().includes(q))
+                    .sort((a, b) => (D._numVal(a.caddy_number) || 0) - (D._numVal(b.caddy_number) || 0));
+                const busy = {}; this.rows.forEach(s => { const st = this.state(s); if (st === 'now' || st === 'later') busy[s.caddy_id] = st; });
+                const w = sheet('cwsSusSheet', `<div class="cbk-whenline" style="margin-right:44px"><b>${esc(T('cws.ctl.new', 'Suspend a caddy'))}</b><small>${esc(T('cws.sus.pick', 'Choose the caddy'))}</small></div>
+                    <div class="cbk-tools" style="margin-top:10px"><div class="cbk-search">${ic('search')}<input type="search" id="cwsSusQ" placeholder="${esc(T('cws.cm.search', 'Caddy number or name'))}" value="${esc(q)}" autocomplete="off"></div></div>
+                    <div style="margin-top:10px">${list.length ? list.map(r => `<button type="button" class="cws-job" data-s="pick" data-v="${esc(r.id)}"${busy[r.id] ? ' disabled style="opacity:.55"' : ''}>${caddyTile(r)}<div class="cws-jb" style="flex:1;min-width:0"><div class="cws-jn"><span class="nm">${numOf(r) ? '#' + esc(numOf(r)) : ''} ${esc(nameOf(r))}</span>${busy[r.id] ? `<span class="cws-st wait">${esc(busy[r.id] === 'now' ? T('cws.sus', 'Suspended') : T('cws.ctl.k.later', 'Starts later'))}</span>` : ''}</div></div>${ic('chevron_right', 'color:#94a3b8;flex:none')}</button>`).join('') : `<div class="cws-none">${esc(T('cws.cm.nomatch', 'No caddy matches'))}</div>`}</div>`, () => { this._f = null; });
+                const qi = w.querySelector('#cwsSusQ');
+                qi.oninput = () => { f.q = String(qi.value || '').trim().toLowerCase(); const pos = qi.selectionStart; this.paintSheet(); const n = document.getElementById('cwsSusQ'); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} } };
+                w.onclick = e => { const el = e.target.closest('[data-s="pick"]'); if (el && !el.disabled) { f.id = el.getAttribute('data-v'); this.paintSheet(); this.loadJobs(); } };
+                return;
+            }
+            const r = this.caddy(f.id); if (!r) { closeSheet('cwsSusSheet'); return; }
+            const k = this.calc(), n = numOf(r);
+            if (f.preset === 'custom') { if (!f.from) f.from = bkkLocal(Date.now()); if (!f.until) f.until = bkkLocal(Date.now() + 7 * 864e5); }
+            const chip = (key, on, txt, attr) => `<button type="button" class="sus-chip${on ? ' on' : ''}" data-s="${attr}" data-v="${esc(key)}">${esc(txt)}</button>`;
+            const heldBox = k.held ? `<div class="sus-box"><b>${esc(T('cws.sus.heldbox', 'She finishes her {t} booking first').replace('{t}', hhmm(tee(k.held))))}</b><small>${esc([k.held.golfer_name, T('cws.sus.heldbox.sub', 'the suspension starts at {t}, right after it').replace('{t}', atTxt(k.start))].filter(Boolean).join(' · '))}</small></div>` : '';
+            const inBox = k.inside.length ? `<div class="sus-box"><b>${esc(k.inside.length === 1 ? T('cws.sus.keep1', 'She still holds 1 booking inside this time') : T('cws.sus.keepN', 'She still holds {n} bookings inside this time').replace('{n}', k.inside.length))}</b><small>${esc(k.inside.slice(0, 3).map(b => dayLine(b.booking_date) + ' ' + hhmm(tee(b)) + (b.golfer_name ? ' · ' + b.golfer_name : '')).join('  ·  '))}</small><small>${esc(T('cws.sus.keep.sub2', 'They stay hers until you give them to another caddy. No new booking can be made.'))}</small></div>` : '';
+            const w = sheet('cwsSusSheet', `
+                <div class="cbk-who"><div class="cbk-who-av"><span class="cbk-numtile">${ic('sports_golf')}<b>${esc(n || '—')}</b></span>${r.photo_url ? `<img src="${esc(r.photo_url)}" alt="" onerror="this.remove()">` : ''}</div>
+                    <div class="cbk-who-body"><div class="cbk-who-name">${n ? `<span class="cbk-num">#${esc(n)}</span>` : ''}<b>${esc(nameOf(r))}</b></div><div class="cbk-who-course">${esc(r.course_name || '')}</div></div></div>
+                <div class="sus-lbl">${esc(T('cws.sus.for', 'Suspend from bookings for'))}</div>
+                <div class="sus-chips">${SUS_PRESETS.map(p => chip(p[0], f.preset === p[0], this.presetTxt(p[0]), 'preset')).join('')}</div>
+                ${f.preset === 'custom'
+                    ? `<div class="cbk-when" style="margin-top:10px"><label class="cbk-field"><span>${esc(T('cws.from', 'From'))}</span><input type="datetime-local" id="cwsSusFrom" value="${esc(f.from)}" min="${esc(bkkLocal(Date.now()))}"></label><label class="cbk-field"><span>${esc(T('cws.sus.untilw', 'Until'))}</span><input type="datetime-local" id="cwsSusUntil" value="${esc(f.until)}" min="${esc(bkkLocal(Date.now()))}"></label></div>`
+                    : `<div class="cbk-when" style="margin-top:10px"><label class="cbk-field"><span>${esc(T('cws.from', 'From'))}</span><input type="text" value="${esc(k.held ? atTxt(k.start) : T('cws.sus.now', 'Now') + ' · ' + clock(k.from))}" readonly></label><label class="cbk-field"><span>${esc(T('cws.sus.untilw', 'Until'))}</span><input type="text" value="${esc(k.until != null ? atTxt(k.until) : '—')}" readonly></label></div>`}
+                ${heldBox}${inBox}
+                <div class="sus-lbl">${esc(T('cws.sus.reason', 'Reason — staff only'))}</div>
+                <div class="sus-chips">${SUS_CODES.map(c => chip(c, f.code === c, this.codeTxt(c), 'code')).join('')}</div>
+                <input class="cbk-in" id="cwsSusNote" style="margin-top:8px" maxlength="400" placeholder="${esc(T('cws.sus.note', 'Note for the staff (optional)'))}" value="${esc(f.note)}" autocomplete="off">
+                <button type="button" class="cws-sw" data-s="tell"><span>${esc(r.user_id ? T('cws.sus.tell', 'Tell her on LINE and on her dashboard') : T('cws.sus.tell.dash', 'She sees it on her dashboard (no LINE on her account)'))}</span><span class="cws-tg${f.tell ? ' on' : ''}"></span></button>
+                <button type="button" class="cbk-primary red" style="margin-top:14px" id="cwsSusSave"${k.ok ? '' : ' disabled'}>${ic('block')}<span>${esc(k.ok ? T('cws.sus.save', 'Suspend #{n} until {t}').replace('{n}', n).replace('{t}', atTxt(k.until)) : T('cws.sus.bad', 'Set an end at least 30 minutes after the start'))}</span></button>`, () => { this._f = null; });
+            const keepNote = () => { const el = w.querySelector('#cwsSusNote'); if (el) f.note = el.value; const a = w.querySelector('#cwsSusFrom'), b = w.querySelector('#cwsSusUntil'); if (a) f.from = a.value; if (b) f.until = b.value; };
+            w.onchange = e => { if (e.target.id === 'cwsSusFrom' || e.target.id === 'cwsSusUntil') { keepNote(); this.paintSheet(); } };
+            w.onclick = e => {
+                const el = e.target.closest('[data-s]');
+                if (el) { keepNote(); const a = el.getAttribute('data-s'), v = el.getAttribute('data-v'); if (a === 'preset') f.preset = v; else if (a === 'code') f.code = f.code === v ? '' : v; else if (a === 'tell') f.tell = !f.tell; this.paintSheet(); return; }
+                if (e.target.closest('#cwsSusSave')) { keepNote(); this.save(); }
+            };
+        },
+        async save() {
+            const f = this._f; if (!f || !f.id || this._saving) return;
+            const r = this.caddy(f.id), k = this.calc(); if (!r || !k.ok) return;
+            const btn = document.getElementById('cwsSusSave'); if (btn) btn.disabled = true;
+            this._saving = true;
+            try {
+                const row = await WS.suspend(f.id, f.preset === 'custom' ? bkkIso(k.from) : null, bkkIso(f.preset === 'custom' || !k.keep ? k.until : Date.now() + (k.until - k.start)), k.keep, f.code, f.note, BD.me());
+                const a = Date.parse(row.starts_at), u = Date.parse(row.ends_at);
+                say(T('cws.sus.ok', '{c} is off bookings until {t}').replace('{c}', BD.label(r)).replace('{t}', atTxt(u)));
+                if (f.tell && r.user_id && W.SecureDM) {
+                    const D = CM(), now = a <= Date.now() + 60000;
+                    const text = (now ? `⛔ You are off bookings until ${WS.fmtAt(u, 'en-GB')}.` : `⛔ You are off bookings from ${WS.fmtAt(a, 'en-GB')} until ${WS.fmtAt(u, 'en-GB')}. You finish the booking you have first.`) +
+                        `\n⛔ งดรับงาน${now ? '' : 'ตั้งแต่ ' + WS.fmtAt(a, 'th-TH') + ' '}ถึง ${WS.fmtAt(u, 'th-TH')}` + `\n— ${BD.me()} (${(D.course && D.course.label) || 'Caddy Master'})`;
+                    W.SecureDM.send(D._sender(), r.user_id, text).catch(e => console.warn('[CaddyControl] push:', e.message));
+                }
+                closeSheet('cwsSusSheet'); this._f = null;
+                await this.changed();
+            } catch (e) {
+                say(T('cws.sus.fail', 'Could not suspend') + ': ' + String(e.message || '').replace(/^[A-Z_]+:\s*/, ''), 'error');
+                if (btn) btn.disabled = false;
+            } finally { this._saving = false; }
+        },
+        async lift(id) {
+            const s = this.rowOf(id) || { id }, r = s.caddy_id ? this.caddy(s.caddy_id) : null;
+            if (!isCaddyMaster() || !CM()._gate()) { say(T('cws.ctl.cmonly', 'Only the caddy master sets or lifts a suspension.'), 'warning'); return; }
+            const running = !s.starts_at || Date.parse(s.starts_at) <= Date.now();
+            const ok = await W.askConfirm({ title: running ? T('cws.sus.lift.q', 'Lift this suspension now?') : T('cws.sus.rm.q', 'Remove this suspension?'), message: (r ? BD.label(r) + ' — ' : '') + (running ? T('cws.sus.lift.body', 'she can be booked again straight away.') : T('cws.sus.rm.body', 'it will not start.')), confirmText: running ? T('cws.sus.liftnow', 'Lift now') : T('cws.sus.rm', 'Remove') });
+            if (!ok) return;
+            try {
+                await WS.susLift(id, BD.me());
+                say(r ? T('cws.sus.lift.ok', '{c} can be booked again').replace('{c}', BD.label(r)) : T('cws.sus.lift.ok0', 'Suspension lifted'));
+                if (running && r && r.user_id && W.SecureDM) { const D = CM(); W.SecureDM.send(D._sender(), r.user_id, `✅ You are back on bookings.\n✅ กลับมารับงานได้แล้ว\n— ${BD.me()} (${(D.course && D.course.label) || 'Caddy Master'})`).catch(() => {}); }
+                await this.changed();
+            } catch (e) { say(T('cws.ed.fail', 'Could not save') + ': ' + String(e.message || '').replace(/^[A-Z_]+:\s*/, ''), 'error'); }
+        },
+        openChange(id) {
+            const s = this.rowOf(id); if (!s) { this.reload(); return; }
+            if (!isCaddyMaster() || !CM()._gate()) { say(T('cws.ctl.cmonly', 'Only the caddy master sets or lifts a suspension.'), 'warning'); return; }
+            const r = this.caddy(s.caddy_id), u = Date.parse(s.ends_at), base = Math.max(Date.now(), Date.parse(s.starts_at));
+            const quick = [['+1d', u + 864e5, T('cws.sus.q.1d', '+1 day')], ['+1w', u + 7 * 864e5, T('cws.sus.q.1w', '+1 week')], ['-1d', u - 864e5, T('cws.sus.q.m1d', '−1 day')], ['eod', WS.bkk(WS.addDays(WS.today(), 1), 0), T('cws.sus.q.eod', 'End of today')]].filter(q => q[1] >= base + 30 * 60000);
+            const w = sheet('cwsSusChgSheet', `<div class="cbk-whenline" style="margin-right:44px"><b>${esc(T('cws.sus.change', 'Change time'))}${r ? ' · ' + esc(BD.label(r)) : ''}</b><small>${esc(T('cws.from', 'From') + ' ' + atTxt(Date.parse(s.starts_at)) + ' · ' + T('cws.sus.untilw', 'Until') + ' ' + atTxt(u))}</small></div>
+                <div class="sus-lbl">${esc(T('cws.sus.newend', 'New end'))}</div>
+                <div class="sus-chips">${quick.map(q => `<button type="button" class="sus-chip" data-s="q" data-v="${q[1]}">${esc(q[2])}</button>`).join('')}</div>
+                <div class="cbk-form"><label class="cbk-field" style="margin-top:10px"><span>${esc(T('cws.sus.untilw', 'Until'))}</span><input type="datetime-local" id="cwsSusNew" value="${esc(bkkLocal(u))}" min="${esc(bkkLocal(base + 30 * 60000))}"></label>
+                <button type="button" class="cbk-primary" id="cwsSusChgSave">${ic('check_circle')}<span>${esc(T('cws.save', 'Save'))}</span></button></div>`);
+            const inp = w.querySelector('#cwsSusNew'), btn = w.querySelector('#cwsSusChgSave');
+            w.onclick = async e => {
+                const q = e.target.closest('[data-s="q"]'); if (q) { inp.value = bkkLocal(+q.getAttribute('data-v')); return; }
+                if (!e.target.closest('#cwsSusChgSave')) return;
+                const t = fromLocal(inp.value); if (t == null) return;
+                btn.disabled = true;
+                try {
+                    await WS.susChange(id, bkkIso(t), BD.me());
+                    say(T('cws.sus.chg.ok', 'Now until {t}').replace('{t}', atTxt(t)));
+                    if (r && r.user_id && W.SecureDM) { const D = CM(); W.SecureDM.send(D._sender(), r.user_id, `⛔ Off bookings until ${WS.fmtAt(t, 'en-GB')} (changed).\n⛔ งดรับงานถึง ${WS.fmtAt(t, 'th-TH')} (เปลี่ยนแปลง)\n— ${BD.me()} (${(D.course && D.course.label) || 'Caddy Master'})`).catch(() => {}); }
+                    closeSheet('cwsSusChgSheet');
+                    await this.changed();
+                } catch (er) { say(T('cws.ed.fail', 'Could not save') + ': ' + String(er.message || '').replace(/^[A-Z_]+:\s*/, ''), 'error'); btn.disabled = false; }
+            };
+        }
+    };
+    W.CaddyControl = CTL;
 
     try { W.matchMedia('(min-width: 1024px)').addEventListener('change', () => { if (BD.root() && BD.seg === 'week' && BD.active()) BD.paint(); }); } catch (e) {}
     boot();

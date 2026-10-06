@@ -22,7 +22,7 @@
       newHere: 'New here', noHist: 'no history at this course', firstVisit: 'First booking at this course',
       back: 'Not seen for {n} days', onSheet: 'Already on this day’s sheet · {t}', onEvent: 'Coming with {s} this day', hasCaddy: 'Has a caddy booked this day',
       usually: 'Usually', k12: '12 mo: {n}', kNext: 'Next', cads: 'Their caddies', book: 'Book', picked: 'On this booking', bookedAt: 'Booked', dayOff: 'Day off', outUntil: 'Out until {t}', inGroup: 'In this group', gone: 'Not on roster',
-      fav: 'Favourite', add: 'Add', added: 'Added', full4: 'Group is full',
+      fav: 'Favourite', susUntil: 'Suspended · until {t}', add: 'Add', added: 'Added', full4: 'Group is full',
       recentV: 'Recent visits', full: 'Full history', addNote: 'Add a course note', edit: 'Edit', cancel: 'Cancel',
       nVisits: '{n} visits', visit1: '1 visit', last: 'last {d}',
       society: 'Society', socDays: 'Days here', avgField: 'Avg field', maxField: 'most {n}', players: '{n} players', lastHere: 'Last here', nextHere: 'Next day here: {d}', sameDay: 'Has a day here on this date · {n} registered',
@@ -37,7 +37,7 @@
       newHere: 'ลูกค้าใหม่', noHist: 'ยังไม่มีประวัติที่สนามนี้', firstVisit: 'จองที่สนามนี้ครั้งแรก',
       back: 'ไม่ได้มา {n} วันแล้ว', onSheet: 'มีชื่อในตารางวันนี้แล้ว · {t}', onEvent: 'มากับ {s} วันนี้', hasCaddy: 'จองแคดดี้ไว้แล้ววันนี้',
       usually: 'มักมา', k12: '12 เดือน: {n}', kNext: 'ครั้งถัดไป', cads: 'แคดดี้ที่ใช้', book: 'จอง', picked: 'อยู่ในการจองนี้', bookedAt: 'ถูกจองแล้ว', dayOff: 'หยุด', outUntil: 'ออกรอบถึง {t}', inGroup: 'อยู่ในกลุ่มนี้', gone: 'ไม่อยู่ในรายชื่อ',
-      fav: 'คนโปรด', add: 'เพิ่ม', added: 'เพิ่มแล้ว', full4: 'กลุ่มเต็มแล้ว',
+      fav: 'คนโปรด', susUntil: 'พักงาน · ถึง {t}', add: 'เพิ่ม', added: 'เพิ่มแล้ว', full4: 'กลุ่มเต็มแล้ว',
       recentV: 'การมาเล่นล่าสุด', full: 'ประวัติทั้งหมด', addNote: 'เพิ่มบันทึกของสนาม', edit: 'แก้ไข', cancel: 'ยกเลิก',
       nVisits: '{n} ครั้ง', visit1: '1 ครั้ง', last: 'ล่าสุด {d}',
       society: 'สมาคม', socDays: 'จำนวนวันที่มา', avgField: 'ผู้เล่นเฉลี่ย', maxField: 'มากสุด {n}', players: '{n} คน', lastHere: 'มาครั้งล่าสุด', nextHere: 'วันถัดไปที่สนามนี้: {d}', sameDay: 'มีอีเวนต์ที่นี่ในวันนี้ · ลงทะเบียน {n} คน',
@@ -52,7 +52,7 @@
       newHere: '첫 방문', noHist: '이 코스 기록 없음', firstVisit: '이 코스 첫 예약',
       back: '{n}일 동안 방문 없음', onSheet: '이 날 티시트에 이미 있음 · {t}', onEvent: '이 날 {s} 일정으로 방문', hasCaddy: '이 날 캐디 예약 있음',
       usually: '주로', k12: '12개월: {n}', kNext: '다음 예약', cads: '이용 캐디', book: '예약', picked: '이 예약에 지정됨', bookedAt: '예약됨', dayOff: '휴무', outUntil: '{t}까지 라운드 중', inGroup: '이 그룹에 있음', gone: '명단에 없음',
-      fav: '즐겨찾기', add: '추가', added: '추가됨', full4: '그룹이 가득 찼습니다',
+      fav: '즐겨찾기', susUntil: '정지 · {t}까지', add: '추가', added: '추가됨', full4: '그룹이 가득 찼습니다',
       recentV: '최근 방문', full: '전체 기록', addNote: '코스 메모 추가', edit: '수정', cancel: '취소',
       nVisits: '{n}회 방문', visit1: '1회 방문', last: '최근 {d}',
       society: '소사이어티', socDays: '방문 일수', avgField: '평균 인원', maxField: '최대 {n}', players: '{n}명', lastHere: '마지막 방문', nextHere: '다음 방문일: {d}', sameDay: '이 날짜에 행사가 있음 · {n}명 등록',
@@ -67,7 +67,7 @@
       newHere: '初来場', noHist: 'このコースでの履歴なし', firstVisit: 'このコースで初めての予約',
       back: '{n}日間来場なし', onSheet: 'この日のティーシートに既にあります · {t}', onEvent: 'この日 {s} で来場予定', hasCaddy: 'この日キャディ予約あり',
       usually: 'いつも', k12: '12か月: {n}', kNext: '次回', cads: '指名キャディ', book: '予約', picked: 'この予約に指定済み', bookedAt: '予約済み', dayOff: '休み', outUntil: '{t}までラウンド中', inGroup: 'この組に指定済み', gone: '名簿にいません',
-      fav: 'お気に入り', add: '追加', added: '追加済み', full4: '組が満員です',
+      fav: 'お気に入り', susUntil: '停止中 · {t}まで', add: '追加', added: '追加済み', full4: '組が満員です',
       recentV: '最近の来場', full: '全履歴', addNote: 'コースメモを追加', edit: '編集', cancel: 'キャンセル',
       nVisits: '来場{n}回', visit1: '来場1回', last: '前回 {d}',
       society: 'ソサエティ', socDays: '開催日数', avgField: '平均人数', maxField: '最大 {n}', players: '{n}名', lastHere: '前回の開催', nextHere: '次回の開催: {d}', sameDay: 'この日に開催あり · {n}名登録',
@@ -197,7 +197,7 @@
   };
 
   var BB = window.BookingBrief = {
-    _v: 1471,
+    _v: 1472,
     host: null, dialog: null, rail: null,
     S: { sel: null, noteEdit: null, html: '', seq: 0 },
     prof: {},            // golfer id -> { prof, favs } once loaded
@@ -422,7 +422,7 @@
       var pr = data.cadByNum[num], photo = (st.caddy && st.caddy.photo) || (pr && pr.photo_url) || '', nm = this._cadName(num, data) || ((st.caddy && !/^caddy\s*#/i.test(st.caddy.name || '')) ? st.caddy.name : '') || '';
       var act = st.st === 'ok' ? '<button type="button" class="bb-btn go" data-a="cad" data-n="' + E(num) + '">' + E(T('book')) + '</button>'
         : st.st === 'picked' ? '<span class="bb-st on">✓ ' + E(T('picked')) + '</span>'
-          : '<span class="bb-st no">' + E(st.st === 'off' ? T('dayOff') : st.st === 'out' ? T('outUntil', { t: st.until }) : st.st === 'group' ? T('inGroup') : st.st === 'booked' ? T('bookedAt') : T('gone')) + '</span>';
+          : '<span class="bb-st no">' + E(st.st === 'sus' ? T('susUntil', { t: st.until }) : st.st === 'off' ? T('dayOff') : st.st === 'out' ? T('outUntil', { t: st.until }) : st.st === 'group' ? T('inGroup') : st.st === 'booked' ? T('bookedAt') : T('gone')) + '</span>';
       return '<div class="bb-row"><span class="ph">' + (photo ? '<img src="' + E(photo) + '" alt="" onerror="this.remove()">' : E(num)) + '</span><span class="w"><b>' + (fav ? '<span class="star">★</span> ' : '') + '#' + E(num) + (nm ? ' ' + E(nm) : '') + '</b><small>' + E(sub) + '</small></span>' + act + '</div>';
     },
 

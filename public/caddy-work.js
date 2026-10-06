@@ -1522,8 +1522,8 @@
             const why = [this.codeTxt(s.reason_code), s.reason].filter(Boolean).join(' · ');
             const by = s.set_by ? T('cws.sus.by', 'set by {n}').replace('{n}', s.set_by) + ', ' + stamp(s.created_at) : '';
             if (st === 'ended' || st === 'lifted') {
-                const end = s.lifted_at ? Date.parse(s.lifted_at) : u;
-                return `<button type="button" class="cws-job" data-a="who" data-v="${esc(s.caddy_id)}">${r ? caddyTile(r) : iniTile('?')}<div class="cws-jb" style="flex:1;min-width:0"><div class="cws-jn"><span class="nm">${who.replace(/<\/?b>/g, '')} · ${esc(lenTxt(f, end))}</span></div><div class="cws-jm">${esc(WS.fmtDay(f, loc()) + ' – ' + WS.fmtDay(end, loc()) + ' · ' + (s.lifted_at ? T('cws.sus.lifted', 'lifted early by {n}').replace('{n}', s.lifted_by || T('cws.cmname', 'Caddy master')) : T('cws.sus.ran', 'ran its full time')))}</div></div>${ic('chevron_right', 'color:#94a3b8;flex:none')}</button>`;
+                const end = s.lifted_at ? Date.parse(s.lifted_at) : u, never = s.lifted_at && end <= f;   // removed before it ever started
+                return `<button type="button" class="cws-job" data-a="who" data-v="${esc(s.caddy_id)}">${r ? caddyTile(r) : iniTile('?')}<div class="cws-jb" style="flex:1;min-width:0"><div class="cws-jn"><span class="nm">${who.replace(/<\/?b>/g, '')} · ${esc(never ? T('cws.sus.never', 'did not start') : lenTxt(f, end))}</span></div><div class="cws-jm">${esc((never ? WS.fmtDay(f, loc()) : WS.fmtDay(f, loc()) + ' – ' + WS.fmtDay(end, loc())) + ' · ' + (never ? T('cws.sus.removedby', 'removed by {n}') : s.lifted_at ? T('cws.sus.lifted', 'lifted early by {n}') : T('cws.sus.ran', 'ran its full time')).replace('{n}', s.lifted_by || T('cws.cmname', 'Caddy master')))}</div></div>${ic('chevron_right', 'color:#94a3b8;flex:none')}</button>`;
             }
             const prog = st === 'now' ? Math.max(2, Math.min(100, (Date.now() - f) / Math.max(1, u - f) * 100)) : 0;
             return `<div class="sus-card${st === 'later' ? ' later' : ''}">

@@ -495,6 +495,15 @@ Deno.serve(async (req) => {
             ? 400
             : curTransport;
 
+        // 2026-10-07: the site dropped the <br /> inside a two-line label cell
+        // ("GREENWOOD (TWO WAY)<br />HOLIDAY" → one line). The words are identical, only
+        // the whitespace moved — keep the stored spelling so course_name/title are not
+        // rewritten and the notify trigger does not tell every member the course changed.
+        const sameWords = (a: string | null | undefined, b: string | null | undefined) =>
+          String(a || '').replace(/\s+/g, ' ').trim() === String(b || '').replace(/\s+/g, ' ').trim();
+        if (sameWords(canonical.title, eventData.title)) eventData.title = canonical.title;
+        if (canonical.course_name && sameWords(canonical.course_name, eventData.course_name)) eventData.course_name = canonical.course_name;
+
         // Only write when something actually differs — a blind update every sync
         // run re-fires LINE notifications on the trigger's watched columns
         const changed =

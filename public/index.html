@@ -39978,6 +39978,22 @@
                 this.recheck();
             },
 
+            // The picked course plus its facility siblings: rosters are filed per facility
+            // ("Burapha Golf Club") while the picker also lists "Burapha Golf Club - East
+            // Course". Same two-word fold the caddy claim uses (_caddyFacilityKey).
+            _siblingIds() {
+                const sel = document.getElementById('stfSetupCourse');
+                const courseId = sel?.value || '';
+                if (!sel || !courseId) return [];
+                const selName = sel.selectedIndex > 0 ? sel.options[sel.selectedIndex].text : '';
+                const key = window._caddyFacilityKey ? window._caddyFacilityKey(selName) : '';
+                const ids = [courseId];
+                if (key) Array.from(sel.options).forEach(o => {
+                    if (o.value && o.value !== courseId && window._caddyFacilityKey(o.text) === key) ids.push(o.value);
+                });
+                return ids;
+            },
+
             // Live staff-list match, the twin of checkRegCaddyMatch
             recheck() {
                 clearTimeout(this._t);
@@ -39995,7 +40011,7 @@
                     try {
                         const { data: rows } = await sb.from('course_staff')
                             .select('id, first_name, last_name, department, position, user_id, status')
-                            .eq('course_id', courseId).ilike('employee_id', eid).limit(5);
+                            .in('course_id', this._siblingIds()).ilike('employee_id', eid).limit(5);
                         const pool = (rows || []).filter(r => r.status !== 'deleted' && r.status !== 'rejected');
                         const free = pool.find(r => !r.user_id);
                         const taken = pool.find(r => r.user_id);
@@ -40048,7 +40064,7 @@
                     let claimed = null;
                     if (eid) {
                         const { data: rows } = await sb.from('course_staff')
-                            .select('id, status').eq('course_id', courseId).ilike('employee_id', eid)
+                            .select('id, status, course_id, course_name').in('course_id', this._siblingIds()).ilike('employee_id', eid)
                             .is('user_id', null).limit(5);
                         const pool = (rows || []).filter(r => r.status !== 'deleted' && r.status !== 'rejected');
                         if (pool.length === 1) claimed = pool[0];
@@ -40060,7 +40076,9 @@
                             approved_at: new Date().toISOString(), approved_by: 'roster-claim',
                             updated_at: new Date().toISOString()
                         }).eq('id', claimed.id);
-                        await this._grantRole(uid, role, courseId, courseName);
+                        // Pin the course the roster row is filed under (the facility), not the
+                        // nine-level entry he happened to tap in the picker.
+                        await this._grantRole(uid, role, claimed.course_id || courseId, claimed.course_name || courseName);
                         this.close();
                         window.NotificationManager.show(t('streg.linked'), 'success');
                         try { window.RegIntent && RegIntent.clear(); } catch (e) {}

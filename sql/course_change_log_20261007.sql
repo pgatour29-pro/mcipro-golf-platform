@@ -35,11 +35,12 @@ returns text language sql immutable as $$
     select nullif(lower(regexp_replace(coalesce(p, ''), '[^A-Za-z0-9]+', '', 'g')), '')
 $$;
 
--- Any key containing 'pin' (pin, staff_pin, super_admin_pin, caddy_pin ...) is masked at write time.
+-- Any key that looks like a credential (pin, staff_pin, super_admin_pin, caddy_pin, password, secret,
+-- token, hash ...) is masked at write time.
 create or replace function public.course_change_log_redact(p jsonb)
 returns jsonb language sql immutable as $$
     select case when p is null or jsonb_typeof(p) <> 'object' then p
-           else coalesce((select jsonb_object_agg(e.key, case when e.key ilike '%pin%' then '"••••"'::jsonb else e.value end)
+           else coalesce((select jsonb_object_agg(e.key, case when e.key ~* '(pin|password|passwd|secret|token|hash)' then '"••••"'::jsonb else e.value end)
                           from jsonb_each(p) e), '{}'::jsonb) end
 $$;
 
@@ -93,9 +94,16 @@ begin
     else
         b_diff := o; a_diff := n;
     end if;
-    -- never let a PIN into the log (the reader is browser-callable)
+    -- never let a credential into the log (the reader is browser-callable). Tables the browser cannot
+    -- read at all (course_admins, proshop_pins: deny-all RLS) keep only the fact and the changed keys,
+    -- never the values — the log must not widen what the anon key can see.
     b_diff := public.course_change_log_redact(b_diff);
     a_diff := public.course_change_log_redact(a_diff);
+    if TG_TABLE_NAME in ('course_admins', 'proshop_pins') then
+        select coalesce(jsonb_object_agg(k2, '"•"'::jsonb), '{}'::jsonb) into b_diff from jsonb_object_keys(coalesce(b_diff, '{}'::jsonb)) k2;
+        select coalesce(jsonb_object_agg(k2, '"•"'::jsonb), '{}'::jsonb) into a_diff from jsonb_object_keys(coalesce(a_diff, '{}'::jsonb)) k2;
+        ident := ident - 'name';
+    end if;
 
     insert into public.course_change_log
         (course_key, course_raw, tbl, op, row_id, actor, actor_name, actor_role, ip, ip_country, ua, ident, before, after)

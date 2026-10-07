@@ -177,9 +177,9 @@
     .cws-dw button { height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; border:1px solid rgba(148,163,184,.25); background:#151d2b; color:#94a3b8; cursor:pointer; padding:0; }
     .cws-dw button.on { background:#16a34a; border-color:#16a34a; color:#fff; }
     .cws-sw { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:13px; font-weight:600; color:#e2e8f0; margin-top:12px; width:100%; background:none; border:0; padding:0; text-align:left; cursor:pointer; }
-    .cws-tg { width:46px; height:26px; border-radius:999px; background:#334155; position:relative; flex:none; --etg-x:20px; transition:background .25s; }
-    .cws-tg:after { content:''; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; transform-origin:50% 50%; transition:transform .25s cubic-bezier(.2,.8,.2,1); box-shadow:0 2px 4px rgba(0,0,0,.25); }
-    .cws-tg.on { background:#16a34a; } .cws-tg.on:after { transform:translateX(var(--etg-x)); }
+    .cws-tg { width:46px; height:26px; border-radius:999px; background:#334155; position:relative; flex:none; }
+    .cws-tg:after { content:''; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; transition:left .15s; }
+    .cws-tg.on { background:#16a34a; } .cws-tg.on:after { left:23px; }
     .cws-dk { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:18px; align-items:start; }
     .cws-bd { display:grid; grid-template-columns:230px repeat(7,minmax(0,1fr)); gap:4px; align-items:stretch; }
     .cws-bd .hd { background:#151d2b; border:1px solid rgba(148,163,184,.2); border-radius:10px; padding:7px 9px; font-size:11px; color:#94a3b8; line-height:1.35; }
@@ -1345,7 +1345,7 @@
                 <div class="cbk-row2 cws-field-ro" style="margin-top:10px"><label class="cbk-field"><span>${esc(T('cws.from', 'From'))}</span><select data-e="from"${working ? '' : ' disabled'}>${opts(working ? x.start : h.start, 300, 1020)}</select></label><label class="cbk-field"><span>${esc(T('cws.to', 'To (last start)'))}</span><select data-e="to"${working ? '' : ' disabled'}>${opts(working ? x.end : h.end, 360, 1080)}</select></label></div>
                 <div class="cws-h">${esc(T('cws.ed.usual', 'Her usual week'))}</div>
                 <div class="cws-dw">${[1, 2, 3, 4, 5, 6, 7].map(d => `<button type="button" data-e="dow" data-v="${d}" class="${off.indexOf(d) === -1 ? 'on' : ''}">${esc(names[d - 1])}</button>`).join('')}</div>
-                <button type="button" class="cws-sw" data-e="rep"><span>${esc(T('cws.ed.repeat', 'Repeat this change every {d}').replace('{d}', dayLong(ed.date)))}</span><span class="cws-tg etg-knob${ed.rep ? ' on' : ''}"></span></button>
+                <button type="button" class="cws-sw" data-e="rep"><span>${esc(T('cws.ed.repeat', 'Repeat this change every {d}').replace('{d}', dayLong(ed.date)))}</span><span class="cws-tg${ed.rep ? ' on' : ''}"></span></button>
                 ${warn}
                 <div class="cws-note">${ic('sync')}<span>${esc(T('cws.ed.note', 'Saved at once. Golfers see the day closed in Book a Caddy, she sees it on her phone, the pro shop desk drops her from the queue.'))}</span></div>`;
         },
@@ -1622,7 +1622,7 @@
                 <div class="sus-lbl">${esc(T('cws.sus.reason', 'Reason — staff only'))}</div>
                 <div class="sus-chips">${SUS_CODES.map(c => chip(c, f.code === c, this.codeTxt(c), 'code')).join('')}</div>
                 <input class="cbk-in" id="cwsSusNote" style="margin-top:8px" maxlength="400" placeholder="${esc(T('cws.sus.note', 'Note for the staff (optional)'))}" value="${esc(f.note)}" autocomplete="off">
-                <button type="button" class="cws-sw" data-s="tell"><span>${esc(r.user_id ? T('cws.sus.tell', 'Tell her on LINE and on her dashboard') : T('cws.sus.tell.dash', 'She sees it on her dashboard (no LINE on her account)'))}</span><span class="cws-tg etg-knob${f.tell ? ' on' : ''}"></span></button>
+                <button type="button" class="cws-sw" data-s="tell"><span>${esc(r.user_id ? T('cws.sus.tell', 'Tell her on LINE and on her dashboard') : T('cws.sus.tell.dash', 'She sees it on her dashboard (no LINE on her account)'))}</span><span class="cws-tg${f.tell ? ' on' : ''}"></span></button>
                 <button type="button" class="cbk-primary red" style="margin-top:14px" id="cwsSusSave"${k.ok ? '' : ' disabled'}>${ic('block')}<span>${esc(k.ok ? T('cws.sus.save', 'Suspend #{n} until {t}').replace('{n}', n).replace('{t}', atTxt(k.until)) : T('cws.sus.bad', 'Set an end at least 30 minutes after the start'))}</span></button>`, () => { this._f = null; });
             const keepNote = () => { const el = w.querySelector('#cwsSusNote'); if (el) f.note = el.value; const a = w.querySelector('#cwsSusFrom'), b = w.querySelector('#cwsSusUntil'); if (a) f.from = a.value; if (b) f.until = b.value; };
             w.onchange = e => { if (e.target.id === 'cwsSusFrom' || e.target.id === 'cwsSusUntil') { keepNote(); this.paintSheet(); } };

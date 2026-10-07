@@ -921,6 +921,11 @@ class SocietyOrganizerManager {
                             const { data: sp } = await sb.from('society_profiles').select('use_slope_rating').eq('id', profile.id).single();
                             if (sp) {
                                 slopeToggle.checked = sp.use_slope_rating || false;
+                                const track = slopeToggle.nextElementSibling;
+                                const knob = track.nextElementSibling;
+                                track.style.background = slopeToggle.checked ? '#059669' : '#374151';
+                                track.style.borderColor = slopeToggle.checked ? '#34d399' : '#ef4444';
+                                knob.style.transform = slopeToggle.checked ? 'translateX(20px)' : 'translateX(0)';
                             }
                         }
                     } catch(e) { console.warn('[SocietyOrganizer] Could not load slope setting:', e); }

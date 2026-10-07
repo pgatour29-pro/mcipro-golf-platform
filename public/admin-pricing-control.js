@@ -933,10 +933,10 @@ const AdminPricingControl = {
             <div class="pro-card">
                 <div class="flex justify-between items-start mb-3">
                     <h3 class="pro-section-title mb-0">${title}</h3>
-                    <label class="toggle-switch ink">
-                        <input type="checkbox" class="promo-toggle" data-promo="${promoKey}"
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" class="sr-only peer promo-toggle" data-promo="${promoKey}"
                                ${promo.enabled ? 'checked' : ''}>
-                        <span class="toggle-slider"></span>
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-black"></div>
                     </label>
                 </div>
 

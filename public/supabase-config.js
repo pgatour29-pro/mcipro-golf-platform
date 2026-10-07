@@ -1,6 +1,38 @@
 // Supabase Configuration for MciPro Golf Platform
 // Supabase data + realtime layer
 
+/* v1477 — course change log attribution. Every REST/RPC request carries who is acting so the DB
+   trigger (course_change_log_fn) can record it: x-mcp-actor = LINE id (the login), x-mcp-actor-name
+   (URI-encoded: headers are ASCII, names are Thai), x-mcp-role = golfer/proshop/caddymaster/....
+   Read lazily per request from localStorage/AppState — nothing to wire at login. Shared with
+   proshop-teesheet.html, which builds its own client. Never throws: a failure falls back to plain fetch. */
+window.mcpActorHeaders = function () {
+    var h = {};
+    try {
+        var u = (window.AppState && window.AppState.currentUser) || {};
+        var id = u.lineUserId || u.userId || localStorage.getItem('line_user_id') || '';
+        var name = u.name || u.displayName || localStorage.getItem('mcipro_user_name') || '';
+        var role = localStorage.getItem('mcipro_staff_role') || u.role || localStorage.getItem('mcipro_user_role') || '';
+        if (id) h['x-mcp-actor'] = String(id).slice(0, 80);
+        if (name) h['x-mcp-actor-name'] = encodeURIComponent(String(name).slice(0, 60));
+        if (role) h['x-mcp-role'] = String(role).replace(/[^a-z_-]/gi, '').slice(0, 24);
+    } catch (e) { }
+    return h;
+};
+window.mcpActorFetch = function (input, init) {
+    try {
+        var extra = window.mcpActorHeaders();
+        var keys = Object.keys(extra);
+        if (keys.length) {
+            init = init || {};
+            var hdr = new Headers(init.headers || (input && input.headers) || undefined);
+            keys.forEach(function (k) { if (!hdr.has(k)) hdr.set(k, extra[k]); });
+            init = Object.assign({}, init, { headers: hdr });
+        }
+    } catch (e) { }
+    return fetch(input, init);
+};
+
 const SUPABASE_CONFIG = {
     url: 'https://pyeeplwsnupmhgbguwqs.supabase.co',
     anonKey: 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9'
@@ -28,6 +60,7 @@ class SupabaseClient {
     _initWithRetry(attempts = 0) {
         if (window.supabase && window.supabase.createClient) {
             this.client = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
+                global: { fetch: window.mcpActorFetch || undefined },   // v1477: who-did-it headers for the course change log
                 auth: {
                     detectSessionInUrl: false,   // CRITICAL: Prevents GoTrue from treating LINE/Kakao ?code= as Supabase PKCE code
                     autoRefreshToken: true,       // refresh the v2 Supabase session in the background (needed so RLS auth survives)

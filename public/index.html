@@ -154,7 +154,7 @@
 
     <!-- Supabase MUST load BEFORE LIFF for login to work -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="supabase-config.js?v=20260917"></script>
+    <script src="supabase-config.js?v=20261007"></script>
 
     <script src="https://static.line-scdn.net/liff/edge/2.1/sdk.js"></script>
     <script src="js/scorecardProfileLoader.js"></script>
@@ -12542,6 +12542,8 @@
                 'ps.cube.customers': 'Recent players',
                 'ps.cube.chat': 'Team chat',
                 'ps.cube.setup': 'Course & tee sheet',
+                'ps.audit.tab': 'Change log',
+                'ps.cube.audit': 'Who changed what',
                 'cad.cube.live': 'My Day',
                 'cad.cube.assign': 'Today\'s loops',
                 'cad.cube.track': "Golfer's card",
@@ -16293,6 +16295,8 @@
                 'ps.cube.customers': 'ลูกค้าล่าสุด',
                 'ps.cube.chat': 'แชททีมงาน',
                 'ps.cube.setup': 'ตั้งค่าสนามและทีชีท',
+                'ps.audit.tab': 'บันทึกการเปลี่ยนแปลง',
+                'ps.cube.audit': 'ใครแก้อะไร',
                 'cad.cube.live': 'วันนี้ของฉัน',
                 'cad.cube.assign': 'งานรอบวันนี้',
                 'cad.cube.track': 'การ์ดนักกอล์ฟ',
@@ -19909,6 +19913,8 @@
                 'ps.cube.customers': '최근 고객',
                 'ps.cube.chat': '팀 채팅',
                 'ps.cube.setup': '코스·티시트 설정',
+                'ps.audit.tab': '변경 기록',
+                'ps.cube.audit': '누가 무엇을 바꿨나',
                 'cad.cube.live': '나의 하루',
                 'cad.cube.assign': '오늘의 라운드',
                 'cad.cube.track': '골퍼 카드',
@@ -23700,6 +23706,8 @@
                 'ps.cube.customers': '最近の顧客',
                 'ps.cube.chat': 'チームチャット',
                 'ps.cube.setup': 'コース・ティーシート設定',
+                'ps.audit.tab': '変更履歴',
+                'ps.cube.audit': '誰が何を変えたか',
                 'cad.cube.live': '今日の予定',
                 'cad.cube.assign': '本日のラウンド',
                 'cad.cube.track': 'ゴルファーカード',
@@ -71424,6 +71432,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         <span class="material-symbols-outlined text-lg">calendar_month</span>
                         <span class="hidden sm:inline" data-i18n="proshop.teesheet">Tee Sheet</span>
                     </button>
+                    <!-- v1477 Change log: the course's own audit trail (course-audit.js) -->
+                    <button onclick="showProshopTab('audit', event)" class="tab-button flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap" id="proshop-audit-tab">
+                        <span class="material-symbols-outlined text-lg">history</span>
+                        <span class="hidden sm:inline" data-i18n="ps.audit.tab">Change log</span>
+                    </button>
                 </div>
             </nav>
         </header>
@@ -71468,6 +71481,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="chip" data-i18n="ps.cube.setup">Course &amp; tee sheet</div>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuGear"/></svg></div>
                     </button>
+                    <button class="mgc" style="--p1:#dcefe2;--p2:#f1f8f3" onclick="psOpenSection('audit')">
+                        <div class="t" data-i18n="ps.audit.tab">Change log</div>
+                        <div class="chip" data-i18n="ps.cube.audit">Who changed what</div>
+                        <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuGear"/></svg></div>
+                    </button>
                     <!-- v1278 Tap-In: the feed opens over this dashboard, posting as the course -->
                     <button class="mgc gfdCube gfd-other gfd-mgc" onclick="window.GolfFeed &amp;&amp; GolfFeed.cubeTap(event, 'course')">
                         <span class="gfd-corner"><span class="gfdCubeBadge" style="display:none;background:#ef4444;color:#fff;font-size:11px;font-weight:800;min-width:20px;height:20px;border-radius:10px;align-items:center;justify-content:center;padding:0 6px;line-height:1;">0</span><span class="cube-new gfdNewChip" style="display:none" data-i18n="gfd.new">New</span></span>
@@ -71492,6 +71510,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
             <!-- Messages Tab -->
             <div id="proshop-messages" class="tab-content hidden"><div id="ps-messages-body"></div></div>
+            <!-- Change log Tab (v1477) -->
+            <div id="proshop-audit" class="tab-content hidden"><div id="ps-audit-body"></div></div>
             <!-- Tee Sheet Tab -->
             <div id="proshop-teesheet" class="tab-content hidden">
                 <!-- Enhanced Tee Sheet Module -->
@@ -71512,6 +71532,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <button class="s" onclick="psOpenSection('sales')"><span class="material-symbols-outlined">trending_up</span><span data-i18n="proshop.sales">Sales Reports</span></button>
                 <button class="s" onclick="psOpenSection('customers')"><span class="material-symbols-outlined">people</span><span data-i18n="proshop.customers">Customers</span></button>
                 <button class="s" onclick="psOpenSection('settings')"><span class="material-symbols-outlined">settings</span><span data-i18n="common.settings">Settings</span></button>
+                <button class="s" onclick="psOpenSection('audit')"><span class="material-symbols-outlined">history</span><span data-i18n="ps.audit.tab">Change log</span></button>
             </div>
         </div>
         <nav id="psDock" class="mhvDock">
@@ -89467,10 +89488,11 @@ window.AdminSystem = AdminSystem;
     <script defer src="handicap-ledger.js?v=1257"></script>
     <script defer src="course-society-link.js?v=1467"></script>
     <script defer src="course-crm.js?v=1472"></script>
+    <script defer src="course-audit.js?v=1477"></script>
     <script defer src="course-open-times.js?v=1446"></script>
     <script defer src="engagement-meter.js?v=1377"></script>
     <script defer src="persona-test.js?v=1450"></script>
-    <script defer src="proshop-dashboard.js?v=1467"></script>
+    <script defer src="proshop-dashboard.js?v=1477"></script>
 
     <!-- Course Data & Handicap Calculations -->
     <script defer src="course-data-manager.js"></script>

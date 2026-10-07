@@ -278,6 +278,7 @@
             else if (tab === 'customers') PS.loadCustomers();
             else if (tab === 'messages') PS.loadMessages();
             else if (tab === 'settings') PS.loadSettings();
+            else if (tab === 'audit') PS.loadAudit();
             else if (tab === 'teesheet') {
                 try {
                     const f = document.getElementById('teesheet-iframe');
@@ -818,6 +819,19 @@
             a.download = 'proshop-sales-' + localDateStr() + '.csv';
             a.click();
             URL.revokeObjectURL(a.href);
+        },
+
+        // ================= CHANGE LOG (v1477) =================
+        /* The course's audit trail (course-audit.js): every change to its tee sheet, caddies, rates,
+           notes and PINs with before/after, who, when, where — from the DB triggers, so it is the same
+           whichever screen made the change. Read-only. */
+        loadAudit() {
+            const host = document.getElementById('ps-audit-body');
+            const A = window.CourseAudit;
+            if (!host) return;
+            if (!A || !PS.course || !db()) { host.innerHTML = PS.errorBox(); return; }
+            const lang = (typeof currentLanguage !== 'undefined' && currentLanguage) || 'en';
+            A.open({ sb: db(), lang: lang, host: host, course: { id: PS.course.id, slug: PS.teeSheetSlug(), name: PS.course.name } });
         },
 
         // ================= CUSTOMERS =================

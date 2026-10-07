@@ -3643,7 +3643,21 @@
     const SUPABASE_ANON_KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
     let supabaseClient = null;
     try {
-      supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      // v1477: who-did-it headers for the course change log (same shape as supabase-config.js)
+      const mcpFetch = function (input, init) {
+        try {
+          const h = new Headers((init && init.headers) || undefined);
+          const id = localStorage.getItem('line_user_id') || '';
+          const nm = localStorage.getItem('mcipro_user_name') || '';
+          const role = localStorage.getItem('mcipro_staff_role') || '';
+          if (id && !h.has('x-mcp-actor')) h.set('x-mcp-actor', String(id).slice(0, 80));
+          if (nm && !h.has('x-mcp-actor-name')) h.set('x-mcp-actor-name', encodeURIComponent(String(nm).slice(0, 60)));
+          if (role && !h.has('x-mcp-role')) h.set('x-mcp-role', String(role).replace(/[^a-z_-]/gi, '').slice(0, 24));
+          init = Object.assign({}, init || {}, { headers: h });
+        } catch (e) { }
+        return fetch(input, init);
+      };
+      supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { fetch: mcpFetch } });
       window.__golferAvSb = supabaseClient;
       console.log('[TeeSheet] Supabase client initialized');
     } catch (e) {

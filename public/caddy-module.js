@@ -47,7 +47,7 @@
         rail.title = T('cmTitle');
         rail.addEventListener('click', e => {
           const b = e.target.closest('button[data-m]'); if (!b) return;
-          if (b.dataset.m === 'roster') { api.CaddyDesk.toggle(true); setTimeout(() => { const r = document.querySelector('#cd-desk [data-a="roster"]'); if (r) r.click(); }, 80); this.railPaint(); return; }
+          if (b.dataset.m === 'roster') { api.CaddyDesk.toggle(true); setTimeout(() => { const r = document.querySelector('#cd-desk [data-a="tab"][data-t="roster"], #cd-desk [data-a="roster"]'); if (r) r.click(); }, 120); this.railPaint(); return; }
           if (document.documentElement.classList.contains('ts-cad')) api.CaddyDesk.setMode(false);
           this.mode = b.dataset.m; this._scrolled = false;
           document.documentElement.classList.toggle('cm-starter', this.mode === 'starter');

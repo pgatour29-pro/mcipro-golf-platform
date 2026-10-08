@@ -130,15 +130,45 @@
         else if (b.source === 'hotdeal' || b.hotDealId) src = 'hot';
         else if (b.app) src = 'app';
         else if (b.cmSrc === 'sheet') src = 'sheet';
+        else if (b.cmSrc === 'phone') src = 'phone';
         else if (b.cmSrc === 'desk') src = 'desk';
         const name = isJob ? (golfers[0] && golfers[0].name) || this.T('cmGuest') : (b.groupName || b.name || (golfers[0] && golfers[0].name) || this.T('cmWalkIn'));
         out.push({ b, m, t: b.time, col, tee: col ? col.course + '-' + col.tee : '', name, pax: isJob ? 1 : Math.max(1, golfers.length || parseInt(b.players) || 1), golfers, jobs, open, src, isJob, isSoc,
                    needed: D ? open.length : (isJob ? 0 : (parseInt(b.caddiesNeeded) || 0)) });
       });
-      out.sort((a, b) => a.m - b.m || String(a.tee).localeCompare(String(b.tee)));
-      return out;
+      // v1484 reconcile: a caddy booked by phone for a person on this day is the anchor. When the same person
+      // turns up on another block (day sheet, society pairing, app booking), that block carries her caddy and the
+      // phone block steps aside — one tee time per person, the caddy never duplicated or overridden.
+      const named = r => r.golfers.filter(g => g.name && !this.isPlaceholder(g.name));
+      const hidden = new Set();
+      out.filter(r => r.src === 'phone').forEach(ph => {
+        const ppl = named(ph); if (!ppl.length) return;
+        const homes = ppl.map(g => out.find(o => o !== ph && o.src !== 'phone' && !o.isJob && Math.abs(o.m - ph.m) <= 120 && o.golfers.some(x => this.sameName(x.name, g.name))) || null);
+        if (homes.some(h => !h)) return;                       // somebody from the call is not on another block yet: the phone block stays
+        hidden.add(ph.b.id);
+        ph.jobs.forEach(j => { const h = homes.find(o => o.golfers.some(x => this.sameName(x.name, j.golfer))) || homes[0]; if (h && !h.jobs.includes(j)) h.jobs.push(j); });
+        ph.open.forEach(j => { if (homes[0] && !homes[0].open.includes(j)) homes[0].open.push(j); });
+      });
+      // a golfer-app caddy job for someone already on a block rides that block (by name, close in time)
+      out.filter(r => r.isJob).forEach(jr => {
+        const nm = jr.golfers[0] && jr.golfers[0].name; if (!nm) return;
+        const home = out.find(o => !o.isJob && !hidden.has(o.b.id) && Math.abs(o.m - jr.m) <= 90 && o.golfers.some(x => this.sameName(x.name, nm)));
+        if (!home) return;
+        hidden.add(jr.b.id);
+        jr.jobs.forEach(j => { if (!home.jobs.includes(j)) home.jobs.push(j); });
+        jr.open.forEach(j => { if (!home.open.includes(j)) home.open.push(j); });
+      });
+      const kept = out.filter(r => !hidden.has(r.b.id));
+      kept.sort((a, b) => a.m - b.m || String(a.tee).localeCompare(String(b.tee)));
+      return kept;
     },
-    srcWord(k) { return this.T({ sheet: 'cmSrcSheet', desk: 'cmSrcDesk', soc: 'cmSrcSoc', app: 'cmSrcApp', hot: 'cmSrcHot', cm: 'cmSrcCm', sheet0: 'cmSrcTee' }[k] || 'cmSrcTee'); },
+    srcWord(k) { return this.T({ sheet: 'cmSrcSheet', desk: 'cmSrcDesk', phone: 'cmSrcPhone', soc: 'cmSrcSoc', app: 'cmSrcApp', hot: 'cmSrcHot', cm: 'cmSrcCm', sheet0: 'cmSrcTee' }[k] || 'cmSrcTee'); },
+    // "Smith x4" / "SMITH, John" / "john smith" meet in the middle: lower-case word tokens, no punctuation, no counts
+    nk(name) { return String(name || '').toLowerCase().replace(/\b(x\s*\d|\d+\s*(pax|p|players?)|walk-?in|group|grp|hotel|mr|mrs|ms|khun)\b/g, ' ').replace(/[^a-z0-9ก-๙\s]/g, ' ').split(/\s+/).filter(w => w.length > 1); },
+    // same person/group when every word of the shorter name is in the longer one; a one-word name ("Smith") only
+    // claims a name of at most two words ("Smith, John", "Smith x4"), never a three-word group that happens to share it
+    sameName(a, b) { const A = this.nk(a), B = this.nk(b); if (!A.length || !B.length) return false; const [S, L] = A.length <= B.length ? [A, B] : [B, A]; const hit = S.filter(w => L.includes(w)).length; if (hit < S.length) return false; if (S.length === 1) return S[0].length >= 3 && L.length <= 2; return true; },
+    isPlaceholder(n) { return /^(player|ผู้เล่น|플레이어|プレーヤー)\s*\d+$/i.test(String(n || '').trim()); },
     paint() {
       if (!this.on) return;
       const el = this.$('cm-board'); if (!el) return;
@@ -168,7 +198,7 @@
       const shown = earlier.length ? rows.filter(r => r.m >= now - 45) : matched;
       if (fq && !matched.length) {
         html += '<div class="cm-first"><div class="ic"><span class="material-symbols-outlined">person_search</span></div><div><b>' + this.esc(T('cmFindNone').replace('{q}', this.fq.trim())) + '</b><small>' + T('cmFindNoneSub') + '</small></div>'
-          + '<div class="acts"><button type="button" class="today-btn cm-primary" data-a="addfor">' + this.esc(T('cmFindAdd').replace('{q}', this.fq.trim())) + '</button></div></div>';
+          + '<div class="acts"><button type="button" class="today-btn cm-primary" data-a="bookfor">' + this.esc(T('cmBookCaddyFor').replace('{q}', this.fq.trim())) + '</button></div></div>';
         el.innerHTML = html; this.keepFocus(); return;
       }
       if (earlier.length) {
@@ -200,6 +230,7 @@
       if (!r.isSoc) j = r.jobs.find(x => x.cad && ((g.caddyId && x.cad.id === g.caddyId) || (g.caddyNumber && String(x.num) === String(g.caddyNumber)))) || null;
       if (!j && gid) j = D.jobs.find(x => x.row && (x.row.golfer_id === gid || x.row.user_id === gid) && Math.abs(x.s - r.m) <= 90) || null;
       if (!j && g.caddyNumber) j = D.jobs.find(x => String(x.num) === String(g.caddyNumber) && Math.abs(x.s - r.m) <= 30) || null;
+      if (!j && g.name && !this.isPlaceholder(g.name)) j = r.jobs.find(x => x.golfer && this.sameName(x.golfer, g.name)) || D.jobs.find(x => x.golfer && this.sameName(x.golfer, g.name) && Math.abs(x.s - r.m) <= 120) || null;
       return j;
     },
     seatTime(r) { return (r.b.groupTee && this.toM(r.b.groupTee) != null) ? r.b.groupTee : r.t; },
@@ -283,7 +314,7 @@
       return '<div class="cm-row ' + st + (isHour ? ' hour' : '') + '" data-id="' + E(r.b.id) + '">'
         + '<div class="tm">' + E(r.t) + '<small>' + r.pax + ' ' + (r.pax === 1 ? T('cmPlayer1') : T('cmPlayers')) + '</small></div>'
         + '<div class="tee">' + E(r.tee) + '</div>'
-        + '<div class="grp"><b>' + this.mark(r.name) + '</b><small>' + sub + '</small><span class="src-tag ' + r.src + '">' + E(this.srcWord(r.src)) + '</span></div>'
+        + '<div class="grp"><b>' + this.mark(r.name) + '</b><small>' + sub + '</small><span class="src-tag ' + r.src + '">' + E(this.srcWord(r.src)) + (r.b.cmApprox ? ' · ≈ ' + E(T('cmApproxTag')) : '') + '</span></div>'
         + '<div class="cad cm-seats">' + lines.join('') + '</div>'
         + '<div class="rt">' + right + '</div></div>';
     },
@@ -323,6 +354,7 @@
       if (act === 'earlier') { this.showEarlier = !this.showEarlier; this.paint(); return; }
       if (act === 'findclear') { this.fq = ''; this.seat = null; this.paint(); const f = this.$('cm-find'); if (f) f.focus(); return; }
       if (act === 'addfor') { const name = this.fq.trim(); this.fq = ''; this.paint(); this.openAdd({ group: name }); return; }
+      if (act === 'bookfor') { const name = this.fq.trim(); this.fq = ''; this.paint(); this.openAdd({ group: name, approx: true, src: 'phone' }); return; }
       if (act === 'add') { this.openAdd(); return; }
       if (act === 'import') { this.openImport(); return; }
       if (act === 'assign' || act === 'job') { CD.showJob(a.dataset.j); return; }
@@ -392,16 +424,17 @@
       return {
         id: api.genId(), bookingType: 'regular', course: col ? col.course : undefined, tee: col ? col.tee : undefined, col: idx,
         time: o.time, golfers, notes: o.notes || '', name: golfers[0].name, caddyNumber: golfers[0].caddyNumber || '',
-        caddiesNeeded: Math.min(4, needed + extraPicks), cmSrc: o.src || 'desk'
+        caddiesNeeded: Math.min(4, needed + extraPicks), cmSrc: o.src || 'desk', cmApprox: !!o.approx
       };
     },
-    async commit(list, date) {
+    async commit(list, date, changed) {
       const api = this.api;
       const bookings = api.getDay(date);
+      (changed || []).forEach(c => { const i = bookings.findIndex(x => x.id === c.id); if (i >= 0) bookings[i] = c; });
       list.forEach(b => bookings.push(b));
       api.setDay(date, bookings);
       const fails = [];
-      for (const b of list) {
+      for (const b of list.concat(changed || [])) {
         const r = await api.syncCaddyJobs(b, date, { reason: 'Changed at the caddy desk' });
         if (!r.ok) fails.push((b.time || '') + ' ' + (b.name || '') + ': ' + r.message);
       }
@@ -432,7 +465,7 @@
       const api = this.api, T = k => this.T(k), E = s => this.esc(s), D = api.CaddyDesk.data;
       const d = this.dlg('cm-quick', 'quick');
       const cols = api.getLayout().cols || [];
-      const st = { time: this.defaultSlot(), pax: 4, caddies: 4, tee: 0, group: (pre && pre.group) || '', picks: [], touched: false };
+      const st = { time: this.defaultSlot(), pax: 4, caddies: 4, tee: 0, group: (pre && pre.group) || '', picks: [], touched: false, approx: !!(pre && pre.approx), src: (pre && pre.src) || 'desk' };
       const fitting = () => { const m = this.toM(st.time); if (!D) return []; return D.queue.filter(r => D.fits(r, m)); };
       const refill = () => { const f = fitting(); const have = new Set(st.picks.map(p => p.id)); st.picks = st.picks.filter(p => f.some(r => r.id === p.id)).slice(0, st.caddies); for (const r of f) { if (st.picks.length >= st.caddies) break; if (!have.has(r.id) && !st.picks.some(p => p.id === r.id)) st.picks.push(r); } };
       const paint = () => {
@@ -441,8 +474,9 @@
         const teeSeg = cols.length > 1 ? '<div class="qa-seg" data-seg="tee">' + cols.map((c, i) => '<span data-v="' + i + '" class="' + (i === st.tee ? 'on' : '') + '">' + E(c.course + '-' + c.tee) + '</span>').join('') + '</div>' : '<div class="qa-in"><b>' + E(cols[0] ? cols[0].course + '-' + cols[0].tee : 'A-1') + '</b></div>';
         const picks = st.picks.map((r, i) => '<div class="qa-pk"><span class="q">Q' + (D.queue.indexOf(r) + 1) + '</span><b>#' + E(r.num) + '</b> ' + E(r.name && !/^Caddy #/i.test(r.name) ? r.name : '') + '<small>' + (r.cur ? T('cdBack').replace('{t}', this.hm(r.cur.e)) : T('cdHere')) + '</small><button type="button" data-swap="' + i + '">' + T('cmSwap') + '</button><button type="button" data-drop="' + i + '" aria-label="remove">✕</button></div>').join('');
         const openN = Math.max(0, st.caddies - st.picks.length);
-        d.innerHTML = '<div class="qa"><div class="t"><b>' + T('cmNewTee') + '</b><small>' + E(this.date()) + '</small><button type="button" class="x" data-close>✕</button></div>'
-          + '<div class="qa-row"><div><label>' + T('cmTeeTime') + '</label><div class="qa-time"><button type="button" data-step="-1">−</button><select id="cm-q-time">' + this.slots().map(s => '<option' + (s === st.time ? ' selected' : '') + '>' + s + '</option>').join('') + '</select><button type="button" data-step="1">+</button></div></div>'
+        d.innerHTML = '<div class="qa"><div class="t"><b>' + (st.src === 'phone' ? T('cmBookCaddy') : T('cmNewTee')) + '</b><small>' + E(this.date()) + '</small><button type="button" class="x" data-close>✕</button></div>'
+          + (st.src === 'phone' ? '<div class="qa-note">' + T('cmPhoneNote') + '</div>' : '')
+          + '<div class="qa-row"><div><label>' + T('cmTeeTime') + ' <i>· </i><button type="button" class="qa-approx' + (st.approx ? ' on' : '') + '" data-approx>' + (st.approx ? '≈ ' + T('cmApproxAround') : T('cmApproxExact')) + '</button></label><div class="qa-time"><button type="button" data-step="-1">−</button><select id="cm-q-time">' + this.slots().map(s => '<option' + (s === st.time ? ' selected' : '') + '>' + s + '</option>').join('') + '</select><button type="button" data-step="1">+</button></div></div>'
           + '<div><label>' + T('cmPlayers') + '</label>' + seg('pax', [1, 2, 3, 4], st.pax) + '</div></div>'
           + '<div class="qa-row"><div><label>' + T('cmCaddies') + '</label>' + seg('caddies', [0, 1, 2, 3, 4], st.caddies) + '</div><div><label>' + T('cmTee') + '</label>' + teeSeg + '</div></div>'
           + '<div><label>' + T('cmGroup') + ' <i>· ' + T('cmOptional') + '</i></label><input id="cm-q-group" class="qa-txt" type="text" autocomplete="off" placeholder="' + E(T('cmGroupPh')) + '" value="' + E(st.group) + '"></div>'
@@ -454,6 +488,7 @@
         if (e.target === d) { d.close(); return; }
         const c = e.target.closest('[data-close]'); if (c) { d.close(); return; }
         const sp = e.target.closest('[data-step]'); if (sp) { const s = this.slots(), i = s.indexOf(st.time); st.time = s[Math.min(s.length - 1, Math.max(0, i + (+sp.dataset.step)))]; paint(); return; }
+        const ap = e.target.closest('[data-approx]'); if (ap) { st.approx = !st.approx; st.group = (this.$('cm-q-group') || {}).value || st.group; paint(); return; }
         const sg = e.target.closest('.qa-seg span'); if (sg) { const name = sg.closest('.qa-seg').dataset.seg, v = +sg.dataset.v; if (name === 'pax') { st.pax = v; if (!st.touched) st.caddies = v; } else if (name === 'caddies') { st.caddies = v; st.touched = true; } else if (name === 'tee') st.tee = v; st.group = (this.$('cm-q-group') || {}).value || st.group; paint(); return; }
         const sw = e.target.closest('[data-swap]'); if (sw) { const i = +sw.dataset.swap, f = fitting().filter(r => !st.picks.some(p => p.id === r.id)); if (f.length) st.picks[i] = f[0]; st.group = (this.$('cm-q-group') || {}).value || st.group; paint(); return; }
         const dr = e.target.closest('[data-drop]'); if (dr) { st.picks.splice(+dr.dataset.drop, 1); st.touched = true; st.group = (this.$('cm-q-group') || {}).value || st.group; const keep = st.picks.slice(); paint(); st.picks = keep; paint(); return; }
@@ -462,7 +497,7 @@
           st.group = (this.$('cm-q-group') || {}).value.trim();
           const m = this.toM(st.time);
           const { ok, bad } = this.checkPicks(st.picks, m);
-          const b = this.makeBooking({ time: st.time, pax: st.pax, caddies: st.caddies, tee: cols[st.tee] ? cols[st.tee].course + '-' + cols[st.tee].tee : '', group: st.group, picks: ok, src: 'desk' });
+          const b = this.makeBooking({ time: st.time, pax: st.pax, caddies: st.caddies, tee: cols[st.tee] ? cols[st.tee].course + '-' + cols[st.tee].tee : '', group: st.group, picks: ok, src: st.src, approx: st.approx });
           const date = this.date();
           const rf = await api.caddyRefusals(b.golfers.filter(g => g.caddyId), date, st.time, null);
           if (rf.length) { btn.disabled = false; api.tsAlert(T('caddyRefused') + '\n\n' + rf.join('\n')); return; }
@@ -555,17 +590,30 @@
       const d = this.dlg('cm-intake', 'intake');
       const st = { tab: 'paste', text: '', rows: [], busy: false, done: 0 };
       const roster = () => { const D = api.CaddyDesk.data; return D ? D.roster : (api.caddies() || []).map(c => ({ id: c.id, num: String(c.number), name: c.name, off: false })); };
-      const existing = () => (this.rows() || []);
+      // every native block on the day (incl. a phone block hidden behind another), for reconciling by name
+      const existing = () => ((api.board() && api.board().list) || []).filter(b => b.time && b.source !== 'caddy-booking-db' && b.source !== 'society-event-db' && !String(b.id).startsWith('society-') && !String(b.id).startsWith('caddy-') && b.ot !== 'open');
+      const matchFor = r => {
+        const cands = existing().filter(b => this.sameName(b.groupName || b.name, r.group) || (b.golfers || []).some(g => this.sameName(g.name, r.group)) || (r.group && this.sameName(b.name, r.group)));
+        if (!cands.length) return null;
+        const m = this.toM(r.time);
+        cands.sort((a, b) => Math.abs(this.toM(a.time) - m) - Math.abs(this.toM(b.time) - m));
+        return cands[0];
+      };
       const flags = r => {
         const D = api.CaddyDesk.data, m = this.toM(r.time), out = [];
+        r.merge = null;
+        const hit = r.group ? matchFor(r) : null;
+        if (hit) {
+          if (hit.time === r.time) { out.push({ k: 'dup', txt: T('cmAlreadyOn') }); }
+          else { r.merge = hit.id; out.push({ k: 'merge', txt: T('cmMergeFlag').replace('{t}', hit.time) }); }
+        }
         r.nums.forEach(n => {
           const x = roster().find(q => String(q.num) === String(n));
           if (!x) out.push({ n, k: 'bad', txt: '#' + n + ' ' + T('cmNotOnRoster') });
           else if (x.off) out.push({ n, k: 'warn', txt: '#' + n + ' ' + T('cdDayOff') + ' · ' + T('cmStaysOpen') });
           else if (D && !D.fits(x, m)) out.push({ n, k: 'bad', txt: '#' + n + ' ' + T('cdBusy') + ' · ' + T('cmStaysOpen') });
         });
-        const dup = existing().find(x => x.t === r.time && (!r.group || x.name.toLowerCase() === r.group.toLowerCase()));
-        if (dup) out.push({ k: 'dup', txt: T('cmAlreadyOn') });
+        if (!hit) { const dup = existing().find(x => x.time === r.time && !r.group); if (dup) out.push({ k: 'dup', txt: T('cmAlreadyOn') }); }
         return out;
       };
       const reparse = () => { st.rows = this.parse(st.text); st.rows.forEach(r => { r.flags = flags(r); if (r.flags.some(f => f.k === 'dup')) r.on = false; }); };
@@ -599,10 +647,38 @@
           st.text = (this.$('cm-in-text') || { value: st.text }).value;
           const on = st.rows.filter(r => r.on); if (!on.length) return;
           st.busy = true; paint();
-          const date = this.date(); const made = []; let alerted = 0, openN = 0; const notes = [];
+          const date = this.date(); const made = []; const merged = []; let alerted = 0, openN = 0; const notes = [];
+          const day = api.getDay(date);
           for (const r of on) {
             const badNums = new Set(r.flags.filter(f => f.n).map(f => String(f.n)));
             const picks = r.nums.filter(n => !badNums.has(String(n))).map(n => roster().find(q => String(q.num) === String(n))).filter(Boolean);
+            if (r.merge) {
+              // the people are already on the desk (booked by phone, or brought in earlier): the sheet's time and tee win,
+              // the desk's caddies stay, a sheet number only fills a player who has none
+              const b = day.find(x => x.id === r.merge); if (!b) { r.merge = null; }
+              else {
+                const { idx, col } = this.colFor(r.tee);
+                b.time = r.time; if (col) { b.course = col.course; b.tee = col.tee; b.col = idx; }
+                b.cmApprox = false; if (b.cmSrc === 'phone') b.cmSrc = 'phone';
+                b.golfers = b.golfers || [];
+                for (let i = b.golfers.length; i < Math.min(4, r.pax); i++) b.golfers.push({ name: T('cmPlayerN').replace('{n}', i + 1), caddyNumber: '', caddyId: null, caddyName: '' });
+                const have = new Set(b.golfers.map(g => String(g.caddyNumber || '')).filter(Boolean));
+                let kept = 0;
+                picks.forEach(pk => {
+                  if (have.has(String(pk.num))) return;
+                  const g = b.golfers.find(x => !(x.caddyId || x.caddyNumber));
+                  if (!g) { kept++; return; }
+                  g.caddyId = pk.id; g.caddyNumber = String(pk.num); g.caddyName = pk.name && !/^Caddy #/i.test(pk.name) ? pk.name : ('Caddy #' + pk.num); have.add(String(pk.num)); alerted++;
+                });
+                if (kept) notes.push(r.time + ' ' + r.group + ': ' + T('cmMergeKept'));
+                const without = b.golfers.filter(x => !(x.caddyId || x.caddyNumber)).length;
+                b.caddiesNeeded = Math.min(4, Math.max(0, Math.min(without, (parseInt(r.caddies) || 0) - have.size)));
+                b.name = (b.golfers[0] && b.golfers[0].name) || b.name; b.caddyNumber = (b.golfers[0] && b.golfers[0].caddyNumber) || '';
+                openN += b.caddiesNeeded;
+                merged.push(b);
+                continue;
+              }
+            }
             const b = this.makeBooking({ time: r.time, tee: r.tee, pax: r.pax, caddies: r.caddies, group: r.group, picks, notes: r.notes, src: 'sheet' });
             // the DB and the day state are the last word: a caddy refused here stays open on this tee time
             const rf = await api.caddyRefusals(b.golfers.filter(g => g.caddyId), date, r.time, null);
@@ -612,11 +688,11 @@
             made.push(b);
           }
           // one day write, then the jobs one tee time at a time (each awaited — a job that failed is said)
-          const fails = await this.commit(made, date);
-          st.done = made.length; st.busy = false;
+          const fails = await this.commit(made, date, merged);
+          st.done = made.length + merged.length; st.busy = false;
           d.close();
           if (fails.length) api.tsAlert(T('caddySyncFail') + '\n\n' + fails.join('\n'));
-          this.toast(T('cmImportedToast').replace('{n}', made.length).replace('{c}', alerted).replace('{o}', openN));
+          this.toast(T('cmImportedToast').replace('{n}', made.length).replace('{c}', alerted).replace('{o}', openN) + (merged.length ? ' · ' + T('cmMergedN').replace('{n}', merged.length) : ''));
           if (notes.length) setTimeout(() => api.tsAlert(T('cmImportNotes') + '\n\n' + notes.join('\n')), 400);
         }
       };
@@ -669,7 +745,7 @@ html.cm .today-btn.cm-primary{background:var(--brand);color:var(--badge-ink);bor
 .cm-row .tee{font:700 11px 'IBM Plex Mono',monospace;color:var(--ink-2);padding-top:3px}
 .cm-row .grp b{display:block;font-weight:800;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cm-row .grp small{display:block;color:var(--muted);font-size:11px;font-weight:600;margin-top:1px}
 .src-tag{display:inline-block;margin-top:4px;font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:2px 6px;border-radius:20px;background:var(--card-hi);color:var(--muted);white-space:nowrap}
-.src-tag.sheet{color:#38bdf8}.src-tag.app{color:var(--brand)}.src-tag.soc{color:var(--vip)}.src-tag.hot{color:#f97316}.src-tag.desk{color:var(--ink-2)}
+.src-tag.sheet{color:#38bdf8}.src-tag.phone{color:var(--vip)}.cm-sum .src.phone i{background:var(--vip)}.src-tag.app{color:var(--brand)}.src-tag.soc{color:var(--vip)}.src-tag.hot{color:#f97316}.src-tag.desk{color:var(--ink-2)}
 .cm-row .cad{display:flex;flex-wrap:wrap;gap:5px}
 .cm-row .cad.cm-seats{flex-direction:column;align-items:stretch;gap:3px}
 .cm-pl{display:flex;align-items:center;gap:7px;min-width:0;padding:1px 0}
@@ -723,6 +799,8 @@ html.cm-starter .cm-cc{font-size:13px;padding:5px 9px}html.cm-starter .cm-row .r
 .qa{padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px}
 .qa .t{display:flex;align-items:center;gap:8px}.qa .t b{font-size:16px}.qa .t small{color:var(--muted);font-size:11.5px;font-weight:600;margin-left:auto}.qa .t .x{background:none;border:0;color:var(--muted);font-size:18px;cursor:pointer;padding:2px 6px}
 .qa label{display:block;font-size:10.5px;font-weight:800;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin-bottom:5px}.qa label i{font-style:normal;font-weight:600;letter-spacing:0;text-transform:none}
+.qa-approx{background:transparent;border:1px solid var(--line-2);border-radius:999px;color:var(--muted);font:800 10px inherit;font-family:inherit;padding:2px 8px;cursor:pointer;letter-spacing:0;text-transform:none}.qa-approx.on{border-color:var(--vip);color:var(--vip)}
+.qa-note{font-size:12px;color:var(--muted);font-weight:600;line-height:1.4;background:var(--card);border:1px solid var(--line-2);border-radius:10px;padding:8px 10px}
 .qa-row{display:grid;grid-template-columns:1.25fr 1fr;gap:10px}
 .qa-time{display:flex;align-items:center;border:1px solid var(--line-2);border-radius:10px;background:var(--card);overflow:hidden}
 .qa-time button{width:40px;height:44px;background:transparent;border:0;color:var(--brand);font:800 20px 'IBM Plex Mono',monospace;cursor:pointer}
@@ -753,7 +831,7 @@ html.cm-starter .cm-cc{font-size:13px;padding:5px 9px}html.cm-starter .cm-row .r
 .in-tbl{flex:1;overflow:auto;border:1px solid var(--line-2);border-radius:10px;min-height:200px}.in-tbl table{width:100%;border-collapse:collapse;font-size:12.5px}
 .in-tbl th{position:sticky;top:0;background:var(--panel-solid);color:var(--muted);font-size:10px;letter-spacing:.7px;text-transform:uppercase;text-align:left;padding:7px 9px;border-bottom:1px solid var(--line-2);z-index:1}
 .in-tbl td{padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:middle}.in-tbl td.m{font:700 12.5px 'IBM Plex Mono',monospace;white-space:nowrap}
-.in-tbl tr.off td{opacity:.45}.in-tbl .warn{color:var(--vip);font-weight:700;font-size:11px}.in-tbl .bad{color:#ef4444;font-weight:700;font-size:11px}.in-tbl .dup{color:var(--muted);font-weight:700;font-size:11px}
+.in-tbl tr.off td{opacity:.45}.in-tbl .merge{color:var(--brand);font-weight:700;font-size:11px}.in-tbl .warn{color:var(--vip);font-weight:700;font-size:11px}.in-tbl .bad{color:#ef4444;font-weight:700;font-size:11px}.in-tbl .dup{color:var(--muted);font-weight:700;font-size:11px}
 .in-tbl .in-txt{width:100%;min-width:110px;background:var(--grid);border:1px solid var(--line-2);border-radius:6px;color:var(--ink);padding:3px 6px;font:600 12.5px inherit;font-family:inherit;box-sizing:border-box}
 .in-tbl .in-num{width:44px;background:var(--grid);border:1px solid var(--line-2);border-radius:6px;color:var(--ink);padding:3px 4px;font:700 12.5px 'IBM Plex Mono',monospace;text-align:center}
 .in-empty{padding:30px 14px;color:var(--muted);font-weight:600;font-size:12.5px;text-align:center}

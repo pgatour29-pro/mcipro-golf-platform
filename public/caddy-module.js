@@ -18,7 +18,7 @@
     today() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); },
     date() { return this.api.el.dateInput.value; },
     isToday() { return this.date() === this.today(); },
-    toM(t) { const m = String(t || '').match(/^(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : null; },
+    toM(t) { const m = String(t || '').match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/); return m ? (+m[1]) * 60 + (+m[2]) : null; },
     hm(m) { return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); },
 
     init(api) {
@@ -187,8 +187,14 @@
       const editBtn = r.isJob ? '' : '<button type="button" data-a="edit" data-id="' + E(r.b.id) + '">' + T('cmEdit') + '</button>';
       let right;
       if (st === 'done') right = '<div class="st">' + T('cmBackAt').replace('{t}', this.hm(Math.max.apply(null, r.jobs.map(j => j.e)))) + '<br><span class="' + (paidN === r.jobs.length ? 'ok' : 'warn') + '">' + (paidN === r.jobs.length ? T('cmPaidAll') : T('cmPaidOf').replace('{a}', paidN).replace('{b}', r.jobs.length)) + '</span></div>';
-      else if (st === 'out') right = '<div class="st out">' + T('cmSentOut') + ' ' + (r.jobs.find(j => j.sent && j.row.started_at) ? this.hm(this.toM(new Date(r.jobs.find(j => j.sent).row.started_at).toTimeString()) ) : r.t) + '<br>' + T('cmBackAbout').replace('{t}', this.hm(Math.max.apply(null, r.jobs.map(j => j.e)))) + '</div>'
+      else if (st === 'out') {
+        // the minute the group was actually sent out (first started_at), else its tee time — both rendered from numbers
+        const sentJ = r.jobs.find(j => j.sent && j.row.started_at);
+        const sentAt = sentJ ? new Date(sentJ.row.started_at) : null;
+        const sentTxt = sentAt && !isNaN(sentAt) ? this.hm(sentAt.getHours() * 60 + sentAt.getMinutes()) : this.hm(r.m);
+        right = '<div class="st out">' + T('cmSentOut') + ' ' + sentTxt + '<br>' + T('cmBackAbout').replace('{t}', this.hm(Math.max.apply(null, r.jobs.map(j => j.e)))) + '</div>'
         + (canSend ? '<button type="button" class="send" data-a="sentgrp" data-id="' + E(r.b.id) + '" data-job="' + E(r.isJob ? r.b.dbId : '') + '">' + T('cmSendOut') + '</button>' : '');
+      }
       else if (st === 'next') right = '<div class="st go">' + T('cmNextUp') + '</div>' + (canSend ? '<button type="button" class="send" data-a="sentgrp" data-id="' + E(r.b.id) + '" data-job="' + E(r.isJob ? r.b.dbId : '') + '">' + T('cmSendOut') + '</button>' : editBtn);
       else right = '<div class="st">' + (r.open.length ? '<span class="warn">' + T('cmOpenN').replace('{n}', r.open.length) + '</span>' : T('cmAllSet')) + (today ? '' : '') + '</div>' + (today ? '' : '') + (canSend && today ? '' : editBtn);
       const sub = r.isSoc ? T('cmSocietySub') : r.src === 'app' ? T('cmAppSub') : (r.pax + ' ' + (r.pax === 1 ? T('cmPlayer1') : T('cmPlayers')) + ' · 18');

@@ -465,14 +465,31 @@
       const api = this.api, T = k => this.T(k), E = s => this.esc(s), D = api.CaddyDesk.data;
       const d = this.dlg('cm-quick', 'quick');
       const cols = api.getLayout().cols || [];
-      const st = { time: this.defaultSlot(), pax: 4, caddies: 4, tee: 0, group: (pre && pre.group) || '', picks: [], touched: false, approx: !!(pre && pre.approx), src: (pre && pre.src) || 'desk' };
-      const fitting = () => { const m = this.toM(st.time); if (!D) return []; return D.queue.filter(r => D.fits(r, m)); };
-      const refill = () => { const f = fitting(); const have = new Set(st.picks.map(p => p.id)); st.picks = st.picks.filter(p => f.some(r => r.id === p.id)).slice(0, st.caddies); for (const r of f) { if (st.picks.length >= st.caddies) break; if (!have.has(r.id) && !st.picks.some(p => p.id === r.id)) st.picks.push(r); } };
+      const st = { time: this.defaultSlot(), pax: 4, caddies: 4, tee: 0, group: (pre && pre.group) || '', picks: [], touched: false, approx: !!(pre && pre.approx), src: (pre && pre.src) || 'desk', cq: '' };
+      // v1485 (Pete): the whole roster, searchable by number or name — tap to add; the queue only orders the list.
+      // A pick that no longer fits the chosen time drops off; nothing is picked for you.
+      const roster = () => (D ? D.roster : []);
+      const fitsAt = (x) => { const m = this.toM(st.time); return D ? D.fits(x, m) : true; };
+      const listFor = () => {
+        const q = String(st.cq || '').trim().toLowerCase().replace(/^#/, '');
+        const picked = new Set(st.picks.map(p => p.id));
+        const rows = roster().filter(x => !picked.has(x.id) && (!q || String(x.num).startsWith(q) || String(x.name || '').toLowerCase().includes(q)))
+          .map(x => ({ x, ok: fitsAt(x) }))
+          .sort((a, b) => (b.ok - a.ok) || ((D.queue.indexOf(a.x) + 1 || 999) - (D.queue.indexOf(b.x) + 1 || 999)) || (parseInt(a.x.num) || 9999) - (parseInt(b.x.num) || 9999));
+        return q ? rows.slice(0, 80) : rows.slice(0, 18);
+      };
       const paint = () => {
-        refill();
+        st.picks = st.picks.filter(p => fitsAt(p));
+        const grp = this.$('cm-q-group'); if (grp) st.group = grp.value;
         const seg = (name, vals, cur) => '<div class="qa-seg" data-seg="' + name + '">' + vals.map(v => '<span data-v="' + v + '" class="' + (String(v) === String(cur) ? 'on' : '') + '">' + v + '</span>').join('') + '</div>';
         const teeSeg = cols.length > 1 ? '<div class="qa-seg" data-seg="tee">' + cols.map((c, i) => '<span data-v="' + i + '" class="' + (i === st.tee ? 'on' : '') + '">' + E(c.course + '-' + c.tee) + '</span>').join('') + '</div>' : '<div class="qa-in"><b>' + E(cols[0] ? cols[0].course + '-' + cols[0].tee : 'A-1') + '</b></div>';
-        const picks = st.picks.map((r, i) => '<div class="qa-pk"><span class="q">Q' + (D.queue.indexOf(r) + 1) + '</span><b>#' + E(r.num) + '</b> ' + E(r.name && !/^Caddy #/i.test(r.name) ? r.name : '') + '<small>' + (r.cur ? T('cdBack').replace('{t}', this.hm(r.cur.e)) : T('cdHere')) + '</small><button type="button" data-swap="' + i + '">' + T('cmSwap') + '</button><button type="button" data-drop="' + i + '" aria-label="remove">✕</button></div>').join('');
+        const picks = st.picks.map((r, i) => '<span class="qa-chosen"><b>#' + E(r.num) + '</b> ' + E(r.name && !/^Caddy #/i.test(r.name) ? r.name : '') + '<button type="button" data-drop="' + i + '" aria-label="remove">✕</button></span>').join('');
+        const lst = D ? listFor() : [];
+        const stateOf = (x, ok) => x.off ? T('cdDayOff') : x.st === 'nochk' ? T('cdNotIn') : ok ? (x.cur ? T('cdBack').replace('{t}', this.hm(x.cur.e)) : T('cdHere')) : T('cdBusy');
+        const search = '<input id="cm-q-cq" class="qa-txt qa-search" type="search" autocomplete="off" placeholder="' + E(T('cmPickSearchPh')) + '" value="' + E(st.cq) + '">'
+          + '<div class="qa-list">' + (!D ? '<div class="qa-empty">' + T('cdLoading') + '</div>' : !roster().length ? '<div class="qa-empty">' + T('cdNoRoster') + '</div>' : !lst.length ? '<div class="qa-empty">' + T('cdNoMatch') + '</div>'
+            : lst.map(({ x, ok }) => { const qp = D.queue.indexOf(x); return '<button type="button" class="cm-pk' + (ok ? '' : ' no') + '"' + (ok ? ' data-addc="' + E(x.id) + '"' : ' disabled') + '><b>#' + E(x.num) + '</b><span>' + E(x.name && !/^Caddy #/i.test(x.name) ? x.name : '') + '</span><small>' + (ok && qp >= 0 ? 'Q' + (qp + 1) + ' · ' : '') + E(stateOf(x, ok)) + '</small></button>'; }).join(''))
+          + '</div>' + (D && roster().length && !st.cq ? '<div class="qa-empty">' + T('cmListHint').replace('{n}', roster().length) + '</div>' : '');
         const openN = Math.max(0, st.caddies - st.picks.length);
         d.innerHTML = '<div class="qa"><div class="t"><b>' + (st.src === 'phone' ? T('cmBookCaddy') : T('cmNewTee')) + '</b><small>' + E(this.date()) + '</small><button type="button" class="x" data-close>✕</button></div>'
           + (st.src === 'phone' ? '<div class="qa-note">' + T('cmPhoneNote') + '</div>' : '')
@@ -480,7 +497,7 @@
           + '<div><label>' + T('cmPlayers') + '</label>' + seg('pax', [1, 2, 3, 4], st.pax) + '</div></div>'
           + '<div class="qa-row"><div><label>' + T('cmCaddies') + '</label>' + seg('caddies', [0, 1, 2, 3, 4], st.caddies) + '</div><div><label>' + T('cmTee') + '</label>' + teeSeg + '</div></div>'
           + '<div><label>' + T('cmGroup') + ' <i>· ' + T('cmOptional') + '</i></label><input id="cm-q-group" class="qa-txt" type="text" autocomplete="off" placeholder="' + E(T('cmGroupPh')) + '" value="' + E(st.group) + '"></div>'
-          + (st.caddies ? '<div><label>' + T('cmFromQueue') + '</label><div class="qa-pick">' + (picks || '<div class="qa-empty">' + (D ? T('cmNobodyFree') : T('cdLoading')) + '</div>') + (openN ? '<div class="qa-empty">' + T('cmStayOpen').replace('{n}', openN) + '</div>' : '') + '</div></div>' : '')
+          + (st.caddies ? '<div><label>' + T('cmCaddiesLabel') + (st.picks.length ? ' <i>· ' + st.picks.length + '/' + st.caddies + '</i>' : '') + '</label>' + (picks ? '<div class="qa-picks">' + picks + '</div>' : '') + search + (openN ? '<div class="qa-empty">' + T('cmStayOpen').replace('{n}', openN) + '</div>' : '') + '</div>' : '')
           + '<button type="button" class="qa-go" data-save>' + T('cmAddGo') + '<small>' + (st.picks.length ? T('cmAlerted').replace('{n}', st.picks.length) : (st.caddies ? T('cmOpenForDesk') : T('cmNoCaddiesSub'))) + '</small></button></div>';
         const g = this.$('cm-q-group'); if (g) { g.value = st.group; }
       };
@@ -490,8 +507,8 @@
         const sp = e.target.closest('[data-step]'); if (sp) { const s = this.slots(), i = s.indexOf(st.time); st.time = s[Math.min(s.length - 1, Math.max(0, i + (+sp.dataset.step)))]; paint(); return; }
         const ap = e.target.closest('[data-approx]'); if (ap) { st.approx = !st.approx; st.group = (this.$('cm-q-group') || {}).value || st.group; paint(); return; }
         const sg = e.target.closest('.qa-seg span'); if (sg) { const name = sg.closest('.qa-seg').dataset.seg, v = +sg.dataset.v; if (name === 'pax') { st.pax = v; if (!st.touched) st.caddies = v; } else if (name === 'caddies') { st.caddies = v; st.touched = true; } else if (name === 'tee') st.tee = v; st.group = (this.$('cm-q-group') || {}).value || st.group; paint(); return; }
-        const sw = e.target.closest('[data-swap]'); if (sw) { const i = +sw.dataset.swap, f = fitting().filter(r => !st.picks.some(p => p.id === r.id)); if (f.length) st.picks[i] = f[0]; st.group = (this.$('cm-q-group') || {}).value || st.group; paint(); return; }
-        const dr = e.target.closest('[data-drop]'); if (dr) { st.picks.splice(+dr.dataset.drop, 1); st.touched = true; st.group = (this.$('cm-q-group') || {}).value || st.group; const keep = st.picks.slice(); paint(); st.picks = keep; paint(); return; }
+        const ad = e.target.closest('[data-addc]'); if (ad) { const x = roster().find(r => r.id === ad.dataset.addc); if (!x || st.picks.some(p => p.id === x.id)) return; st.picks.push(x); if (st.picks.length > st.caddies) { st.caddies = Math.min(4, st.picks.length); st.touched = true; } st.cq = ''; paint(); const n = this.$('cm-q-cq'); if (n) n.focus(); return; }
+        const dr = e.target.closest('[data-drop]'); if (dr) { st.picks.splice(+dr.dataset.drop, 1); paint(); return; }
         if (e.target.closest('[data-save]')) {
           const btn = e.target.closest('[data-save]'); btn.disabled = true;
           st.group = (this.$('cm-q-group') || {}).value.trim();
@@ -507,7 +524,8 @@
           else this.toast(T('cmAddedToast').replace('{t}', st.time).replace('{n}', ok.length) + (bad.length ? ' · ' + bad.map(x => '#' + x.r.num + ' ' + x.why).join(', ') : ''));
         }
       };
-      d.onchange = e => { if (e.target.id === 'cm-q-time') { st.time = e.target.value; st.group = (this.$('cm-q-group') || {}).value || st.group; paint(); } };
+      d.onchange = e => { if (e.target.id === 'cm-q-time') { st.time = e.target.value; paint(); } };
+      d.oninput = e => { if (e.target.id === 'cm-q-cq') { st.cq = e.target.value; const pos = e.target.selectionStart; paint(); const n = this.$('cm-q-cq'); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (x) {} } } };
       paint();
       if (!d.open) d.showModal();
     },
@@ -815,6 +833,11 @@ html.cm-starter .cm-cc{font-size:13px;padding:5px 9px}html.cm-starter .cm-row .r
 .qa-pk .q{font:700 10px 'IBM Plex Mono',monospace;color:var(--muted);background:var(--card-hi);border-radius:4px;padding:1px 5px}.qa-pk b{font:800 14px 'IBM Plex Mono',monospace}
 .qa-pk small{color:var(--muted);font-size:11px;font-weight:600;margin-left:auto}.qa-pk button{background:none;border:0;color:var(--brand);font:800 11.5px inherit;font-family:inherit;cursor:pointer;padding:2px 4px}.qa-pk button[data-drop]{color:var(--muted)}
 .qa-empty{font-size:12px;color:var(--muted);font-weight:600;padding:2px 2px}
+.qa-picks{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.qa-chosen{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(34,197,94,.6);background:rgba(34,197,94,.1);border-radius:9px;padding:6px 8px 6px 10px;font-size:13px}.qa-chosen b{font:800 13px 'IBM Plex Mono',monospace}.qa-chosen button{background:none;border:0;color:var(--muted);font-size:14px;cursor:pointer;padding:0 2px}
+.qa-search{margin-bottom:6px}
+.qa-list{display:flex;flex-wrap:wrap;gap:4px;max-height:210px;overflow:auto;padding:1px}
+.qa-list .cm-pk{min-width:104px}
 .qa-go{height:48px;border-radius:12px;border:0;background:var(--brand);color:var(--badge-ink);font:800 15px inherit;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}
 .qa-go small{font:600 11px 'IBM Plex Mono',monospace;opacity:.75}.qa-go:disabled{opacity:.6}
 .cm-dlg.intake{width:min(96vw,1120px)}

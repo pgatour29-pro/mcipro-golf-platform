@@ -21,7 +21,7 @@ const KAKAO_CLIENT_SECRET = Deno.env.get("KAKAO_CLIENT_SECRET")!;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, x-client-info, apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, x-client-info, apikey, x-mcp-actor, x-mcp-actor-name, x-mcp-role",
 };
 
 const json = (b: unknown, s = 200) =>

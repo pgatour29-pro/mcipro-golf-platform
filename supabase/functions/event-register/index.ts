@@ -11,7 +11,7 @@ const supaAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persist
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-mcp-actor, x-mcp-actor-name, x-mcp-role",
 };
 
 function json(body: any, status = 200) {

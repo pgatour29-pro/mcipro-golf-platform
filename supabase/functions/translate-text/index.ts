@@ -13,7 +13,7 @@ const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, x-client-info, apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, x-client-info, apikey, x-mcp-actor, x-mcp-actor-name, x-mcp-role",
 };
 
 const LANG_NAMES: Record<string, string> = {

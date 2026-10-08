@@ -21,7 +21,11 @@ window.mcpActorHeaders = function () {
 };
 window.mcpActorFetch = function (input, init) {
     try {
-        var extra = window.mcpActorHeaders();
+        // v1486: REST/RPC only. These headers are read by the PostgREST trigger and nowhere else — on an edge
+        // function call the browser's CORS preflight listed them, no function allowed them, and the POST was
+        // blocked before it left the phone (every photo screen, LINE alert and translation failed silently).
+        var url = typeof input === 'string' ? input : ((input && input.url) || '');
+        var extra = url.indexOf('/rest/v1/') !== -1 ? window.mcpActorHeaders() : {};
         var keys = Object.keys(extra);
         if (keys.length) {
             init = init || {};

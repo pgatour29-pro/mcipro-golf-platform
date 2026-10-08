@@ -17,7 +17,7 @@ export function corsHeaders(origin: string | null): HeadersInit {
     "Access-Control-Allow-Origin": allow,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers":
-      "authorization, x-client-info, apikey, content-type, x-admin-secret",
+      "authorization, x-client-info, apikey, content-type, x-admin-secret, x-mcp-actor, x-mcp-actor-name, x-mcp-role",
     "Access-Control-Max-Age": "86400",
   };
 }

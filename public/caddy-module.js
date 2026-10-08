@@ -10,7 +10,7 @@
 (function () {
   'use strict';
   const CM = {
-    on: false, api: null, mode: 'desk', showEarlier: false, _scrolled: false, _toastT: 0,
+    on: false, api: null, mode: 'desk', showEarlier: false, _scrolled: false, _toastT: 0, seat: null, sq: '', fq: '',
     esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); },
     T(k) { const v = this.api.t(k); return v === k ? (CM.EN[k] || k) : v; },
     $(id) { return document.getElementById(id); },
@@ -73,8 +73,27 @@
       }
       const grid = document.querySelector('.teesheet-grid');
       const b = document.createElement('div'); b.id = 'cm-board';
+      // v1483 (Pete): "from anywhere in the caddy desk, type a golfer or group and start assigning" — a golfer
+      // ringing the pro shop gets a caddy booked while on the phone. Typing anywhere lands in this box.
+      document.addEventListener('keydown', e => {
+        if (!this.on || e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1 || e.key === ' ') return;
+        const ae = document.activeElement;
+        if (ae && ae !== document.body && ae.matches('input,textarea,select,[contenteditable],[contenteditable] *')) return;
+        if (document.querySelector('dialog[open]') || (api.DaySheet && api.DaySheet._open)) return;
+        if (document.documentElement.classList.contains('ts-cad')) return;   // CADDIES timeline has its own search
+        const f = this.$('cm-find'); if (f) { f.focus(); }
+      }, true);
       if (grid) grid.parentNode.insertBefore(b, grid.nextSibling); else document.querySelector('.main-content').appendChild(b);
       b.addEventListener('click', e => this.onClick(e));
+      b.addEventListener('input', e => {
+        const f = e.target.closest('[data-fq]'); if (f) { this.fq = f.value; this.seat = null; this.paint(); return; }
+        const i = e.target.closest('[data-sq]'); if (!i) return; this.sq = i.value; this.paint();
+      });
+      b.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { if (this.seat) { this.seat = null; this.sq = ''; } else if (this.fq) { this.fq = ''; } this.paint(); return; }
+        // Enter in the find box: open the first matched player without a caddy
+        if (e.key === 'Enter' && e.target.closest('[data-fq]')) { const first = this.$('cm-board').querySelector('.cm-row .cm-pl [data-a="seat"].need'); if (first) first.click(); }
+      });
     },
     railPaint() {
       const rail = this.$('ts-density'); if (!rail) return;
@@ -127,8 +146,12 @@
       const c = api.courseCtx ? api.courseCtx() : {};
       if (!c || !c.id) { el.innerHTML = '<div class="cm-first"><div><b>' + T('cmNoCourse') + '</b></div></div>'; return; }
       if (!rows) { el.innerHTML = '<div class="cm-sum"><span>' + T('cdLoading') + '</span></div>'; return; }
-      if (!rows.length) {
-        el.innerHTML = '<div class="cm-first"><div class="ic"><span class="material-symbols-outlined">upload_file</span></div><div><b>' + T('cmFirstTitle') + '</b><small>' + T('cmFirstSub') + '</small></div>'
+      const fq = String(this.fq || '').trim().toLowerCase();
+      const hit = r => !fq || [r.name, r.b.societyName, r.b.eventName, r.b.groupName].concat(r.golfers.map(g => g.name), (r.b.unpaired || []).map(g => g.name)).some(x => String(x || '').toLowerCase().includes(fq));
+      const findBar = '<div class="cm-find"><span class="ic">⌕</span><input id="cm-find" data-fq type="search" autocomplete="off" placeholder="' + this.esc(T('cmFindPh')) + '" value="' + this.esc(this.fq) + '">'
+        + (fq ? '<span class="n">' + this.esc(T('cmFindN').replace('{n}', rows ? rows.filter(hit).length : 0)) + '</span><button type="button" class="x" data-a="findclear">✕</button>' : '') + '</div>';
+      if (!rows.length && !fq) {
+        el.innerHTML = findBar + '<div class="cm-first"><div class="ic"><span class="material-symbols-outlined">upload_file</span></div><div><b>' + T('cmFirstTitle') + '</b><small>' + T('cmFirstSub') + '</small></div>'
           + '<div class="acts"><button type="button" class="today-btn cm-primary" data-a="import">' + T('cmBringIn') + '</button><button type="button" class="today-btn" data-a="add">' + T('cmAddOne') + '</button></div></div>';
         return;
       }
@@ -138,10 +161,16 @@
       const needN = D ? D.open.length : rows.reduce((n, r) => n + r.needed, 0);
       const srcCount = {}; rows.forEach(r => { srcCount[r.src] = (srcCount[r.src] || 0) + 1; });
       const legend = Object.keys(srcCount).map(k => '<span class="src ' + k + '"><i></i>' + this.esc(this.srcWord(k)) + ' ' + srcCount[k] + '</span>').join('');
-      let html = '<div class="cm-sum"><span><b>' + rows.length + '</b> ' + T('cmTeeTimes') + '</span><span><b>' + players + '</b> ' + T('cmPlayers') + '</span><span><b>' + jobsN + '</b> ' + T('cmCaddyJobs') + '</span>'
+      let html = findBar + '<div class="cm-sum"><span><b>' + rows.length + '</b> ' + T('cmTeeTimes') + '</span><span><b>' + players + '</b> ' + T('cmPlayers') + '</span><span><b>' + jobsN + '</b> ' + T('cmCaddyJobs') + '</span>'
         + '<span class="' + (needN ? 'warn' : '') + '"><b>' + needN + '</b> ' + T('cmNeedCaddy') + '</span><span class="legend">' + legend + '</span></div>';
-      const earlier = today && !this.showEarlier ? rows.filter(r => r.m < now - 45) : [];
-      const shown = earlier.length ? rows.filter(r => r.m >= now - 45) : rows;
+      const matched = fq ? rows.filter(hit) : rows;
+      const earlier = (today && !this.showEarlier && !fq) ? rows.filter(r => r.m < now - 45) : [];
+      const shown = earlier.length ? rows.filter(r => r.m >= now - 45) : matched;
+      if (fq && !matched.length) {
+        html += '<div class="cm-first"><div class="ic"><span class="material-symbols-outlined">person_search</span></div><div><b>' + this.esc(T('cmFindNone').replace('{q}', this.fq.trim())) + '</b><small>' + T('cmFindNoneSub') + '</small></div>'
+          + '<div class="acts"><button type="button" class="today-btn cm-primary" data-a="addfor">' + this.esc(T('cmFindAdd').replace('{q}', this.fq.trim())) + '</button></div></div>';
+        el.innerHTML = html; this.keepFocus(); return;
+      }
       if (earlier.length) {
         const outJobs = earlier.reduce((a, r) => a.concat(r.jobs.filter(j => j.out)), []);
         const first = outJobs.length ? Math.min.apply(null, outJobs.map(j => j.e)) : null;
@@ -157,34 +186,84 @@
         const hour = Math.floor(r.m / 60), isHour = hour !== lastHour; lastHour = hour;
         return pre + this.rowHtml(r, today, now, isHour);
       }).join('') + (nowDrawn ? '' : '<div class="cm-now"><span>' + this.hm(now) + ' · ' + T('cmNow') + '</span></div>') + '</div>';
+      const ae = document.activeElement, keepId = ae && (ae.id === 'cm-sq' || ae.id === 'cm-find') ? ae.id : null, keep = keepId ? ae.selectionStart : null;
       el.innerHTML = html;
+      if (keepId) { const n = this.$(keepId); if (n) { n.focus(); try { n.setSelectionRange(keep, keep); } catch (x) {} } }
       if (this.mode === 'starter' && !this._scrolled) { this._scrolled = true; const n = this.$('cm-now'); if (n && n.scrollIntoView) { try { n.scrollIntoView({ block: 'center' }); } catch (e) {} } }
     },
+    // the caddy job behind one player on this row: the row's own linked jobs (tee sheet seat), else the golfer's job at this
+    // time (society registration / golfer app), else her number only (no job row yet)
+    jobFor(r, g) {
+      const D = this.api.CaddyDesk.data; if (!D) return null;
+      const gid = g.odoo_id || null; let j = null;
+      if (r.isJob) return r.jobs[0] || null;
+      if (!r.isSoc) j = r.jobs.find(x => x.cad && ((g.caddyId && x.cad.id === g.caddyId) || (g.caddyNumber && String(x.num) === String(g.caddyNumber)))) || null;
+      if (!j && gid) j = D.jobs.find(x => x.row && (x.row.golfer_id === gid || x.row.user_id === gid) && Math.abs(x.s - r.m) <= 90) || null;
+      if (!j && g.caddyNumber) j = D.jobs.find(x => String(x.num) === String(g.caddyNumber) && Math.abs(x.s - r.m) <= 30) || null;
+      return j;
+    },
+    seatTime(r) { return (r.b.groupTee && this.toM(r.b.groupTee) != null) ? r.b.groupTee : r.t; },
+    chipFor(r, g, j, today) {
+      const T = k => this.T(k), E = s => this.esc(s);
+      if (j) {
+        const num = j.num ? '#' + E(j.num) : '', nm = j.cad && j.cad.name && !/^Caddy #/i.test(j.cad.name) ? E(j.cad.name) : (g.caddyName && !/^Caddy #/i.test(g.caddyName) ? E(g.caddyName) : '');
+        const sub = j.done ? T('cmBackAt').replace('{t}', this.hm(j.e)) : j.out ? T('cmOutBack').replace('{t}', this.hm(j.e)) : j.pending ? T('cmConfirmSub') : T('cmConfirmed');
+        return '<button type="button" class="cm-cc ' + (j.done ? 'done' : j.out ? 'out' : '') + '" data-a="job" data-j="' + E(j.id) + '"><b>' + num + '</b>' + nm + '<small>' + sub + '</small></button>';
+      }
+      if (g.caddyNumber || g.caddyId) {
+        const sub = g.caddyStatus === 'pending' ? T('cmConfirmSub') : T('cmBooked');
+        return '<span class="cm-cc"><b>' + (g.caddyNumber ? '#' + E(g.caddyNumber) : '') + '</b>' + E(g.caddyName && !/^Caddy #/i.test(g.caddyName) ? g.caddyName : '') + '<small>' + sub + '</small></span>';
+      }
+      return '';
+    },
+    seatHtml(r, g, i, kind, today) {
+      const T = k => this.T(k), E = s => this.esc(s), D = this.api.CaddyDesk.data;
+      const j = this.jobFor(r, g);
+      let chip = this.chipFor(r, g, j, today);
+      const open = this.seat && this.seat.id === r.b.id && this.seat.i === i && this.seat.kind === kind;
+      // the course assigns on the spot: a player with no caddy gets a picker; one with a caddy can change her (pencil)
+      const canAssign = D && !r.isJob && (!j || !j.done) && !(j && (j.out || j.sent));
+      const btn = canAssign ? '<button type="button" class="cm-cc ' + (chip ? 'edit' : 'need') + (open ? ' on' : '') + '" data-a="seat" data-id="' + E(r.b.id) + '" data-i="' + i + '" data-kind="' + kind + '">' + (chip ? '✎' : T('cmAssignCaddy')) + '</button>' : '';
+      return '<div class="cm-pl' + (open ? ' on' : '') + '"><span class="nm">' + this.mark(g.name || T('cmGuest')) + '</span>' + chip + btn + '</div>' + (open ? this.pickHtml(r, g) : '');
+    },
+    pickHtml(r, g) {
+      const T = k => this.T(k), E = s => this.esc(s), D = this.api.CaddyDesk.data; if (!D) return '';
+      const m = this.toM(this.seatTime(r));
+      const q = String(this.sq || '').trim().toLowerCase().replace(/^#/, '');
+      const inRow = new Set(r.golfers.map(x => String(x.caddyNumber || '')).filter(Boolean));
+      const list = D.roster.filter(x => !q || String(x.num).startsWith(q) || String(x.name || '').toLowerCase().includes(q))
+        .map(x => ({ x, ok: D.fits(x, m) && !inRow.has(String(x.num)) }))
+        .sort((a, b) => (b.ok - a.ok) || ((D.queue.indexOf(a.x) + 1 || 999) - (D.queue.indexOf(b.x) + 1 || 999)));
+      return '<div class="cm-pick"><input id="cm-sq" data-sq type="search" autocomplete="off" placeholder="' + E(T('cmPickPh')) + '" value="' + E(this.sq) + '">'
+        + '<div class="cm-pick-list">' + (list.length ? list.slice(0, 60).map(({ x, ok }) => {
+          const why = x.off ? T('cdDayOff') : x.st === 'nochk' ? T('cdNotIn') : inRow.has(String(x.num)) ? T('cmInGroup') : ok ? (x.cur ? T('cdBack').replace('{t}', this.hm(x.cur.e)) : T('cdHere')) : T('cdBusy');
+          const qp = D.queue.indexOf(x);
+          return '<button type="button" class="cm-pk' + (ok ? '' : ' no') + '"' + (ok ? ' data-a="seatpick" data-c="' + E(x.id) + '"' : ' disabled') + '><b>#' + E(x.num) + '</b><span>' + E(x.name && !/^Caddy #/i.test(x.name) ? x.name : '') + '</span><small>' + (ok && qp >= 0 ? 'Q' + (qp + 1) + ' · ' : '') + E(why) + '</small></button>';
+        }).join('') : '<div class="cm-empty">' + T('cdNoMatch') + '</div>') + '</div></div>';
+    },
+    keepFocus() { const n = this.$('cm-find'); if (n && this.fq) { n.focus(); try { n.setSelectionRange(n.value.length, n.value.length); } catch (x) {} } },
+    mark(name) { const E = s => this.esc(s), q = String(this.fq || '').trim(); if (!q) return E(name); const i = String(name || '').toLowerCase().indexOf(q.toLowerCase()); if (i < 0) return E(name); return E(name.slice(0, i)) + '<mark>' + E(name.slice(i, i + q.length)) + '</mark>' + E(name.slice(i + q.length)); },
     rowHtml(r, today, now, isHour) {
       const T = k => this.T(k), E = s => this.esc(s), D = this.api.CaddyDesk.data;
       const allDone = r.jobs.length && r.jobs.every(j => j.done);
       const anyOut = r.jobs.some(j => j.out);
       const anySent = r.jobs.some(j => j.sent);
       const st = allDone ? 'done' : anyOut || anySent ? 'out' : (today && r.m <= now + 15 && r.m >= now - 45) ? 'next' : 'later';
-      const chips = [];
-      if (D) {
-        r.jobs.forEach(j => {
-          const num = j.num ? '#' + E(j.num) : '', nm = j.cad && j.cad.name && !/^Caddy #/i.test(j.cad.name) ? E(j.cad.name) : '';
-          const sub = j.done ? T('cmBackAt').replace('{t}', this.hm(j.e)) : j.out ? T('cmOutBack').replace('{t}', this.hm(j.e)) : j.pending ? T('cmConfirmSub') : T('cmConfirmed');
-          chips.push('<button type="button" class="cm-cc ' + (j.done ? 'done' : j.out ? 'out' : '') + '" data-a="job" data-j="' + E(j.id) + '"><b>' + num + '</b>' + nm + '<small>' + sub + '</small></button>');
-        });
-        r.open.forEach(j => {
-          const sug = j.sug ? '<em>Q · #' + E(j.sug.num) + ' ' + E(j.sug.name || '') + '</em>' : '<em class="none">' + T('cdNobody') + '</em>';
-          chips.push('<button type="button" class="cm-cc need" data-a="assign" data-j="' + E(j.id) + '">' + T('cmNeeds1') + ' ' + sug + '<span class="go">' + T('cdAssign') + '</span></button>');
-        });
-      } else {
-        r.golfers.forEach(g => { if (g.caddyNumber || g.caddyName) chips.push('<span class="cm-cc"><b>' + (g.caddyNumber ? '#' + E(g.caddyNumber) : '') + '</b>' + E(g.caddyName && !/^Caddy #/i.test(g.caddyName) ? g.caddyName : '') + '</span>'); });
-        for (let i = 0; i < r.needed; i++) chips.push('<span class="cm-cc need">' + T('cmNeeds1') + '</span>');
-      }
-      if (!chips.length) chips.push('<span class="cm-cc none">' + T('cmNoCaddies') + '</span>');
+      // every player listed, like the tee sheet — her caddy beside her, or Assign
+      const lines = r.golfers.map((g, i) => this.seatHtml(r, g, i, 'g', today));
+      const unp = (r.b.unpaired || []);
+      if (unp.length) lines.push('<div class="cm-unp">' + T('cmUnpaired') + '</div>' + unp.map((g, i) => this.seatHtml(r, g, i, 'u', today)).join(''));
+      // open jobs not tied to a player (caddies wanted on a walk-in): the desk's picker
+      const without = r.isSoc ? 0 : r.golfers.filter(g => !(g.caddyNumber || g.caddyId) && !this.jobFor(r, g)).length;
+      r.open.slice(Math.min(r.open.length, without)).forEach(j => {
+        const sug = j.sug ? '<em>Q · #' + E(j.sug.num) + ' ' + E(j.sug.name || '') + '</em>' : '<em class="none">' + T('cdNobody') + '</em>';
+        lines.push('<div class="cm-pl"><span class="nm muted">' + T('cmOpenSeat') + '</span><button type="button" class="cm-cc need" data-a="assign" data-j="' + E(j.id) + '">' + T('cmNeeds1') + ' ' + sug + '<span class="go">' + T('cdAssign') + '</span></button></div>');
+      });
+      if (!lines.length) lines.push('<span class="cm-cc none">' + T('cmNoCaddies') + '</span>');
       const paidN = r.jobs.filter(j => j.paid).length;
       const canSend = today && r.jobs.some(j => !j.sent && !j.done);
       const editBtn = r.isJob ? '' : '<button type="button" data-a="edit" data-id="' + E(r.b.id) + '">' + T('cmEdit') + '</button>';
+      const sendBtn = '<button type="button" class="send" data-a="sentgrp" data-id="' + E(r.b.id) + '" data-job="' + E(r.isJob ? r.b.dbId : '') + '">' + T('cmSendOut') + '</button>';
       let right;
       if (st === 'done') right = '<div class="st">' + T('cmBackAt').replace('{t}', this.hm(Math.max.apply(null, r.jobs.map(j => j.e)))) + '<br><span class="' + (paidN === r.jobs.length ? 'ok' : 'warn') + '">' + (paidN === r.jobs.length ? T('cmPaidAll') : T('cmPaidOf').replace('{a}', paidN).replace('{b}', r.jobs.length)) + '</span></div>';
       else if (st === 'out') {
@@ -192,26 +271,69 @@
         const sentJ = r.jobs.find(j => j.sent && j.row.started_at);
         const sentAt = sentJ ? new Date(sentJ.row.started_at) : null;
         const sentTxt = sentAt && !isNaN(sentAt) ? this.hm(sentAt.getHours() * 60 + sentAt.getMinutes()) : this.hm(r.m);
-        right = '<div class="st out">' + T('cmSentOut') + ' ' + sentTxt + '<br>' + T('cmBackAbout').replace('{t}', this.hm(Math.max.apply(null, r.jobs.map(j => j.e)))) + '</div>'
-        + (canSend ? '<button type="button" class="send" data-a="sentgrp" data-id="' + E(r.b.id) + '" data-job="' + E(r.isJob ? r.b.dbId : '') + '">' + T('cmSendOut') + '</button>' : '');
+        right = '<div class="st out">' + T('cmSentOut') + ' ' + sentTxt + '<br>' + T('cmBackAbout').replace('{t}', this.hm(Math.max.apply(null, r.jobs.map(j => j.e)))) + '</div>' + (canSend ? sendBtn : '');
       }
-      else if (st === 'next') right = '<div class="st go">' + T('cmNextUp') + '</div>' + (canSend ? '<button type="button" class="send" data-a="sentgrp" data-id="' + E(r.b.id) + '" data-job="' + E(r.isJob ? r.b.dbId : '') + '">' + T('cmSendOut') + '</button>' : editBtn);
-      else right = '<div class="st">' + (r.open.length ? '<span class="warn">' + T('cmOpenN').replace('{n}', r.open.length) + '</span>' : T('cmAllSet')) + (today ? '' : '') + '</div>' + (today ? '' : '') + (canSend && today ? '' : editBtn);
-      const sub = r.isSoc ? T('cmSocietySub') : r.src === 'app' ? T('cmAppSub') : (r.pax + ' ' + (r.pax === 1 ? T('cmPlayer1') : T('cmPlayers')) + ' · 18');
+      else if (st === 'next') right = '<div class="st go">' + T('cmNextUp') + '</div>' + (canSend ? sendBtn : editBtn);
+      else {
+        const w0 = r.golfers.filter(g => !(g.caddyNumber || g.caddyId) && !this.jobFor(r, g)).length;
+        const missing = r.isSoc ? w0 + r.open.length : Math.max(w0, r.open.length);
+        right = '<div class="st">' + (missing ? '<span class="warn">' + T('cmOpenN').replace('{n}', missing) + '</span>' : T('cmAllSet')) + '</div>' + editBtn;
+      }
+      const sub = r.isSoc ? ((r.b.societyName ? E(r.b.societyName) + ' · ' : '') + E(r.b.eventName || T('cmSocietySub')) + (r.b.groupTee && r.b.groupTee !== r.t ? ' · ' + E(r.b.groupTee) : '')) : r.src === 'app' ? E(T('cmAppSub')) : E(r.pax + ' ' + (r.pax === 1 ? T('cmPlayer1') : T('cmPlayers')) + ' · 18');
       return '<div class="cm-row ' + st + (isHour ? ' hour' : '') + '" data-id="' + E(r.b.id) + '">'
         + '<div class="tm">' + E(r.t) + '<small>' + r.pax + ' ' + (r.pax === 1 ? T('cmPlayer1') : T('cmPlayers')) + '</small></div>'
         + '<div class="tee">' + E(r.tee) + '</div>'
-        + '<div class="grp"><b>' + E(r.name) + '</b><small>' + E(sub) + '</small><span class="src-tag ' + r.src + '">' + E(this.srcWord(r.src)) + '</span></div>'
-        + '<div class="cad">' + chips.join('') + '</div>'
+        + '<div class="grp"><b>' + this.mark(r.name) + '</b><small>' + sub + '</small><span class="src-tag ' + r.src + '">' + E(this.srcWord(r.src)) + '</span></div>'
+        + '<div class="cad cm-seats">' + lines.join('') + '</div>'
         + '<div class="rt">' + right + '</div></div>';
+    },
+    // assign the picked caddy to that seat — the same writes the tee sheet and the desk already make
+    async assignSeat(seat, rosterId) {
+      const api = this.api, CD = api.CaddyDesk, D = CD.data, T = k => this.T(k); if (!D) return;
+      const r0 = D.roster.find(x => x.id === rosterId); if (!r0) return;
+      const row = (this.rows() || []).find(x => x.b.id === seat.id); if (!row) return;
+      const g = seat.kind === 'u' ? (row.b.unpaired || [])[seat.i] : row.golfers[seat.i]; if (!g) return;
+      const tee = this.seatTime(row);
+      let ok = false;
+      await CD.run(async () => {
+        if (!row.isSoc && !row.isJob) {
+          // a tee-sheet seat: the booking's own path (golfers[] + syncCaddyJobs), as the print sheet does
+          const cd = (api.caddies() || []).find(x => x.id === r0.id); if (!cd) { CD.toast(T('cdNoRoster'), true); return; }
+          const before = JSON.stringify((row.b.golfers || []).map(x => x.caddyId || ''));
+          await api.DaySheet.setCaddy(row.b.id, seat.i, cd);
+          const after = api.getDay(this.date()).find(x => x.id === row.b.id);
+          ok = !!after && JSON.stringify((after.golfers || []).map(x => x.caddyId || '')) !== before;
+          if (ok) CD.toast(T('cmSeatDone').replace('{c}', '#' + r0.num).replace('{g}', g.name || ''));
+          return;
+        }
+        // a society player: the CourseLink contract — her job row (replace if she has one) + the registration's number
+        const j = this.jobFor(row, g);
+        const it = j ? { j, cur: { id: (j.cad && j.cad.id) || null, num: String(j.num || '') }, t: j.t, s: j.s, name: g.name || '' }
+                     : { rg: { playerId: g.odoo_id || null, playerName: g.name || '' }, ev: { eventId: row.b.eventId, eventTitle: row.b.eventName || '' }, t: tee, s: this.toM(tee), name: g.name || '' };
+        ok = await CD.giveTo(r0, it);
+      });
+      if (ok) { this.seat = null; this.sq = ''; }
+      // the society slots re-read their players (registrations + jobs) on the next sheet render
+      try { api.render(); } catch (e) {}
+      this.paint();
     },
     async onClick(e) {
       const a = e.target.closest('[data-a]'); if (!a) return;
       const api = this.api, CD = api.CaddyDesk, act = a.dataset.a;
       if (act === 'earlier') { this.showEarlier = !this.showEarlier; this.paint(); return; }
+      if (act === 'findclear') { this.fq = ''; this.seat = null; this.paint(); const f = this.$('cm-find'); if (f) f.focus(); return; }
+      if (act === 'addfor') { const name = this.fq.trim(); this.fq = ''; this.paint(); this.openAdd({ group: name }); return; }
       if (act === 'add') { this.openAdd(); return; }
       if (act === 'import') { this.openImport(); return; }
       if (act === 'assign' || act === 'job') { CD.showJob(a.dataset.j); return; }
+      if (act === 'seat') {
+        const next = { id: a.dataset.id, i: +a.dataset.i, kind: a.dataset.kind || 'g' };
+        this.seat = (this.seat && this.seat.id === next.id && this.seat.i === next.i && this.seat.kind === next.kind) ? null : next;
+        this.sq = ''; this.paint();
+        if (this.seat) { const q = this.$('cm-sq'); if (q) q.focus(); }
+        return;
+      }
+      if (act === 'seatpick') { if (this.seat && !CD._busy) await this.assignSeat(this.seat, a.dataset.c); return; }
       if (act === 'edit') {
         const id = a.dataset.id;
         const p = document.querySelector('.pill[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
@@ -306,11 +428,11 @@
       if (!d) { d = document.createElement('dialog'); d.id = id; d.className = 'cm-dlg ' + (cls || ''); document.body.appendChild(d); d.addEventListener('click', e => { if (e.target === d) d.close(); }); }
       return d;
     },
-    openAdd() {
+    openAdd(pre) {
       const api = this.api, T = k => this.T(k), E = s => this.esc(s), D = api.CaddyDesk.data;
       const d = this.dlg('cm-quick', 'quick');
       const cols = api.getLayout().cols || [];
-      const st = { time: this.defaultSlot(), pax: 4, caddies: 4, tee: 0, group: '', picks: [], touched: false };
+      const st = { time: this.defaultSlot(), pax: 4, caddies: 4, tee: 0, group: (pre && pre.group) || '', picks: [], touched: false };
       const fitting = () => { const m = this.toM(st.time); if (!D) return []; return D.queue.filter(r => D.fits(r, m)); };
       const refill = () => { const f = fitting(); const have = new Set(st.picks.map(p => p.id)); st.picks = st.picks.filter(p => f.some(r => r.id === p.id)).slice(0, st.caddies); for (const r of f) { if (st.picks.length >= st.caddies) break; if (!have.has(r.id) && !st.picks.some(p => p.id === r.id)) st.picks.push(r); } };
       const paint = () => {
@@ -527,6 +649,13 @@ html.cm .today-btn.cm-primary{background:var(--brand);color:var(--badge-ink);bor
 .cm-own b{color:var(--ink);font-weight:800}.cm-own .dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
 .cm-own a{border:1px solid var(--line-2);border-radius:999px;color:var(--brand);font-weight:800;font-size:10.5px;padding:3px 9px;text-decoration:none}
 #cm-board{padding:12px 18px 90px;color:var(--ink);font-family:'Hanken Grotesk',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+.cm-find{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:6px 10px;background:var(--panel-solid);border:1px solid var(--line-2);border-radius:12px}
+.cm-find .ic{color:var(--muted);font-size:16px}
+.cm-find input{flex:1;min-width:0;height:36px;border:0;background:transparent;color:var(--ink);font:600 15px inherit;font-family:inherit;outline:none}
+.cm-find input::placeholder{color:var(--muted)}
+.cm-find .n{font:600 11.5px 'IBM Plex Mono',monospace;color:var(--brand);white-space:nowrap}
+.cm-find .x{background:none;border:0;color:var(--muted);font-size:16px;cursor:pointer;padding:2px 6px}
+#cm-board mark{background:rgba(34,197,94,.28);color:inherit;border-radius:3px;padding:0 1px}
 .cm-sum{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:12px;color:var(--muted);font-weight:600}
 .cm-sum b{color:var(--ink);font-family:'IBM Plex Mono',ui-monospace,monospace}.cm-sum .warn,.cm-sum .warn b{color:var(--vip)}
 .cm-sum .legend{margin-left:auto;display:flex;gap:12px;flex-wrap:wrap}.cm-sum .src{display:inline-flex;gap:6px;align-items:center}.cm-sum .src i{width:8px;height:8px;border-radius:2px;display:inline-block;background:var(--ink-2)}
@@ -542,6 +671,19 @@ html.cm .today-btn.cm-primary{background:var(--brand);color:var(--badge-ink);bor
 .src-tag{display:inline-block;margin-top:4px;font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:2px 6px;border-radius:20px;background:var(--card-hi);color:var(--muted);white-space:nowrap}
 .src-tag.sheet{color:#38bdf8}.src-tag.app{color:var(--brand)}.src-tag.soc{color:var(--vip)}.src-tag.hot{color:#f97316}.src-tag.desk{color:var(--ink-2)}
 .cm-row .cad{display:flex;flex-wrap:wrap;gap:5px}
+.cm-row .cad.cm-seats{flex-direction:column;align-items:stretch;gap:3px}
+.cm-pl{display:flex;align-items:center;gap:7px;min-width:0;padding:1px 0}
+.cm-pl .nm{flex:0 1 auto;min-width:0;max-width:190px;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cm-pl .nm.muted{color:var(--muted);font-weight:600}
+.cm-pl.on{background:rgba(34,197,94,.06);border-radius:7px;margin:0 -4px;padding:2px 4px}
+.cm-cc.edit{border-style:dashed;border-color:var(--line-2);color:var(--muted);background:transparent;padding:2px 7px;font-size:12px}.cm-cc.edit.on,.cm-cc.need.on{border-color:var(--brand);color:var(--brand)}
+.cm-unp{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:5px}
+.cm-pick{margin:2px 0 6px;border:1px solid var(--line-2);border-radius:9px;background:var(--panel-solid);padding:6px;max-width:520px}
+.cm-pick input{width:100%;box-sizing:border-box;height:30px;border:1px solid var(--line-2);border-radius:7px;background:var(--grid);color:var(--ink);padding:0 9px;font:600 12.5px inherit;font-family:inherit;margin-bottom:6px}
+.cm-pick-list{display:flex;flex-wrap:wrap;gap:4px;max-height:190px;overflow:auto}
+.cm-pk{display:flex;flex-direction:column;align-items:flex-start;background:var(--card-hi);border:1px solid rgba(34,197,94,.55);color:var(--ink);border-radius:8px;padding:4px 8px;font-size:12px;cursor:pointer;min-width:96px;text-align:left;font-family:inherit}
+.cm-pk b{font:700 12.5px 'IBM Plex Mono',monospace}.cm-pk span{font-weight:600}.cm-pk small{font-size:10px;color:var(--muted)}.cm-pk.no{border-color:var(--line-2);opacity:.5;cursor:default}
+.cm-empty{font-size:12px;color:var(--muted);padding:4px 2px}
 .cm-cc{display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(34,197,94,.5);background:rgba(34,197,94,.08);border-radius:7px;padding:3px 7px;font-size:12px;white-space:nowrap;color:var(--ink);font-family:inherit;cursor:pointer;text-align:left}
 .cm-cc b{font:700 12px 'IBM Plex Mono',monospace}.cm-cc small{font-size:10px;color:var(--muted);font-weight:600}
 .cm-cc.out{border-color:var(--vip);background:rgba(245,179,66,.1)}.cm-cc.out small{color:var(--vip)}.cm-cc.done{border-color:var(--line-2);background:transparent;opacity:.75}

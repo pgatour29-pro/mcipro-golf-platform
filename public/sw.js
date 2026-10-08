@@ -1,7 +1,7 @@
 // SERVICE WORKER - Performance Caching Version
 // Caches static assets for dramatically faster repeat visits
 
-const SW_VERSION = 'mcipro-cache-v1481b';
+const SW_VERSION = 'mcipro-cache-v1482';
 const CACHE_NAME = `mcipro-static-${SW_VERSION}`;
 const RUNTIME_CACHE = `mcipro-runtime-${SW_VERSION}`;
 
@@ -88,8 +88,7 @@ self.addEventListener('install', event => {
                 );
             })
             .then(() => {
-                console.log('[SW] Static assets cached');
-                self.skipWaiting();
+                console.log('[SW] Static assets cached — waiting; the page offers the update, nobody is reloaded mid-task (v1482)');
             })
     );
 });
@@ -293,7 +292,8 @@ self.addEventListener('fetch', event => {
 
 // Handle messages from clients
 self.addEventListener('message', event => {
-    if (event.data === 'skipWaiting') {
+    // the person tapped Update now (or logged out): take over now, the page reloads once control changes
+    if (event.data === 'skipWaiting' || (event.data && event.data.type === 'SKIP_WAITING')) {
         self.skipWaiting();
     }
 

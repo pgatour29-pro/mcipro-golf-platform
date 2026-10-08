@@ -122,6 +122,13 @@
                 } catch (e) { }
                 const want = '/proshop-teesheet.html?course=' + encodeURIComponent(slug) + '&name=' + encodeURIComponent(PS.course.name || slug);
                 if (f.getAttribute('src') !== want) f.setAttribute('src', want);
+                // v1480: the Caddies tab is the same page in caddy mode, on the same course; it loads the first time its tab opens
+                const fc = document.getElementById('caddies-iframe');
+                if (fc) {
+                    const wantC = '/proshop-teesheet.html?mode=caddies&course=' + encodeURIComponent(slug) + '&name=' + encodeURIComponent(PS.course.name || slug);
+                    fc.dataset.src = wantC;
+                    if (fc.getAttribute('src') && fc.getAttribute('src') !== wantC) fc.setAttribute('src', wantC);
+                }
             } catch (e) { console.warn('[PS] tee sheet course link', e); }
         },
         stemOf(name) {
@@ -283,6 +290,13 @@
                 try {
                     const f = document.getElementById('teesheet-iframe');
                     if (f && f.contentWindow) f.contentWindow.postMessage({ type: 'REFRESH_TEESHEET' }, '*');
+                } catch (e) { }
+            }
+            else if (tab === 'caddies') {   // v1480 caddy module: load on first open, refresh after
+                try {
+                    const f = document.getElementById('caddies-iframe');
+                    if (f && !f.getAttribute('src')) f.setAttribute('src', f.dataset.src || '/proshop-teesheet.html?mode=caddies');
+                    else if (f && f.contentWindow) f.contentWindow.postMessage({ type: 'REFRESH_TEESHEET' }, '*');
                 } catch (e) { }
             }
         },

@@ -52948,9 +52948,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 const scrambleRoundIds = new Set();
                 rounds.forEach(r => { if (isTeamRound(r)) scrambleRoundIds.add(r.id); });
 
-                // First pass: identify rounds that have any stats tracking
+                // First pass: identify rounds that have any stats tracking, and count the holes each
+                // round actually has a score on. v1495: Lowest Round / Avg Score rank only rounds with all
+                // 18 holes scored — a 13-hole live card with 60 strokes sat at #1 because the old guard was
+                // just "gross >= 60" (101 partial rounds this year slipped through it).
                 const statsRounds = new Set();
+                const _scoredHoles = {};
                 allHoles.forEach(h => {
+                    if (h.gross_score != null) (_scoredHoles[h.round_id] = _scoredHoles[h.round_id] || new Set()).add(h.hole_number);
                     if (h.fairway_hit !== null || h.gir !== null || h.putts !== null) {
                         statsRounds.add(h.round_id);
                     }
@@ -53069,8 +53074,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Skip team rounds (scramble, waltz...) — singles scores only
                     if (scrambleRoundIds.has(r.id)) return;
                     const s = playerStats[playerId];
-                    // Only count full 18-hole rounds (min 60 gross excludes incomplete rounds)
-                    if (r.total_gross && r.total_gross >= 60 && r.total_gross < 200) {
+                    // Only full 18-hole rounds: every hole scored, plus a sanity band on the total
+                    const _holesDone = _scoredHoles[r.id] ? _scoredHoles[r.id].size : 0;
+                    if (_holesDone === 18 && r.total_gross && r.total_gross >= 50 && r.total_gross < 200) {
                         s.totalGross += r.total_gross;
                         s.grossHoles++;
                         if (r.total_gross < s.bestRound) s.bestRound = r.total_gross;

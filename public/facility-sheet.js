@@ -51,7 +51,7 @@
   var E = function (v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
 
   var FX = window.FacilitySheet = {
-    api: null, fac: null, view: 'all', data: null, _loadedAt: 0, _loading: null, members: [], _ver: 1487,
+    api: null, fac: null, view: 'all', data: null, _loadedAt: 0, _loading: null, members: [], _ver: 1488,
     t: function (k, vars) {
       var lang = (this.api && this.api.lang && this.api.lang()) || 'en';
       var s = (STR[lang] && STR[lang][k]) || STR.en[k] || k;
@@ -267,9 +267,44 @@
             var tm = String(ev.start_time || '').slice(0, 5); if (!/^\d\d:\d\d$/.test(tm)) return;
             var li = CL && CL.state && CL.state.byId && CL.state.byId[ev.id];
             by[slug].push({ id: 'ev-' + ev.id, eventId: ev.id, societyId: ev.society_id, time: tm, bookingType: 'society', source: 'society-event-db', fxSlug: slug,
-              name: ev.title || self.t('society'), groupName: (li && li.society) || ev.organizer_name || ev.title || self.t('society'), golfers: [], regs: li ? (li.regs || 0) : 0 });
+              name: ev.title || self.t('society'), groupName: (li && li.society) || ev.organizer_name || ev.title || self.t('society'), golfers: [], regs: li ? (li.regs || 0) : 0,
+              end: /^\d\d:\d\d/.test(String(ev.end_time || '')) ? String(ev.end_time).slice(0, 5) : '' });
           });
           Object.keys(by).forEach(function (s) { by[s].forEach(function (b) { if (jobsByBooking[b.id]) b.fxJobs = jobsByBooking[b.id]; }); });
+          // v1488: the society day's registered players ride its pill (quick find, +N, the caddy jobs below)
+          var evIds = [];
+          Object.keys(by).forEach(function (s) { by[s].forEach(function (b) { if (b.eventId) evIds.push(b.eventId); }); });
+          if (evIds.length) {
+            try {
+              var rr = await sb.from('event_registrations').select('event_id, player_id, player_name').in('event_id', evIds).limit(2000);
+              var regs = {};
+              (rr.data || []).forEach(function (x) { (regs[x.event_id] = regs[x.event_id] || []).push({ name: x.player_name || '', odoo_id: x.player_id || '' }); });
+              Object.keys(by).forEach(function (s) { by[s].forEach(function (b) { if (b.eventId && regs[b.eventId]) { b.unpaired = regs[b.eventId]; b.regs = regs[b.eventId].length; } }); });
+            } catch (e) {}
+          }
+          // v1488 (Pete: "Pete Park showing on top of TRGG"): a caddy job inside a society day's window on the same
+          // course belongs to that day — it is folded into the society pill, never painted beside it (the single
+          // sheet does the same). A job whose golfer is registered for the day folds wherever its time is.
+          Object.keys(by).forEach(function (s) {
+            var evs = by[s].filter(function (b) { return b.eventId; });
+            if (!evs.length) return;
+            var keyOf = function (g) { return (g.odoo_id ? 'id:' + g.odoo_id : '') + '|' + String(g.name || '').trim().toLowerCase(); };
+            by[s] = by[s].filter(function (b) {
+              if (b.source !== 'caddy-booking-db') return true;
+              var g = b.golfers[0], tm = api.minutes(b.time);
+              var ev = evs.find(function (e) {
+                var s0 = api.minutes(e.time), e0 = e.end ? api.minutes(e.end) : s0 + 60;
+                if (tm >= s0 && tm < e0) return true;
+                return (e.unpaired || []).some(function (r) { return (g.odoo_id && r.odoo_id === g.odoo_id) || (g.name && r.name && r.name.trim().toLowerCase() === g.name.trim().toLowerCase()); });
+              });
+              if (!ev) return true;
+              ev.golfers = ev.golfers || [];
+              var k = keyOf(g);
+              if (!ev.golfers.some(function (x) { return keyOf(x) === k; })) ev.golfers.push(g);
+              ev.unpaired = (ev.unpaired || []).filter(function (r) { return !((g.odoo_id && r.odoo_id === g.odoo_id) || (r.name && g.name && r.name.trim().toLowerCase() === g.name.trim().toLowerCase())); });
+              return false;
+            });
+          });
         } catch (e) { console.warn('[FacilitySheet] load', e); }
         self.data = self.stats(date, by);
         self._loadedAt = Date.now(); self._loading = null;
@@ -303,6 +338,14 @@
       return out;
     },
 
+    /* every course's bookings for the date as one list (quick find in the ALL view) */
+    dayList: function () {
+      var D = this.data, out = [];
+      if (!D) return out;
+      this.slugs().forEach(function (s) { if (D.by[s]) out.push.apply(out, D.by[s].list); });
+      return out;
+    },
+
     // ---------- ALL view ----------
     render: function () {
       if (!this.showingAll()) return;
@@ -325,14 +368,15 @@
       else if (withCad.length === 1 && withCad[0].caddyNumber) cad = 'C' + withCad[0].caddyNumber;
       else if (withCad.length > 1) cad = String(withCad.length);
       var need = parseInt(b.caddiesNeeded) || 0;
-      var meta = '<span class="m">' + api.TS_ICON.ppl + (g || (b.regs ? b.regs : 1)) + '</span>';
+      var nPl = b.eventId ? (g + (b.unpaired || []).length) || b.regs || 0 : (g || 1);
+      var meta = '<span class="m">' + api.TS_ICON.ppl + (nPl || 1) + '</span>';
       if (cad) meta += '<span class="m">' + api.TS_ICON.caddy + E(cad) + '</span>';
       if (need) meta += '<span class="m">+' + need + ' ' + E(t('openJobs')) + '</span>';
       if (typeClass === 'vip') tag = 'VIP'; else if (typeClass === 'society') tag = 'SOC'; else if (typeClass === 'tournament') tag = 'EVENT'; else if (typeClass === 'hotdeal') tag = b.hotDeal ? '🔥 DEAL' : 'DEAL';
       if (b.app) { typeClass = 'app'; tag = tag || 'APP'; }
       var name = b.groupName ? b.groupName : (g ? golfers[0].name : (b.name || t('player')));
       var seq = (b.groupId && b.groupTotal > 1) ? '<span style="opacity:.6;font-size:10px;font-weight:700;">' + (b.groupIndex + 1) + '/' + b.groupTotal + '</span> ' : '';
-      var grp = g > 1 ? '<span class="pill-grp">+' + (g - 1) + '</span>' : '';
+      var grp = nPl > 1 ? '<span class="pill-grp">+' + (nPl - 1) + '</span>' : '';
       var mb = (!b.eventId && this.memberOf(name, golfers[0] && golfers[0].odoo_id)) ? '<span class="fx-mb">' + E(this.t('member')) + '</span>' : '';
       var faceId = (b.eventId || /society|tournament/.test(typeClass)) ? '' : ((golfers[0] && golfers[0].odoo_id) || '');
       return '<div class="pill ' + E(typeClass) + '" data-id="' + E(b.id) + '" data-fx-slug="' + E(b.fxSlug) + '" data-fx-src="' + E(b.source) + '" data-event-id="' + E(b.eventId || '') + '" draggable="false">'

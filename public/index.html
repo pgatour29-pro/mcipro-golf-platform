@@ -31919,6 +31919,7 @@
                         'siam-cc-waterside': 'Siam CC Waterside',
                         'siam-plantation': 'Siam Plantation GC',
                         'st-andrews-2000': 'St. Andrews 2000 GC',
+                        'silky-oak': 'Silky Oak Country Club',
                         'thai-country-club': 'Thai Country Club',
                         'treasure-hill-golf': 'Treasure Hill Golf & Country Club'
                     };
@@ -57798,7 +57799,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 const { data, error } = await sb.rpc('proshop_pin_login', { p_pin: pin });
                 if (error) { console.warn('[loginWithPin] course PIN check failed:', error.message); return 'offline'; }
                 if (!data || !data.course_id) return 'wrong';
-                const pick = JSON.stringify({ id: data.course_id, name: data.course_name || data.course_id });
+                // v1487: a FACILITY PIN opens the flagship course and carries the facility (dashboard chip, tee sheet ALL view)
+                const pick = JSON.stringify(data.facility_id
+                    ? { id: data.course_id, name: data.course_name || data.course_id, facility_id: data.facility_id, facility_name: data.facility_name || data.facility_id }
+                    : { id: data.course_id, name: data.course_name || data.course_id });
                 localStorage.setItem('ps_pin_lock_v1', pick);
                 localStorage.setItem('ps_course_v1', pick);
                 return 'ok';
@@ -71610,6 +71614,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         <span class="material-symbols-outlined text-lg">groups</span>
                         <span class="hidden sm:inline" data-i18n="proshop.caddies">Caddies</span>
                     </button>
+                    <!-- v1487 Insights: facility-wide golfer + caddy stats for marketing (facility-insights.js); shown only inside a facility -->
+                    <button onclick="showProshopTab('insights', event)" class="tab-button flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap" id="proshop-insights-tab" style="display:none">
+                        <span class="material-symbols-outlined text-lg">insights</span>
+                        <span class="hidden sm:inline">Insights</span>
+                    </button>
                     <!-- v1477 Change log: the course's own audit trail (course-audit.js) -->
                     <button onclick="showProshopTab('audit', event)" class="tab-button flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap" id="proshop-audit-tab">
                         <span class="material-symbols-outlined text-lg">history</span>
@@ -71695,6 +71704,8 @@ document.addEventListener('DOMContentLoaded', function() {
             <div id="proshop-messages" class="tab-content hidden"><div id="ps-messages-body"></div></div>
             <!-- Change log Tab (v1477) -->
             <div id="proshop-audit" class="tab-content hidden"><div id="ps-audit-body"></div></div>
+            <!-- Insights Tab (v1487, facility only) -->
+            <div id="proshop-insights" class="tab-content hidden"><div id="ps-insights-body"></div></div>
             <!-- Tee Sheet Tab -->
             <div id="proshop-teesheet" class="tab-content hidden">
                 <!-- Enhanced Tee Sheet Module -->
@@ -89678,13 +89689,14 @@ window.AdminSystem = AdminSystem;
     <script defer src="marketing-dashboard.js?v=1396"></script>
     <script defer src="golf-feed.js?v=1325"></script>
     <script defer src="handicap-ledger.js?v=1257"></script>
-    <script defer src="course-society-link.js?v=1467"></script>
-    <script defer src="course-crm.js?v=1472"></script>
+    <script defer src="course-society-link.js?v=1487"></script>
+    <script defer src="course-crm.js?v=1487"></script>
     <script defer src="course-audit.js?v=1477"></script>
     <script defer src="course-open-times.js?v=1446"></script>
     <script defer src="engagement-meter.js?v=1377"></script>
     <script defer src="persona-test.js?v=1450"></script>
-    <script defer src="proshop-dashboard.js?v=1480"></script>
+    <script defer src="proshop-dashboard.js?v=1487"></script>
+    <script defer src="facility-insights.js?v=1487"></script>
 
     <!-- Course Data & Handicap Calculations -->
     <script defer src="course-data-manager.js"></script>
@@ -140265,6 +140277,7 @@ const ProShopTeeSheetSettings = {
         'siam-cc-waterside': { name: 'Siam CC Waterside', lanes: null, color: '#22d3ee' },
         'siam-plantation': { name: 'Siam Plantation GC', lanes: null, color: '#c4b5fd' },
         'st-andrews-2000': { name: 'St. Andrews 2000 GC', lanes: null, color: '#fb923c' },
+        'silky-oak': { name: 'Silky Oak Country Club', lanes: null, color: '#fde68a' },   // v1487 Barcelona Golf facility
         'thai-country-club': { name: 'Thai Country Club', lanes: null, color: '#fde047' },
         'treasure-hill-golf': { name: 'Treasure Hill Golf & CC', lanes: null, color: '#2dd4bf' }
     },

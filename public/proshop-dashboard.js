@@ -87,6 +87,7 @@
             if (!db()) { setTimeout(() => PS.init(), 800); return; }
             const ok = await PS.resolveCourse();
             if (!ok) return; // picker shown; init re-runs after pick
+            await PS.resolveFacility();
             PS.paintHeader();
             PS.linkTeeSheet();
             PS.onTab('pos');
@@ -103,6 +104,25 @@
            tee-sheet slug used to fall back to the sheet's PREVIOUS slug (picking Green Valley "did nothing");
            now it gets a slug from its courses-table id and the sheet adds it (?name=). The pick is written
            to teesheet.settings too, so a popped-out sheet window follows at once (storage event). */
+        /* v1487 FACILITY: several courses, one pro shop (Barcelona Golf = Green Valley ★ + St Andrews + Silky Oak).
+           facility_of(courses.id) names the facility and its courses; the chip says "Facility · course", the
+           tee sheet opens in facility mode (?facility=), the Insights tab appears. A course outside a facility
+           sees nothing new. */
+        async resolveFacility() {
+            PS.facility = null;
+            try {
+                const { data } = await Promise.race([db().rpc('facility_of', { p_key: PS.course.id }), new Promise(res => setTimeout(() => res({ data: null }), 4000))]);
+                if (data && data.id && Array.isArray(data.courses) && data.courses.length > 1) PS.facility = data;
+            } catch (e) { }
+            const tab = document.getElementById('proshop-insights-tab');
+            if (tab) tab.style.display = PS.facility ? '' : 'none';
+        },
+        facilityShort() {
+            if (!PS.facility || !PS.course) return '';
+            const slug = PS.teeSheetSlug();
+            const c = PS.facility.courses.find(x => x.course_ref === PS.course.id || x.slug === slug);
+            return c ? c.short : '';
+        },
         teeSheetSlug() {
             if (!PS.course) return '';
             let saved = '';
@@ -120,12 +140,13 @@
                     const ts = JSON.parse(localStorage.getItem('teesheet.settings') || '{}');
                     if (ts.golfCourse !== slug) { ts.golfCourse = slug; localStorage.setItem('teesheet.settings', JSON.stringify(ts)); }
                 } catch (e) { }
-                const want = '/proshop-teesheet.html?course=' + encodeURIComponent(slug) + '&name=' + encodeURIComponent(PS.course.name || slug);
+                const fx = PS.facility ? '&facility=' + encodeURIComponent(PS.facility.id) : '';   // v1487
+                const want = '/proshop-teesheet.html?course=' + encodeURIComponent(slug) + '&name=' + encodeURIComponent(PS.course.name || slug) + fx;
                 if (f.getAttribute('src') !== want) f.setAttribute('src', want);
                 // v1480: the Caddies tab is the same page in caddy mode, on the same course; it loads the first time its tab opens
                 const fc = document.getElementById('caddies-iframe');
                 if (fc) {
-                    const wantC = '/proshop-teesheet.html?mode=caddies&course=' + encodeURIComponent(slug) + '&name=' + encodeURIComponent(PS.course.name || slug);
+                    const wantC = '/proshop-teesheet.html?mode=caddies&course=' + encodeURIComponent(slug) + '&name=' + encodeURIComponent(PS.course.name || slug) + fx;
                     fc.dataset.src = wantC;
                     if (fc.getAttribute('src') && fc.getAttribute('src') !== wantC) fc.setAttribute('src', wantC);
                 }
@@ -247,7 +268,7 @@
             try {
                 const nameEl = document.getElementById('ps-course-chip-name');
                 const chip = document.getElementById('ps-course-chip');
-                if (nameEl) nameEl.textContent = PS.course.name;
+                if (nameEl) nameEl.textContent = PS.facility ? (PS.facility.name + ' · ' + (PS.facilityShort() || PS.course.name)) : PS.course.name;   // v1487
                 if (chip) {
                     chip.style.display = '';   // classes take over: hidden <sm, flex ≥sm
                     chip.style.cursor = canChangeCourse() ? 'pointer' : 'default';
@@ -286,6 +307,7 @@
             else if (tab === 'messages') PS.loadMessages();
             else if (tab === 'settings') PS.loadSettings();
             else if (tab === 'audit') PS.loadAudit();
+            else if (tab === 'insights') PS.loadInsights();
             else if (tab === 'teesheet') {
                 try {
                     const f = document.getElementById('teesheet-iframe');
@@ -1182,6 +1204,13 @@
                   <button onclick="ProshopDashboard.saveTeeSheetCfg()" class="mt-3 w-full bg-green-600 hover:bg-green-700 text-white rounded-lg py-2.5 text-sm font-semibold">${tr('common.save', 'Save')}</button>
                 </div>
               </div>`;
+        },
+        // v1487: facility insights (facility-insights.js) — golfers + caddies across the facility's courses
+        loadInsights() {
+            const body = document.getElementById('ps-insights-body'); if (!body) return;
+            if (!PS.facility) { body.innerHTML = '<div class="p-6 text-sm text-gray-500">This course is not part of a facility.</div>'; return; }
+            if (!window.FacilityInsights) { body.innerHTML = '<div class="p-6 text-sm text-gray-500">Insights module not loaded.</div>'; return; }
+            window.FacilityInsights.render(body, { sb: db(), facility: PS.facility });
         },
         changeCourse() {
             if (!canChangeCourse()) return;   // v1351: the venue is fixed once chosen — admin only; v1431: never under a course PIN

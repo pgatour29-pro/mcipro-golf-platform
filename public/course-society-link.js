@@ -48,6 +48,7 @@
     ['siam-cc-old', [['siam', 'old']]],
     ['siam-cc-waterside', [['siam', 'waterside']]],
     ['st-andrews-2000', [['andrews']]],
+    ['silky-oak', [['silky']]],   // v1487 Barcelona Golf facility
     ['thai-country-club', [['thai', 'country']]],
     ['treasure-hill-golf', [['treasure', 'hill']]],
     // v1455: every venue on the platform has a sheet (Tee Times) — appended so the venues above keep winning
@@ -112,7 +113,7 @@
   };
 
   var CL = window.CourseLink = {
-    _v: 1351,
+    _v: 1487,
     KEYS: KEYS,
     sb: null,
     lang: 'en',

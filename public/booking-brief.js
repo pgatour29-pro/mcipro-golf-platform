@@ -443,6 +443,10 @@
       var name = (p && p.name) || C.nice((prof && (prof.name || prof.display_name)) || who.name);
       var nk = C.noteKey(p, who), note = data.notes[nk] || null, date = this.host.date();
       var tags = [];
+      try {   // v1487: a facility member (course_memberships) — valid at every course of the facility
+        var FXm = window.FacilitySheet && window.FacilitySheet.active() && window.FacilitySheet.memberOf(name, id);
+        if (FXm) tags.push('<span class="bb-seg vip">' + E(window.FacilitySheet.t('memberAt', { f: window.FacilitySheet.fac.name })) + (FXm.member_no ? ' · ' + E(FXm.member_no) : '') + '</span>');
+      } catch (e) {}
       if (note && note.vip) tags.push('<span class="bb-seg vip">' + E(T('vip')) + '</span>');
       tags.push(p ? '<span class="bb-seg ' + p.seg + '">' + E(T({ 'new': 'segNew', regular: 'segRegular', lapsing: 'segLapsing', occ: 'segOcc', up: 'segUp' }[p.seg])) + '</span>' : '<span class="bb-seg">' + E(T('newHere')) + '</span>');
       var hc = this._hcp(prof); if (hc != null) tags.push('<span>' + E(T('hcp', { n: hc })) + '</span>');

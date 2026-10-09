@@ -2717,6 +2717,7 @@
         <option value="siam-cc-waterside">Siam CC Waterside</option>
         <option value="siam-plantation">Siam Plantation GC</option>
         <option value="st-andrews-2000">St. Andrews 2000 GC</option>
+        <option value="silky-oak">Silky Oak Country Club</option>
         <option value="thai-country-club">Thai Country Club</option>
         <option value="treasure-hill-golf">Treasure Hill Golf & Country Club</option>
         <option value="siam-rolling-hills">Siam CC Rolling Hills</option>
@@ -3164,6 +3165,7 @@
         <option value="siam-cc-waterside">Siam CC Waterside</option>
         <option value="siam-plantation">Siam Plantation GC</option>
         <option value="st-andrews-2000">St. Andrews 2000 GC</option>
+        <option value="silky-oak">Silky Oak Country Club</option>
         <option value="thai-country-club">Thai Country Club</option>
         <option value="treasure-hill-golf">Treasure Hill Golf & Country Club</option>
         <option value="siam-rolling-hills">Siam CC Rolling Hills</option>
@@ -3628,9 +3630,10 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="golfer-avatar.js?v=20260830a"></script>
   <script src="name-search.js?v=20260917a"></script>
-  <script src="course-society-link.js?v=1467"></script>
-  <script src="course-crm.js?v=1472"></script>
-  <script src="booking-brief.js?v=1472"></script>
+  <script src="course-society-link.js?v=1487"></script>
+  <script src="facility-sheet.js?v=1487"></script>
+  <script src="course-crm.js?v=1487"></script>
+  <script src="booking-brief.js?v=1487"></script>
   <script src="course-open-times.js?v=1446"></script>
   <script src="caddy-work-core.js?v=1473"></script>
   <script src="course-traffic.js?v=1459"></script>
@@ -4923,7 +4926,9 @@
       'siam-country-club': 'Siam Country Club',
       'khao-kheow': 'Khao Kheow Country Club',
       'laem-chabang': 'Laem Chabang International Country Club',
-      'green-valley-rayong': 'Green Valley Rayong Country Club'
+      'green-valley-rayong': 'Green Valley Rayong Country Club',
+      'st-andrews-2000': 'St. Andrews 2000 Golf Club',
+      'silky-oak': 'Silky Oak Country Club'
     };
 
     // Facility prefix per tee-sheet slug. caddy_profiles rows arrive from three writers
@@ -4934,7 +4939,8 @@
       'treasure-hill-golf': 'Treasure Hill', 'phoenix-gold': 'Phoenix', 'greenwood': 'Greenwood',
       'pattana': 'Pattana', 'burapha-ac': 'Burapha', 'bangpakong': 'Bangpakong', 'plutaluang': 'Plutaluang',
       'siam-country-club': 'Siam Country', 'khao-kheow': 'Khao Kheow', 'laem-chabang': 'Laem Chabang',
-      'green-valley-rayong': 'Green Valley Rayong'   // never bare "Green Valley" — Summit Green Valley is Chiang Mai
+      'green-valley-rayong': 'Green Valley Rayong',   // never bare "Green Valley" — Summit Green Valley is Chiang Mai
+      'st-andrews-2000': 'St', 'silky-oak': 'Silky Oak'   // v1487 facility courses (St Andrews rows are spelt 'St.' and 'St')
     };
     function facilityPrefixFor(courseId) {
       if (courseFacilityPrefix[courseId]) return courseFacilityPrefix[courseId];
@@ -4943,6 +4949,8 @@
       return String(name).split(/\s+/)[0] || '';
     }
     function courseRosterFilter(q, courseId) {
+      // v1487: a course inside a facility reads the FACILITY roster — one pool of caddies, every course
+      if (window.FacilitySheet && FacilitySheet.active() && FacilitySheet.courseOf(courseId)) return FacilitySheet.rosterFilter(q);
       const prefix = facilityPrefixFor(courseId);
       // "," would split the or() list — a course prefix never carries one, but never assume
       return prefix ? q.or('course_id.eq.' + courseId + ',course_name.ilike.' + prefix.replace(/,/g, ' ') + '%') : q;
@@ -6313,6 +6321,7 @@
 
     function render() {
       if (DaySheet._open) setTimeout(() => DaySheet.refresh(), 0);   // v1223: the open day sheet follows the board
+      if (window.FacilitySheet && FacilitySheet.showingAll()) { FacilitySheet.render(); return; }   // v1487: all courses of the facility on one grid
       const layout = getLayout();
       const startM = minutes(el.startTime.value);
       const endM = minutes(el.endTime.value);
@@ -7862,7 +7871,7 @@
         try {
           if (!allCaddies.length) allCaddies = await fetchCaddiesFromDb(c.id);
           let jobsQ = supabaseClient.from('caddy_bookings')
-            .select('id, caddy_id, caddie_name, tee_time, start_time, end_time, status, payment_status, payment_amount, golfer_name, golfer_id, user_id, teesheet_booking_id, booking_source, confirmed_at, started_at, completed_at, paid_at, special_requests, caddy_profiles(caddy_number, block_minutes)')
+            .select('id, caddy_id, caddie_name, tee_time, start_time, end_time, status, payment_status, payment_amount, golfer_name, golfer_id, user_id, teesheet_booking_id, booking_source, confirmed_at, started_at, completed_at, paid_at, special_requests, course_name, course_id, caddy_profiles(caddy_number, block_minutes)')
             .eq('booking_date', date).neq('status', 'cancelled').limit(1000);
           jobsQ = courseRosterFilter(jobsQ, c.id);
           const ids = allCaddies.map(x => x.id).filter(Boolean);
@@ -7892,7 +7901,9 @@
         const now = this.nowM();
         const pre = String(c.prefix || '').toLowerCase();
         const off = new Set();
-        offs.forEach(o => { if (o.caddy_number == null) return; if (o.course_name && pre && !String(o.course_name).toLowerCase().startsWith(pre)) return; off.add(String(o.caddy_number).trim()); });
+        const fxOn = !!(window.FacilitySheet && FacilitySheet.active());   // v1487: any course of the facility counts
+        const atFacility = n => !n || !pre ? true : (fxOn ? FacilitySheet.nameIn(n) : String(n).toLowerCase().startsWith(pre));
+        offs.forEach(o => { if (o.caddy_number == null) return; if (o.course_name && !atFacility(o.course_name)) return; off.add(String(o.caddy_number).trim()); });
         if (workOff) workOff.forEach(n => off.add(n));   // v1429 work schedule
         const inAt = {}; chk.forEach(r => { inAt[r.caddy_id] = r; });
         const useChk = chk.length > 0;               // a course that never checks caddies in: everyone not off is on duty
@@ -7936,7 +7947,7 @@
           r.st = r.off ? 'off' : r.cur ? 'out' : (isToday && useChk && !r.chk) ? 'nochk' : r.next ? 'bkd' : 'free';
         });
         // the caddy master's rotation for this facility (start number), else plain number order
-        const cfg = rots.find(r => pre && String(r.course_name || '').toLowerCase().startsWith(pre)) || null;
+        const cfg = rots.find(r => pre && (String(r.course_name || '').toLowerCase().startsWith(pre) || (fxOn && FacilitySheet.nameIn(r.course_name)))) || null;
         const numV = n => { const m = String(n).match(/\d+/); return m ? +m[0] : 99999; };
         const sorted = roster.slice().sort((a, b) => numV(a.num) - numV(b.num));
         let si = cfg ? sorted.findIndex(r => numV(r.num) >= (+cfg.start_number || 1)) : 0; if (si < 0) si = 0;
@@ -8219,7 +8230,9 @@
         const order = D.roster.filter(r => pass(r) && this.cadHit(r)).slice().sort((a, b) => (rk[a.st] - rk[b.st]) || ((D.queue.indexOf(a) + 1 || 999) - (D.queue.indexOf(b) + 1 || 999)));
         const bar = j => {
           const k = j.done ? 'done' : j.out ? 'out' : j.state === 'late' ? 'late' : 'bkd';
-          const lab = (k === 'done' ? '✓ ' : '') + j.t + ' · ' + j.golfer + (k === 'out' ? ' · ' + t('cdBack').replace('{t}', hhmmOf(j.e)) : '') + (j.paid ? ' · ' + t('cdPaid') : '');
+          let fxc = '';   // v1487: a job on a sister course of the facility names its course
+          try { if (window.FacilitySheet && FacilitySheet.active() && j.row) { const sl = FacilitySheet.slugFor(j.row.course_name) || FacilitySheet.slugFor(j.row.course_id); if (sl && sl !== el.courseSelect.value) fxc = FacilitySheet.shortFor(sl) + ' · '; } } catch (e) {}
+          const lab = (k === 'done' ? '✓ ' : '') + j.t + ' · ' + fxc + j.golfer + (k === 'out' ? ' · ' + t('cdBack').replace('{t}', hhmmOf(j.e)) : '') + (j.paid ? ' · ' + t('cdPaid') : '');
           const mv = !j.done && !j.sent;   // v1413: a job not yet out can slide to a new tee time
           return '<button type="button" class="cd-bar ' + k + (mv ? ' mv' : '') + '" style="left:' + x(j.s) + ';width:' + w(j.s, j.e) + '" data-a="card" data-c="' + this.esc(j.cad ? j.cad.id : '') + '" data-j="' + this.esc(j.id) + '" title="' + this.esc(lab) + '">' + this.esc(lab) + '</button>';
         };
@@ -9481,8 +9494,16 @@
     // they were keyed by date only, so the old course's bookings showed (and could be re-saved) under
     // the new course.
     let courseSwitchSeq = 0;
-    el.courseSelect.addEventListener('change', async () => {
+    let courseSwitchPromise = Promise.resolve();
+    el.courseSelect.addEventListener('change', () => { courseSwitchPromise = onCourseChange(); });
+    // v1487: the facility rail / ALL view switch the sheet through the SAME path and wait for it
+    async function switchCourse(slug) {
+      if (el.courseSelect.value !== slug) { ensureCourseOption(slug); el.courseSelect.value = slug; el.courseSelect.dispatchEvent(new Event('change')); }
+      await courseSwitchPromise;
+    }
+    async function onCourseChange() {
       const seq = ++courseSwitchSeq;
+      try { if (window.FacilitySheet) FacilitySheet.onCourseChanged(el.courseSelect.value); } catch (e) {}
       try {
         const u = new URL(window.location.href);
         if (u.searchParams.get('course') && u.searchParams.get('course') !== el.courseSelect.value) {
@@ -9499,7 +9520,7 @@
       await refreshCaddies(); // Reload caddies for new course
       if (seq !== courseSwitchSeq) return;
       await fetchAndRender();
-    });
+    }
     el.complexSelect.addEventListener('change', () => { saveSettings(); render(); });
     el.startTime.addEventListener('change', () => { saveSettings(); render(); });
     el.endTime.addEventListener('change', () => { saveSettings(); render(); });
@@ -10257,6 +10278,7 @@
       } else {
         courseNameDisplay.textContent = t('selectCourse');
       }
+      try { if (window.FacilitySheet && FacilitySheet.active()) FacilitySheet.paintHeader(); } catch (e) {}   // v1487
     }
 
     // Update header date display
@@ -10995,6 +11017,14 @@
         caddies: () => allCaddies, board: () => lastBoard, lang: () => currentLang
       });
     } catch (e) { console.warn('[CaddyModule] init:', e); }
+    // v1487 FACILITY: several courses, one pro shop (facility-sheet.js) — no-op for a course outside a facility
+    try {
+      if (window.FacilitySheet) FacilitySheet.init({
+        el, $, t, minutes, hhmm, tsInitials, TS_ICON, dbRowToBooking, openDialog, switchCourse, render, tsNowTick, tsDayBlocks,
+        ensureCourseOption, refreshCaddies, CaddyDesk, prefixes: courseFacilityPrefix,
+        sb: () => supabaseClient, caddies: () => allCaddies, lang: () => currentLang
+      });
+    } catch (e) { console.warn('[FacilitySheet] init:', e); }
 
     // Listen for refresh messages from parent (caddy bookings, etc.)
     window.addEventListener('message', (event) => {

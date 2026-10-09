@@ -14067,7 +14067,7 @@
                 'dashboard.playgolf': 'Play Golf',
                 'dashboard.startround': 'Start Round',
                 'leaderboard.leaders': 'LEADERS',
-                'leaderboard.lowestround': 'Lowest Round',
+                'leaderboard.lowestround': 'Singles Lowest Round',
                 'leaderboard.avgscore': 'Avg Score',
                 'leaderboard.eagles': 'Eagles',
                 'leaderboard.birdies': 'Birdies',
@@ -52843,7 +52843,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 for (let _from = 0; _from < 30000; _from += 1000) {
                     const _res = await window.SupabaseDB.client
                         .from('rounds')
-                        .select('id, golfer_id, player_name, total_gross, completed_at, played_at, course_name, scramble_config, team_size, scoring_formats')
+                        .select('id, golfer_id, player_name, total_gross, completed_at, played_at, course_name, scramble_config, team_size, scoring_formats, game_config')
                         .eq('status', 'completed')
                         .or(`completed_at.gte.${yearStart},and(completed_at.is.null,played_at.gte.${yearStart})`)
                         .order('id', { ascending: true })
@@ -52935,13 +52935,18 @@ document.addEventListener('DOMContentLoaded', function() {
                     } catch(e) { /* profiles lookup optional */ }
                 }
 
-                // Build set of scramble round IDs to exclude
+                // v1494: team rounds (scramble, 3-Man Waltz, shamble, fourball...) never count as a
+                // singles score — mirrors public.is_team_round in the DB. Before this only scrambles were
+                // skipped, so Waltz grosses leaked into Lowest Round / Avg Score.
+                const _teamFormatRe = /scramble|waltz|shamble|fourball|foursome|greensome|pinehurst|chapman|bestball|betterball|ryder|team/;
+                const isTeamRound = (r) => {
+                    const gc = r.game_config || {};
+                    return !!r.scramble_config || (r.team_size > 1) || !!gc.scramble || !!gc.waltz ||
+                        _teamFormatRe.test(JSON.stringify(r.scoring_formats || '').toLowerCase()) ||
+                        _teamFormatRe.test(JSON.stringify(gc.formats || '').toLowerCase());
+                };
                 const scrambleRoundIds = new Set();
-                rounds.forEach(r => {
-                    if (r.scramble_config || (r.scoring_formats && JSON.stringify(r.scoring_formats).toLowerCase().includes('scramble'))) {
-                        scrambleRoundIds.add(r.id);
-                    }
-                });
+                rounds.forEach(r => { if (isTeamRound(r)) scrambleRoundIds.add(r.id); });
 
                 // First pass: identify rounds that have any stats tracking
                 const statsRounds = new Set();
@@ -53061,9 +53066,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 rounds.forEach(r => {
                     const playerId = r.golfer_id;
                     if (!playerId || !playerStats[playerId]) return;
-                    // Skip scramble rounds
-                    const isScramble = r.scramble_config || (r.scoring_formats && JSON.stringify(r.scoring_formats).toLowerCase().includes('scramble'));
-                    if (isScramble) return;
+                    // Skip team rounds (scramble, waltz...) — singles scores only
+                    if (scrambleRoundIds.has(r.id)) return;
                     const s = playerStats[playerId];
                     // Only count full 18-hole rounds (min 60 gross excludes incomplete rounds)
                     if (r.total_gross && r.total_gross >= 60 && r.total_gross < 200) {
@@ -53110,7 +53114,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 };
 
                 // Build all categories
-                getTopN('Lowest Round', micon('emoji_events'), '', s => s.bestRound < 999 ? s.bestRound : null, false);
+                getTopN('Singles Lowest Round', micon('emoji_events'), '', s => s.bestRound < 999 ? s.bestRound : null, false);
                 getTopN('Avg Score', micon('sports_golf'), '', s => s.grossHoles >= 1 ? (s.totalGross / s.grossHoles).toFixed(1) : null, false);
                 getTopN('Hole in One', micon('target'), '', s => s.holesInOne > 0 ? s.holesInOne : null, true);
                 getTopN('Eagles', micon('flight'), '', s => s.eagles > 0 ? s.eagles : null, true);

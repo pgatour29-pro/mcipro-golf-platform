@@ -1803,6 +1803,11 @@
     .date-nav-btn{background:var(--card);border:1px solid var(--line-2);color:var(--ink-2);width:30px;height:30px;border-radius:9px}
     .date-nav-btn:hover{background:var(--card-hi);color:var(--ink)}
     .date-display-large{color:var(--ink);background:var(--card);border:1px solid var(--line-2);font-size:14px;font-weight:700;padding:6px 18px}
+    .hd-today{width:auto;padding:0 11px;font-weight:800;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--badge-ink);background:var(--brand);border-color:var(--brand);cursor:pointer}
+    .hd-today[hidden]{display:none}
+    .cal-today-btn{background:var(--brand);color:var(--badge-ink);border:1px solid var(--brand);border-radius:8px;padding:7px 12px;font:800 12px 'Hanken Grotesk',sans-serif;letter-spacing:.4px;text-transform:uppercase;cursor:pointer}
+    .cal-day.today{border:2px solid var(--brand)!important;background:color-mix(in srgb,var(--brand) 10%,var(--card))!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--brand) 30%,transparent)}
+    @media (min-width:700px){ .cal-day.today .cal-day-num::after{content:'today';margin-left:5px;font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--brand)} }   /* phone cells are too narrow for the word — the green ring carries it */
     /* Date mood (v735 palette): weekends red, Thai public holidays green */
     :root[data-theme="light"] .date-display-large.dcm-wknd{color:#dc2626}
     :root[data-theme="light"] .date-display-large.dcm-hol{color:#16a34a}
@@ -2639,6 +2644,8 @@
         <button class="date-nav-btn" id="header-prev-day">‹</button>
         <div class="date-display-large" id="date-display-large">Loading...</div>
         <button class="date-nav-btn" id="header-next-day">›</button>
+        <!-- v1492 (Pete: "can't see the today button"): a TODAY pill on the date itself, shown whenever the sheet is on another day -->
+        <button class="date-nav-btn hd-today" id="header-today" type="button" hidden data-i18n="today">Today</button>
       </div>
       <div class="header-right">
         <div class="current-time-display" id="current-time-display">--:--</div>
@@ -3584,6 +3591,7 @@
         <button id="cal-next-month" class="cal-arrow">▶</button>
       </div>
       <div class="cal-nav-controls">
+        <button id="cal-today" class="cal-today-btn" type="button" data-i18n="today">Today</button>
         <select id="cal-filter-type">
           <option value="">All Types</option>
           <option value="society">Society Only</option>
@@ -10302,6 +10310,7 @@
         const d = new Date(dateStr + 'T00:00:00');
         const options = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' };
         dateDisplayLarge.textContent = d.toLocaleDateString('en-US', options);
+        const hdToday = $('header-today'); if (hdToday) hdToday.hidden = (dateStr === todayISO());   // v1492
         // Date mood (v735): weekend red / Thai holiday green on the header + date field
         const mood = dateCubeMood(dateStr);
         [dateDisplayLarge, el.dateInput].forEach(node => {
@@ -10321,6 +10330,7 @@
     }
 
     // Header date navigation
+    $('header-today')?.addEventListener('click', () => el.todayBtn.click());   // v1492: same path as the toolbar Today
     headerPrevDay?.addEventListener('click', () => {
       const d = new Date(el.dateInput.value);
       d.setDate(d.getDate() - 1);
@@ -10958,6 +10968,15 @@
         this.elements.detailSummary.innerHTML = `<strong>${total} tee times</strong> • ${parts.join(' • ')}`;
       },
 
+      // v1492: one tap back to today — month, selection and the sheet itself
+      goToday() {
+        const now = new Date();
+        this.currentYear = now.getFullYear(); this.currentMonth = now.getMonth(); this.monthCache = {};
+        this.renderMonth();
+        this.selectDay(todayISO());
+        this.close();
+        el.todayBtn.click();
+      },
       navigateToDate() {
         if (!this.selectedDate) return;
         el.dateInput.value = this.selectedDate;
@@ -11001,6 +11020,7 @@
         this.elements.prevMonth?.addEventListener('click', () => this.prevMonth());
         this.elements.nextMonth?.addEventListener('click', () => this.nextMonth());
         this.elements.goToDay?.addEventListener('click', () => this.navigateToDate());
+        $('cal-today')?.addEventListener('click', () => this.goToday());   // v1492
         this.elements.filterType?.addEventListener('change', () => {
           this.monthCache = {};
           this.renderMonth();

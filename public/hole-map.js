@@ -1,4 +1,4 @@
-/* v1496 HOLE MAP (Pete 2026-10-10, "Ok go" on the database-only mockup).
+/* v1496 HOLE MAP (v1497: combo rounds read the nine's folder + rows; white1/white2 stay two pills) (Pete 2026-10-10, "Ok go" on the database-only mockup).
    One bottom sheet for the live scorecard's map button on all three views (Paper "Hole" act, Card MAP pill,
    Keypad map mini): the hole picture the app ALREADY has (/hole-layouts/<course_id>/hole<n>.webp|png|jpg —
    the same lookup viewHolePreview uses) + a tee pill per tee set in `course_holes` for the course (or the
@@ -22,6 +22,12 @@
     function theme() { const b = document.body.classList; return b.contains('theme-sun') ? 'sun' : b.contains('theme-glass') ? 'glass' : b.contains('theme-light') ? 'light' : 'dark'; }
     function L() { return window.LiveScorecardManager || null; }
     function courseId() { const cd = L() && L().courseData; return String(cd && (cd.id || cd.course_id) || ''); }
+    // A combo round (Phoenix Lake + Mountain, Laem Chabang A+B...) keeps its two nines in comboNines;
+    // pictures and tee rows live under the NINE's id (phoenix_lake/hole3.webp), hole 10-18 = back nine 1-9.
+    function combo() { const c = L() && L().comboNines; return c && c.course && c.front && c.back ? c : null; }
+    function nineId(c, side) { return `${c.course}_${String(side).toLowerCase()}`; }
+    function nineFor(h) { const c = combo(); if (!c) return { id: courseId(), hole: h }; return h <= 9 ? { id: nineId(c, c.front), hole: h } : { id: nineId(c, c.back), hole: h - 9 }; }
+    function teeLabel(k) { const m = /^([a-z]+?)(\d+)$/.exec(k); const base = m ? m[1] : k; return base.charAt(0).toUpperCase() + base.slice(1) + (m ? ' ' + m[2] : ''); }
     function courseName() { const cd = L() && L().courseData; return String(cd && cd.name || ''); }
     function holeCount() { const cd = L() && L().courseData; const n = cd && Array.isArray(cd.holes) ? new Set(cd.holes.map(h => Number(h.hole_number))).size : 0; return n >= 9 ? n : 18; }
 
@@ -35,19 +41,24 @@
                 Object.keys(yb.holes).forEach(n => { const h = yb.holes[n]; holes[n] = { par: h.par, si: h.strokeIndex };
                     Object.keys(h.yardage || {}).forEach(t => { (tees[t] = tees[t] || {})[n] = h.yardage[t]; }); });
             } else if (cid && window.SupabaseDB && window.SupabaseDB.client) {
-                const { data } = await window.SupabaseDB.client.from('course_holes')
-                    .select('hole_number,par,stroke_index,yardage,tee_marker').eq('course_id', cid).limit(400);
-                (data || []).forEach(r => {
-                    const t = String(r.tee_marker || '').toLowerCase().replace(/\d+$/, '');
-                    if (!t) return;
-                    (tees[t] = tees[t] || {})[r.hole_number] = r.yardage;
-                    if (!holes[r.hole_number]) holes[r.hole_number] = { par: r.par, si: r.stroke_index };
-                });
+                const c = combo();
+                const parts = c ? [[nineId(c, c.front), 0], [nineId(c, c.back), 9]] : [[cid, 0]];
+                for (const [id, off] of parts) {
+                    const { data } = await window.SupabaseDB.client.from('course_holes')
+                        .select('hole_number,par,stroke_index,yardage,tee_marker').eq('course_id', id).limit(400);
+                    (data || []).forEach(r => {
+                        const t = String(r.tee_marker || '').toLowerCase().trim();   // white1 and white2 are two tee sets
+                        const n = Number(r.hole_number) + off;
+                        if (!t || !(n >= 1)) return;
+                        (tees[t] = tees[t] || {})[n] = r.yardage;
+                        if (!holes[n]) holes[n] = { par: r.par, si: r.stroke_index };
+                    });
+                }
             }
         } catch (e) { /* no rows = pills simply absent */ }
         // fall back to the round's own loaded tee for par/SI so the head is never blank
         try { ((L() && L().courseData && L().courseData.holes) || []).forEach(h => { if (!holes[h.hole_number]) holes[h.hole_number] = { par: h.par, si: h.stroke_index || h.strokeIndex }; }); } catch (e) {}
-        const list = Object.keys(tees).map(k => ({ key: k, name: k.charAt(0).toUpperCase() + k.slice(1), yds: tees[k],
+        const list = Object.keys(tees).map(k => ({ key: k, name: teeLabel(k), yds: tees[k],
             total: Object.values(tees[k]).reduce((a, b) => a + (Number(b) || 0), 0) }))
             .filter(t => Object.keys(t.yds).length >= 9).sort((a, b) => b.total - a.total);
         S.data = { tees: list, holes }; S.courseId = cid; return S.data;
@@ -65,14 +76,15 @@
         const cid = courseId();
         if (S.courseId !== cid) { S.data = null; S.tee = null; }
         await loadData(cid);
-        const lt = String((L() && L().selectedTeeMarker) || '').toLowerCase().replace(/\d+$/, '');
-        if (!S.tee || !S.data.tees.some(t => t.key === S.tee)) S.tee = (S.data.tees.find(t => t.key === lt) || S.data.tees[0] || {}).key || null;
+        // the round's tee: exact name first, then the first set that starts with it (white -> white1)
+        const lt = String((L() && L().selectedTeeMarker) || '').toLowerCase();
+        if (!S.tee || !S.data.tees.some(t => t.key === S.tee)) S.tee = (S.data.tees.find(t => t.key === lt) || S.data.tees.find(t => t.key.startsWith(lt)) || S.data.tees[0] || {}).key || null;
         S.open = true; render();
     }
     function step(d) { const n = holeCount(); S.hole = ((S.hole - 1 + d + n) % n) + 1; render(); }
     function go(h) { S.hole = Number(h) || 1; render(); }
     function pickTee(k) { if (S.data && S.data.tees.some(t => t.key === k)) { S.tee = k; render(); } }
-    function imgSrcs(cid, h) { const c = encodeURIComponent(cid); return ['webp', 'png', 'jpg'].map(e => `/hole-layouts/${c}/hole${h}.${e}`); }
+    function imgSrcs(h) { const n = nineFor(h); const c = encodeURIComponent(n.id); return ['webp', 'png', 'jpg'].map(e => `/hole-layouts/${c}/hole${n.hole}.${e}`); }
     function onImgError(img) {
         const alt = (img.dataset.alt || '').split('|').filter(Boolean);
         if (alt.length) { img.dataset.alt = alt.slice(1).join('|'); img.src = alt[0]; return; }
@@ -82,13 +94,13 @@
         const ov = ensure(); const T = TOK[theme()]; const h = S.hole; const D = S.data || { tees: [], holes: {} };
         const tee = D.tees.find(t => t.key === S.tee) || D.tees[0] || null; const hd = D.holes[h] || {};
         const yds = tee ? tee.yds[h] : null; const nHoles = holeCount();
-        const pills = D.tees.map(t => { const on = tee && t.key === tee.key; const dot = DOT[t.key] || ['#9ca3af', '#111827'];
+        const pills = D.tees.map(t => { const on = tee && t.key === tee.key; const dot = DOT[t.key] || DOT[t.key.replace(/\d+$/, '')] || ['#9ca3af', '#111827'];
             return `<button type="button" onclick="HoleMap.pickTee('${esc(t.key).replace(/[^a-z0-9_-]/gi, '')}')" aria-pressed="${on ? 'true' : 'false'}" style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 2px 6px;border-radius:13px;border:${T.border} solid ${on ? T.grnB : T.line};background:${on ? T.grnS : T.soft};cursor:pointer;">
                 <span style="display:flex;align-items:center;gap:4px;min-width:0;max-width:100%;"><i style="flex:none;width:10px;height:10px;border-radius:999px;background:${dot[0]};border:1.5px solid ${dot[1]};display:inline-block;"></i><span style="font:700 9px/1 'JetBrains Mono',monospace;letter-spacing:.06em;color:${on ? T.grnD : T.mut};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.name.toUpperCase())}</span></span>
                 <span style="font:800 15px/1 'Outfit','Instrument Sans',sans-serif;color:${on ? T.grnD : T.ink};">${t.yds[h] != null ? esc(t.yds[h]) : '–'}</span></button>`; }).join('');
         const strip = Array.from({ length: nHoles }, (_, k) => { const on = k + 1 === h;
             return `<button type="button" onclick="HoleMap.go(${k + 1})" aria-label="${esc(T_('scorecard.hole', 'Hole'))} ${k + 1}" style="flex:1;min-width:0;height:22px;border-radius:6px;border:none;padding:0;background:${on ? T.grn : T.soft};color:${on ? '#fff' : T.mut};font:${on ? 800 : 600} 9px/1 'JetBrains Mono',monospace;cursor:pointer;${on ? 'box-shadow:0 0 0 2px ' + T.grnB + ';' : ''}">${k + 1}</button>`; }).join('');
-        const srcs = imgSrcs(courseId(), h);
+        const srcs = imgSrcs(h);
         ov.style.background = T.dim;
         ov.innerHTML = `<div style="position:absolute;left:0;right:0;bottom:0;max-height:92vh;max-height:92dvh;background:${T.sheet};${T.blur ? '-webkit-backdrop-filter:' + T.blur + ';backdrop-filter:' + T.blur + ';' : ''}border-radius:24px 24px 0 0;${T.border === '2px' ? 'border:2px solid #111827;border-bottom:none;' : ''}box-shadow:${T.shadow};display:flex;flex-direction:column;padding:8px 14px calc(10px + env(safe-area-inset-bottom));overflow:hidden;color:${T.ink};font-family:'Instrument Sans',system-ui,sans-serif;">
             <div style="width:38px;height:4px;border-radius:999px;background:${T.line};margin:0 auto 8px;"></div>

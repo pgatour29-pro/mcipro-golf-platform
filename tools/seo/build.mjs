@@ -4,11 +4,15 @@
 //   /courses/<slug>/        one page per course: holes, par, yardage per tee, who plays there and when, caddy link
 //   /societies/             the societies
 //   /societies/<slug>/      one page per society: weekly pattern, courses, how to join
+//   /golf-this-week/<monday>/  where the societies play this week (the regular publication Google Preferred Sources needs),
+//                           hub /golf-this-week/, archive index weeks.json, RSS /feed.xml
 //   /sitemap.xml /robots.txt
+// Every page carries Google's Preferred Sources button (publisher.js) in a band above the footer.
+// Rebuilt by .github/workflows/seo-weekly.yml (Monday + Thursday morning, Thailand time).
 // Facts only: everything on a page comes from the courses / course_holes / society_events tables or from the
 // app's own public links (/q/<venue>). No invented descriptions, phone numbers or prices.
 //   node tools/seo/build.mjs
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -141,10 +145,13 @@ th,td{padding:8px 10px;text-align:left;border-top:1px solid var(--line)}th{backg
 .cta{display:inline-block;background:var(--green);color:#fff;padding:12px 18px;border-radius:12px;font-weight:700;text-decoration:none}
 .muted{color:var(--mute)}footer{border-top:1px solid var(--line);padding:22px 0;color:var(--mute);font-size:13px}footer a{color:var(--mute)}
 .stats{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}.stat{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:10px 14px;min-width:120px}.stat b{display:block;font-size:22px;color:#fff}.stat span{font:700 10px/1 var(--mono);letter-spacing:.14em;color:#9fd3b6;text-transform:uppercase}
-@media(max-width:480px){.card18{grid-template-columns:repeat(6,1fr)}nav{gap:12px;font-size:13px}}
+
+.gpref{border-top:1px solid var(--line);padding:22px 0}.gpref .wrap{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 18px}.gpref b{display:block;font-size:16px}.gpref span{color:var(--mute);font-size:14px}.gpref [google-add-preferred-source-btn]{min-height:40px;min-width:234px;max-width:100%}
+.day td:first-child{white-space:nowrap}.weeks{columns:2 220px;padding-left:18px}
+@media(max-width:480px){.card18{grid-template-columns:repeat(6,1fr)}nav{gap:10px 14px;font-size:13px;flex-wrap:wrap}nav a{order:3}nav a.brand{order:0}nav a.app{order:1}nav::after{content:'';flex-basis:100%;order:2}}
 `;
-function page({ path, title, desc, h1, kicker, lead, body, jsonld, stats }) {
-    const url = SITE + path;
+function page({ path, title, desc, h1, kicker, lead, body, jsonld, stats, canonical }) {
+    const url = SITE + (canonical || path);
     return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title>
@@ -152,6 +159,8 @@ function page({ path, title, desc, h1, kicker, lead, body, jsonld, stats }) {
 <link rel="canonical" href="${url}">
 <meta property="og:type" content="website"><meta property="og:site_name" content="MyCaddiPro"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}"><meta property="og:url" content="${url}"><meta property="og:image" content="${SITE}/mcipro.png">
 <meta name="twitter:card" content="summary"><link rel="icon" href="/mcipro.png">
+<link rel="alternate" type="application/rss+xml" title="Golf in Pattaya this week" href="${SITE}/feed.xml">
+<script async src="https://news.google.com/swg/js/v1/publisher.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
 <style>${CSS}</style>
 ${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld)}</script>` : ''}
@@ -159,7 +168,8 @@ ${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld)}</script
 <header><div class="wrap"><nav><a class="brand" href="/about/">MyCaddiPro</a><a href="/features/">What we offer</a><a href="/courses/">Courses</a><a href="/societies/">Societies</a><a class="app" href="/">Open the app</a></nav>
 <div class="hero">${kicker ? `<div class="kick">${esc(kicker)}</div>` : ''}<h1>${esc(h1)}</h1><p>${esc(lead)}</p>${stats || ''}</div></div></header>
 <main><div class="wrap">${body}</div></main>
-<footer><div class="wrap">MyCaddiPro · tee times, caddies, societies and live scoring for golf in Pattaya and the eastern seaboard · <a href="/privacy.html">Privacy</a> · <a href="/about/">About</a> · <a href="/features/">What we offer</a> · <a href="/">Open the app</a></div></footer>
+<section class="gpref"><div class="wrap"><div><b>See MyCaddiPro first on Google</b><span>Add us as a preferred source and Google shows more of our golf pages in your results.</span></div><div google-add-preferred-source-btn data-lang="en"></div></div></section>
+<footer><div class="wrap">MyCaddiPro · tee times, caddies, societies and live scoring for golf in Pattaya and the eastern seaboard · <a href="/privacy.html">Privacy</a> · <a href="/about/">About</a> · <a href="/features/">What we offer</a> · <a href="/golf-this-week/">Golf this week</a> · <a href="/">Open the app</a></div></footer>
 </body></html>`;
 }
 function write(path, html) { const dir = join(PUB, path); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'index.html'), html); }
@@ -239,6 +249,7 @@ ${courses ? `<h2>Courses</h2><div class="grid">${courses}</div>` : ''}
 <h2>Courses</h2><p>The societies play ${nCourses} courses around Pattaya, Chonburi and Rayong. Every course has its own page with the scorecard, yardage, who plays there and when, and a venue link for visitors.</p>
 <div class="grid">${COURSES.slice(0, 8).map((c) => `<a class="card" href="/courses/${c.slug}/"><b>${esc(c.name)}</b><small>${esc(c.location || 'Thailand')} · par ${c.par}</small></a>`).join('')}</div>
 <p><a href="/courses/">All courses →</a></p>
+<h2>This week</h2><p>Where every society plays this week, with departure and tee times, updated twice a week.</p><p><a href="/golf-this-week/">Golf in Pattaya this week →</a></p>
 <h2>Societies</h2><div class="grid">${SOCIETIES.map((s) => `<a class="card" href="/societies/${s.slug}/"><b>${esc(s.name)}</b><small>${esc(s.blurb)}</small></a>`).join('')}</div>
 <h2>Get the app</h2>
 <p>MyCaddiPro runs in the browser and installs to the home screen on iPhone and Android. Sign in with LINE, Kakao or Google.</p>
@@ -246,11 +257,73 @@ ${courses ? `<h2>Courses</h2><div class="grid">${courses}</div>` : ''}
     const jsonld = { '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'MyCaddiPro', applicationCategory: 'SportsApplication', operatingSystem: 'iOS, Android, Web', url: SITE, description: desc, offers: { '@type': 'Offer', price: '0', priceCurrency: 'THB' }, publisher: { '@type': 'Organization', name: 'MyCaddiPro', url: SITE } };
     write(path, page({ path, title: 'MyCaddiPro — golf in Pattaya: societies, tee sheets, caddies and live scoring', desc, h1: 'Golf in Pattaya, run from your phone', kicker: 'MyCaddiPro', lead: desc, body, jsonld, stats }));
 }
+// --- golf this week: one dated page per week (Monday, Thailand time) + hub + RSS feed.
+// Google lists a site as a Preferred Source only when it publishes regularly; this is the regular publication,
+// built from the same public society_events data as the course pages (society, course, times; no player names).
+// Earlier weeks stay as committed files; weeks.json is the archive index (merged, never rebuilt from scratch).
+const weekUrls = [];
+{
+    const ictISO = ISO(new Date(Date.now() + 7 * 3600e3));
+    const mon = new Date(ictISO + 'T00:00:00Z'); mon.setUTCDate(mon.getUTCDate() - ((mon.getUTCDay() + 6) % 7));
+    if (new Date(ictISO + 'T00:00:00Z').getUTCDay() === 0) mon.setUTCDate(mon.getUTCDate() + 7); // Sunday: the week ahead is the useful one
+    const days = [...Array(7)].map((_, i) => { const d = new Date(mon); d.setUTCDate(d.getUTCDate() + i); return ISO(d); });
+    const prevDays = days.map((d) => { const x = new Date(d + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() - 7); return ISO(x); });
+    const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const long = (iso) => { const d = new Date(iso + 'T00:00:00Z'); return `${WD[d.getUTCDay()]} ${d.getUTCDate()} ${MON[d.getUTCMonth()]}`; };
+    const short = (iso) => { const d = new Date(iso + 'T00:00:00Z'); return `${d.getUTCDate()} ${MON[d.getUTCMonth()].slice(0, 3)}`; };
+    const ours = (e) => SOCIETIES.some((x) => x.db === socById[e.society_id]);
+    const courseOf = (e) => COURSES.find((x) => matches(x, (e.course_name || '') + ' ' + (e.title || '')));
+    const wk = live.filter((e) => ours(e) && e.event_date >= days[0] && e.event_date <= days[6])
+        .sort((a, b) => (a.event_date + (a.start_time || '')).localeCompare(b.event_date + (b.start_time || '')));
+    const prev = live.filter((e) => ours(e) && e.event_date >= prevDays[0] && e.event_date <= prevDays[6]);
+    const nCourses = (list) => new Set(list.map((e) => courseOf(e)?.slug || e.course_name)).size;
+    const range = `${short(days[0])} to ${short(days[6])} ${days[6].slice(0, 4)}`;
+    const title = `Golf in Pattaya this week: ${range}`;
+    const lead = wk.length ? `${wk.length} society days at ${nCourses(wk)} courses around Pattaya, ${range}: where each society plays, departure and tee times.` : `Society golf around Pattaya, ${range}. Days are added here as the societies post them.`;
+    const dayRows = days.map((d) => {
+        const evs = wk.filter((e) => e.event_date === d); if (!evs.length) return '';
+        const rows = evs.map((e) => { const c = courseOf(e); const soc = SOCIETIES.find((x) => x.db === socById[e.society_id]);
+            return `<tr><td><a href="/societies/${soc.slug}/">${esc(soc.short)}</a></td><td>${c ? `<a href="/courses/${c.slug}/">${esc(c.name)}</a>` : esc(e.course_name || e.title || 'TBC')}</td><td>${e.departure_time ? h12(hm(e.departure_time)) : '—'}</td><td>${e.start_time ? h12(hm(e.start_time)) : 'TBC'}</td></tr>`; }).join('');
+        return `<h2>${long(d)}</h2><table class="day"><tr><th>Society</th><th>Course</th><th>Depart</th><th>Tee</th></tr>${rows}</table>`;
+    }).join('');
+    const busiest = Object.entries(wk.reduce((m, e) => { const c = courseOf(e); if (c) m[c.name] = (m[c.name] || 0) + 1; return m; }, {})).sort((a, b) => b[1] - a[1])[0];
+    const idxFile = join(PUB, 'golf-this-week', 'weeks.json');
+    const archive = existsSync(idxFile) ? JSON.parse(readFileSync(idxFile, 'utf8')) : [];
+    const entry = { week: days[0], title, desc: lead, updated: ictISO };
+    const weeks = [entry, ...archive.filter((w) => w.week !== days[0])].sort((a, b) => b.week.localeCompare(a.week));
+    const earlier = weeks.filter((w) => w.week < days[0]);
+    const body = `
+<p class="muted">Updated ${long(ictISO)}. Society days as posted by the organizers on MyCaddiPro; times are Thailand time.</p>
+${dayRows || '<p>No society days posted for this week yet.</p>'}
+<h2>The week in numbers</h2>
+<p>${wk.length} society days at ${nCourses(wk)} courses${busiest && busiest[1] > 1 ? `, with ${esc(busiest[0])} the busiest (${busiest[1]} days)` : ''}. Last week the societies played ${prev.length} days at ${nCourses(prev)} courses.</p>
+<h2>Play a day</h2>
+<p>Visiting golfers can join a society day without installing anything: open the course page, pick the day, register and request a caddy by number. Members register, see the tee sheet and score live in the app.</p>
+<p><a class="cta" href="/courses/">Find a course →</a></p>
+${earlier.length ? `<h2>Earlier weeks</h2><ul class="weeks">${earlier.slice(0, 26).map((w) => `<li><a href="/golf-this-week/${w.week}/">${esc(w.title.replace('Golf in Pattaya this week: ', ''))}</a></li>`).join('')}</ul>` : ''}`;
+    const dated = `/golf-this-week/${days[0]}/`;
+    const jsonld = { '@context': 'https://schema.org', '@type': 'Article', headline: title, description: lead, datePublished: `${days[0]}T06:00:00+07:00`, dateModified: `${ictISO}T06:00:00+07:00`, mainEntityOfPage: SITE + dated, image: [`${SITE}/mcipro.png`], author: { '@type': 'Organization', name: 'MyCaddiPro', url: SITE }, publisher: { '@type': 'Organization', name: 'MyCaddiPro', url: SITE, logo: { '@type': 'ImageObject', url: `${SITE}/mcipro.png` } } };
+    const opts = { title: `${title} | MyCaddiPro`, desc: lead, h1: 'Golf in Pattaya this week', kicker: `Week of ${long(days[0])}`, lead, body, jsonld };
+    write(dated, page({ ...opts, path: dated }));
+    write('/golf-this-week/', page({ ...opts, path: '/golf-this-week/', canonical: dated }));
+    writeFileSync(idxFile, JSON.stringify(weeks, null, 1) + '\n');
+    weekUrls.push(['/golf-this-week/', ictISO], ...weeks.map((w) => [`/golf-this-week/${w.week}/`, w.updated]));
+    const rfc = (iso) => new Date(`${iso}T06:00:00+07:00`).toUTCString();
+    writeFileSync(join(PUB, 'feed.xml'), `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel>
+<title>Golf in Pattaya this week | MyCaddiPro</title><link>${SITE}/golf-this-week/</link>
+<atom:link href="${SITE}/feed.xml" rel="self" type="application/rss+xml"/>
+<description>Where the Pattaya golf societies play each week: courses, departure and tee times.</description><language>en</language><lastBuildDate>${rfc(ictISO)}</lastBuildDate>
+${weeks.slice(0, 20).map((w) => `<item><title>${esc(w.title)}</title><link>${SITE}/golf-this-week/${w.week}/</link><guid>${SITE}/golf-this-week/${w.week}/</guid><pubDate>${rfc(w.week)}</pubDate><description>${esc(w.desc)}</description></item>`).join('\n')}
+</channel></rss>
+`);
+}
 // --- sitemap + robots
 const lastmod = ISO(TODAY);
 writeFileSync(join(PUB, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
     [['/', '1.0'], ['/about/', '0.9'], ['/features/', '0.9'], ...urls.filter((u) => u !== '/about/').map((u) => [u, u.split('/').length > 3 ? '0.7' : '0.8']), ['/privacy.html', '0.2']]
-        .map(([u, p]) => `  <url><loc>${SITE}${u}</loc><lastmod>${lastmod}</lastmod><priority>${p}</priority></url>`).join('\n') + '\n</urlset>\n');
+        .map(([u, p]) => `  <url><loc>${SITE}${u}</loc><lastmod>${lastmod}</lastmod><priority>${p}</priority></url>`)
+        .concat(weekUrls.map(([u, d], i) => `  <url><loc>${SITE}${u}</loc><lastmod>${d}</lastmod><priority>${i < 2 ? '0.9' : '0.5'}</priority></url>`)).join('\n') + '\n</urlset>\n');
 writeFileSync(join(PUB, 'robots.txt'), `User-agent: *
 Allow: /
 Disallow: /lab/
@@ -268,4 +341,4 @@ Disallow: /proshop-teesheet.html
 Disallow: /index.html.tmp
 Sitemap: ${SITE}/sitemap.xml
 `);
-console.log(`built ${urls.length} pages + sitemap + robots → public/`);
+console.log(`built ${urls.length} pages + ${weekUrls.length} week pages + feed + sitemap + robots → public/`);

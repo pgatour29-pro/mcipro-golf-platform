@@ -123,6 +123,8 @@ building, not after.
 2. Bump `SW_VERSION` in `public/sw.js` (vNNN — increment; find current with grep). Every
    index.html deploy REQUIRES this or clients keep the stale cached app.
 3. Commit (one logical change, message explains WHY) and push to `master`.
+   `git pull --rebase origin master` first: `.github/workflows/seo-weekly.yml` pushes rebuilt public
+   pages (/golf-this-week/, courses, societies, sitemap, feed) every Monday and Thursday 06:00 ICT.
 4. Poll the LIVE site for a unique string from your diff until it appears (~60–90s), e.g.
    `curl -s https://mycaddipro.com/sw.js | grep vNNN` + a marker from your change.
 5. ONLY THEN tell Pete it's deployed. A fix he asked for = go-ahead to deploy; speculative or

@@ -1,0 +1,37 @@
+name: SEO pages rebuild
+
+# Rebuilds the public pages (tools/seo/build.mjs) from live data and pushes them, so Google sees a regular
+# publication: a new /golf-this-week/<monday>/ page every Monday, refreshed Thursday, plus fresh course and
+# society "coming up" tables. Google lists a site as a Preferred Source only when it is updated regularly.
+on:
+  schedule:
+    - cron: '0 23 * * 0'   # Monday 06:00 Thailand
+    - cron: '0 23 * * 3'   # Thursday 06:00 Thailand
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: seo-weekly
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build public pages from live data (read-only, anon key)
+        run: node tools/seo/build.mjs
+      - name: Commit and push if anything changed
+        run: |
+          git add public/about public/courses public/societies public/golf-this-week public/feed.xml public/sitemap.xml public/robots.txt
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git config user.name "mycaddipro-seo-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "SEO pages: weekly rebuild $(TZ=Asia/Bangkok date +%F)"
+          git pull --rebase origin master
+          git push origin HEAD:master

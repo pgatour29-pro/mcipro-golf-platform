@@ -156,10 +156,10 @@ function page({ path, title, desc, h1, kicker, lead, body, jsonld, stats }) {
 <style>${CSS}</style>
 ${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld)}</script>` : ''}
 </head><body>
-<header><div class="wrap"><nav><a class="brand" href="/about/">MyCaddiPro</a><a href="/courses/">Courses</a><a href="/societies/">Societies</a><a class="app" href="/">Open the app</a></nav>
+<header><div class="wrap"><nav><a class="brand" href="/about/">MyCaddiPro</a><a href="/features/">What we offer</a><a href="/courses/">Courses</a><a href="/societies/">Societies</a><a class="app" href="/">Open the app</a></nav>
 <div class="hero">${kicker ? `<div class="kick">${esc(kicker)}</div>` : ''}<h1>${esc(h1)}</h1><p>${esc(lead)}</p>${stats || ''}</div></div></header>
 <main><div class="wrap">${body}</div></main>
-<footer><div class="wrap">MyCaddiPro · tee times, caddies, societies and live scoring for golf in Pattaya and the eastern seaboard · <a href="/privacy.html">Privacy</a> · <a href="/about/">About</a> · <a href="/">Open the app</a></div></footer>
+<footer><div class="wrap">MyCaddiPro · tee times, caddies, societies and live scoring for golf in Pattaya and the eastern seaboard · <a href="/privacy.html">Privacy</a> · <a href="/about/">About</a> · <a href="/features/">What we offer</a> · <a href="/">Open the app</a></div></footer>
 </body></html>`;
 }
 function write(path, html) { const dir = join(PUB, path); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'index.html'), html); }
@@ -249,7 +249,7 @@ ${courses ? `<h2>Courses</h2><div class="grid">${courses}</div>` : ''}
 // --- sitemap + robots
 const lastmod = ISO(TODAY);
 writeFileSync(join(PUB, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-    [['/', '1.0'], ['/about/', '0.9'], ...urls.filter((u) => u !== '/about/').map((u) => [u, u.split('/').length > 3 ? '0.7' : '0.8']), ['/privacy.html', '0.2']]
+    [['/', '1.0'], ['/about/', '0.9'], ['/features/', '0.9'], ...urls.filter((u) => u !== '/about/').map((u) => [u, u.split('/').length > 3 ? '0.7' : '0.8']), ['/privacy.html', '0.2']]
         .map(([u, p]) => `  <url><loc>${SITE}${u}</loc><lastmod>${lastmod}</lastmod><priority>${p}</priority></url>`).join('\n') + '\n</urlset>\n');
 writeFileSync(join(PUB, 'robots.txt'), `User-agent: *
 Allow: /

@@ -79344,13 +79344,21 @@ document.addEventListener('DOMContentLoaded', function() {
             },
 
             // WHS Score Differential Calculation
+            // v1500: gross scaled to 18 holes — 9..17 holes pro-rata (the DB engine's prorata18), under 9 = nothing.
+            gross18(gross, holes) {
+                const h = holes == null ? 18 : Number(holes);
+                if (gross == null || !isFinite(gross)) return null;
+                if (h >= 18) return gross;
+                if (h < 9) return null;
+                return Math.round(gross * 18 / h);
+            },
             calculateDifferential(scoreData) {
-                if (scoreData.holes !== 18) return null; // Only calculate for 18-hole rounds
-
                 const { score, courseRating, slopeRating } = scoreData;
+                const g = this.gross18(score, scoreData.holes);
+                if (g == null) return null;
 
                 // WHS Formula: (Adjusted Gross Score - Course Rating) × 113 ÷ Slope Rating
-                const differential = (score - courseRating) * 113 / slopeRating;
+                const differential = (g - courseRating) * 113 / slopeRating;
                 return Math.round(differential * 10) / 10; // Round to 1 decimal place
             },
 
@@ -79641,6 +79649,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     source: 'database',
                                     type: round.type || (round.is_tournament ? 'society' : 'practice'),
                                     stableford: round.total_stableford ?? round.stableford ?? null,
+                                    societyEventId: round.society_event_id || round.societyEventId || null,
                                     handicapUsed: round.handicap_used,
                                     scramble: !!(window.ScrambleTeamRecord && window.ScrambleTeamRecord.isScrambleRound(round)),
                                     teamName: (round.scramble_config && round.scramble_config.teamName) || null,
@@ -79655,7 +79664,8 @@ document.addEventListener('DOMContentLoaded', function() {
                             convertedRounds.forEach(round => {
                                 const courseRating = round.courseRating || 72.0;
                                 const slopeRating = round.slopeRating || 113;
-                                round.differential = ((round.score - courseRating) * 113 / slopeRating).toFixed(1);
+                                const g18 = this.gross18(round.score, round.holes);   // v1500 pro-rata for short rounds
+                                round.differential = g18 == null ? null : ((g18 - courseRating) * 113 / slopeRating).toFixed(1);
                             });
 
                             allRounds = allRounds.concat(convertedRounds);
@@ -79685,6 +79695,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // Sort by date (newest first)
                 uniqueRounds.sort((a, b) => new Date(b.date || b.timestamp) - new Date(a.date || a.timestamp));
+
+                // v1500 (Pete 2026-10-10, Oct 5 TRGG rain-out): a short society round whose event was declared a
+                // rain-out carries the declaration, so the card and the details say RAIN OUT and show the 18-hole
+                // pro-rata figure next to the holes actually played. One query for the whole history.
+                try {
+                    const evIds = [...new Set(uniqueRounds.filter(r => r.societyEventId && (r.holes || 18) < 18).map(r => r.societyEventId))];
+                    this._rainByEvent = {};
+                    if (evIds.length && window.SupabaseDB && window.SupabaseDB.client) {
+                        const { data: rainRows } = await window.SupabaseDB.client.from('event_rain_outs').select('event_id, method').in('event_id', evIds);
+                        (rainRows || []).forEach(x => { this._rainByEvent[x.event_id] = x; });
+                    }
+                    uniqueRounds.forEach(r => { r.rainOut = (r.societyEventId && (r.holes || 18) < 18 && this._rainByEvent[r.societyEventId]) ? this._rainByEvent[r.societyEventId] : null; });
+                } catch (e) { console.warn('[Round History] rain-out lookup:', e.message); }
 
                 console.log(`[Round History] ✅ Loaded ${uniqueRounds.length} unique rounds (${uniqueRounds.filter(r => r.source === 'database').length} from DB, ${uniqueRounds.filter(r => r.source === 'localStorage').length} from localStorage)`);
                 return uniqueRounds;
@@ -79889,6 +79912,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     else if (score.type !== 'society' && score.source !== 'database') roundTypeBadge = '';
                     // v1253: a scramble round is the TEAM's score, off the team handicap — never an individual result
                     if (score.scramble) roundTypeBadge += `<span class="scv3h-rchip live">SCRAMBLE · TEAM${score.teamHcp != null ? ' HCP ' + score.teamHcp : ''}</span>`;
+                    // v1500: rain-out round — the holes played are the record, the 18-hole pro-rata is what counts
+                    const rain18 = (score.rainOut && score.holes && score.holes < 18)
+                        ? { gross: Math.round(score.score * 18 / score.holes), pts: score.stableford ? Math.round(score.stableford * 18 / score.holes * 10) / 10 : null } : null;
+                    if (rain18) roundTypeBadge += `<span class="scv3h-rchip" style="background:#e0f2fe;color:#0369a1;">RAIN OUT · ${score.holes}/18</span>`;
 
                     // SCV3H numeric mini-card (approved model: numbers, colored digits, OUT/IN)
                     const holes = holesMap[score.id] || [];
@@ -79935,7 +79962,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>
                                 <div class="scv3h-rscore">
                                     <div class="g${diff <= 0 ? ' under' : ''}">${score.score}</div>
-                                    <div class="d">${diffDisplay}${score.stableford ? ` · <b>${score.stableford} PTS</b>` : ''}</div>
+                                    <div class="d">${rain18 ? `${score.holes} HOLES${score.stableford ? ` · <b>${score.stableford} PTS</b>` : ''}` : `${diffDisplay}${score.stableford ? ` · <b>${score.stableford} PTS</b>` : ''}`}</div>
+                                    ${rain18 ? `<div class="d" style="color:#0369a1;font-weight:700;">18-HOLE ${rain18.gross}${rain18.pts != null ? ` · ${rain18.pts} PTS` : ''}</div>` : ''}
                                 </div>
                             </div>
                             ${scorecardHtml}
@@ -80494,6 +80522,15 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (hn) hn.textContent = (holes && holes.length) ? (holes.length + ' holes') : '';
                         const chipsEl = document.getElementById('scv3dChips');
                         if (chipsEl) chipsEl.innerHTML = '<span class="scv3d-chip live">LIVE</span>' + (round.society_event_id ? '<span class="scv3d-chip">SOCIETY</span>' : '');
+                        // v1500: rain-out — say so, and show the 18-hole pro-rata beside the holes played
+                        if (chipsEl && round.society_event_id && round.holes_played && round.holes_played < 18 && window.RainOut) {
+                            window.RainOut.get(window.SupabaseDB.client, round.society_event_id).then(rain => {
+                                if (!rain || !document.getElementById('roundDetailsModal') || document.getElementById('roundDetailsModal').classList.contains('hidden')) return;
+                                const g18 = Math.round((round.total_gross || 0) * 18 / round.holes_played);
+                                const p18 = round.total_stableford ? Math.round(round.total_stableford * 18 / round.holes_played * 10) / 10 : null;
+                                chipsEl.insertAdjacentHTML('beforeend', '<span class="scv3d-chip" style="background:#e0f2fe;color:#0369a1;">RAIN OUT · ' + round.holes_played + '/18 · 18-HOLE ' + g18 + ' GROSS' + (p18 != null ? ' · ' + p18 + ' PTS' : '') + '</span>');
+                            }).catch(() => {});
+                        }
                         const netEl = document.getElementById('scv3dNet'); if (netEl) netEl.textContent = '-';
                         const diffEl = document.getElementById('scv3dDiff'); if (diffEl) diffEl.style.display = 'none';
                         const shareBtn = document.getElementById('scv3dShare'); if (shareBtn) delete shareBtn.dataset.share;
@@ -82982,7 +83019,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     const currentHcp = isFinite(lowestHcp) ? lowestHcp : (typeof userHcp === 'string' && userHcp.startsWith('+') ? -parseFloat(userHcp.substring(1)) : parseFloat(userHcp));
 
                     // Differentials for chart
-                    const diffs = rounds.map(r => ((r.total_gross - (r.course_rating || 72)) * 113 / (r.slope_rating || 113)));
+                    const diffs = rounds.map(r => ((GolfScoreSystem.gross18(r.total_gross, r.holes_played) ?? r.total_gross) - (r.course_rating || 72)) * 113 / (r.slope_rating || 113));
 
                     this.currentStats = { avgGross, avgPutts, fwPct, girPct, currentHcp, diffs, rounds };
                     console.log('[PerformanceLab] Loaded stats:', { avgGross: avgGross.toFixed(1), avgPutts: avgPutts.toFixed(1), fwPct: fwPct.toFixed(1), girPct: girPct.toFixed(1), currentHcp });
@@ -83341,7 +83378,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const dataPoints = [];
                 for (let i = 2; i < rounds.length; i++) {
                     const subset = rounds.slice(0, i + 1);
-                    const diffs = subset.map(r => ((r.total_gross - (r.course_rating || 72)) * 113 / (r.slope_rating || 113)));
+                    const diffs = subset.map(r => ((GolfScoreSystem.gross18(r.total_gross, r.holes_played) ?? r.total_gross) - (r.course_rating || 72)) * 113 / (r.slope_rating || 113));
                     diffs.sort((a, b) => a - b);
                     const best = diffs.slice(0, Math.max(1, Math.floor(diffs.length * 0.4)));
                     const hcp = best.reduce((s, d) => s + d, 0) / best.length * 0.96;
@@ -182050,6 +182087,15 @@ class OrganizerRoundHistory {
             }));
 
             this.filteredRounds = [...this.allRounds];
+            // v1500: rain-out declarations for short society rounds (one query), read by the card renderer
+            try {
+                const evIds = [...new Set(this.allRounds.filter(r => r.society_event_id && (r.holes_played || 18) < 18).map(r => r.society_event_id))];
+                this._rainByEvent = {};
+                if (evIds.length) {
+                    const { data: rainRows } = await window.SupabaseDB.client.from('event_rain_outs').select('event_id, method').in('event_id', evIds);
+                    (rainRows || []).forEach(x => { this._rainByEvent[x.event_id] = x; });
+                }
+            } catch (e) { this._rainByEvent = this._rainByEvent || {}; }
             this.updateStats();
             this.populateFilters();
             this.displayRounds();
@@ -182223,6 +182269,9 @@ class OrganizerRoundHistory {
             const diff = typeof gross === 'number' ? gross - par : null;
             const diffStr = diff !== null ? (diff > 0 ? `+${diff}` : diff === 0 ? 'E' : diff) : '';
             const diffColor = diff !== null ? (diff <= 0 ? '#059669' : diff <= 5 ? '#d97706' : '#dc2626') : '#6b7280';
+            // v1500: rain-out round — 18-hole pro-rata next to the holes played
+            const rainRow = (round.society_event_id && round.holes_played && round.holes_played < 18 && this._rainByEvent && this._rainByEvent[round.society_event_id]) ? this._rainByEvent[round.society_event_id] : null;
+            const rainLine = rainRow ? `<div style="font-size:10px;color:#0369a1;font-weight:700;margin-top:2px;">RAIN OUT · ${round.holes_played}/18 · 18-HOLE ${Math.round((round.total_gross || 0) * 18 / round.holes_played)}${typeof stableford === 'number' ? ` · ${Math.round(stableford * 18 / round.holes_played * 10) / 10} PTS` : ''}</div>` : '';
             const fmtPace = (s) => { if (s == null || s <= 0) return null; const m = Math.round(s / 60); const hh = Math.floor(m / 60), mm = m % 60; return hh > 0 ? `${hh}h ${String(mm).padStart(2, '0')}m` : `${mm}m`; };
             const _f9 = fmtPace(round.front9_seconds), _b9 = fmtPace(round.back9_seconds), _tt = fmtPace(round.total_seconds);
             const paceLine = _tt ? `<div style="font-size:10px;color:#6b7280;margin-top:2px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;"><span class="material-symbols-outlined" style="font-size:12px;line-height:1;color:#0d9488;">timer</span>${_f9 ? `F ${_f9}` : ''}${_b9 ? ` · B ${_b9}` : ''} · Tot <b style="color:#374151;">${_tt}</b></div>` : '';
@@ -182240,7 +182289,7 @@ class OrganizerRoundHistory {
                         <div style="font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" data-golfer-av="${round.golfer_id || ''}" data-golfer-av-nm="${String(playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="20">${playerName}</div>
                         <div style="font-size:11px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${micon('location_on')} ${courseName}</div>
                         <div style="font-size:10px;color:#9ca3af;margin-top:2px;">HCP: ${handicap}</div>
-                        ${paceLine}
+                        ${rainLine}${paceLine}
                     </div>
                     <!-- Scores -->
                     <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">

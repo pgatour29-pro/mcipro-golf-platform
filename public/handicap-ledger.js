@@ -37,10 +37,12 @@
         return round1((adjGross - cr) * (113.0 / slope));
     }
 
-    // v536 anchored path doubles 9-hole gross before the differential
+    // v536 anchored path doubled 9-hole gross before the differential; 2026-10-10 (Pete, Oct 5 rain-out):
+    // ANY short round (9..17 holes) counts pro-rata, same as the DB engine's prorata18().
     function adjustedGross(r) {
         const holes = r.holes_played == null ? 18 : r.holes_played;
-        return holes === 9 ? r.total_gross * 2 : r.total_gross;
+        if (holes >= 18 || holes < 9 || r.total_gross == null) return r.total_gross;
+        return Math.round(r.total_gross * 18 / holes);
     }
 
     // WHS best-N-of-M table (calculate_society_handicap_index lines 89-109)
@@ -210,7 +212,8 @@
                 _adjGross: adjustedGross(r),
                 _diff: scoreDifferential(adjustedGross(r), cr, slope),
                 _team: teamKind(r),
-                _nine: (r.holes_played == null ? 18 : r.holes_played) === 9
+                _nine: (r.holes_played == null ? 18 : r.holes_played) === 9,
+                _short: (r.holes_played != null && r.holes_played >= 9 && r.holes_played < 18) ? r.holes_played : null
             });
         });
 
@@ -454,6 +457,7 @@
             // team chip rides its own line under the course — inline it pushed GROSS/DIFF off a 360px screen
             const teamChip = r._team ? '<span class="hl-chip dim">' + ({ scramble: 'SCRAMBLE', waltz: 'WALTZ' }[r._team] || 'TEAM') + ' · NOT COUNTED</span>' : '';
             if (r._nine) tags.push('<span class="hl-chip dim">9H×2</span>');
+            else if (r._short) tags.push('<span class="hl-chip dim">' + r._short + 'H→18</span>');   // 2026-10-10 rain-out pro-rata
             return `<div class="hl-row${counts ? ' counts' : ''}${aging ? ' aging' : ''}">
                 <div class="r-date">${dateShort(r)}</div>
                 <div class="r-course">${esc(r.course_name || r.course || 'Course')}</div>

@@ -130886,8 +130886,15 @@ const TRGGScheduleSync = {
     PETE_LINE_ID: 'U2b6d976f19bca4b2f4374ae0e10ed873',
 
     init() {
-        const userId = window.AppState?.currentUser?.lineUserId;
+        // v1499 (Pete 2026-10-10: "the Admin tabs along with trgg hcp, schedule controls does not show up
+        // or load at times. make sure they load at all times"). Identity = AppState first, the stored
+        // login id second (AppState is filled late on a slow LINE/LIFF boot; the stored id is what the
+        // login gate itself trusts). An UNKNOWN identity never re-locks — that was the bug: the 3/6/10s
+        // timers fired before AppState had a user and hid the links, then nothing ever retried.
+        let userId = window.AppState?.currentUser?.lineUserId;
+        if (!userId) { try { userId = localStorage.getItem('line_user_id') || ''; } catch (e) { userId = ''; } }
         console.log('[TRGG Init] userId:', userId, 'isPete:', userId === this.PETE_LINE_ID);
+        if (!userId) return false;
         if (userId !== this.PETE_LINE_ID) {
             // v1184: this unlock used to be one-way — anyone who followed Pete on the same tab
             // kept his admin rail. Re-lock explicitly instead of just bailing out.
@@ -130897,7 +130904,7 @@ const TRGGScheduleSync = {
                 if (el) el.style.display = 'none';
             });
             try { const gdx = document.getElementById('golferDashboard'); if (gdx) gdx.classList.remove('g3-adm'); } catch (e) {}
-            return;
+            return false;
         }
         // Show Pete-only buttons
         const drawerBtn = document.getElementById('drawerTrggSync');
@@ -130917,6 +130924,34 @@ const TRGGScheduleSync = {
         try { const gd = document.getElementById('golferDashboard'); if (gd) gd.classList.add('g3-adm'); } catch (e) {}
         // Show in organizer admin tab if current society is TRGG
         this.updateOrganizerVisibility();
+        return true;
+    },
+
+    // v1499: keep trying until the links are painted, then keep them honest. Polls every 1.5s for the
+    // first two minutes (slow boots), every 10s after that (identity can change on this tab without a
+    // reload - see lockPrivilegedUI), and repaints synchronously the moment the drawer or the desktop
+    // More menu opens, so what Pete sees when he taps the menu is never a stale timer's guess.
+    ensure() {
+        if (this._ensuring) return;
+        this._ensuring = true;
+        const self = this;
+        const tick = function () { try { self.init(); } catch (e) { console.warn('[TRGG ensure]', e); } };
+        let n = 0;
+        const fast = setInterval(function () { tick(); if (++n >= 80) { clearInterval(fast); setInterval(tick, 10000); } }, 1500);
+        document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') tick(); });
+        const hook = function () {
+            if (typeof window.openMobileDrawer === 'function' && !window.openMobileDrawer._trggHooked) {
+                const orig = window.openMobileDrawer;
+                const wrapped = function () { tick(); return orig.apply(this, arguments); };
+                wrapped._trggHooked = true; window.openMobileDrawer = wrapped;
+            }
+            const more = document.getElementById('desktopMoreDropdown');
+            if (more && more.parentElement && !more.parentElement._trggHooked) {
+                more.parentElement.addEventListener('mouseenter', tick); more.parentElement._trggHooked = true;
+            }
+            return !!(window.openMobileDrawer && window.openMobileDrawer._trggHooked);
+        };
+        if (!hook()) { const h = setInterval(function () { if (hook()) clearInterval(h); }, 1000); }
     },
 
     updateOrganizerVisibility() {
@@ -131536,11 +131571,11 @@ const TRGGPOYUpdate = {
 };
 window.TRGGPOYUpdate = TRGGPOYUpdate;
 
-// Initialize TRGG sync buttons after login
+// Initialize TRGG sync buttons after login. v1499: no 'userLoggedIn' event is dispatched anywhere in
+// this app and the three one-shot timers gave up at 10s - ensure() polls until the links are painted.
 document.addEventListener('userLoggedIn', () => TRGGScheduleSync.init());
-setTimeout(() => TRGGScheduleSync.init(), 3000);
-setTimeout(() => TRGGScheduleSync.init(), 6000);
-setTimeout(() => TRGGScheduleSync.init(), 10000);
+try { TRGGScheduleSync.init(); } catch (e) {}
+TRGGScheduleSync.ensure();
 
 // ============================================
 // Helper function: Golfers use the organizer system to create/manage their events

@@ -11,6 +11,7 @@ const sql = read('sql/course_market_insights_v1509.sql');
 const edge = read('supabase/functions/line-push-notification/index.ts');
 const priv = read('public/privacy.html');
 const lock = read('sql/course_follows_lock_v1511.sql');
+const cad = read('sql/market_caddies_v1512.sql');
 const fail = [];
 
 // server: counts only, under-5 suppression, offers resolved by the platform
@@ -36,6 +37,10 @@ keys.forEach(k => { const n = (idx.match(new RegExp("'" + k.replace(/\./g, '\\.'
 // reach: asked once per course after a round, server decides + records
 if (!/sb\.rpc\('follow_prompt_next'/.test(idx) || !/sb\.rpc\('follow_prompt_answer'/.test(idx)) fail.push('index.html: FollowPrompt must go through follow_prompt_next / follow_prompt_answer');
 if (!/L\._isRoundActive && L\._isRoundActive\(\)\) return;/.test(idx)) fail.push('index.html: the follow prompt must never open on top of a round');
+// v1512: caddies — counts only, Chee Chan (tester course) never in another course's market, caddy audience delivered by the platform
+if (!/rpc\('market_caddies'/.test(mk) || !/grant execute on function public\.market_caddies\(text, text, integer\) to anon/.test(cad)) fail.push('Market › Caddies must read market_caddies');
+if (!/slug <> 'cheechan' or me = 'cheechan'/.test(cad)) fail.push('sql: Chee Chan (tester course) must stay out of other courses\' caddy market');
+if (!/caddy_users as \(/.test(cad) || !/'caddy_users'/.test(mk)) fail.push('the "golfers who book caddies" audience is missing');
 // v1511: follows + offer consent belong to the verified login
 if (!/create policy cf_own_insert on public\.course_follows for insert to authenticated with check \(golfer_line_id = public\.line_id\(\)\)/.test(lock) || !/revoke insert, update, delete on public\.course_follows from anon/.test(lock)) fail.push('sql: course_follows must be own-rows-only for signed-in golfers');
 if ((lock.match(/public\.line_id\(\) is distinct from p_user/g) || []).length < 4) fail.push('sql: set_offer_consent / set_notification_prefs / follow_prompt_next / follow_prompt_answer must check the verified login');

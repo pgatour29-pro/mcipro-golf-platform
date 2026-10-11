@@ -188,6 +188,14 @@
             if (data && data.venue) MK.venue = data.venue;
             return data || {};
         },
+        async marketCaddies(days) {   // v1512 Market › Caddies (sql/market_caddies_v1512.sql)
+            const d = days || MK.mktDays, key = 'mktc|' + MK.course.id + '|' + d, c = MK._cache[key];
+            if (c && Date.now() - c.at < 60000) return c.v;
+            const { data, error } = await db().rpc('market_caddies', { p_course_id: MK.course.id, p_course_name: MK.course.name, p_days: d });
+            if (error) throw error;
+            MK._cache[key] = { at: Date.now(), v: data || {} };
+            return data || {};
+        },
         isLive(o) { const now = Date.now(); return o.status === 'active' && (!o.valid_to || new Date(o.valid_to).getTime() > now) && (!o.valid_from || new Date(o.valid_from).getTime() <= now); },
 
         // ---------- shared pieces ----------
@@ -335,6 +343,7 @@
               #marketingDashboard .mkt-dow .m { background:#cbd5e1; } #marketingDashboard .mkt-dow .y { background:#16a34a; }
               #marketingDashboard .mkt-dow .d { font-size:11px; font-weight:700; color:#334155; }
               #marketingDashboard .mkt-dow .n { font-size:10px; color:#3e4956; font-weight:600; white-space:nowrap; }
+              #marketingDashboard .mkt-dow-s { height:110px; } #marketingDashboard .mkt-dow-s .bs { height:72px; }
               #marketingDashboard .mkt-key { display:inline-block; width:10px; height:10px; border-radius:3px; vertical-align:middle; }
               #marketingDashboard .mkt-hero { background:linear-gradient(135deg,#052e16,#14532d 55%,#166534); color:#fff; border-radius:16px; padding:16px; }
               #marketingDashboard .mkt-hero .big { font-size:40px; font-weight:900; line-height:1; }
@@ -365,7 +374,7 @@
             const seq = (MK._seq.mkt = (MK._seq.mkt || 0) + 1);
             if (!silent && !MK._loaded.mkt) host.innerHTML = MK.spinner();
             try {
-                const r = await MK.market();
+                const [r, cad] = await Promise.all([MK.market(), MK.marketCaddies().catch(e => { console.warn('[Marketing] caddies:', e.message); return null; })]);
                 if (seq !== MK._seq.mkt) return;
                 if (!r.ok) { host.innerHTML = `<div class="bg-white rounded-xl border border-gray-200 p-6 text-center text-sm text-gray-600">${esc(tr('mkt.unknown', 'This course is not on the course map yet — ask MyCaddiPro to add it, then the market shows here.'))}</div>`; return; }
                 const m = r.market || {}, me = r.you || {}, pool = r.pool || {}, wb = r.winback || {}, re = r.reach || {}, also = r.also || {};
@@ -389,6 +398,28 @@
                 const neverSeg = { name: tr('mkt.seg.never', 'Never played here'), audience: 'never_here' };
                 const lapsedSeg = { name: tr('mkt.seg.lapsed', 'Lapsed here, golfing elsewhere'), audience: 'lapsed_elsewhere' };
                 const per = `<div class="mkt-per">${[30, 90, 365].map(d => `<button class="${MK.mktDays === d ? 'on' : ''}" onclick="MarketingDashboard.setMktDays(${d})">${d === 365 ? '1Y' : d + 'D'}</button>`).join('')}</div>`;
+                // v1512 Caddies — fills first: courses tell their caddies to register the day they sign up
+                const cadHtml = (() => {
+                    if (!cad || !cad.ok) return '';
+                    const ro = cad.roster || {}, jb = cad.jobs || {}, pr = cad.per100 || {}, rt = cad.rating || {};
+                    const cdow = cad.dow || [], cmx = Math.max(...cdow.map(x => MK.kn(x.market)), 1);
+                    const anyJobs = MK.kn(jb.market) > 0;
+                    const stat = (val, label, sub) => `<div class="rounded-xl border border-gray-200 p-3 min-w-0"><div class="text-[20px] font-extrabold mk-num text-gray-900 leading-tight">${val}</div><div class="text-[12px] font-semibold text-gray-600">${esc(label)}</div>${sub ? `<div class="text-[11px] text-gray-500 font-medium">${sub}</div>` : ''}</div>`;
+                    const cadSeg = { name: tr('mkt.seg.caddy', 'Golfers who book caddies'), audience: 'caddy_users', offer_type: 'caddy' };
+                    return MK.card(tr('mkt.cad.title', 'Caddies in your market'), 'support_agent', `
+                      <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        ${stat(fmtN(ro.you), tr('mkt.cad.roster', 'Your registered caddies'), fmtN(ro.market) + ' ' + esc(tr('mkt.cad.inmarket', 'in the market')) + ' · ' + fmtN(ro.courses) + ' ' + esc(tr('mkt.courses', 'courses')))}
+                        ${stat(MK.kv(jb.you), tr('mkt.cad.jobs', 'Caddy bookings here'), MK.kv(jb.market) + ' ' + esc(tr('mkt.cad.inmarket', 'in the market')) + ' · ' + MK.kv(jb.golfers_you) + ' ' + esc(tr('mk.golfers', 'golfers')))}
+                        ${stat(pr.you != null ? fmtN(pr.you) : '—', tr('mkt.cad.per100', 'Caddies per 100 rounds'), esc(tr('mkt.market', 'market'))
+                            + ' ' + (pr.market != null ? fmtN(pr.market) : '—'))}
+                        ${stat(MK.kv(jb.ahead_you), tr('mkt.cad.ahead', 'Booked ahead (30 days)'), MK.kv(cad.repeat_you) + ' ' + esc(tr('mkt.cad.repeat', 'came back to the same caddy')))}
+                      </div>
+                      ${anyJobs ? `<div class="mkt-leg text-[11px] text-gray-600 font-semibold mt-3">${legend}</div>
+                      <div class="mkt-dow mkt-dow-s mt-1">${cdow.map(x => { const mm = MK.kn(x.market), yy = MK.kn(x.you); return `<div class="c"><div class="n">${MK.kv(x.market)}${yy ? ' · <b style="color:#15803d">' + MK.kv(x.you) + '</b>' : ''}</div><div class="bs"><div class="b m" style="height:${mm / cmx * 100}%"></div><div class="b y" style="height:${yy / cmx * 100}%"></div></div><div class="d">${esc(MK.dowName(x.dow))}</div></div>`; }).join('')}</div>` : ''}
+                      <div class="text-[12px] text-gray-700 mt-3">${rt.you != null ? esc(tr('mkt.cad.rating', 'Your caddies are rated {r} ★ by golfers').replace('{r}', rt.you)) + (rt.market != null ? ' · ' + esc(tr('mkt.market', 'market')) + ' ' + rt.market + ' ★' : '') + '. ' : ''}${MK.kv(jb.no_caddy_you) !== '0' ? MK.kv(jb.no_caddy_you) + ' ' + esc(tr('mkt.cad.nocaddy', 'bookings here still need a caddy number.')) : ''}</div>
+                      <div class="mk-note mt-3">${esc(tr('mkt.cad.note', 'These fill in as your caddies register and golfers book them in the app. Tell every caddy to register — each one is a profile golfers can find and book.'))}</div>
+                      <div class="flex flex-wrap gap-2 mt-3">${segBtn(cadSeg, tr('mkt.cad.offer', 'Caddy offer to golfers who book caddies'), true)}</div>`);
+                })();
                 const socRows = (r.societies || []).slice(0, 8).map(s => {
                     const days = (s.weekdays || []).length >= 6 ? tr('mkt.everyday', 'most days') : (s.weekdays || []).map(MK.dowName).join(' · ');
                     const at = Number(s.at_you) || 0;
@@ -434,6 +465,7 @@
                       <div class="flex flex-wrap gap-2">${segBtn(neverSeg, tr('mkt.sendnever', 'Send them an offer'), true)}${segBtn(lapsedSeg, tr('mkt.sendlapsed', 'Win back lapsed golfers'), false)}</div>
                       ${MK.card(tr('mkt.socs', 'Societies playing your market'), 'diversity_3', (socRows ? `<div class="mkt-soc"><div class="mkt-lbl">${esc(tr('mkt.society', 'Society'))}</div><div class="mkt-lbl text-right">${esc(tr('mkt.golfdays', 'Golf days'))}</div><div class="mkt-lbl text-right">${esc(tr('mkt.avgplayers', 'Avg players'))}</div><div class="mkt-lbl text-right">${esc(tr('mkt.atyou', 'At you'))}</div></div>` + socRows : `<p class="text-xs text-gray-500 py-4 text-center">${esc(tr('mgr.nodata', 'No data in this period'))}</p>`) +
                         `<p class="text-[11px] text-gray-600 mt-2">${esc(tr('mkt.socnote', 'Golf days include the next 60 days. Put open tee times up from the pro shop tee sheet (Open times) — societies take them from their dashboard. Member lists never cross.'))}</p>`)}
+                      ${cadHtml}
                     </div>
                     <div class="flex flex-col gap-4">
                       ${MK.card(tr('mkt.also', 'Where your golfers also play'), 'alt_route', `<div class="text-[11px] text-gray-600 mb-2">${esc(tr('mkt.also.sub', '{n} golfers played you in the last year — where they played in the period').replace('{n}', MK.kv(also.base)))}</div>` + MK.mktBars((also.venues || []).map(v => ({ name: v.name, n: v.n })), 'bg-sky-500', MK.kn(also.base)))}
@@ -527,7 +559,7 @@
             const d = Number(o.delivered) || 0, op = Number(o.opened) || 0, cl = Number(o.clicked) || 0, pu = Number(o.pushed) || 0, dm = Number(o.dismissed) || 0;
             const th = o.lang && o.lang.th ? o.lang.th : null;
             const seg = o.segment || {};
-            const audText = { never_here: tr('mkt.aud.never', 'Golfers near you who never played here'), lapsed_elsewhere: tr('mkt.aud.lapsed', 'Lapsed here, still golfing elsewhere'), market: tr('mkt.aud.market', 'Every golfer in your market') }[seg.audience];
+            const audText = { never_here: tr('mkt.aud.never', 'Golfers near you who never played here'), lapsed_elsewhere: tr('mkt.aud.lapsed', 'Lapsed here, still golfing elsewhere'), market: tr('mkt.aud.market', 'Every golfer in your market'), caddy_users: tr('mkt.aud.caddy', 'Golfers who book caddies in your market') }[seg.audience];
             const segText = [audText ? esc(audText) : (seg.played_since ? tr('mk.seg.since', 'played since') + ' ' + esc(seg.played_since) : tr('mk.seg.anyplayed', 'anyone who has played here')),
                 (seg.dows || []).length ? esc(tr('mkt.playson', 'plays on')) + ' ' + esc(seg.dows.map(MK.dowName).join(', ')) : null, seg.lang ? langName(seg.lang) : null, (seg.hcp_min != null || seg.hcp_max != null) ? 'HCP ' + (seg.hcp_min ?? '') + '–' + (seg.hcp_max ?? '') : null].filter(Boolean).join(' · ');
             MK._ovl(`<div class="hd"><h3 class="min-w-0 truncate">${esc(o.title)}</h3>${MK.statusChip(o)}<button class="xx" onclick="MarketingDashboard._closeOvl()"><span class="material-symbols-outlined">close</span></button></div>
@@ -568,7 +600,7 @@
             } catch (e) { window.NotificationManager.show(tr('mk.err', 'Could not load this section') + ': ' + e.message, 'error'); }
         },
         // ---- composer: the first course-side offer authoring UI ----
-        MKT_AUDS: ['never_here', 'lapsed_elsewhere', 'market'],   // v1509: market audiences (venue + region, last 90 days)
+        MKT_AUDS: ['never_here', 'lapsed_elsewhere', 'market', 'caddy_users'],   // v1509: market audiences (venue + region, last 90 days)
         async compose(segment, dupId) {
             const r = await MK.report().catch(() => ({}));
             if (!MK.venue) await MK.market().catch(() => null);   // the venue the market audiences are counted against
@@ -584,7 +616,7 @@
               <div class="bd">
                 ${segment ? `<div class="mk-note">${mi('groups')} ${esc(tr('mk.seg.for', 'Segment'))}: <b>${esc(segment.name || '')}</b></div>` : ''}
                 <label class="lbl">${esc(tr('mk.c.type', 'Type'))}</label>
-                <select id="mkType" class="mk-in">${opt(MK.TYPES.filter(x => x[0] !== 'tee_time'), base && base.offer_type !== 'tee_time' ? base.offer_type : 'promotion')}</select>
+                <select id="mkType" class="mk-in">${opt(MK.TYPES.filter(x => x[0] !== 'tee_time'), base && base.offer_type !== 'tee_time' ? base.offer_type : ((segment && segment.offer_type) || 'promotion'))}</select>
                 <label class="lbl">${esc(tr('mk.c.title', 'Title'))}</label>
                 <input id="mkTitle" class="mk-in" maxlength="120" value="${esc(base ? base.title : '')}" placeholder="${esc(tr('mk.c.title.ph', 'e.g. Twilight green fee ฿1,200 this week'))}">
                 <label class="lbl">${esc(tr('mk.c.body', 'Message'))}</label>
@@ -607,7 +639,8 @@
                   <option value="since" ${seg.played_since && !seg.audience ? 'selected' : ''}>${esc(tr('mk.aud.since', 'Played here since a date'))}</option>
                   ${MK.venue ? `<option value="never_here" ${seg.audience === 'never_here' ? 'selected' : ''}>${esc(tr('mkt.aud.never', 'Golfers near you who never played here'))}</option>
                   <option value="lapsed_elsewhere" ${seg.audience === 'lapsed_elsewhere' ? 'selected' : ''}>${esc(tr('mkt.aud.lapsed', 'Lapsed here, still golfing elsewhere'))}</option>
-                  <option value="market" ${seg.audience === 'market' ? 'selected' : ''}>${esc(tr('mkt.aud.market', 'Every golfer in your market'))}</option>` : ''}
+                  <option value="market" ${seg.audience === 'market' ? 'selected' : ''}>${esc(tr('mkt.aud.market', 'Every golfer in your market'))}</option>
+                  <option value="caddy_users" ${seg.audience === 'caddy_users' ? 'selected' : ''}>${esc(tr('mkt.aud.caddy', 'Golfers who book caddies in your market'))}</option>` : ''}
                 </select>
                 ${MK.venue ? `<label class="lbl">${esc(tr('mkt.c.days', 'Only golfers who play on (last 90 days)'))}</label>
                 <div class="flex flex-wrap gap-1">${[1, 2, 3, 4, 5, 6, 7].map(d => `<label class="inline-flex items-center gap-1 px-2 h-8 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 cursor-pointer"><input type="checkbox" class="mkDow" value="${d}" ${(seg.dows || []).includes(d) ? 'checked' : ''} onchange="MarketingDashboard.countSeg()"> ${esc(MK.dowName(d))}</label>`).join('')}</div>` : ''}

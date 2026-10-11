@@ -185,3 +185,33 @@ revoke all on function public.call_pin_get(text), public.call_pin_set(text, text
                        public.desk_call_pins(text, text[]), public.desk_token_ok(text) from public;
 grant execute on function public.call_pin_get(text), public.call_pin_set(text, text), public.desk_call_lookup(text, text),
                           public.desk_call_pins(text, text[]), public.desk_token_ok(text) to anon, authenticated;
+
+-- v1528b (security review): every course-PIN login mints a new token, so a per-TOKEN miss count could be reset by
+-- logging in again. Misses now count per COURSE (or facility): 30 an hour across all of that course's tokens.
+alter table public.desk_lookup_misses add column if not exists course_id text;
+create index if not exists desk_lookup_misses_course on public.desk_lookup_misses (course_id, at);
+create or replace function public.desk_call_lookup(p_token text, p_pin text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  keys  text[] := public._desk_keys(p_token);
+  v_pin text := regexp_replace(coalesce(p_pin, ''), '\D', '', 'g');
+  who   text;
+  g     record;
+begin
+  if keys is null or cardinality(keys) = 0 then return jsonb_build_object('ok', false, 'reason', 'token'); end if;
+  select coalesce(t.facility_id, t.course_id) into who from public.proshop_desk_tokens t where t.token = p_token;
+  if (select count(*) from public.desk_lookup_misses m where m.course_id = who and m.at > now() - interval '1 hour') >= 30 then
+    return jsonb_build_object('ok', false, 'reason', 'locked');
+  end if;
+  select up.line_user_id id, up.name, up.handicap_index hcp, c.pin into g
+    from public.golfer_call_pins c join public.user_profiles up on up.line_user_id = c.golfer_id
+   where c.pin = v_pin limit 1;
+  if g.id is null then
+    insert into public.desk_lookup_misses (token, course_id) values (p_token, who);
+    delete from public.desk_lookup_misses where at < now() - interval '1 day';
+    return jsonb_build_object('ok', true, 'golfer', null);
+  end if;
+  return jsonb_build_object('ok', true, 'golfer', jsonb_build_object('id', g.id, 'name', g.name, 'hcp', g.hcp, 'pin', g.pin));
+end $$;
+revoke all on function public.desk_call_lookup(text, text) from public;
+grant execute on function public.desk_call_lookup(text, text) to anon, authenticated;

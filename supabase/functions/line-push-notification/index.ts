@@ -1871,6 +1871,11 @@ async function handleCourseOffer(supabase: any, record: any) {
     p_course_names: seg.course_names ?? null,
     p_lang: seg.lang ?? null,
     p_played_since: seg.played_since ?? null,
+    // v1509 market audiences (sql/course_market_insights_v1509.sql); absent = the original "played here" audience
+    p_audience: seg.audience ?? null,
+    p_venue: seg.venue ?? null,
+    p_dows: Array.isArray(seg.dows) && seg.dows.length ? seg.dows : null,
+    p_days: seg.days ?? 90,
   });
   if (segErr) {
     console.error("[LINE Push] segment resolve failed:", segErr.message);

@@ -83,6 +83,7 @@
             } catch (e) { }
             const stem = MK.stemOf(name || id);
             MK.course = { id, name: name || id, stem, like: '%' + stem.join('%') + '%', names: [] };
+            MK.venue = null;   // v1509: the market venue belongs to the course; market() sets it again
             // exact rounds.course_name variants at this facility (the offer segment RPC matches exact names)
             try {
                 const { data } = await db().rpc('list_round_course_names');
@@ -145,7 +146,7 @@
         // ---------- tabs ----------
         onTab(tab, silent) {
             MK._cur = tab || 'overview';
-            const map = { overview: MK.loadOverview, audience: MK.loadAudience, campaigns: MK.loadCampaigns, reviews: MK.loadReviews, events: MK.loadEvents, reports: MK.loadReports };
+            const map = { overview: MK.loadOverview, audience: MK.loadAudience, market: MK.loadMarket, campaigns: MK.loadCampaigns, reviews: MK.loadReviews, events: MK.loadEvents, reports: MK.loadReports };
             const fn = map[MK._cur] || MK.loadOverview;
             if (!MK.course) { if (MK._ready && !document.getElementById('mkCoursePicker')) MK.showCoursePicker(); return; }
             fn(silent);
@@ -175,6 +176,17 @@
             if (error) throw error;
             MK._cache[key] = { at: Date.now(), v: data || [] };
             return data || [];
+        },
+        // v1509 THE market read: counts for the course's region (sql/course_market_insights_v1509.sql). Any 1–4 comes back "<5".
+        mktDays: 90,
+        async market(days) {
+            const d = days || MK.mktDays, key = 'mkt|' + MK.course.id + '|' + d, c = MK._cache[key];
+            if (c && Date.now() - c.at < 60000) return c.v;
+            const { data, error } = await db().rpc('market_insights', { p_course_id: MK.course.id, p_course_name: MK.course.name, p_days: d });
+            if (error) throw error;
+            MK._cache[key] = { at: Date.now(), v: data || {} };
+            if (data && data.venue) MK.venue = data.venue;
+            return data || {};
         },
         isLive(o) { const now = Date.now(); return o.status === 'active' && (!o.valid_to || new Date(o.valid_to).getTime() > now) && (!o.valid_from || new Date(o.valid_from).getTime() <= now); },
 
@@ -290,6 +302,151 @@
             } catch (e) { console.warn('[Marketing] audience:', e.message); host.innerHTML = MK.errorBox(e); }
         },
 
+
+        // ================= MARKET (v1509) =================
+        // Pete 2026-10-11: "golfers data mined for the golf courses for marketing". The course sees its MARKET — every golfer
+        // who played a course in its region — and where it stands. COUNTS ONLY: the course never sees who; the platform
+        // delivers its offers. Other courses stay unnamed in the ranking; "where your golfers also play" names them because
+        // that is the course's own customers' behaviour. Society golf days are the society's business listing.
+        kv(x) { return x === '<5' ? tr('mkt.under5', 'under 5') : fmtN(x); },
+        kn(x) { return x === '<5' ? 2 : (Number(x) || 0); },
+        dowName(d) { try { return new Date(2026, 9, 4 + Number(d)).toLocaleDateString(typeof _lvLocale === 'function' ? _lvLocale() : 'en-US', { weekday: 'short' }); } catch (e) { return ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][d]; } },
+        mktBars(rows, color, total) {   // barList that understands "<5"
+            if (!rows || !rows.length) return `<p class="text-xs text-gray-500 py-4 text-center">${esc(tr('mgr.nodata', 'No data in this period'))}</p>`;
+            const max = Math.max(...rows.map(r => MK.kn(r.n)), 1);
+            return rows.map(r => `<div class="flex items-center gap-2 py-1 ${r.you ? 'mkt-you' : ''}">
+                <span class="text-xs text-gray-800 w-32 truncate font-medium" title="${esc(r.name)}">${esc(r.name)}</span>
+                <div class="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden"><div class="h-full ${r.you ? 'bg-green-500' : (color || 'bg-green-500')} rounded-full" style="width:${Math.round(MK.kn(r.n) / max * 100)}%"></div></div>
+                <span class="text-xs font-bold text-gray-900 text-right" style="min-width:58px">${MK.kv(r.n)}${total && r.n !== '<5' ? ` <span class="text-gray-500 font-medium">${pct(MK.kn(r.n), total)}%</span>` : ''}</span>
+              </div>`).join('');
+        },
+        mktStyle() {
+            if (document.getElementById('mk-mkt-css')) return;
+            const st = document.createElement('style'); st.id = 'mk-mkt-css';
+            st.textContent = `
+              #marketingDashboard .mk-note { background:#f0fdf4; border:1px solid #86efac; color:#166534; border-radius:12px; padding:8px 10px; font-size:12.5px; }
+              #marketingDashboard .mkt-you { background:#f0fdf4; border-radius:8px; margin:0 -6px; padding-left:6px; padding-right:6px; }
+              #marketingDashboard .mkt-you span:first-child { font-weight:800; color:#15803d; }
+              #marketingDashboard .mkt-dow { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:6px; align-items:end; height:150px; }
+              #marketingDashboard .mkt-dow .c { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; gap:3px; border-radius:8px; }
+              #marketingDashboard .mkt-dow .c.gap { outline:2px dashed #f59e0b; outline-offset:2px; }
+              #marketingDashboard .mkt-dow .bs { display:flex; gap:3px; align-items:flex-end; height:110px; width:100%; justify-content:center; }
+              #marketingDashboard .mkt-dow .b { width:42%; border-radius:5px 5px 0 0; min-height:2px; }
+              #marketingDashboard .mkt-dow .m { background:#cbd5e1; } #marketingDashboard .mkt-dow .y { background:#16a34a; }
+              #marketingDashboard .mkt-dow .d { font-size:11px; font-weight:700; color:#334155; }
+              #marketingDashboard .mkt-dow .n { font-size:10px; color:#3e4956; font-weight:600; white-space:nowrap; }
+              #marketingDashboard .mkt-key { display:inline-block; width:10px; height:10px; border-radius:3px; vertical-align:middle; }
+              #marketingDashboard .mkt-hero { background:linear-gradient(135deg,#052e16,#14532d 55%,#166534); color:#fff; border-radius:16px; padding:16px; }
+              #marketingDashboard .mkt-hero .big { font-size:40px; font-weight:900; line-height:1; }
+              #marketingDashboard .mkt-soc { display:grid; grid-template-columns:minmax(0,1.6fr) repeat(3,minmax(0,1fr)); gap:8px; align-items:center; padding:10px 0; border-top:1px solid #eef1f6; }
+              #marketingDashboard .mkt-soc:first-of-type { border-top:none; }
+              #marketingDashboard .mkt-lbl { font-size:10.5px; font-weight:700; color:#3e4956; text-transform:uppercase; letter-spacing:.03em; }
+              #marketingDashboard .mkt-per { display:flex; gap:2px; padding:3px; background:#fff; border:1px solid #e5e7eb; border-radius:11px; flex:0 0 auto; }
+              #marketingDashboard .mkt-per button { height:30px; padding:0 10px; border:none; border-radius:8px; background:transparent; color:#334155; font-size:12.5px; font-weight:800; cursor:pointer; }
+              #marketingDashboard .mkt-per button.on { background:#16a34a; color:#fff; }
+              #marketingDashboard .mkt-lock { display:flex; gap:8px; align-items:flex-start; font-size:12px; color:#334155; background:#fff; border:1px solid rgba(15,23,42,.12); border-radius:12px; padding:10px 12px; }
+              #marketingDashboard .mkt-leg { display:flex; align-items:center; gap:12px; white-space:nowrap; }
+              #marketingDashboard .mkt-leg-m { display:none; }
+              @media (max-width:767px) {
+                #marketingDashboard .mkt-leg-d { display:none; }
+                #marketingDashboard .mkt-leg-m { display:flex; margin-top:2px; }
+                #marketingDashboard .mkt-soc { grid-template-columns:repeat(3,minmax(0,1fr)); }
+                #marketingDashboard .mkt-soc > :first-child { grid-column:1/-1; }
+                #marketingDashboard .mkt-soc .mkt-lbl:first-child { display:none; }
+                #marketingDashboard .mkt-dow .n { font-size:9px; }
+                #marketingDashboard .mkt-hero .big { font-size:34px; }
+              }`;
+            document.head.appendChild(st);
+        },
+        setMktDays(d) { MK.mktDays = Number(d) || 90; MK._loaded.mkt = false; MK.loadMarket(); },
+        async loadMarket(silent) {
+            const host = document.getElementById('mk-mkt-body'); if (!host) return;
+            MK.mktStyle();
+            const seq = (MK._seq.mkt = (MK._seq.mkt || 0) + 1);
+            if (!silent && !MK._loaded.mkt) host.innerHTML = MK.spinner();
+            try {
+                const r = await MK.market();
+                if (seq !== MK._seq.mkt) return;
+                if (!r.ok) { host.innerHTML = `<div class="bg-white rounded-xl border border-gray-200 p-6 text-center text-sm text-gray-600">${esc(tr('mkt.unknown', 'This course is not on the course map yet — ask MyCaddiPro to add it, then the market shows here.'))}</div>`; return; }
+                const m = r.market || {}, me = r.you || {}, pool = r.pool || {}, wb = r.winback || {}, re = r.reach || {}, also = r.also || {};
+                const dow = r.dow || [];
+                const sharePct = pct(me.golfers || 0, m.golfers || 0);
+                // empty days = days the market plays (20+ rounds) and you had none
+                const empty = dow.filter(x => MK.kn(x.you) === 0 && MK.kn(x.market) >= 20);
+                const emptyRounds = empty.reduce((a, x) => a + MK.kn(x.market), 0);
+                const busiest = dow.slice().sort((a, b) => MK.kn(b.market) - MK.kn(a.market))[0] || null;
+                const yourDays = dow.filter(x => MK.kn(x.you) > 0).map(x => MK.dowName(x.dow));
+                const mx = Math.max(...dow.map(x => MK.kn(x.market)), 1);
+                const legend = `<span><i class="mkt-key" style="background:#cbd5e1"></i> ${esc(tr('mkt.market', 'market'))}</span><span><i class="mkt-key" style="background:#16a34a"></i> ${esc(tr('mkt.you', 'you'))}</span>`;
+                const segBtn = (seg, label, primary) => `<button onclick='MarketingDashboard.compose(${JSON.stringify(seg).replace(/'/g, '&#39;')})' class="mk-btn ${primary ? 'g' : 'n'}">${esc(label)}</button>`;
+                const tile = (icon, color, val, label, sub, seg) => {
+                    const inner = `<div class="flex items-center justify-between"><span class="mk-chip bg-${color}-50">${mi(icon, 'text-' + color + '-600')}</span></div>
+                      <div class="text-[23px] font-extrabold text-gray-900 mk-num leading-tight mt-2">${val}</div>
+                      <div class="text-[12px] font-semibold text-gray-600">${esc(label)}</div>
+                      ${sub ? `<div class="text-[11px] text-gray-500 font-medium">${sub}</div>` : ''}`;
+                    return seg ? `<button onclick='MarketingDashboard.compose(${JSON.stringify(seg).replace(/'/g, '&#39;')})' class="mk-kpi text-left w-full">${inner}</button>` : `<div class="mk-kpi">${inner}</div>`;
+                };
+                const neverSeg = { name: tr('mkt.seg.never', 'Never played here'), audience: 'never_here' };
+                const lapsedSeg = { name: tr('mkt.seg.lapsed', 'Lapsed here, golfing elsewhere'), audience: 'lapsed_elsewhere' };
+                const per = `<div class="mkt-per">${[30, 90, 365].map(d => `<button class="${MK.mktDays === d ? 'on' : ''}" onclick="MarketingDashboard.setMktDays(${d})">${d === 365 ? '1Y' : d + 'D'}</button>`).join('')}</div>`;
+                const socRows = (r.societies || []).slice(0, 8).map(s => {
+                    const days = (s.weekdays || []).length >= 6 ? tr('mkt.everyday', 'most days') : (s.weekdays || []).map(MK.dowName).join(' · ');
+                    const at = Number(s.at_you) || 0;
+                    const sub = s.next_at_you ? tr('mkt.nexthere', 'next here') + ' ' + when(s.next_at_you) : (at ? tr('mkt.lasthere', 'last here') + ' ' + when(s.last_at_you) : tr('mkt.neverhere', 'not here yet'));
+                    return `<div class="mkt-soc"><div class="min-w-0"><div class="text-[13px] font-bold truncate">${esc(s.name)}</div><div class="text-[11px] text-gray-600 truncate">${esc(days)} · ${esc(sub)}</div></div>
+                      <div class="text-right mk-num font-bold">${fmtN(s.days)}</div><div class="text-right mk-num font-bold">${(Number(s.avg_players) || 0) >= 5 ? fmtN(s.avg_players) : '—'}</div>
+                      <div class="text-right mk-num font-bold" style="${at ? '' : 'color:#b45309'}">${fmtN(at)}${s.days && at ? ` <span class="text-[11px] text-gray-500">${pct(at, s.days)}%</span>` : ''}</div></div>`;
+                }).join('');
+                host.innerHTML = `
+                  <div class="flex items-center justify-between gap-2 mb-3">
+                    <div class="min-w-0"><div class="text-base md:text-lg font-extrabold text-gray-900">${esc(tr('mkt.title', 'Your market'))}${r.region ? ' · ' + esc(r.region) : ''}</div>
+                      <div class="text-[12px] text-gray-600 font-medium">${esc(tr('mkt.sub', 'Every golfer who played a course on MyCaddiPro in your region'))} · ${esc(when(r.from))} – ${esc(when(r.to))}</div></div>
+                    ${per}
+                  </div>
+                  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+                    ${tile('public', 'blue', fmtN(m.golfers), tr('mkt.k.market', 'Golfers in your market'), fmtN(m.rounds) + ' ' + esc(tr('mk.rounds', 'rounds')) + ' · ' + fmtN(m.venues) + ' ' + esc(tr('mkt.courses', 'courses')), { name: tr('mkt.seg.market', 'Everyone in your market'), audience: 'market' })}
+                    ${tile('pie_chart', 'green', sharePct + '%', tr('mkt.k.share', 'Played you'), fmtN(me.golfers) + ' ' + esc(tr('mk.golfers', 'golfers')) + (me.rank ? ' · #' + me.rank + ' ' + esc(tr('mkt.of', 'of')) + ' ' + fmtN(m.venues) : ''), null)}
+                    ${tile('person_search', 'teal', MK.kv(pool.golfers), tr('mkt.k.never', 'Never played you'), MK.kv(pool.regular) + ' ' + esc(tr('mkt.k.never.sub', 'play 3+ rounds in the period')), neverSeg)}
+                    ${tile('event_busy', 'amber', fmtN(emptyRounds), tr('mkt.k.empty', 'Rounds on your empty days'), empty.length ? esc(empty.map(x => MK.dowName(x.dow)).join(' · ')) + ' — 0 ' + esc(tr('mkt.here', 'here')) : esc(tr('mkt.noempty', 'no empty days')), empty.length ? { name: tr('mkt.seg.days', 'Plays on your empty days'), audience: 'market', dows: empty.map(x => x.dow) } : null)}
+                    ${tile('directions_walk', 'red', MK.kv(wb.elsewhere), tr('mkt.k.lapsed', 'Lapsed, golfing elsewhere'), esc(tr('mkt.of', 'of')) + ' ' + MK.kv(wb.lapsed) + ' ' + esc(tr('mkt.k.lapsed.sub', 'gone 90+ days')), lapsedSeg)}
+                    ${tile('notifications_active', 'emerald', fmtN(re.opt_in), tr('mkt.k.push', 'Can get a push'), fmtN(re.followers) + ' ' + esc(tr('mkt.followers', 'follow you')), null)}
+                  </div>
+                  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div class="lg:col-span-2 flex flex-col gap-4">
+                      ${MK.card(tr('mkt.dow', 'When your market plays'), 'calendar_view_week', `
+                        <div class="mkt-leg mkt-leg-m text-[11px] text-gray-600 font-semibold">${legend}</div>
+                        <div class="mkt-dow mt-2">${dow.map(x => { const mm = MK.kn(x.market), yy = MK.kn(x.you); return `<div class="c ${yy === 0 && mm >= 20 ? 'gap' : ''}"><div class="n">${MK.kv(x.market)}${yy ? ' · <b style="color:#15803d">' + MK.kv(x.you) + '</b>' : ''}</div><div class="bs"><div class="b m" style="height:${mm / mx * 100}%"></div><div class="b y" style="height:${yy / mx * 100}%"></div></div><div class="d">${esc(MK.dowName(x.dow))}</div></div>`; }).join('')}</div>
+                        ${busiest && MK.kn(busiest.market) ? `<div class="mk-note mt-3"><b>${esc(tr('mkt.busiest', '{d} is the busiest golf day around you — {n} rounds — and you had {y}.').replace('{d}', MK.dowName(busiest.dow)).replace('{n}', MK.kv(busiest.market)).replace('{y}', MK.kv(busiest.you)))}</b>${yourDays.length ? ' ' + esc(tr('mkt.yourdays', 'Your golfers come on {days}.').replace('{days}', yourDays.join(', '))) : ''}</div>` : ''}
+                        ${empty.length ? `<div class="flex flex-wrap gap-2 mt-3">${segBtn({ name: tr('mkt.seg.days', 'Plays on your empty days'), audience: 'market', dows: empty.map(x => x.dow) }, tr('mkt.offerdays', 'Offer to golfers who play {days}').replace('{days}', empty.map(x => MK.dowName(x.dow)).join(' / ')), true)}</div>` : ''}`,
+                        `<span class="mkt-leg mkt-leg-d text-[11px] text-gray-600 font-semibold">${legend}</span>`)}
+                      <div class="mkt-hero">
+                        <div class="flex items-start justify-between gap-3">
+                          <div><div class="text-[12px] font-bold uppercase tracking-wide" style="color:#a7f3d0">${esc(tr('mkt.pool', 'Golfers who never played you'))}</div>
+                            <div class="big mk-num mt-1">${MK.kv(pool.golfers)}</div>
+                            <div class="text-[13px] mt-1" style="color:#dcfce7">${esc(tr('mkt.pool.sub', 'played other courses near you in the period'))} · ${MK.kv(pool.app)} ${esc(tr('mkt.useapp', 'use the app'))}</div></div>
+                          <span class="material-symbols-outlined" style="font-size:40px;color:#86efac">person_search</span>
+                        </div>
+                      </div>
+                      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        ${MK.card(tr('mkt.hcp', 'Their handicaps'), 'sports_golf', MK.mktBars((pool.hcp || []).map(h => ({ name: h.band === 'unknown' ? tr('mkt.unknownhcp', 'no handicap') : h.band, n: h.n })), 'bg-sky-500', MK.kn(pool.golfers)))}
+                        ${MK.card(tr('mkt.pdays', 'The days they play'), 'event', MK.mktBars((pool.dow || []).map(x => ({ name: MK.dowName(x.dow), n: x.n })), 'bg-amber-500'))}
+                      </div>
+                      <div class="flex flex-wrap gap-2">${segBtn(neverSeg, tr('mkt.sendnever', 'Send them an offer'), true)}${segBtn(lapsedSeg, tr('mkt.sendlapsed', 'Win back lapsed golfers'), false)}</div>
+                      ${MK.card(tr('mkt.socs', 'Societies playing your market'), 'diversity_3', (socRows ? `<div class="mkt-soc"><div class="mkt-lbl">${esc(tr('mkt.society', 'Society'))}</div><div class="mkt-lbl text-right">${esc(tr('mkt.golfdays', 'Golf days'))}</div><div class="mkt-lbl text-right">${esc(tr('mkt.avgplayers', 'Avg players'))}</div><div class="mkt-lbl text-right">${esc(tr('mkt.atyou', 'At you'))}</div></div>` + socRows : `<p class="text-xs text-gray-500 py-4 text-center">${esc(tr('mgr.nodata', 'No data in this period'))}</p>`) +
+                        `<p class="text-[11px] text-gray-600 mt-2">${esc(tr('mkt.socnote', 'Golf days include the next 60 days. Put open tee times up from the pro shop tee sheet (Open times) — societies take them from their dashboard. Member lists never cross.'))}</p>`)}
+                    </div>
+                    <div class="flex flex-col gap-4">
+                      ${MK.card(tr('mkt.also', 'Where your golfers also play'), 'alt_route', `<div class="text-[11px] text-gray-600 mb-2">${esc(tr('mkt.also.sub', '{n} golfers played you in the last year — where they played in the period').replace('{n}', MK.kv(also.base)))}</div>` + MK.mktBars((also.venues || []).map(v => ({ name: v.name, n: v.n })), 'bg-sky-500', MK.kn(also.base)))}
+                      ${MK.card(tr('mkt.share', 'Your share of golfers'), 'leaderboard', MK.mktBars((r.share || []).map(x => ({ name: x.you ? (r.venue_name || MK.course.name) + ' (' + tr('mkt.you', 'you') + ')' : tr('mkt.course', 'Course') + ' ' + x.rank, n: x.golfers, you: x.you })), 'bg-slate-300', m.golfers) + `<p class="text-[11px] text-gray-600 mt-2">${esc(tr('mkt.share.note', 'Other courses stay unnamed — you see your place, not their numbers.'))}</p>`)}
+                      ${MK.card(tr('mk.camp.reach', 'Reach'), 'notifications_active', `<div class="text-[13px] text-gray-800"><b>${fmtN(re.followers)}</b> ${esc(tr('mkt.reach.txt', 'golfers follow you. Offers reach every golfer in the segment in their app inbox; a LINE push only goes to followers who said yes.'))}</div>
+                        <div class="mk-note mt-2">${esc(tr('mkt.reach.ask', 'After a round here, golfers are asked once whether to follow you for offers. Every yes is a golfer you can push to.'))}</div>`)}
+                      <div class="mkt-lock">${mi('lock', 'text-green-600')}<div><b>${esc(tr('mkt.lock1', 'Counts only.'))}</b> ${esc(tr('mkt.lock2', 'You see how many and what kind of golfers — never who. MyCaddiPro delivers your offer. Any group under 5 golfers shows as "under 5".'))}</div></div>
+                    </div>
+                  </div>`;
+                MK._loaded.mkt = true;
+            } catch (e) { console.warn('[Marketing] market:', e.message); host.innerHTML = MK.errorBox(e); }
+        },
+
         // ================= CAMPAIGNS =================
         // course_offers.offer_type / cta_target vocab from sql/course_offers_20260912.sql (tee_time deals come from the pro shop tee sheet)
         TYPES: [['promotion', 'Special offer'], ['food_beverage', 'Food & drink'], ['caddy', 'Caddy offer'], ['society_package', 'Society package'], ['other', 'Course news'], ['tee_time', 'Tee time deal']],
@@ -370,7 +527,9 @@
             const d = Number(o.delivered) || 0, op = Number(o.opened) || 0, cl = Number(o.clicked) || 0, pu = Number(o.pushed) || 0, dm = Number(o.dismissed) || 0;
             const th = o.lang && o.lang.th ? o.lang.th : null;
             const seg = o.segment || {};
-            const segText = [seg.played_since ? tr('mk.seg.since', 'played since') + ' ' + esc(seg.played_since) : tr('mk.seg.anyplayed', 'anyone who has played here'), seg.lang ? langName(seg.lang) : null, (seg.hcp_min != null || seg.hcp_max != null) ? 'HCP ' + (seg.hcp_min ?? '') + '–' + (seg.hcp_max ?? '') : null].filter(Boolean).join(' · ');
+            const audText = { never_here: tr('mkt.aud.never', 'Golfers near you who never played here'), lapsed_elsewhere: tr('mkt.aud.lapsed', 'Lapsed here, still golfing elsewhere'), market: tr('mkt.aud.market', 'Every golfer in your market') }[seg.audience];
+            const segText = [audText ? esc(audText) : (seg.played_since ? tr('mk.seg.since', 'played since') + ' ' + esc(seg.played_since) : tr('mk.seg.anyplayed', 'anyone who has played here')),
+                (seg.dows || []).length ? esc(tr('mkt.playson', 'plays on')) + ' ' + esc(seg.dows.map(MK.dowName).join(', ')) : null, seg.lang ? langName(seg.lang) : null, (seg.hcp_min != null || seg.hcp_max != null) ? 'HCP ' + (seg.hcp_min ?? '') + '–' + (seg.hcp_max ?? '') : null].filter(Boolean).join(' · ');
             MK._ovl(`<div class="hd"><h3 class="min-w-0 truncate">${esc(o.title)}</h3>${MK.statusChip(o)}<button class="xx" onclick="MarketingDashboard._closeOvl()"><span class="material-symbols-outlined">close</span></button></div>
               <div class="bd">
                 <div class="sub">${esc(MK.typeLabel(o.offer_type))} · ${esc(tr('mk.created', 'created'))} ${esc(whenT(o.created_at))}${o.valid_from ? ' · ' + esc(tr('mk.from', 'from')) + ' ' + esc(whenT(o.valid_from)) : ''}${o.valid_to ? ' · ' + esc(tr('mk.until', 'until')) + ' ' + esc(whenT(o.valid_to)) : ''}</div>
@@ -409,8 +568,10 @@
             } catch (e) { window.NotificationManager.show(tr('mk.err', 'Could not load this section') + ': ' + e.message, 'error'); }
         },
         // ---- composer: the first course-side offer authoring UI ----
+        MKT_AUDS: ['never_here', 'lapsed_elsewhere', 'market'],   // v1509: market audiences (venue + region, last 90 days)
         async compose(segment, dupId) {
             const r = await MK.report().catch(() => ({}));
+            if (!MK.venue) await MK.market().catch(() => null);   // the venue the market audiences are counted against
             let base = null;
             if (dupId) { const offers = await MK.offers(); base = offers.find(x => x.id === dupId) || null; }
             const seg = segment || (base && base.segment) || {};
@@ -442,9 +603,14 @@
                 </div>
                 <label class="lbl">${esc(tr('mk.c.aud', 'Audience'))}</label>
                 <select id="mkAud" class="mk-in" onchange="MarketingDashboard.countSeg()">
-                  <option value="all" ${!seg.played_since ? 'selected' : ''}>${esc(tr('mk.aud.all', 'Anyone who has ever played here'))}</option>
-                  <option value="since" ${seg.played_since ? 'selected' : ''}>${esc(tr('mk.aud.since', 'Played here since a date'))}</option>
+                  <option value="all" ${!seg.played_since && !seg.audience ? 'selected' : ''}>${esc(tr('mk.aud.all', 'Anyone who has ever played here'))}</option>
+                  <option value="since" ${seg.played_since && !seg.audience ? 'selected' : ''}>${esc(tr('mk.aud.since', 'Played here since a date'))}</option>
+                  ${MK.venue ? `<option value="never_here" ${seg.audience === 'never_here' ? 'selected' : ''}>${esc(tr('mkt.aud.never', 'Golfers near you who never played here'))}</option>
+                  <option value="lapsed_elsewhere" ${seg.audience === 'lapsed_elsewhere' ? 'selected' : ''}>${esc(tr('mkt.aud.lapsed', 'Lapsed here, still golfing elsewhere'))}</option>
+                  <option value="market" ${seg.audience === 'market' ? 'selected' : ''}>${esc(tr('mkt.aud.market', 'Every golfer in your market'))}</option>` : ''}
                 </select>
+                ${MK.venue ? `<label class="lbl">${esc(tr('mkt.c.days', 'Only golfers who play on (last 90 days)'))}</label>
+                <div class="flex flex-wrap gap-1">${[1, 2, 3, 4, 5, 6, 7].map(d => `<label class="inline-flex items-center gap-1 px-2 h-8 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 cursor-pointer"><input type="checkbox" class="mkDow" value="${d}" ${(seg.dows || []).includes(d) ? 'checked' : ''} onchange="MarketingDashboard.countSeg()"> ${esc(MK.dowName(d))}</label>`).join('')}</div>` : ''}
                 <div class="grid grid-cols-2 gap-2">
                   <div><label class="lbl">${esc(tr('mk.c.since', 'Played since'))}</label><input id="mkSince" type="date" class="mk-in" value="${esc(seg.played_since || localDateStr(new Date(Date.now() - 365 * 86400000)))}" onchange="MarketingDashboard.countSeg()"></div>
                   <div><label class="lbl">${esc(tr('mk.c.lang', 'Language'))}</label><select id="mkLang" class="mk-in" onchange="MarketingDashboard.countSeg()"><option value="">${esc(tr('mk.c.lang.any', 'Any'))}</option>${['en', 'th', 'ko', 'ja'].map(l => `<option value="${l}" ${seg.lang === l ? 'selected' : ''}>${esc(langName(l))}</option>`).join('')}</select></div>
@@ -465,7 +631,12 @@
         _segFromForm() {
             const v = (id) => (document.getElementById(id) || {}).value;
             const seg = { course_names: MK.course.names.slice() };
-            if (v('mkAud') === 'since' && v('mkSince')) seg.played_since = v('mkSince');
+            if (MK.venue) seg.venue = MK.venue;   // v1509: "played here" also matches every spelling of this venue
+            const aud = v('mkAud');
+            if (MK.MKT_AUDS.includes(aud)) { seg.audience = aud; seg.days = 90; }
+            const dows = Array.from(document.querySelectorAll('#mkOvl .mkDow:checked')).map(x => Number(x.value));
+            if (dows.length) { seg.dows = dows; seg.days = 90; }
+            if (aud === 'since' && v('mkSince')) seg.played_since = v('mkSince');
             if (v('mkLang')) seg.lang = v('mkLang');
             if (v('mkHcpMin') !== '' && v('mkHcpMin') != null) seg.hcp_min = Number(v('mkHcpMin'));
             if (v('mkHcpMax') !== '' && v('mkHcpMax') != null) seg.hcp_max = Number(v('mkHcpMax'));
@@ -476,9 +647,10 @@
             el.textContent = '…';
             try {
                 const seg = MK._segFromForm();
-                const { data, error } = await db().rpc('count_offer_segment', { p_hcp_min: seg.hcp_min ?? null, p_hcp_max: seg.hcp_max ?? null, p_course_names: seg.course_names, p_lang: seg.lang || null, p_played_since: seg.played_since || null });
+                const { data, error } = await db().rpc('count_offer_segment', { p_hcp_min: seg.hcp_min ?? null, p_hcp_max: seg.hcp_max ?? null, p_course_names: seg.course_names, p_lang: seg.lang || null, p_played_since: seg.played_since || null,
+                    p_audience: seg.audience || null, p_venue: seg.venue || null, p_dows: seg.dows || null, p_days: seg.days || 90 });
                 if (error) throw error;
-                el.textContent = fmtN(data) + ' ' + tr('mk.golfers', 'golfers');
+                el.textContent = (data >= 1 && data <= 4 ? tr('mkt.under5', 'under 5') : fmtN(data)) + ' ' + tr('mk.golfers', 'golfers');   // v1509: 1–4 never shown as a number
             } catch (e) { el.textContent = '—'; }
         },
         async publish() {

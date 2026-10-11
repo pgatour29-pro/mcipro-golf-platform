@@ -16,7 +16,7 @@ if (dlg.indexOf('id="bk-rail"') < dlg.indexOf('id="recurring-preview"')) fail.pu
 const vC = (ts.match(/course-crm\.js\?v=(\w+)/) || [])[1], vB = (ts.match(/booking-brief\.js\?v=(\w+)/) || [])[1], vI = (html.match(/course-crm\.js\?v=(\w+)/) || [])[1];
 if (!vC || vC !== vB || vC !== vI) fail.push('course-crm.js / booking-brief.js must load with ONE ?v= on proshop-teesheet.html and index.html (found ' + [vC, vB, vI].join(', ') + ')');
 if (ts.indexOf('booking-brief.js?v') < ts.indexOf('course-crm.js?v')) fail.push('booking-brief.js must load after course-crm.js');
-if (!/BookingBrief\.mount\(\{ host: briefHost/.test(ts) || !/el\.dialog\.showModal\(\);\s*BookingBrief\.open\(\);/.test(ts)) fail.push('proshop-teesheet.html: openDialog must hand the dialog to BookingBrief');
+if (!/BookingBrief\.mount\(\{ host: briefHost/.test(ts) || !/el\.dialog\.showModal\(\);\s*if \(window\.BookingBrief\) BookingBrief\.open\(\);/.test(ts)) fail.push('proshop-teesheet.html: openDialog must hand the dialog to BookingBrief');
 ['crm', 'lang', 'date', 'isRange', 'groupName', 'setGroupName', 'dayHits', 'caddy', 'pickCaddy', 'hasRoom', 'addGolfer', 'blockSlots', 'openFull'].forEach(k => {
     if (new RegExp('host\\.' + k + '\\(').test(bb) && !new RegExp('\\n      ' + k + '[:(]').test(ts)) fail.push('briefHost is missing ' + k + '()');
 });

@@ -130,6 +130,15 @@
             const CL = window.CourseLink;
             return (CL && CL.slugForCourse(PS.course.name, saved)) || String(PS.course.id || '').toLowerCase().replace(/_/g, '-');
         },
+        // v1508: THE tee sheet URL for this terminal (tab iframe, Caddies tab and both pop-outs) — the pop-outs used to
+        // build their own and lost the venue name and the facility
+        teeSheetUrl(mode) {
+            if (!PS.course) return '';
+            const slug = PS.teeSheetSlug();
+            if (!slug) return '';
+            const fx = PS.facility ? '&facility=' + encodeURIComponent(PS.facility.id) : '';   // v1487
+            return '/proshop-teesheet.html?' + (mode ? 'mode=' + encodeURIComponent(mode) + '&' : '') + 'course=' + encodeURIComponent(slug) + '&name=' + encodeURIComponent(PS.course.name || slug) + fx;
+        },
         linkTeeSheet() {
             try {
                 const f = document.getElementById('teesheet-iframe');
@@ -140,13 +149,12 @@
                     const ts = JSON.parse(localStorage.getItem('teesheet.settings') || '{}');
                     if (ts.golfCourse !== slug) { ts.golfCourse = slug; localStorage.setItem('teesheet.settings', JSON.stringify(ts)); }
                 } catch (e) { }
-                const fx = PS.facility ? '&facility=' + encodeURIComponent(PS.facility.id) : '';   // v1487
-                const want = '/proshop-teesheet.html?course=' + encodeURIComponent(slug) + '&name=' + encodeURIComponent(PS.course.name || slug) + fx;
+                const want = PS.teeSheetUrl();
                 if (f.getAttribute('src') !== want) f.setAttribute('src', want);
                 // v1480: the Caddies tab is the same page in caddy mode, on the same course; it loads the first time its tab opens
                 const fc = document.getElementById('caddies-iframe');
                 if (fc) {
-                    const wantC = '/proshop-teesheet.html?mode=caddies&course=' + encodeURIComponent(slug) + '&name=' + encodeURIComponent(PS.course.name || slug) + fx;
+                    const wantC = PS.teeSheetUrl('caddies');
                     fc.dataset.src = wantC;
                     if (fc.getAttribute('src') && fc.getAttribute('src') !== wantC) fc.setAttribute('src', wantC);
                 }

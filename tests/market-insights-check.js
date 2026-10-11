@@ -10,6 +10,7 @@ const idx = read('public/index.html');
 const sql = read('sql/course_market_insights_v1509.sql');
 const edge = read('supabase/functions/line-push-notification/index.ts');
 const priv = read('public/privacy.html');
+const lock = read('sql/course_follows_lock_v1511.sql');
 const fail = [];
 
 // server: counts only, under-5 suppression, offers resolved by the platform
@@ -29,12 +30,16 @@ if (!/id="marketing-market"/.test(idx) || !/showMarketingTab\('market', event\)/
 
 // strings: every mkt.* / fp.* key in EN, TH, KO, JA
 const keys = new Set((mk.match(/tr\('(mkt\.[a-z0-9.]+)'/g) || []).map(m => m.slice(4, -1)));
-['mk.tab.market', 'mk.cube.mktsub', 'fp.title', 'fp.body', 'fp.no', 'fp.yes', 'fp.done', 'fp.fail'].forEach(k => keys.add(k));
+['mk.tab.market', 'mk.cube.mktsub', 'fp.title', 'fp.body', 'fp.no', 'fp.yes', 'fp.done', 'fp.fail', 'fp.signin'].forEach(k => keys.add(k));
 keys.forEach(k => { const n = (idx.match(new RegExp("'" + k.replace(/\./g, '\\.') + "':", 'g')) || []).length; if (n !== 4) fail.push('index.html: ' + k + ' is in ' + n + ' of 4 languages'); });
 
 // reach: asked once per course after a round, server decides + records
 if (!/sb\.rpc\('follow_prompt_next'/.test(idx) || !/sb\.rpc\('follow_prompt_answer'/.test(idx)) fail.push('index.html: FollowPrompt must go through follow_prompt_next / follow_prompt_answer');
 if (!/L\._isRoundActive && L\._isRoundActive\(\)\) return;/.test(idx)) fail.push('index.html: the follow prompt must never open on top of a round');
+// v1511: follows + offer consent belong to the verified login
+if (!/create policy cf_own_insert on public\.course_follows for insert to authenticated with check \(golfer_line_id = public\.line_id\(\)\)/.test(lock) || !/revoke insert, update, delete on public\.course_follows from anon/.test(lock)) fail.push('sql: course_follows must be own-rows-only for signed-in golfers');
+if ((lock.match(/public\.line_id\(\) is distinct from p_user/g) || []).length < 4) fail.push('sql: set_offer_consent / set_notification_prefs / follow_prompt_next / follow_prompt_answer must check the verified login');
+if (!/if \(!\(await this\.signedIn\(\)\)\) \{ this\.signInMsg\(\); return; \}/.test(idx)) fail.push('index.html: following must ask an unverified golfer to sign in again');
 if (!/Golf courses \(anonymous counts\)/.test(priv)) fail.push('privacy.html: the anonymous course counts must be disclosed');
 
 if (fail.length) { console.error('✗ market insights guard:\n  ' + fail.join('\n  ')); process.exit(1); }

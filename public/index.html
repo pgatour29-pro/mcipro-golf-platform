@@ -13283,6 +13283,7 @@
                 'mk.tab.market': 'Market',
                 'fp.body': 'You played here recently. Get their deals and open tee times on LINE. Stop any time in Messages › Offers.',
                 'fp.done': 'Following {c}',
+                'fp.signin': 'Sign out and sign in again to follow courses — it confirms it is really you.',
                 'fp.fail': 'Could not follow right now. Try again from Messages › Offers.',
                 'fp.no': 'Not now',
                 'fp.title': 'Follow {c} for offers?',
@@ -17118,6 +17119,7 @@
                 'mk.tab.market': 'ตลาด',
                 'fp.body': 'คุณเพิ่งเล่นที่นี่ รับดีลและทีไทม์ว่างทาง LINE หยุดได้ทุกเมื่อใน ข้อความ › ข้อเสนอ',
                 'fp.done': 'กำลังติดตาม {c}',
+                'fp.signin': 'ออกจากระบบแล้วเข้าสู่ระบบอีกครั้งเพื่อติดตามสนาม — เพื่อยืนยันว่าเป็นคุณจริง',
                 'fp.fail': 'ติดตามไม่ได้ตอนนี้ ลองอีกครั้งจาก ข้อความ › ข้อเสนอ',
                 'fp.no': 'ไว้ทีหลัง',
                 'fp.title': 'ติดตาม {c} เพื่อรับข้อเสนอไหม?',
@@ -20814,6 +20816,7 @@
                 'mk.tab.market': '시장',
                 'fp.body': '최근 이곳에서 플레이하셨습니다. 특가와 빈 티타임을 LINE으로 받아보세요. 메시지 › 제안에서 언제든 끌 수 있습니다.',
                 'fp.done': '{c} 팔로우 중',
+                'fp.signin': '코스를 팔로우하려면 로그아웃 후 다시 로그인하세요 — 본인 확인을 위해서입니다.',
                 'fp.fail': '지금은 팔로우할 수 없습니다. 메시지 › 제안에서 다시 시도하세요.',
                 'fp.no': '나중에',
                 'fp.title': '{c}의 제안을 받으려면 팔로우할까요?',
@@ -24692,6 +24695,7 @@
                 'mk.tab.market': 'マーケット',
                 'fp.body': '最近ここでプレーしました。お得情報や空きティータイムをLINEで受け取れます。メッセージ › オファーでいつでも停止できます。',
                 'fp.done': '{c}をフォロー中',
+                'fp.signin': 'コースをフォローするには一度ログアウトして再ログインしてください — ご本人確認のためです。',
                 'fp.fail': '今はフォローできません。メッセージ › オファーから再度お試しください。',
                 'fp.no': '今はしない',
                 'fp.title': '{c}をフォローしてオファーを受け取りますか？',
@@ -143544,9 +143548,18 @@ const OffersInbox = {
         } catch (err) { console.warn('[OffersInbox] state write failed:', err?.message || err); }
     },
 
+    // v1511: follows and offer consent are written by the verified login only (sql/course_follows_lock_v1511.sql)
+    async signedIn() {
+        try { const { data } = await this._sb().auth.getSession(); return !!(data && data.session); } catch (e) { return false; }
+    },
+    signInMsg() {
+        const k = 'fp.signin', v = (typeof t === 'function') ? t(k) : k;
+        window.NotificationManager?.show?.(v === k ? 'Sign out and sign in again to follow courses — it confirms it is really you.' : v, 'warning', 7000);
+    },
     async toggleFollow(courseId) {
         const sb = this._sb(), uid = this.uid();
         if (!sb || !uid || !courseId) return;
+        if (!(await this.signedIn())) { this.signInMsg(); return; }
         const following = this.follows.has(courseId);
         try {
             if (following) {
@@ -143577,6 +143590,7 @@ const OffersInbox = {
         const sb = this._sb(), uid = this.uid();
         if (!sb || !uid) return;
         try {
+            if (!(await this.signedIn())) { this.signInMsg(); return; }
             const { data, error } = await sb.rpc('set_offer_consent', { p_user_id: uid, p_enabled: !!on });
             if (error) throw error;
             if (data !== true) throw new Error('consent not saved');
@@ -143607,6 +143621,7 @@ const FollowPrompt = {
         if (!uid || !sb || role !== 'golfer') return;
         const L = window.LiveScorecardManager;
         if (L && L._isRoundActive && L._isRoundActive()) return;   // never on top of a round
+        if (!(await OffersInbox.signedIn())) return;   // v1511: only a verified login can say yes
         try {
             const { data, error } = await sb.rpc('follow_prompt_next', { p_user: uid });
             if (error || !data || !data.course_id) return;

@@ -20,6 +20,10 @@ if (!/valid_to is not null and venue_slug is not null/.test(sql)) fail.push('sql
 if (!/if v_end is null then return jsonb_build_object\('ok', false, 'reason', 'ends'\)/.test(sql)) fail.push('sql: promo_post must refuse a promotion with no end time');
 if (!/if \(!f\.ends\) return L\('v_end'\)/.test(cp)) fail.push('course-promos.js: the form must not post without an end time');
 if (!/o\.valid_to > now\(\)/.test(sql)) fail.push('sql: the wall must drop a promotion the second it ends');
+// posting is the course's own: PIN checked server-side (proshop_pins), lockout after 10 wrong tries an hour
+if (!/v_type := public\._promo_pin_check\(p_slug, p_pin\);/.test(sql) || !/why := public\._promo_pin_check\(p_slug, p_pin\);/.test(sql)) fail.push('sql: promo_post / promo_withdraw must check the course PIN');
+if (!/>= 10 then return 'locked'/.test(sql) || !/revoke execute on function public\._promo_pin_check\(text, text\) from public, anon, authenticated/.test(sql)) fail.push('sql: PIN lockout / helper must stay server-only');
+if (!/p_pin: this\.pin/.test(cp) || /localStorage[^;]*pin|sessionStorage[^;]*pin/i.test(cp) || /type="password"/.test(cp)) fail.push('course-promos.js: the PIN rides the RPC, is never stored, never a password box');
 // the public wall: public fields only
 const wall = (sql.match(/create or replace function public\.promo_wall[\s\S]*?\n\$\$;/) || [''])[0];
 if (!wall) fail.push('sql: promo_wall missing');

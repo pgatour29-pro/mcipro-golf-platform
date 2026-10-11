@@ -25,7 +25,7 @@
       post: 'ลงบนวอลล์', posting: 'กำลังลง…', live: 'อยู่บนวอลล์', ended: 'สิ้นสุดแล้ว', ends_in: 'สิ้นสุดใน {t}', withdrawn: 'ถอนแล้ว', all_taken: 'ครบทั้ง {n} ที่แล้ว',
       taken: 'จองแล้ว {a} จาก {b}', views: 'เข้าชม {n}', reached: 'ผู้ติดตาม {n}', withdraw: 'ถอน', withdraw_q: 'แตะอีกครั้งเพื่อถอน', none: 'ยังไม่มีโปรโมชั่น ลงโปรโมชั่นด้านบน',
       ok: 'ขึ้นวอลล์แล้ว', ok_n: 'ขึ้นวอลล์แล้ว แจ้งผู้ติดตาม {n} คน', fail: 'ลงไม่สำเร็จ', too_many: 'สนามนี้มีโปรโมชั่นอยู่ 12 รายการแล้ว ถอนออกก่อนหนึ่งรายการ', bad_ends: 'เวลาสิ้นสุดต้องอยู่ระหว่าง 5 นาทีถึง 60 วันจากนี้',
-      bad_days: 'ตรวจสอบวันเล่น', bad_hours: 'ตรวจสอบช่วงทีไทม์', no_course: 'เลือกสนามก่อน', up_fail: 'อัปโหลดรูปไม่สำเร็จ', close: 'ปิด' },
+      bad_days: 'ตรวจสอบวันเล่น', bad_hours: 'ตรวจสอบช่วงทีไทม์', no_course: 'เลือกสนามก่อน', up_fail: 'อัปโหลดรูปไม่สำเร็จ', pin: 'PIN สนาม', pin_sub: 'PIN โปรช็อปของคุณ โปรโมชั่นคือราคาที่นักกอล์ฟจองได้ จึงลงได้เฉพาะสนามเท่านั้น', v_pin: 'ใส่ PIN สนามเพื่อลงโปรโมชั่น', v_pin_w: 'ใส่ PIN สนามด้านบนเพื่อถอน', bad_pin: 'PIN สนามไม่ถูกต้อง', no_pin: 'โปรโมชั่นต้องใช้ PIN โปรช็อปของสนามเอง ติดต่อ MyCaddiPro เพื่อขอ PIN', locked: 'ใส่ PIN ผิดหลายครั้งเกินไป ลองใหม่ในอีกหนึ่งชั่วโมง', close: 'ปิด' },
     ko: { h1: '프로모션', sub: 'Tee Times 월과 공개 딜 페이지에서 모든 골퍼에게 표시됩니다. 팔로워에게는 알림이 갑니다.', post_h: '프로모션 올리기',
       t_tee: '티타임 딜', t_pkg: '패키지', t_caddy: '캐디', t_fb: '식음료', t_other: '기타',
       headline: '제목', price: '딜 가격 ฿', was: '정상가 ฿', per: '기준', details: '상세 내용', from: '플레이 시작일', to: '플레이 종료일', tfrom: '티타임 시작', tto: '티타임 종료',
@@ -36,7 +36,7 @@
       post: '월에 올리기', posting: '올리는 중…', live: '월에 게시 중', ended: '종료됨', ends_in: '{t} 후 종료', withdrawn: '철회됨', all_taken: '{n}자리 모두 마감',
       taken: '{b}자리 중 {a} 예약', views: '조회 {n}', reached: '팔로워 {n}', withdraw: '철회', withdraw_q: '한 번 더 누르면 철회', none: '게시 중인 프로모션이 없습니다. 위에서 올리세요.',
       ok: '월에 게시되었습니다.', ok_n: '월에 게시되었습니다. 팔로워 {n}명에게 알림.', fail: '게시하지 못했습니다', too_many: '이미 12개의 프로모션이 게시 중입니다. 하나를 먼저 철회하세요.', bad_ends: '종료 시간은 지금부터 5분에서 60일 사이여야 합니다.',
-      bad_days: '플레이 날짜를 확인하세요.', bad_hours: '티타임 시간을 확인하세요.', no_course: '먼저 코스를 선택하세요.', up_fail: '사진 업로드 실패', close: '닫기' },
+      bad_days: '플레이 날짜를 확인하세요.', bad_hours: '티타임 시간을 확인하세요.', no_course: '먼저 코스를 선택하세요.', up_fail: '사진 업로드 실패', pin: '코스 PIN', pin_sub: '프로샵 PIN입니다. 프로모션은 골퍼가 예약할 수 있는 가격이라 코스만 올릴 수 있습니다.', v_pin: '올리려면 코스 PIN을 입력하세요.', v_pin_w: '철회하려면 위에 코스 PIN을 입력하세요.', bad_pin: '코스 PIN이 틀렸습니다.', no_pin: '프로모션에는 코스 전용 프로샵 PIN이 필요합니다. MyCaddiPro에 발급을 요청하세요.', locked: 'PIN 오류가 너무 많습니다. 한 시간 후에 다시 시도하세요.', close: '닫기' },
     ja: { h1: 'プロモーション', sub: 'Tee Timesのウォールと公開ディールページで全ゴルファーに表示されます。フォロワーには通知が届きます。', post_h: 'プロモーションを掲載',
       t_tee: 'ティータイム特価', t_pkg: 'パッケージ', t_caddy: 'キャディ', t_fb: '飲食', t_other: 'その他',
       headline: '見出し', price: '特価 ฿', was: '通常価格 ฿', per: '単位', details: '詳細', from: 'プレー開始日', to: 'プレー終了日', tfrom: 'ティータイム開始', tto: 'ティータイム終了',
@@ -47,7 +47,7 @@
       post: 'ウォールに掲載', posting: '掲載中…', live: 'ウォールに掲載中', ended: '終了', ends_in: '残り{t}', withdrawn: '取り下げ済み', all_taken: '{n}枠すべて埋まりました',
       taken: '{b}枠中{a}予約', views: '閲覧 {n}', reached: 'フォロワー {n}', withdraw: '取り下げ', withdraw_q: 'もう一度タップで取り下げ', none: '掲載中のプロモーションはありません。上から掲載してください。',
       ok: 'ウォールに掲載しました。', ok_n: 'ウォールに掲載しました。フォロワー{n}人に通知。', fail: '掲載できませんでした', too_many: 'このコースはすでに12件掲載中です。先に1件取り下げてください。', bad_ends: '終了時間は今から5分〜60日の間にしてください。',
-      bad_days: 'プレー日を確認してください。', bad_hours: 'ティータイムの時間を確認してください。', no_course: '先にコースを選んでください。', up_fail: '写真のアップロードに失敗しました', close: '閉じる' }
+      bad_days: 'プレー日を確認してください。', bad_hours: 'ティータイムの時間を確認してください。', no_course: '先にコースを選んでください。', up_fail: '写真のアップロードに失敗しました', pin: 'コースPIN', pin_sub: 'プロショップのPINです。プロモーションはゴルファーが予約できる価格のため、コースだけが掲載できます。', v_pin: '掲載するにはコースPINを入力してください。', v_pin_w: '取り下げるには上のコースPINを入力してください。', bad_pin: 'コースPINが違います。', no_pin: 'プロモーションにはコース専用のプロショップPINが必要です。MyCaddiProに発行を依頼してください。', locked: 'PINの誤りが多すぎます。1時間後にもう一度お試しください。', close: '閉じる' }
   };
   var EN = { h1: 'Promotions', sub: 'Shown to every golfer on the Tee Times wall and the public deals page. Followers get a push.', post_h: 'Post a promotion',
     t_tee: 'Tee time deal', t_pkg: 'Package', t_caddy: 'Caddy', t_fb: 'Food & drink', t_other: 'Other',
@@ -59,7 +59,7 @@
     post: 'Post to the wall', posting: 'Posting…', live: 'Live on the wall', ended: 'Ended', ends_in: 'Ends in {t}', withdrawn: 'Withdrawn', all_taken: 'All {n} places taken',
     taken: '{a} of {b} taken', views: '{n} views', reached: '{n} followers', withdraw: 'Withdraw', withdraw_q: 'Tap again to withdraw', none: 'Nothing live. Post a promotion above.',
     ok: 'Live on the wall.', ok_n: 'Live on the wall. {n} followers told.', fail: 'Could not post', too_many: 'This course already has 12 live promotions. Withdraw one first.', bad_ends: 'The end time has to be between 5 minutes and 60 days from now.',
-    bad_days: 'Check the play days.', bad_hours: 'Check the tee time hours.', no_course: 'Pick your course first.', up_fail: 'Photo upload failed', close: 'Close' };
+    bad_days: 'Check the play days.', bad_hours: 'Check the tee time hours.', no_course: 'Pick your course first.', up_fail: 'Photo upload failed', pin: 'Course PIN', pin_sub: 'Your pro shop PIN. A promotion is a price golfers can book, so only the course posts it.', v_pin: 'Enter your course PIN to post.', v_pin_w: 'Enter your course PIN above to withdraw.', bad_pin: 'Wrong course PIN.', no_pin: 'Promotions need your course\'s own pro shop PIN. Ask MyCaddiPro to issue one.', locked: 'Too many wrong PINs. Try again in an hour.', close: 'Close' };
   var lang = 'en';
   var L = function (k, vars) { var s = (I18N[lang] && I18N[lang][k]) || EN[k] || k; Object.keys(vars || {}).forEach(function (v) { s = s.split('{' + v + '}').join(vars[v]); }); return s; };
   var TYPES = [['tee_time', 't_tee', 'golf_course'], ['society_package', 't_pkg', 'luggage'], ['caddy', 't_caddy', 'person'], ['food_beverage', 't_fb', 'restaurant'], ['promotion', 't_other', 'local_offer']];
@@ -76,13 +76,13 @@
   }
 
   var CP = {
-    slug: null, courseName: '', region: '', area: '', sb: null, by: 'Pro shop', list: [], form: null, busy: false, msg: null, tick: null, armed: null, chan: null,
+    slug: null, courseName: '', region: '', area: '', sb: null, by: 'Pro shop', pin: '', list: [], form: null, busy: false, msg: null, tick: null, armed: null, chan: null,
     configure: function (o) {
       o = o || {};
       var changed = (o.slug || null) !== this.slug;
       this.sb = o.sb || this.sb; this.slug = o.slug || null; this.courseName = o.courseName || ''; this.region = o.region || ''; this.area = o.area || '';
       this.by = o.by || this.by; lang = ['th', 'ko', 'ja'].indexOf(o.lang) >= 0 ? o.lang : 'en';
-      if (changed) { this.list = []; this.form = null; this.msg = null; }
+      if (changed) { this.list = []; this.form = null; this.msg = null; this.pin = ''; }
       if (this._panel()) this.render();
     },
     _rpc: function (fn, args) {
@@ -114,9 +114,10 @@
       var p = { type: f.type, title: f.title.trim(), body: f.body.trim(), price: String(f.price || '').replace(/\D/g, ''), was_price: String(f.was || '').replace(/\D/g, ''),
         unit: f.unit.trim(), play_from: f.from, play_to: f.to, time_from: f.tFrom, time_to: f.tTo, valid_to: e.toISOString(), limit: String(f.limit || '').replace(/\D/g, ''), photo_url: f.photo || '' };
       this.busy = true; this.msg = null; this.render();
-      this._rpc('promo_post', { p_slug: this.slug, p: p, p_by: this.by }).then(function (r) {
+      this._rpc('promo_post', { p_slug: this.slug, p: p, p_by: this.by, p_pin: this.pin }).then(function (r) {
         if (!r || !r.ok) {
-          var why = r && r.reason, k = why === 'too_many' ? 'too_many' : why === 'ends' ? 'bad_ends' : why === 'days' ? 'bad_days' : why === 'hours' ? 'bad_hours' : why === 'title' ? 'v_title' : why === 'no_course' ? 'no_course' : null;
+          var why = r && r.reason, k = why === 'pin' ? 'bad_pin' : why === 'no_pin' ? 'no_pin' : why === 'locked' ? 'locked' : why === 'too_many' ? 'too_many' : why === 'ends' ? 'bad_ends' : why === 'days' ? 'bad_days' : why === 'hours' ? 'bad_hours' : why === 'title' ? 'v_title' : why === 'no_course' ? 'no_course' : null;
+          if (why === 'pin') self.pin = '';
           throw new Error(k ? L(k) : (why || 'failed'));
         }
         self.form = self._blank(); self.busy = false;
@@ -126,19 +127,23 @@
           var d = x && x.data; if (d && d.notified) { self.msg = { ok: true, text: L('ok_n', { n: d.notified }) }; self.render(); }
         }).catch(function (err) { console.warn('[CoursePromos] push', err.message || err); });
       }).catch(function (err) {
-        self.busy = false; self.msg = { ok: false, text: L('fail') + ': ' + (err.message || err) }; self.render();
+        self.busy = false; self.msg = { ok: false, text: /PIN/.test(err.message || '') ? err.message : L('fail') + ': ' + (err.message || err) }; self.render();
       });
     },
     withdraw: function (id, btn) {
       var self = this;
+      if (!/^\d{6}$/.test(this.pin)) { this.msg = { ok: false, text: L('v_pin_w') }; this.render(); var pi = document.querySelector('#cpPanel [data-f="pin"]'); if (pi) pi.focus(); return; }
       if (this.armed !== id) {   // two taps on the same button, never a native dialog
         this.armed = id; if (btn) btn.textContent = L('withdraw_q');
         setTimeout(function () { if (self.armed === id) { self.armed = null; self._paintList(); } }, 4000);
         return;
       }
       this.armed = null; if (btn) btn.disabled = true;
-      this._rpc('promo_withdraw', { p_slug: this.slug, p_id: id }).then(function () { self.load(); })
-        .catch(function (e) { self.msg = { ok: false, text: L('fail') + ': ' + (e.message || e) }; self.render(); });
+      this._rpc('promo_withdraw', { p_slug: this.slug, p_id: id, p_pin: this.pin }).then(function (r) {
+        if (r && !r.ok && r.reason) { if (r.reason === 'pin') self.pin = ''; throw new Error(L(r.reason === 'pin' ? 'bad_pin' : r.reason === 'locked' ? 'locked' : r.reason === 'no_pin' ? 'no_pin' : 'fail')); }
+        self.load();
+      })
+        .catch(function (e) { self.msg = { ok: false, text: e.message || String(e) }; self.render(); });
     },
     _pickPhoto: function () {
       var self = this, inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
@@ -190,6 +195,7 @@
     _valid: function () {
       var f = this.form, e = endAt(f.ends, f.endsAt);
       if (!f.title.trim()) return L('v_title');
+      if (!/^\d{6}$/.test(this.pin)) return L('v_pin');
       if (!f.ends) return L('v_end');
       if (!e || isNaN(e.getTime()) || e.getTime() <= Date.now() + 10 * 60000) return L('v_end10');
       if (f.was && f.price && +f.was <= +f.price) return L('v_price');
@@ -216,6 +222,7 @@
           '<label>' + E(L('photo')) + '<button type="button" class="cp-btn" data-a="photo"><span class="material-symbols-outlined">add_photo_alternate</span>' + E(f.photo ? L('photo_change') : L('photo_course')) + '</button></label></div>' +
         '<div class="cp-prevrow"><div class="cp-prev">' + (W.PromoWall ? W.PromoWall.cubeHtml(this._preview()) : '') + '</div>' +
           '<div class="cp-prevtx"><b>' + E(L('see')) + '</b><span>' + E(f.ends && W.PromoWall ? L('gone_in', { t: W.PromoWall.leftShort(this._preview()) }) + (f.limit ? L('gone_or', { n: f.limit }) : '') + '.' : L('need_end')) + '</span></div></div>' +
+        '<div class="cp-pin"><label>' + E(L('pin')) + '<input type="text" data-f="pin" class="pin-mask" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore value="' + E(this.pin) + '"></label><span>' + E(L('pin_sub')) + '</span></div>' +
         (this.msg ? '<div class="cp-msg ' + (this.msg.ok ? 'ok' : 'bad') + '">' + E(this.msg.text) + '</div>' : '') +
         '<button class="cp-btn pri wide" data-a="post"' + (ok || this.busy ? ' disabled' : '') + '>' + E(this.busy ? L('posting') : ok ? ok : L('post')) + '</button></div>';
       h += '<div id="cpList"></div></div>';
@@ -252,7 +259,8 @@
     },
     _input: function (e) {
       var f = e.target.getAttribute('data-f'); if (!f) return;
-      this.form[f] = e.target.value;
+      if (f === 'pin') this.pin = String(e.target.value || '').replace(/\D/g, '').slice(0, 6);   // memory only, never stored
+      else this.form[f] = e.target.value;
       // keep the field the pro shop is typing in; repaint only the preview and the Post button
       var p = this._panel(); if (!p) return;
       var pv = p.querySelector('.cp-prev'); if (pv && W.PromoWall) pv.innerHTML = W.PromoWall.cubeHtml(this._preview());
@@ -300,6 +308,8 @@
         '#cpPanel .cp-btn.pri{background:var(--ot-green);border-color:var(--ot-green);color:var(--ot-green-ink)}',
         '#cpPanel .cp-btn.wide{width:100%;height:44px;font-size:14.5px}',
         '#cpPanel .cp-btn:disabled{opacity:.55;cursor:default}',
+        '#cpPanel .pin-mask{-webkit-text-security:disc;text-security:disc}',
+        '#cpPanel .cp-pin{display:grid;grid-template-columns:130px 1fr;gap:10px;align-items:end}#cpPanel .cp-pin span{font-size:12px;color:var(--ot-muted);padding-bottom:4px}',
         '#cpPanel .cp-msg{font-size:13px;font-weight:700}#cpPanel .cp-msg.ok{color:var(--ot-green-soft)}#cpPanel .cp-msg.bad{color:var(--ot-red)}',
         '#cpPanel .cp-row{display:flex;align-items:center;gap:10px;border:1px solid var(--ot-line);border-radius:12px;background:var(--ot-card);padding:9px 10px}',
         '#cpPanel .cp-row.off{opacity:.6}',

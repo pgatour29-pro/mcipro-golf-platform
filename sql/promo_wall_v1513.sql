@@ -3,8 +3,10 @@
 -- A wall promotion is a course_offers row with on_wall = true. It is live while status = 'active', valid_to is ahead
 -- and (no limit, or places left). Ending needs no write: every reader filters on valid_to.
 --   promo_wall(p_test)       anon   live wall rows + live hot deals, public fields only (never segment)
---   promo_post(slug, p, by)  anon   the pro shop posts (staff-PIN posture, same as open_time_publish)
---   promo_withdraw / promo_mine     the pro shop's own list (views, places taken)
+--   promo_post(slug, p, by, pin) / promo_withdraw(slug, id, pin)   the pro shop, with the COURSE'S OWN PIN (a deal is a
+--                                   price golfers can book on a public page: same rule as the payment target, v1456).
+--                                   10 wrong PINs an hour lock the course's posting for the hour.
+--   promo_mine(slug)         anon   the pro shop's list (views, places taken; counts only)
 --   promo_seen(id)           anon   +1 view
 --   promo_claim(...)         anon   a deal with no tee time to book (or a course without online booking): a ref code
 --   teetime_book(..., p_promo)      booking a deal = the tee time + the deal price, places taken under the offer's row lock
@@ -111,7 +113,31 @@ $$;
 grant execute on function public.promo_follow_slugs(text[]) to anon, authenticated;
 
 -- ---------------------------------------------------------------- the pro shop
-create or replace function public.promo_post(p_slug text, p jsonb, p_by text default null) returns jsonb
+-- the course's own pro shop PIN (proshop_pins, never sent to the browser); null = ok, else the reason
+create table if not exists public.promo_pin_fails (slug text not null, at timestamptz not null default now());
+create index if not exists promo_pin_fails_slug_at on public.promo_pin_fails (slug, at);
+alter table public.promo_pin_fails enable row level security;   -- no policies: server-side only
+revoke all on public.promo_pin_fails from anon, authenticated;
+create or replace function public._promo_pin_check(p_slug text, p_pin text) returns text
+language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.proshop_pins pp
+                  where pp.course_id = p_slug or pp.course_id = (select v.course_ref from public.course_venues v where v.slug = p_slug)) then
+    return 'no_pin';
+  end if;
+  if (select count(*) from public.promo_pin_fails f where f.slug = p_slug and f.at > now() - interval '1 hour') >= 10 then return 'locked'; end if;
+  if not public.teetime_pin_ok(p_slug, p_pin) then
+    insert into public.promo_pin_fails (slug) values (p_slug);
+    delete from public.promo_pin_fails where at < now() - interval '1 day';
+    return 'pin';
+  end if;
+  return null;
+end $$;
+revoke execute on function public._promo_pin_check(text, text) from public, anon, authenticated;
+
+drop function if exists public.promo_post(text, jsonb, text);
+drop function if exists public.promo_withdraw(text, uuid);
+create or replace function public.promo_post(p_slug text, p jsonb, p_by text default null, p_pin text default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
   v record; v_type text; v_title text; v_body text; v_price int; v_was int; v_unit text; v_from date; v_to date;
@@ -120,6 +146,8 @@ declare
 begin
   select slug, name into v from public.course_venues where slug = p_slug and coalesce(active, true);
   if not found then return jsonb_build_object('ok', false, 'reason', 'no_course'); end if;
+  v_type := public._promo_pin_check(p_slug, p_pin);
+  if v_type is not null then return jsonb_build_object('ok', false, 'reason', v_type); end if;
   if jsonb_typeof(p) <> 'object' then return jsonb_build_object('ok', false, 'reason', 'bad_input'); end if;
   v_type := p->>'type';
   if v_type not in ('tee_time', 'society_package', 'caddy', 'food_beverage', 'promotion') then return jsonb_build_object('ok', false, 'reason', 'type'); end if;
@@ -161,18 +189,20 @@ begin
   returning id into v_id;
   return jsonb_build_object('ok', true, 'id', v_id);
 end $$;
-grant execute on function public.promo_post(text, jsonb, text) to anon, authenticated;
+grant execute on function public.promo_post(text, jsonb, text, text) to anon, authenticated;
 
-create or replace function public.promo_withdraw(p_slug text, p_id uuid) returns jsonb
+create or replace function public.promo_withdraw(p_slug text, p_id uuid, p_pin text default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare n int;
+declare n int; why text;
 begin
+  why := public._promo_pin_check(p_slug, p_pin);
+  if why is not null then return jsonb_build_object('ok', false, 'reason', why); end if;
   update public.course_offers set status = 'deleted', updated_at = now()
    where id = p_id and venue_slug = p_slug and on_wall and status = 'active';
   get diagnostics n = row_count;
   return jsonb_build_object('ok', n = 1);
 end $$;
-grant execute on function public.promo_withdraw(text, uuid) to anon, authenticated;
+grant execute on function public.promo_withdraw(text, uuid, text) to anon, authenticated;
 
 create or replace function public.promo_mine(p_slug text) returns jsonb
 language sql stable security definer set search_path = public as $$
@@ -201,6 +231,8 @@ declare
   o_id uuid; o_slug text; o_left int; o_total int; v_ref text; v_name text; v_have text;
 begin
   if coalesce(p_golfer_id, '') = '' then return jsonb_build_object('ok', false, 'reason', 'no_golfer'); end if;
+  -- a verified login can only claim as itself (LINE-only sessions carry no token yet: Auth Phase 2 binds this fully)
+  if public.line_id() is not null and public.line_id() <> p_golfer_id then return jsonb_build_object('ok', false, 'reason', 'no_golfer'); end if;
   if coalesce(p_qty, 0) < 1 or p_qty > 4 then return jsonb_build_object('ok', false, 'reason', 'qty'); end if;
   select o.id, o.venue_slug, o.limit_left, o.limit_total into o_id, o_slug, o_left, o_total
     from public.course_offers o where o.id = p_id and o.on_wall and o.status = 'active' and o.valid_to > now() for update;
@@ -223,6 +255,7 @@ create or replace function public.promo_my_claims(p_golfer_id text) returns json
 language sql stable security definer set search_path = public as $$
   select coalesce(jsonb_agg(jsonb_build_object('offer_id', k.offer_id, 'ref', k.ref, 'qty', k.qty, 'booking_id', k.booking_id)), '[]'::jsonb)
     from public.course_promo_claims k where k.golfer_id = p_golfer_id and k.status = 'active' and k.created_at > now() - interval '90 days'
+     and (public.line_id() is null or public.line_id() = p_golfer_id)
 $$;
 grant execute on function public.promo_my_claims(text) to anon, authenticated;
 

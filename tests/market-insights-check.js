@@ -45,6 +45,10 @@ if (!/caddy_users as \(/.test(cad) || !/'caddy_users'/.test(mk)) fail.push('the 
 if (!/create policy cf_own_insert on public\.course_follows for insert to authenticated with check \(golfer_line_id = public\.line_id\(\)\)/.test(lock) || !/revoke insert, update, delete on public\.course_follows from anon/.test(lock)) fail.push('sql: course_follows must be own-rows-only for signed-in golfers');
 // v1526: they belong to the signed-in golfer, saved like any other setting (sql/deal_prefs_app_login_v1526.sql, guarded in promo-wall-check.js)
 if (!/sb\.rpc\('golfer_follow', \{ p_golfer: uid/.test(idx)) fail.push('index.html: following saves for the signed-in golfer (golfer_follow)');
+// v1527 (Pete: "it only needs to ask once after i make a selection"): closing = an answer, remembered on the phone, one question a week
+const once = fs.readFileSync(path.join(__dirname, '..', 'sql/follow_prompt_once_v1527.sql'), 'utf8');
+if (!/this\.answer\(c, false\); return; \}/.test(idx) || !/this\.asked\(\)\.indexOf\(uid \+ '\|' \+ data\.course_id\) >= 0/.test(idx)) fail.push('index.html: the follow question must count a close as an answer and never re-ask a course answered on this phone');
+if (!/q\.asked_at > now\(\) - interval '7 days'\) then return null/.test(once)) fail.push('sql: follow_prompt_next must ask at most one course a week');
 if (!/Golf courses \(anonymous counts\)/.test(priv)) fail.push('privacy.html: the anonymous course counts must be disclosed');
 
 if (fail.length) { console.error('✗ market insights guard:\n  ' + fail.join('\n  ')); process.exit(1); }

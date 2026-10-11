@@ -143809,6 +143809,7 @@ const FollowPrompt = {
         try {
             const { data, error } = await sb.rpc('follow_prompt_next', { p_user: uid });
             if (error || !data || !data.course_id) return;
+            if (this.asked().indexOf(uid + '|' + data.course_id) >= 0) return;   // v1527: answered on this phone already
             if (L && L._isRoundActive && L._isRoundActive()) return;
             this.show(data);
         } catch (e) { }
@@ -143833,15 +143834,19 @@ const FollowPrompt = {
             </div></div>`;
         d.addEventListener('click', (e) => {
             const a = e.target.closest('[data-a]');
-            if (e.target === d || (a && a.dataset.a === 'x')) { d.remove(); return; }   // closed = ask again another day
+            // v1527 (Pete: "it only needs to ask once after i make a selection"): closing it is an answer too (= not now)
+            if (e.target === d || (a && a.dataset.a === 'x')) { this.answer(c, false); return; }
             if (a) this.answer(c, a.dataset.a === 'yes');
         });
         document.body.appendChild(d);
     },
+    asked() { try { return JSON.parse(localStorage.getItem('mcipro_fp_asked') || '[]'); } catch (e) { return []; } },
     async answer(c, yes) {
         const d = document.getElementById('fpSheet'); if (d) d.remove();
         const uid = OffersInbox.uid(), sb = OffersInbox._sb();
         if (!uid || !sb) return;
+        // remembered on the phone too, so a failed save never brings the same question back
+        try { const l = this.asked().filter(x => x !== uid + '|' + c.course_id); l.push(uid + '|' + c.course_id); localStorage.setItem('mcipro_fp_asked', JSON.stringify(l.slice(-40))); } catch (e) {}
         try {
             const { data, error } = await sb.rpc('follow_prompt_answer', { p_user: uid, p_course_id: c.course_id, p_yes: !!yes });
             if (error || data !== true) throw (error || new Error('not saved'));

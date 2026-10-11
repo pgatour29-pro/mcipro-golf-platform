@@ -148,6 +148,7 @@ language plpgsql stable security definer set search_path = public as $$
 declare v text; cid text; nm text;
 begin
   if coalesce(p_user, '') = '' or public._app_golfer(p_user) is distinct from p_user then return null; end if;   -- v1526
+  if exists (select 1 from public.course_follow_prompts q where q.golfer_line_id = p_user and q.asked_at > now() - interval '7 days') then return null; end if;   -- v1527
   for v in
     select public.venue_of(x.course_name) from public.rounds x
     where x.golfer_id = p_user and x.played_at >= now() - interval '14 days' and x.course_name is not null

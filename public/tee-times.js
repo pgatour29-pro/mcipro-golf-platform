@@ -738,7 +738,7 @@
     if (!(W.ensureVerifiedLogin && await W.ensureVerifiedLogin())) return false;
     try { const r = await rpc('promo_prefs_get', { p_test: promoTest() }); S.prefsLoaded = true; if (W.PromoWall) W.PromoWall.setPrefs(r || {}); return !!(r && r.signed_in); } catch (e) { return false; }
   }
-  function promoSignIn() { const OI = W.OffersInbox; if (OI && OI.signInMsg) OI.signInMsg(); else toast(T('ttx.login', 'Log in to book a tee time'), 'error'); }
+  function promoSignIn() { const OI = W.OffersInbox; if (OI && OI.signInMsg) OI.signInMsg('dealprefs'); else toast(T('ttx.login', 'Log in to book a tee time'), 'error'); }
   async function savePromoPrefs(d) {
     const OI = W.OffersInbox;
     if (OI && OI.signedIn && !(await OI.signedIn())) { promoSignIn(); return false; }
@@ -778,7 +778,7 @@
   async function followPromo(slug, on, p) {
     const c = sb(), id = me(), OI = W.OffersInbox;
     if (!c || !id || !p) return false;
-    if (OI && !(await OI.signedIn())) { OI.signInMsg(); return false; }
+    if (OI && !(await OI.signedIn())) { OI.signInMsg('deals'); return false; }
     try {
       if (on) {
         const { error } = await c.from('course_follows').upsert({ golfer_line_id: id, course_id: p.course_id || slug, source: 'promo_wall' }, { onConflict: 'golfer_line_id,course_id' });

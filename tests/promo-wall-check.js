@@ -88,6 +88,9 @@ if (!/\['accommodation', 't_room', 'hotel'\]/.test(cp) || !/room: String\(f\.typ
 if (/Sign out and sign in again|로그아웃 후 다시 로그인|ログアウトして再ログイン|ออกจากระบบแล้วเข้าสู่ระบบอีกครั้ง/.test(idx)) fail.push('index.html: never tell a signed-in golfer to sign out and back in');
 if (!/async signedIn\(\) \{ return window\.ensureVerifiedLogin\(\); \}/.test(idx) || !/window\.ensureVerifiedLogin = async function/.test(idx)) fail.push('index.html: follows / consent must repair the login (ensureVerifiedLogin), not ask');
 if (!/if \(S\.signedIn !== true && S\.opts\.ensureSignedIn\)/.test(pw) || !/ensureSignedIn: promoEnsureSignedIn/.test(tt)) fail.push('Your deals must re-check the live login before refusing');
+// v1524: when the server can't confirm the login (fingerprint / passkey phones), ONE tap with the account's own provider, then straight back
+if (!/window\.confirmLogin = function \(resume\)/.test(idx) || !/signInMsg\(resume\) \{ window\.confirmLogin\(resume\); \}/.test(idx) || !/if \(p\.prefs\) setTimeout\(function\(\)\{ try \{ window\.PromoWall && window\.PromoWall\.openPrefs\(\)/.test(idx)) fail.push('index.html: confirm-with-provider sheet + resume into Your deals');
+if (!/OI\.signInMsg\('dealprefs'\)/.test(tt)) fail.push('tee-times.js: Your deals must resume after the confirm');
 
 if (fail.length) { console.error('✗ promotions wall:\n  ' + fail.join('\n  ')); process.exit(1); }
 console.log('✓ promotions wall: expiry required, public fields only, places locked + handed back, ' + keys.size + ' strings in 4 languages');

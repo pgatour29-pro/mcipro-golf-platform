@@ -14,6 +14,8 @@ const idx = read('public/index.html');
 const ps = read('public/proshop-teesheet.html');
 const pub = read('public/tee-time-deals/index.html');
 const pf = read('sql/promo_prefs_v1521.sql');
+const wa = read('sql/passkey_session_v1525.sql');
+const waFn = read('supabase/functions/passkey-session/index.ts');
 const fail = [];
 
 // expiry: required everywhere
@@ -91,6 +93,12 @@ if (!/if \(S\.signedIn !== true && S\.opts\.ensureSignedIn\)/.test(pw) || !/ensu
 // v1524: when the server can't confirm the login (fingerprint / passkey phones), ONE tap with the account's own provider, then straight back
 if (!/window\.confirmLogin = function \(resume\)/.test(idx) || !/signInMsg\(resume\) \{ window\.confirmLogin\(resume\); \}/.test(idx) || !/if \(p\.prefs\) setTimeout\(function\(\)\{ try \{ window\.PromoWall && window\.PromoWall\.openPrefs\(\)/.test(idx)) fail.push('index.html: confirm-with-provider sheet + resume into Your deals');
 if (!/OI\.signInMsg\('dealprefs'\)/.test(tt)) fail.push('tee-times.js: Your deals must resume after the confirm');
+// v1525: a fingerprint login the server can trust. The browser key may only ADD a credential (never read / rewrite / bind),
+// only a session verified for the account binds it, and the function checks challenge, origin, rpId, UV and the signature
+if (!/revoke all on public\.webauthn_credentials from anon, authenticated;/.test(wa) || !/grant insert \(user_id, credential_id, public_key, user_name, device_name, created_at\) on public\.webauthn_credentials/.test(wa) || /tmp_update/.test(wa.replace(/drop policy if exists tmp_update/, ''))) fail.push('sql: webauthn_credentials must be insert-only for the browser key');
+if (!/me text := public\.line_id\(\);[\s\S]*?where credential_id = p_credential_id and user_id = me;/.test(wa)) fail.push('sql: webauthn_bind must bind only the verified caller\'s own credential');
+['client.challenge !== ch.challenge', '!ORIGINS.includes(client.origin', "!(flags & 0x04)", 'if (!cred || !cred.bound_at) return json({ error: "not_bound" }', 'counter <= Number(cred.sign_count)', 'await verifySig(cred.public_key'].forEach(x => { if (waFn.indexOf(x) < 0) fail.push('passkey-session: missing check ' + x); });
+if (!/window\.bindFingerprint = async function/.test(idx) || !/this\._serverSession\(assertion, serverCh, storedUserId\)/.test(idx)) fail.push('index.html: fingerprint login must ask the server for the session, and bind when verified');
 
 if (fail.length) { console.error('✗ promotions wall:\n  ' + fail.join('\n  ')); process.exit(1); }
 console.log('✓ promotions wall: expiry required, public fields only, places locked + handed back, ' + keys.size + ' strings in 4 languages');

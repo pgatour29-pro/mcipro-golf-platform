@@ -28299,6 +28299,7 @@
                     });
 
                     console.log('[Biometric] ✅ Credential registered for', userName);
+                    try { localStorage.removeItem('mcipro_biometric_bound'); if (window.bindFingerprint) window.bindFingerprint(); } catch (e) {}   // v1525
                     NotificationManager.show('Biometric login enabled! ' + micon('celebration'), 'success');
                 } catch (err) {
                     console.error('[Biometric] Registration error:', err);
@@ -28306,6 +28307,27 @@
                         NotificationManager.show('Biometric setup failed. Try again later.', 'error');
                     }
                 }
+            },
+
+            // v1525: assertion -> passkey-session -> token_hash -> the Supabase session (only for a credential bound to its account)
+            async _serverSession(assertion, serverCh, expectUserId) {
+                try {
+                    const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+                    const r = assertion.response;
+                    const res = await fetch(`${this.SUPABASE_URL}/functions/v1/passkey-session`, { method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'apikey': this.SUPABASE_KEY, 'Authorization': `Bearer ${this.SUPABASE_KEY}` },
+                        body: JSON.stringify({ op: 'verify', challenge_id: serverCh.id, credential_id: btoa(String.fromCharCode(...new Uint8Array(assertion.rawId))),
+                            client_data: b64u(r.clientDataJSON), auth_data: b64u(r.authenticatorData), signature: b64u(r.signature) }) });
+                    const j = await res.json().catch(() => ({}));
+                    if (!res.ok || !j.token_hash) { console.log('[Biometric] no server session:', j.error || res.status); return false; }
+                    if (expectUserId && j.user_id !== expectUserId) { console.warn('[Biometric] credential belongs to another account, session not used'); return false; }
+                    const sb = window.SupabaseDB && window.SupabaseDB.client;
+                    if (!sb) return false;
+                    const o = await sb.auth.verifyOtp({ token_hash: j.token_hash, type: 'magiclink' });
+                    if (o.error) { console.warn('[Biometric] verifyOtp failed:', o.error.message); return false; }
+                    console.log('[Biometric] ✅ verified session from fingerprint');
+                    return true;
+                } catch (e) { console.warn('[Biometric] server session failed:', e && e.message); return false; }
             },
 
             // Authenticate with biometric credential
@@ -28316,9 +28338,19 @@
                 try {
                     LoadingManager.show('Verifying identity...');
 
-                    // Create challenge
-                    const challenge = new Uint8Array(32);
-                    crypto.getRandomValues(challenge);
+                    // v1525: the SERVER's one-time challenge, so the fingerprint can prove to the server who this is
+                    // (passkey-session). Unreachable server -> a local challenge and the login still works on this phone.
+                    let serverCh = null;
+                    try {
+                        const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 4000);
+                        const cr = await fetch(`${this.SUPABASE_URL}/functions/v1/passkey-session`, { method: 'POST', signal: ctl.signal,
+                            headers: { 'Content-Type': 'application/json', 'apikey': this.SUPABASE_KEY, 'Authorization': `Bearer ${this.SUPABASE_KEY}` },
+                            body: JSON.stringify({ op: 'challenge' }) });
+                        clearTimeout(tm);
+                        if (cr.ok) { const cj = await cr.json(); if (cj && cj.id && cj.challenge) serverCh = cj; }
+                    } catch (chErr) { console.warn('[Biometric] server challenge unavailable:', chErr && chErr.message); }
+                    const b64uBytes = (x) => Uint8Array.from(atob(x.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((x.length + 3) % 4)), c => c.charCodeAt(0));
+                    const challenge = serverCh ? b64uBytes(serverCh.challenge) : crypto.getRandomValues(new Uint8Array(32));
 
                     // Stored credential on this partition → fast targeted assertion.
                     // No stored credential (fresh partition, e.g. the installed iOS app that
@@ -28361,6 +28393,13 @@
                     }
 
                     console.log('[Biometric] ✅ Verification successful, loading user:', storedUserId);
+
+                    // v1525: hand the signed assertion to the server -> the account's real session (line_id claim).
+                    // Wait up to 2.5s so the dashboard's first loads are verified; slower than that, it lands in the background.
+                    if (serverCh) {
+                        const sessionP = this._serverSession(assertion, serverCh, storedUserId);
+                        try { await Promise.race([sessionP, new Promise(r => setTimeout(r, 2500))]); } catch (e) {}
+                    }
 
                     // Load user profile from Supabase — FAIL-CLOSED like v1040: only a
                     // confirmed 200 + JSON array is an answer; a dropped fetch must not
@@ -143429,6 +143468,30 @@ window.ensureVerifiedLogin = async function () {
     } catch (e) { console.warn('[auth] ensureVerifiedLogin:', (e && e.message) || e); }
     return false;
 };
+
+// v1525: a phone's fingerprint can mint a session only once it is BOUND to its account, and only a session already verified
+// for that account can bind it (sql/passkey_session_v1525.sql). Runs whenever a verified session is present, once per credential.
+window.bindFingerprint = async function () {
+    try {
+        const cred = localStorage.getItem('mcipro_biometric_cred_id'), owner = localStorage.getItem('mcipro_biometric_user_id'), me = localStorage.getItem('line_user_id');
+        if (!cred || !owner || owner !== me || localStorage.getItem('mcipro_biometric_bound') === cred) return;
+        const sb = window.SupabaseDB && window.SupabaseDB.client; if (!sb) return;
+        const s = (await sb.auth.getSession()).data.session; if (!s) return;
+        const { data } = await sb.rpc('webauthn_bind', { p_credential_id: cred });
+        if (data && (data.ok || data.reason === 'not_found')) localStorage.setItem('mcipro_biometric_bound', cred);   // not_found: nothing to bind on this phone
+        if (data && data.ok) console.log('[Biometric] ✅ this phone\'s fingerprint now signs in with the server');
+    } catch (e) { console.warn('[Biometric] bind failed:', (e && e.message) || e); }
+};
+(function () {   // watch for the verified session (LINE login, Confirm with LINE, fingerprint) and bind then
+    let n = 0;
+    const arm = () => {
+        const sb = window.SupabaseDB && window.SupabaseDB.client;
+        if (!sb || !sb.auth) { if (++n < 30) setTimeout(arm, 2000); return; }
+        try { sb.auth.onAuthStateChange((ev, session) => { if (session && (ev === 'SIGNED_IN' || ev === 'INITIAL_SESSION' || ev === 'TOKEN_REFRESHED')) setTimeout(window.bindFingerprint, 0); }); } catch (e) {}
+        setTimeout(window.bindFingerprint, 0);
+    };
+    arm();
+})();
 
 // v1524 (Pete: "Login has expired" on a phone he was signed in on): a fingerprint / passkey login opens the app on THIS
 // phone only; the server never learns who it is (34 golfers), so ensureVerifiedLogin has nothing to repair. One tap with

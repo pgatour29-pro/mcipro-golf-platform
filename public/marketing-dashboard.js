@@ -481,7 +481,7 @@
 
         // ================= CAMPAIGNS =================
         // course_offers.offer_type / cta_target vocab from sql/course_offers_20260912.sql (tee_time deals come from the pro shop tee sheet)
-        TYPES: [['promotion', 'Special offer'], ['food_beverage', 'Food & drink'], ['caddy', 'Caddy offer'], ['society_package', 'Society package'], ['other', 'Course news'], ['tee_time', 'Tee time deal']],
+        TYPES: [['promotion', 'Special offer'], ['food_beverage', 'Food & drink'], ['caddy', 'Caddy offer'], ['society_package', 'Society package'], ['other', 'Course news'], ['tee_time', 'Tee time deal'], ['accommodation', 'Rooms'], ['transport', 'Transport']],
         CTAS: [['', 'No button'], ['booking', 'Book a tee time'], ['caddy', 'Book a caddy'], ['proshop', 'Pro shop'], ['url', 'Web link']],
         typeLabel(t) { const f = MK.TYPES.find(x => x[0] === t); return f ? tr('mk.type.' + t, f[1]) : (t || '—'); },
         statusOf(o) {

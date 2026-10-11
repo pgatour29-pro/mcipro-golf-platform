@@ -35,7 +35,8 @@ declare
 begin
   if g.types is not null and cardinality(g.types) > 0
      and not (o.offer_type = any(g.types)
-              or ('promotion' = any(g.types) and o.offer_type not in ('tee_time', 'society_package', 'caddy', 'food_beverage'))) then
+              or ('accommodation' = any(g.types) and o.incl_room) or ('transport' = any(g.types) and o.incl_transport)   -- v1522
+              or ('promotion' = any(g.types) and o.offer_type not in ('tee_time', 'society_package', 'caddy', 'food_beverage', 'accommodation', 'transport'))) then
     return false;
   end if;
   if g.regions is not null and cardinality(g.regions) > 0 then
@@ -123,7 +124,7 @@ begin
   if me is null or me = '' then return jsonb_build_object('ok', false, 'reason', 'signin'); end if;
   if p is null or jsonb_typeof(p) <> 'object' then return jsonb_build_object('ok', false, 'reason', 'bad'); end if;
   select array_agg(distinct x) into v_types from jsonb_array_elements_text(case when jsonb_typeof(p->'types') = 'array' then p->'types' else '[]' end) x
-    where x in ('tee_time', 'society_package', 'caddy', 'food_beverage', 'promotion');
+    where x in ('tee_time', 'society_package', 'caddy', 'food_beverage', 'accommodation', 'transport', 'promotion');
   select array_agg(distinct x) into v_regions from jsonb_array_elements_text(case when jsonb_typeof(p->'regions') = 'array' then p->'regions' else '[]' end) x
     where x in (select distinct region from public.course_venues where region is not null);
   select array_agg(distinct x) into v_tod from jsonb_array_elements_text(case when jsonb_typeof(p->'tod') = 'array' then p->'tod' else '[]' end) x

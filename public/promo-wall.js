@@ -31,7 +31,9 @@
   };
   const PER_PAGE = 9;
   const TYPES = [['all', 'pw.type.all', 'All deals', 'sell'], ['tee_time', 'pw.type.tee', 'Tee times', 'golf_course'], ['society_package', 'pw.type.pkg', 'Packages', 'luggage'],
-    ['caddy', 'pw.type.caddy', 'Caddies', 'person'], ['food_beverage', 'pw.type.fb', 'Food & drink', 'restaurant'], ['promotion', 'pw.type.other', 'Other offers', 'local_offer']];
+    ['caddy', 'pw.type.caddy', 'Caddies', 'person'], ['food_beverage', 'pw.type.fb', 'Food & drink', 'restaurant'],
+    ['accommodation', 'pw.type.room', 'Rooms', 'hotel'], ['transport', 'pw.type.ride', 'Transport', 'airport_shuttle'],   // v1522: the trip, not just the round
+    ['promotion', 'pw.type.other', 'Other offers', 'local_offer']];
   const WHEN = [['any', 'pw.when.any', 'Any day'], ['today', 'pw.when.today', 'Today'], ['tomorrow', 'pw.when.tomorrow', 'Tomorrow'], ['weekend', 'pw.when.weekend', 'This weekend'], ['week', 'pw.when.week', 'Next 7 days']];
   const AREAS = [['all', 'pw.area.all', 'All areas'], ['Pattaya', 'ttx.region.pattaya', 'Pattaya'], ['Hua Hin', 'ttx.region.huahin', 'Hua Hin'],
     ['Chiang Mai', 'ttx.region.chiangmai', 'Chiang Mai'], ['Bangkok', 'ttx.region.bangkok', 'Bangkok']];
@@ -42,11 +44,13 @@
     ['midday', 'ttx.tod.midday', 'Midday', '11:00', '14:00'], ['afternoon', 'ttx.tod.afternoon', 'Afternoon', '14:00', '24:00']];
   const DAYS = [['any', 'pw.when.any', 'Any day'], ['weekday', 'pw.pf.days.wd', 'Weekdays'], ['weekend', 'pw.pf.days.we', 'Weekends']];
   const PRICES = [0, 1000, 1500, 2000, 3000];
-  const ROUND = ['tee_time', 'society_package', 'caddy'], KNOWN = ['tee_time', 'society_package', 'caddy', 'food_beverage'];
+  const ROUND = ['tee_time', 'society_package', 'caddy'], KNOWN = ['tee_time', 'society_package', 'caddy', 'food_beverage', 'accommodation', 'transport'];
+  // a deal counts as a type when it IS that type, or (rooms / transport) when the course ticked it as included
+  const typeHit = (p, k) => k === 'all' || p.type === k || (k === 'accommodation' && !!p.room) || (k === 'transport' && !!p.transport) || (k === 'promotion' && KNOWN.indexOf(p.type) < 0);
   const bkkDate = ts => { try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ts)); } catch (e) { return bkkToday(); } };
   function dealMatch(p, g) {
     if (!g) return true;
-    if (g.types && g.types.length && !(g.types.indexOf(p.type) >= 0 || (g.types.indexOf('promotion') >= 0 && KNOWN.indexOf(p.type) < 0))) return false;
+    if (g.types && g.types.length && !g.types.some(k => typeHit(p, k))) return false;
     if (g.regions && g.regions.length && g.regions.indexOf(p.region) < 0) return false;
     if (g.max_price && p.price != null && +p.price > g.max_price) return false;
     if (g.days && g.days !== 'any') {
@@ -125,7 +129,7 @@
     return S.list.filter(live)
       .filter(p => S.area === 'all' || p.region === S.area)
       .filter(p => !r || playsOn(p, r[0], r[1]))
-      .filter(p => S.type === 'all' || p.type === S.type || (S.type === 'promotion' && !TYPES.some(t => t[0] === p.type && t[0] !== 'promotion')));
+      .filter(p => typeHit(p, S.type));
   }
   function shown() {
     let l = base();
@@ -187,6 +191,10 @@
 .pw-cube .tg.off{background:#16a34a;color:#fff}
 .pw-cube .tg.hot{background:#ea580c;color:#fff}
 .pw-cube .tg .material-symbols-outlined{font-size:13px}
+.pw-cube .in{top:30px;left:6px;display:flex;align-items:center;gap:2px;height:20px;border-radius:7px;padding:0 4px;background:rgba(255,255,255,.94);color:#0f172a}
+.pw-cube .in .material-symbols-outlined{font-size:13px}
+@media (min-width:640px){.pw-cube .in{top:40px;left:10px;height:24px;border-radius:8px;padding:0 6px;gap:3px}.pw-cube .in .material-symbols-outlined{font-size:15px}}
+@media (max-width:379px){.pw-cube .in{left:5px}}
 .pw-cube .tg .w{display:none}
 .pw-cube .tg.ic{padding:0;width:20px;justify-content:center}
 .pw-cube .tm{top:6px;right:6px;display:flex;align-items:center;gap:2px;height:20px;border-radius:7px;padding:0 5px;background:rgba(255,255,255,.94);color:#0f172a;font:800 9.5px 'JetBrains Mono',monospace}
@@ -361,11 +369,16 @@
     if (p.was_price && p.price && +p.was_price > +p.price) return '<span class="tg off' + (cls || '') + '">-' + Math.round((1 - p.price / p.was_price) * 100) + '%</span>';
     const t = typeOf(p.type); return '<span class="tg ic' + (cls || '') + '" title="' + esc(T(t[1], t[2])) + '">' + P(t[3]) + '<span class="w">' + esc(T(t[1], t[2])) + '</span></span>';
   }
+  function incl(p) {   // v1522: a room / a ride comes with it
+    if (!p.room && !p.transport) return '';
+    const l = [p.room ? T('pw.inc.room', 'Room included') : '', p.transport ? T('pw.inc.ride', 'Transport included') : ''].filter(Boolean).join(', ');
+    return '<span class="in" title="' + esc(l) + '" aria-label="' + esc(l) + '">' + (p.room ? P('hotel') : '') + (p.transport ? P('airport_shuttle') : '') + '</span>';
+  }
   function cube(p) {
     const lim = p.limit_total ? Math.max(0, Math.min(100, (+p.limit_left || 0) / p.limit_total * 100)) : null;
     const isNew = p.created_at && (Date.now() - new Date(p.created_at).getTime()) < 24 * 3600000;
     return '<button type="button" class="pw-cube' + (isNew ? ' new' : '') + '" data-pw="open" data-id="' + esc(p.id) + '" style="background-image:url(\'' + esc(photoFor(p.slug, p.photo)) + '\')" aria-label="' + esc((p.short || p.course_name) + ', ' + p.title) + '">' +
-      tag(p) + '<span class="tm' + (urgent(p) ? ' u' : '') + '" data-pwleft="' + esc(p.id) + '">' + P('timer') + esc(leftShort(p)) + '</span>' +
+      tag(p) + incl(p) + '<span class="tm' + (urgent(p) ? ' u' : '') + '" data-pwleft="' + esc(p.id) + '">' + P('timer') + esc(leftShort(p)) + '</span>' +
       '<span class="bt"><span class="h" data-new="' + esc(T('pw.new', 'NEW')) + '">' + esc(p.title) + '</span>' +
         (p.price ? '<span class="p">' + esc(baht(p.price)) + (p.was_price && +p.was_price > +p.price ? '<s>' + esc(baht(p.was_price)) + '</s>' : '') + '</span>' : '') +
         '<span class="c">' + esc(p.short || p.course_name) + '</span></span>' +
@@ -380,7 +393,7 @@
     let rows = [];
     if (S.pop === 'area') rows = AREAS.map(a => [a[0], T(a[1], a[2]), a[0] === 'all' ? 'public' : 'location_on', a[0] === 'all' ? live0.length : live0.filter(p => p.region === a[0]).length, S.area === a[0]]);
     if (S.pop === 'when') rows = WHEN.map(w => { const r = whenRange(w[0]); return [w[0], T(w[1], w[2]), w[0] === 'any' ? 'calendar_month' : 'event', r ? live0.filter(p => playsOn(p, r[0], r[1])).length : live0.length, S.when === w[0]]; });
-    if (S.pop === 'type') rows = TYPES.map(t => [t[0], T(t[1], t[2]), t[3], t[0] === 'all' ? live0.length : live0.filter(p => p.type === t[0]).length, S.type === t[0]]);
+    if (S.pop === 'type') rows = TYPES.map(t => [t[0], T(t[1], t[2]), t[3], t[0] === 'all' ? live0.length : live0.filter(p => typeHit(p, t[0])).length, S.type === t[0]]);
     return '<div class="pw-pop" role="listbox">' + rows.map(r => '<button type="button" role="option" aria-selected="' + r[4] + '" class="' + (r[4] ? 'on' : '') + (r[3] ? '' : ' off') + '" data-pw="set" data-k="' + S.pop + '" data-v="' + esc(r[0]) + '">' + P(r[4] ? 'check' : r[2]) + esc(r[1]) + '<em>' + r[3] + '</em></button>').join('') + '</div>';
   }
   /* ------------------------------------------------------------------ your deals */
@@ -553,7 +566,9 @@
         '<div class="pw-clock">' + P('timer') + '<div><small>' + esc(T('pw.ends', 'Offer ends in')) + '</small><b data-pwclock>' + esc(leftClock(p)) + '</b></div>' + lim + '</div>' +
         (p.limit_total ? '<div class="pw-bar"><i style="width:' + Math.max(0, Math.min(100, p.limit_left / p.limit_total * 100)).toFixed(0) + '%"></i></div>' : '') +
         (p.body ? '<div class="pw-txt">' + esc(p.body) + '</div>' : '') +
-        '<div class="pw-facts">' + P('event') + '<b>' + esc(days) + '</b>' + (hours ? P('schedule') + '<b>' + esc(hours) + '</b>' : '') + P(t[3]) + '<b>' + esc(T(t[1], t[2])) + '</b>' + P('location_on') + '<b>' + esc([p.area, p.region].filter(Boolean).join(', ') || p.course_name) + '</b></div>' +
+        '<div class="pw-facts">' + P('event') + '<b>' + esc(days) + '</b>' + (hours ? P('schedule') + '<b>' + esc(hours) + '</b>' : '') + P(t[3]) + '<b>' + esc(T(t[1], t[2])) + '</b>' +
+          (p.room && p.type !== 'accommodation' ? P('hotel') + '<b>' + esc(T('pw.inc.room', 'Room included')) + '</b>' : '') +
+          (p.transport && p.type !== 'transport' ? P('airport_shuttle') + '<b>' + esc(T('pw.inc.ride', 'Transport included')) + '</b>' : '') + P('location_on') + '<b>' + esc([p.area, p.region].filter(Boolean).join(', ') || p.course_name) + '</b></div>' +
       '</div></div><div class="pw-r pw-bd">' +
         caddiesHtml(p) +
         (code ? '<div class="pw-code"><small>' + esc(T('pw.code', 'Your deal code')) + '</small><b>' + esc(code) + '</b><span>' + esc(T('pw.code.sub', 'Show it at the pro shop. You pay the course.')) + '</span></div>' : '') +

@@ -16,7 +16,7 @@
   // the pro shop's own language (TH / KO / JA), English for anything missing
   var I18N = {
     th: { h1: 'โปรโมชั่น', sub: 'แสดงให้นักกอล์ฟทุกคนเห็นบนวอลล์ Tee Times และหน้าดีลสาธารณะ ผู้ติดตามจะได้รับแจ้งเตือน', post_h: 'ลงโปรโมชั่น',
-      t_tee: 'ดีลทีไทม์', t_pkg: 'แพ็กเกจ', t_caddy: 'แคดดี้', t_fb: 'อาหารและเครื่องดื่ม', t_other: 'อื่น ๆ',
+      t_tee: 'ดีลทีไทม์', t_pkg: 'แพ็กเกจ', t_caddy: 'แคดดี้', t_fb: 'อาหารและเครื่องดื่ม', t_other: 'อื่น ๆ', t_room: 'ห้องพัก', t_ride: 'รถรับส่ง', inc_h: 'รวมในดีล', inc_room: 'รวมห้องพัก', inc_ride: 'รวมรถรับส่ง',
       headline: 'หัวข้อ', price: 'ราคาดีล ฿', was: 'ราคาปกติ ฿', per: 'ต่อ', details: 'รายละเอียด', from: 'เล่นได้ตั้งแต่', to: 'เล่นได้ถึง', tfrom: 'ทีไทม์ตั้งแต่', tto: 'ทีไทม์ถึง',
       ends: 'ดีลสิ้นสุด', req: 'ต้องระบุ', e2h: '2 ชั่วโมง', e6h: '6 ชั่วโมง', etonight: 'คืนนี้ 23:59', e3d: '3 วัน', e7d: '7 วัน', ecustom: 'เลือกเวลา',
       limit: 'จำนวนจำกัด (ที่)', nolimit: 'ไม่จำกัด', photo: 'รูปภาพ', photo_change: 'เปลี่ยนรูป', photo_course: 'รูปสนาม', see: 'นักกอล์ฟจะเห็นแบบนี้',
@@ -27,7 +27,7 @@
       ok: 'ขึ้นวอลล์แล้ว', ok_n: 'ขึ้นวอลล์แล้ว แจ้งผู้ติดตาม {n} คน', fail: 'ลงไม่สำเร็จ', too_many: 'สนามนี้มีโปรโมชั่นอยู่ 12 รายการแล้ว ถอนออกก่อนหนึ่งรายการ', bad_ends: 'เวลาสิ้นสุดต้องอยู่ระหว่าง 5 นาทีถึง 60 วันจากนี้',
       bad_days: 'ตรวจสอบวันเล่น', bad_hours: 'ตรวจสอบช่วงทีไทม์', no_course: 'เลือกสนามก่อน', up_fail: 'อัปโหลดรูปไม่สำเร็จ', pin: 'PIN สนาม', pin_sub: 'PIN โปรช็อปของคุณ โปรโมชั่นคือราคาที่นักกอล์ฟจองได้ จึงลงได้เฉพาะสนามเท่านั้น', v_pin: 'ใส่ PIN สนามเพื่อลงโปรโมชั่น', v_pin_w: 'ใส่ PIN สนามด้านบนเพื่อถอน', bad_pin: 'PIN สนามไม่ถูกต้อง', no_pin: 'โปรโมชั่นต้องใช้ PIN โปรช็อปของสนามเอง ติดต่อ MyCaddiPro เพื่อขอ PIN', locked: 'ใส่ PIN ผิดหลายครั้งเกินไป ลองใหม่ในอีกหนึ่งชั่วโมง', close: 'ปิด' },
     ko: { h1: '프로모션', sub: 'Tee Times 월과 공개 딜 페이지에서 모든 골퍼에게 표시됩니다. 팔로워에게는 알림이 갑니다.', post_h: '프로모션 올리기',
-      t_tee: '티타임 딜', t_pkg: '패키지', t_caddy: '캐디', t_fb: '식음료', t_other: '기타',
+      t_tee: '티타임 딜', t_pkg: '패키지', t_caddy: '캐디', t_fb: '식음료', t_other: '기타', t_room: '숙소', t_ride: '교통편', inc_h: '딜에 포함', inc_room: '숙소 포함', inc_ride: '교통편 포함',
       headline: '제목', price: '딜 가격 ฿', was: '정상가 ฿', per: '기준', details: '상세 내용', from: '플레이 시작일', to: '플레이 종료일', tfrom: '티타임 시작', tto: '티타임 종료',
       ends: '딜 종료', req: '필수', e2h: '2시간', e6h: '6시간', etonight: '오늘 밤 23:59', e3d: '3일', e7d: '7일', ecustom: '시간 선택',
       limit: '한정 수량 (자리)', nolimit: '제한 없음', photo: '사진', photo_change: '사진 변경', photo_course: '코스 사진', see: '골퍼에게 보이는 모습',
@@ -38,7 +38,7 @@
       ok: '월에 게시되었습니다.', ok_n: '월에 게시되었습니다. 팔로워 {n}명에게 알림.', fail: '게시하지 못했습니다', too_many: '이미 12개의 프로모션이 게시 중입니다. 하나를 먼저 철회하세요.', bad_ends: '종료 시간은 지금부터 5분에서 60일 사이여야 합니다.',
       bad_days: '플레이 날짜를 확인하세요.', bad_hours: '티타임 시간을 확인하세요.', no_course: '먼저 코스를 선택하세요.', up_fail: '사진 업로드 실패', pin: '코스 PIN', pin_sub: '프로샵 PIN입니다. 프로모션은 골퍼가 예약할 수 있는 가격이라 코스만 올릴 수 있습니다.', v_pin: '올리려면 코스 PIN을 입력하세요.', v_pin_w: '철회하려면 위에 코스 PIN을 입력하세요.', bad_pin: '코스 PIN이 틀렸습니다.', no_pin: '프로모션에는 코스 전용 프로샵 PIN이 필요합니다. MyCaddiPro에 발급을 요청하세요.', locked: 'PIN 오류가 너무 많습니다. 한 시간 후에 다시 시도하세요.', close: '닫기' },
     ja: { h1: 'プロモーション', sub: 'Tee Timesのウォールと公開ディールページで全ゴルファーに表示されます。フォロワーには通知が届きます。', post_h: 'プロモーションを掲載',
-      t_tee: 'ティータイム特価', t_pkg: 'パッケージ', t_caddy: 'キャディ', t_fb: '飲食', t_other: 'その他',
+      t_tee: 'ティータイム特価', t_pkg: 'パッケージ', t_caddy: 'キャディ', t_fb: '飲食', t_other: 'その他', t_room: '宿泊', t_ride: '送迎', inc_h: '特価に含まれるもの', inc_room: '宿泊込み', inc_ride: '送迎込み',
       headline: '見出し', price: '特価 ฿', was: '通常価格 ฿', per: '単位', details: '詳細', from: 'プレー開始日', to: 'プレー終了日', tfrom: 'ティータイム開始', tto: 'ティータイム終了',
       ends: '掲載終了', req: '必須', e2h: '2時間', e6h: '6時間', etonight: '今夜 23:59', e3d: '3日', e7d: '7日', ecustom: '時間を選ぶ',
       limit: '数量限定 (枠)', nolimit: '制限なし', photo: '写真', photo_change: '写真を変更', photo_course: 'コース写真', see: 'ゴルファーにはこう見えます',
@@ -50,7 +50,7 @@
       bad_days: 'プレー日を確認してください。', bad_hours: 'ティータイムの時間を確認してください。', no_course: '先にコースを選んでください。', up_fail: '写真のアップロードに失敗しました', pin: 'コースPIN', pin_sub: 'プロショップのPINです。プロモーションはゴルファーが予約できる価格のため、コースだけが掲載できます。', v_pin: '掲載するにはコースPINを入力してください。', v_pin_w: '取り下げるには上のコースPINを入力してください。', bad_pin: 'コースPINが違います。', no_pin: 'プロモーションにはコース専用のプロショップPINが必要です。MyCaddiProに発行を依頼してください。', locked: 'PINの誤りが多すぎます。1時間後にもう一度お試しください。', close: '閉じる' }
   };
   var EN = { h1: 'Promotions', sub: 'Shown to every golfer on the Tee Times wall and the public deals page. Followers get a push.', post_h: 'Post a promotion',
-    t_tee: 'Tee time deal', t_pkg: 'Package', t_caddy: 'Caddy', t_fb: 'Food & drink', t_other: 'Other',
+    t_tee: 'Tee time deal', t_pkg: 'Package', t_caddy: 'Caddy', t_fb: 'Food & drink', t_other: 'Other', t_room: 'Rooms', t_ride: 'Transport', inc_h: 'Included in the deal', inc_room: 'Room included', inc_ride: 'Transport included',
     headline: 'Headline', price: 'Deal price ฿', was: 'Normal price ฿', per: 'Per', details: 'Details', from: 'Play from', to: 'Play until', tfrom: 'Tee times from', tto: 'Tee times until',
     ends: 'Offer ends', req: 'required', e2h: '2 hours', e6h: '6 hours', etonight: 'Tonight 23:59', e3d: '3 days', e7d: '7 days', ecustom: 'Pick a time',
     limit: 'Limit (places)', nolimit: 'No limit', photo: 'Photo', photo_change: 'Change photo', photo_course: 'Course photo', see: 'How golfers see it',
@@ -62,7 +62,9 @@
     bad_days: 'Check the play days.', bad_hours: 'Check the tee time hours.', no_course: 'Pick your course first.', up_fail: 'Photo upload failed', pin: 'Course PIN', pin_sub: 'Your pro shop PIN. A promotion is a price golfers can book, so only the course posts it.', v_pin: 'Enter your course PIN to post.', v_pin_w: 'Enter your course PIN above to withdraw.', bad_pin: 'Wrong course PIN.', no_pin: 'Promotions need your course\'s own pro shop PIN. Ask MyCaddiPro to issue one.', locked: 'Too many wrong PINs. Try again in an hour.', close: 'Close' };
   var lang = 'en';
   var L = function (k, vars) { var s = (I18N[lang] && I18N[lang][k]) || EN[k] || k; Object.keys(vars || {}).forEach(function (v) { s = s.split('{' + v + '}').join(vars[v]); }); return s; };
-  var TYPES = [['tee_time', 't_tee', 'golf_course'], ['society_package', 't_pkg', 'luggage'], ['caddy', 't_caddy', 'person'], ['food_beverage', 't_fb', 'restaurant'], ['promotion', 't_other', 'local_offer']];
+  var TYPES = [['tee_time', 't_tee', 'golf_course'], ['society_package', 't_pkg', 'luggage'], ['caddy', 't_caddy', 'person'], ['food_beverage', 't_fb', 'restaurant'],
+    ['accommodation', 't_room', 'hotel'], ['transport', 't_ride', 'airport_shuttle'], ['promotion', 't_other', 'local_offer']];   // v1522 rooms + transport
+  var UNITS = { accommodation: 'per room per night', transport: 'per trip' }, UNIT0 = 'per player';
   var ENDS = [['2h', 'e2h'], ['6h', 'e6h'], ['tonight', 'etonight'], ['3d', 'e3d'], ['7d', 'e7d'], ['custom', 'ecustom']];
   function endAt(k, custom) {
     var now = Date.now();
@@ -112,7 +114,8 @@
       if (!this.slug) { this.msg = { ok: false, text: L('no_course') }; return this.render(); }
       var e = endAt(f.ends, f.endsAt);
       var p = { type: f.type, title: f.title.trim(), body: f.body.trim(), price: String(f.price || '').replace(/\D/g, ''), was_price: String(f.was || '').replace(/\D/g, ''),
-        unit: f.unit.trim(), play_from: f.from, play_to: f.to, time_from: f.tFrom, time_to: f.tTo, valid_to: e.toISOString(), limit: String(f.limit || '').replace(/\D/g, ''), photo_url: f.photo || '' };
+        unit: f.unit.trim(), play_from: f.from, play_to: f.to, time_from: f.tFrom, time_to: f.tTo, valid_to: e.toISOString(), limit: String(f.limit || '').replace(/\D/g, ''), photo_url: f.photo || '',
+        room: String(f.type === 'accommodation' || !!f.room), transport: String(f.type === 'transport' || !!f.ride) };
       this.busy = true; this.msg = null; this.render();
       this._rpc('promo_post', { p_slug: this.slug, p: p, p_by: this.by, p_pin: this.pin }).then(function (r) {
         if (!r || !r.ok) {
@@ -167,7 +170,7 @@
       }).catch(function (e) { self.msg = { ok: false, text: L('up_fail') + ' (' + (e.message || e) + ')' }; self.render(); });
     },
     _panel: function () { return document.getElementById('cpPanel'); },
-    _blank: function () { return { type: 'tee_time', title: '', body: '', price: '', was: '', unit: 'per player', from: '', to: '', tFrom: '', tTo: '', ends: '', endsAt: '', limit: '', photo: '' }; },
+    _blank: function () { return { type: 'tee_time', title: '', body: '', price: '', was: '', unit: 'per player', from: '', to: '', tFrom: '', tTo: '', ends: '', endsAt: '', limit: '', photo: '', room: false, ride: false }; },
     open: function () {
       this._css();
       var p = this._panel(), self = this;
@@ -189,7 +192,8 @@
       return {
         id: 'preview', slug: this.slug, course_name: this.courseName, short: this.courseName.replace(/ (Golf|Country|Golf &).*$/, ''), region: this.region, type: f.type,
         title: f.title || 'Your headline', price: +f.price || 0, was_price: +f.was || null, valid_to: (e || new Date(Date.now() + 86400000)).toISOString(),
-        limit_total: +f.limit || null, limit_left: +f.limit || null, photo: f.photo || null, created_at: new Date().toISOString()
+        limit_total: +f.limit || null, limit_left: +f.limit || null, photo: f.photo || null, created_at: new Date().toISOString(),
+        room: f.type === 'accommodation' || !!f.room, transport: f.type === 'transport' || !!f.ride
       };
     },
     _valid: function () {
@@ -211,6 +215,9 @@
       var today = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
       h += '<div class="cp-sec">' + E(L('post_h')) + '</div><div class="cp-card">' +
         '<div class="cp-chips">' + TYPES.map(function (t) { return chip(f.type === t[0], 'type', t[0], t[2], L(t[1])); }).join('') + '</div>' +
+        '<div class="cp-lbl">' + E(L('inc_h')) + '</div><div class="cp-chips">' +
+          (f.type === 'accommodation' ? '' : chip(!!f.room, 'inc', 'room', 'hotel', L('inc_room'))) +
+          (f.type === 'transport' ? '' : chip(!!f.ride, 'inc', 'ride', 'airport_shuttle', L('inc_ride'))) + '</div>' +
         '<label>' + E(L('headline')) + '<input data-f="title" maxlength="40" placeholder="Twilight 18 after 13:30" value="' + E(f.title) + '"></label>' +
         '<div class="cp-grid3"><label>' + E(L('price')) + '<input data-f="price" inputmode="numeric" maxlength="6" placeholder="1200" value="' + E(f.price) + '"></label><label>' + E(L('was')) + '<input data-f="was" inputmode="numeric" maxlength="6" placeholder="1800" value="' + E(f.was) + '"></label><label>' + E(L('per')) + '<input data-f="unit" maxlength="30" value="' + E(f.unit) + '"></label></div>' +
         '<label>' + E(L('details')) + '<textarea data-f="body" maxlength="300" rows="2" placeholder="Any weekday tee time from 13:30. Green fee only.">' + E(f.body) + '</textarea></label>' +
@@ -236,7 +243,7 @@
       live.sort(function (a, b) { return new Date(a.valid_to) - new Date(b.valid_to); });   // ending soonest first, like the wall
       var ended = this.list.filter(function (x) { return live.indexOf(x) < 0; }).slice(0, 6);
       var row = function (x, isLive) {
-        var t = TYPES.find(function (y) { return y[0] === x.type; }) || TYPES[4];
+        var t = TYPES.find(function (y) { return y[0] === x.type; }) || TYPES[TYPES.length - 1];
         var why = isLive ? L('ends_in', { t: W.PromoWall ? W.PromoWall.leftShort(x) : '' }) : x.status === 'deleted' ? L('withdrawn') : (x.limit_total && !x.limit_left) ? L('all_taken', { n: x.limit_total }) : L('ended');
         var took = x.limit_total ? x.limit_total - x.limit_left : (+x.taken || 0);
         return '<div class="cp-row' + (isLive ? '' : ' off') + '"><span class="material-symbols-outlined cp-ic">' + t[2] + '</span><div class="cp-rw"><b>' + E(x.title) + '</b>' +
@@ -251,7 +258,12 @@
       var a = e.target.closest('[data-a]'); if (!a) return;
       var k = a.getAttribute('data-a'), v = a.getAttribute('data-v');
       if (k === 'close') return this.close();
-      if (k === 'type') { this.form.type = v; return this.render(); }
+      if (k === 'type') {
+        var fm = this.form, was = UNITS[fm.type] || UNIT0;
+        if (!fm.unit.trim() || fm.unit.trim() === was) fm.unit = UNITS[v] || UNIT0;   // a room is sold per night, a ride per trip
+        fm.type = v; return this.render();
+      }
+      if (k === 'inc') { this.form[v] = !this.form[v]; return this.render(); }
       if (k === 'ends') { this.form.ends = v; return this.render(); }
       if (k === 'post') return this.post();
       if (k === 'withdraw') return this.withdraw(a.getAttribute('data-id'), a);

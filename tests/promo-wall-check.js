@@ -78,6 +78,12 @@ if (!/if v_offer\.on_wall then\s+p_recipients := coalesce\(array\(select r from 
 if (!/function dealMatch\(p, g\)/.test(pw) || !/S\.tab === 'foryou'\) l = S\.prefs \? l\.filter\(p => fits\(p, S\.prefs, S\.follows\)\)/.test(pw)) fail.push('promo-wall.js: For you must filter with dealMatch');
 if (!/rpc\('promo_prefs_get'/.test(tt) || !/rpc\('promo_prefs_set'/.test(tt)) fail.push('tee-times.js: Your deals must load + save through the RPCs');
 if (!/@media \(min-width:900px\)\{#pwSheet \.sh\.pf\{max-width:960px\}[^@]*\.pf-cols\{display:grid/.test(pw) || !/\.pf-foot\{position:sticky;bottom:0/.test(pw) || !/#pwSheet\.inapp \.sh\.pf\{padding:0\}/.test(pw)) fail.push('promo-wall.js: Your deals sheet must be two columns on desktop with Save pinned on phones');
+// v1522 rooms + transport (Pete: "Add room accommodations and transportation if available"): types of their own AND ticks on any deal
+if (!/'accommodation', 'transport'\]\)\);/.test(sql) || !/add column if not exists incl_room boolean not null default false/.test(sql) || !/v_room := v_type = 'accommodation' or/.test(sql)) fail.push('sql: course_offers must take rooms + transport (type CHECK, incl_room/incl_transport, promo_post)');
+if (!/o\.incl_room room, o\.incl_transport transport/.test(sql)) fail.push('sql: promo_wall must hand out room/transport');
+if (!/\('accommodation' = any\(g\.types\) and o\.incl_room\)/.test(pf)) fail.push('sql: _deal_match must count a room-included deal as Rooms');
+if (!/\(k === 'accommodation' && !!p\.room\)/.test(pw) || !/\['accommodation', 'pw\.type\.room'/.test(pw)) fail.push('promo-wall.js: Rooms / Transport types + typeHit');
+if (!/\['accommodation', 't_room', 'hotel'\]/.test(cp) || !/room: String\(f\.type === 'accommodation' \|\| !!f\.room\)/.test(cp)) fail.push('course-promos.js: the pro shop must be able to post rooms / transport and tick them as included');
 
 if (fail.length) { console.error('✗ promotions wall:\n  ' + fail.join('\n  ')); process.exit(1); }
 console.log('✓ promotions wall: expiry required, public fields only, places locked + handed back, ' + keys.size + ' strings in 4 languages');

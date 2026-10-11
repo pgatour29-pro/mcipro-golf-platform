@@ -26,7 +26,13 @@ alter table public.course_offers
   add column if not exists limit_total integer,
   add column if not exists limit_left integer,
   add column if not exists photo_url text,
-  add column if not exists views integer not null default 0;
+  add column if not exists views integer not null default 0,
+  add column if not exists incl_room boolean not null default false,        -- v1522 (Pete: "Add room accommodations and transportation if available")
+  add column if not exists incl_transport boolean not null default false;
+-- v1522: rooms + transport are deal types of their own (the GolfPassport trip: golf, bed, ride)
+alter table public.course_offers drop constraint if exists course_offers_offer_type_check;
+alter table public.course_offers add constraint course_offers_offer_type_check check (offer_type = any (array['promotion', 'tee_time', 'caddy',
+  'food_beverage', 'society_package', 'sponsorship', 'other', 'accommodation', 'transport']));
 
 alter table public.course_offers drop constraint if exists course_offers_wall_check;
 alter table public.course_offers add constraint course_offers_wall_check check (
@@ -78,7 +84,7 @@ language sql stable security definer set search_path = public as $$
   with w as (
     select o.id, o.venue_slug slug, o.course_id, coalesce(v.name, o.course_name) course_name, coalesce(v.short_name, v.name, o.course_name) short,
            v.region, v.area, o.offer_type type, false hot, o.title, o.body, o.price, o.was_price, o.unit,
-           o.play_from, o.play_to, o.time_from, o.time_to, o.limit_total, o.limit_left,
+           o.play_from, o.play_to, o.time_from, o.time_to, o.limit_total, o.limit_left, o.incl_room room, o.incl_transport transport,
            coalesce(o.photo_url, nullif(v.photo_url, '')) photo, o.valid_to, o.created_at
       from public.course_offers o left join public.course_venues v on v.slug = o.venue_slug
      where o.on_wall and o.status = 'active' and o.valid_to > now() and (o.valid_from is null or o.valid_from <= now())
@@ -89,7 +95,7 @@ language sql stable security definer set search_path = public as $$
     select o.id, v.slug, o.course_id, coalesce(v.name, o.course_name), coalesce(v.short_name, v.name, o.course_name),
            v.region, v.area, 'tee_time', true, o.title, o.body, case when (o.deal->>'price') ~ '^\d{1,7}(\.\d+)?$' then (o.deal->>'price')::numeric::int end, null, 'per player',
            nullif(o.deal->>'date', '')::date, nullif(o.deal->>'date', '')::date, left(o.deal->>'time', 5), left(o.deal->>'time', 5),
-           x.tot, greatest(0, x.tot - x.took),
+           x.tot, greatest(0, x.tot - x.took), false, false,
            nullif(v.photo_url, ''), o.valid_to, o.created_at
       from public.course_offers o left join public.course_venues v on v.slug = public.course_venue(o.course_id)
       cross join lateral (select coalesce(case when (o.deal->>'spots_total') ~ '^\d{1,3}$' then (o.deal->>'spots_total')::int end, 0) tot,
@@ -146,6 +152,7 @@ language plpgsql security definer set search_path = public as $$
 declare
   v record; v_type text; v_title text; v_body text; v_price int; v_was int; v_unit text; v_from date; v_to date;
   v_tf text; v_tt text; v_end timestamptz; v_lim int; v_photo text; v_id uuid; v_today date := (now() at time zone 'Asia/Bangkok')::date;
+  v_room boolean; v_ride boolean;
   clean text := '[<>"`]';
 begin
   select slug, name into v from public.course_venues where slug = p_slug and coalesce(active, true);
@@ -154,7 +161,9 @@ begin
   if v_type is not null then return jsonb_build_object('ok', false, 'reason', v_type); end if;
   if jsonb_typeof(p) <> 'object' then return jsonb_build_object('ok', false, 'reason', 'bad_input'); end if;
   v_type := p->>'type';
-  if v_type not in ('tee_time', 'society_package', 'caddy', 'food_beverage', 'promotion') then return jsonb_build_object('ok', false, 'reason', 'type'); end if;
+  if v_type not in ('tee_time', 'society_package', 'caddy', 'food_beverage', 'accommodation', 'transport', 'promotion') then return jsonb_build_object('ok', false, 'reason', 'type'); end if;
+  v_room := v_type = 'accommodation' or coalesce(p->>'room', '') = 'true';        -- v1522: a room / a ride in the deal
+  v_ride := v_type = 'transport' or coalesce(p->>'transport', '') = 'true';
   v_title := left(trim(regexp_replace(coalesce(p->>'title', ''), clean, '', 'g')), 40);
   if v_title = '' then return jsonb_build_object('ok', false, 'reason', 'title'); end if;
   v_body := nullif(left(trim(regexp_replace(coalesce(p->>'body', ''), clean, '', 'g')), 300), '');
@@ -185,11 +194,11 @@ begin
   end if;
   insert into public.course_offers (course_id, course_name, audience, offer_type, title, body, cta_label, cta_target, segment, priority,
     valid_from, valid_to, status, created_by, on_wall, venue_slug, price, was_price, unit, play_from, play_to, time_from, time_to,
-    limit_total, limit_left, photo_url)
+    limit_total, limit_left, photo_url, incl_room, incl_transport)
   values (public._promo_course_id(p_slug), v.name, 'golfer', v_type, v_title, coalesce(v_body, ''), 'See the deal', 'promo',
     jsonb_build_object('audience', 'followers', 'venue', p_slug), 'normal',
     now(), v_end, 'active', left(coalesce(p_by, 'Pro shop'), 80), true, p_slug, v_price, v_was, v_unit, v_from, v_to, v_tf, v_tt,
-    v_lim, v_lim, v_photo)
+    v_lim, v_lim, v_photo, v_room, v_ride)
   returning id into v_id;
   return jsonb_build_object('ok', true, 'id', v_id);
 end $$;

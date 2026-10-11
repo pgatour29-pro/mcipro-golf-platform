@@ -90,6 +90,55 @@
         .stat-box { text-align: center; padding: 8px; border-radius: 10px; background: var(--card2); border: 1px solid var(--line); }
         .stat-val { font-size: 20px; font-weight: 700; color: var(--ink); }
         .stat-label { font-size: 10px; color: var(--faint); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; }
+        /* Path to #1 (v1506): per-player "what it takes" panel — rendered lazily on row open + the
+           signed-in player's own card in embed mode. All maths runs on trgg_poy_cache.scores. */
+        body { --amber-bg:rgba(245,158,11,0.18); --amber-ink:#fcd34d; }
+        body.theme-light { --amber-bg:#fef3c7; --amber-ink:#92400e; }
+        .how { background: var(--card); border: 1px solid var(--line2); border-radius: 12px; margin-bottom: 12px; }
+        .how summary { list-style: none; cursor: pointer; padding: 11px 12px; font-size: 13px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+        .how summary::-webkit-details-marker { display: none; }
+        .how summary .chev { margin-left: auto; color: var(--sub); transition: transform .2s; }
+        .how[open] summary .chev { transform: rotate(180deg); }
+        .how-body { padding: 0 12px 12px; font-size: 12.5px; line-height: 1.5; color: var(--sub); }
+        .how-body b { color: var(--ink); }
+        .how-body li { margin: 0 0 6px 16px; }
+        .formula { margin: 8px 0; padding: 8px 10px; border-radius: 8px; background: var(--card2); border: 1px solid var(--line); font-size: 12.5px; font-weight: 700; color: var(--ink); text-align: center; }
+        .me-card { background: var(--card); border: 2px solid var(--green); border-radius: 14px; padding: 12px; margin-bottom: 12px; }
+        .me-top { display: flex; align-items: center; gap: 10px; }
+        .me-pos { font-size: 26px; font-weight: 800; color: var(--green); min-width: 52px; }
+        .me-name { font-size: 16px; font-weight: 700; color: var(--ink); }
+        .me-sub { font-size: 12px; color: var(--sub); }
+        .path { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line2); }
+        .me-card .path { border-top-color: var(--line); }
+        .path-h { font-size: 10.5px; font-weight: 800; color: var(--sub); text-transform: uppercase; letter-spacing: .6px; margin: 12px 0 6px; }
+        .path-h:first-child { margin-top: 0; }
+        .path-p { font-size: 12.5px; line-height: 1.45; color: var(--ink); }
+        .path-p .mut { color: var(--sub); }
+        .rung { background: var(--card); border: 1px solid var(--line2); border-radius: 10px; padding: 10px; margin-bottom: 8px; }
+        .rung-top { display: flex; align-items: baseline; gap: 8px; }
+        .rung-t { font-size: 13px; font-weight: 800; color: var(--ink); }
+        .rung-gap { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--green); white-space: nowrap; }
+        .rung-who { font-size: 11px; color: var(--sub); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .opts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+        .opt { border-radius: 8px; padding: 6px 4px; text-align: center; }
+        .opt-l { font-size: 10px; font-weight: 600; opacity: .85; }
+        .opt-v { font-size: 17px; font-weight: 800; line-height: 1.15; }
+        .opt-f { font-size: 10px; font-weight: 700; }
+        .f-form { background: var(--pill-high-bg); color: var(--pill-high-ink); }
+        .f-best { background: var(--pill-mid-bg); color: var(--pill-mid-ink); }
+        .f-stretch { background: var(--amber-bg); color: var(--amber-ink); }
+        .f-out { background: var(--pill-low-bg); color: var(--pill-low-ink); }
+        .rung-note { font-size: 11.5px; color: var(--sub); margin-top: 7px; line-height: 1.4; }
+        .rung-note b { color: var(--ink); }
+        .ev { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+        .ev:last-child { border-bottom: 0; }
+        .ev-d { font-size: 11px; font-weight: 700; color: var(--sub); width: 72px; flex-shrink: 0; white-space: nowrap; }
+        .ev-m { flex: 1; min-width: 0; }
+        .ev-n { font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
+        .ev-c { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
+        .c-neutral { background: var(--badge-bg); color: var(--badge-ink); }
+        .path-foot { font-size: 11px; color: var(--sub); margin-top: 10px; line-height: 1.4; }
+        .linkbtn { background: none; border: 0; padding: 6px 0 0; color: var(--green); font-size: 12.5px; font-weight: 700; cursor: pointer; }
         /* Embed mode (?embed=1): rendered inside the app's POY tab — height fits content
            (no forced viewport height) and the app page does the scrolling. */
         body.embed { min-height: 0; border-radius: 16px; }
@@ -117,6 +166,25 @@
         <!-- Stats Summary -->
         <div id="statsSummary" style="margin-bottom: 12px;"></div>
 
+        <!-- Signed-in player's own standing + path (embed only, filled by renderMe) -->
+        <div id="meCard"></div>
+
+        <!-- How the points work -->
+        <details class="how">
+            <summary><span class="msym" style="font-size:18px;color:var(--green);">calculate</span>How POY points work<span class="msym chev" style="font-size:20px;">expand_more</span></summary>
+            <div class="how-body">
+                <ul>
+                    <li>Your POY points are your <b>best 20 Stableford scores</b> added together.</li>
+                    <li>Under 20 rounds? <b>Every round adds its full score.</b> Playing more is the fastest way up.</li>
+                    <li>Already 20? A new round only counts if it beats your <b>weakest counting score</b>, and it adds the difference.</li>
+                </ul>
+                <div class="formula">Points gained = new score &minus; your weakest counting score</div>
+                <div>Example: your weakest counting score is 34. A 39 replaces it and adds 5 points. A 34 or lower adds nothing.</div>
+                <div style="margin-top:6px;">Level on points? The higher single best score ranks first.</div>
+                <div style="margin-top:6px;">Tap any player to see what it takes to pass the next spot and reach #1.</div>
+            </div>
+        </details>
+
         <!-- Search -->
         <div style="margin-bottom: 12px;">
             <input type="text" id="searchInput" class="search-input" placeholder="Search player..." oninput="filterPlayers()">
@@ -135,6 +203,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="supabase-config.js"></script>
+    <script src="course-society-link.js?v=1487"></script>
     <script>
     let allPlayers = [];
 
@@ -169,10 +238,17 @@
         const sb = window.SupabaseDB?.client;
         if (!sb) { setTimeout(loadPOY, 500); return; }
 
-        const { data, error } = await sb
-            .from('trgg_poy_cache')
-            .select('*')
-            .order('pos', { ascending: true });
+        // PostgREST returns at most 1,000 rows per request and the cache holds more players
+        // (1,084 on 2026-10-11): page through it or the bottom of the table silently vanishes.
+        let data = [], error = null;
+        for (let from = 0; ; from += 1000) {
+            const r = await sb.from('trgg_poy_cache').select('*')
+                .order('pos', { ascending: true }).order('display_name', { ascending: true })
+                .range(from, from + 999);
+            if (r.error) { error = r.error; break; }
+            data = data.concat(r.data || []);
+            if (!r.data || r.data.length < 1000) break;
+        }
 
         if (error) {
             document.getElementById('leaderboard').innerHTML = '<div style="padding:20px;text-align:center;color:var(--bad);">Error loading data</div>';
@@ -184,6 +260,7 @@
         renderPodium();
         renderStats();
         renderLeaderboard(allPlayers);
+        renderMe();
     }
 
     function renderPodium() {
@@ -292,7 +369,7 @@
                 </tr>
                 <tr>
                     <td class="c-detail" colspan="5">
-                        <div id="detail-${idx}" class="detail-panel">
+                        <div id="detail-${idx}" class="detail-panel" data-pid="${p.id}">
                             <div style="font-size:11px;color:var(--sub);margin-bottom:6px;">Top ${p.rounds} scores counted${p.total_rounds > p.rounds ? ` (of ${p.total_rounds} played)` : ''}</div>
                             <div style="display:flex;flex-wrap:wrap;gap:3px;">
                                 ${(p.scores || []).map(s => `<span class="score-pill ${getScoreClass(s)}">${s}</span>`).join('')}
@@ -326,6 +403,11 @@
         const el = document.getElementById(id);
         if (!el) return;
         const open = el.classList.toggle('open');
+        // Path to #1 is built on first open only (1,000+ rows — never pre-render them all)
+        if (open && !el.querySelector('.path')) {
+            const p = allPlayers.find(x => String(x.id) === el.getAttribute('data-pid'));
+            if (p) el.insertAdjacentHTML('beforeend', '<div class="path">' + pathHTML(p, false) + '</div>');
+        }
         // Keep the row's expand button in sync (4.1.2)
         const btn = document.querySelector('.poy-name-btn[aria-controls="' + id + '"]');
         if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -340,6 +422,184 @@
         const filtered = allPlayers.filter(p => p.display_name.toLowerCase().includes(search));
         renderLeaderboard(filtered);
     }
+
+    // ================= PATH TO #1 (v1506) =================
+    // The card is 20 slots. Fewer than 20 scores = the empty slots count as 0, so the same
+    // formula covers everyone: r rounds of score s replace the r weakest slots, and each one
+    // gains (s - slot) when positive. Targets = the player you must pass (need their pts + 1).
+    const SLOTS = 20;
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    function cardAsc(p) {
+        const s = (p.scores || []).map(Number).filter(n => !isNaN(n)).sort((a, b) => b - a).slice(0, SLOTS).sort((a, b) => a - b);
+        while (s.length < SLOTS) s.unshift(0);
+        return s;
+    }
+    function gainOf(asc, s, r) {
+        let g = 0;
+        for (let i = 0; i < r && i < SLOTS; i++) { if (s <= asc[i]) break; g += s - asc[i]; }
+        return g;
+    }
+    function needScore(asc, G, r) { for (let s = 1; s <= 60; s++) if (gainOf(asc, s, r) >= G) return s; return null; }
+    function roundsAt(asc, G, s) { for (let r = 1; r <= SLOTS; r++) if (gainOf(asc, s, r) >= G) return r; return null; }
+    function feas(s, p) {
+        if (s == null) return ['f-out', 'Too far'];
+        if (s <= 10) return ['f-form', 'Just play'];
+        if (s > 45) return ['f-out', 'Unlikely'];
+        if (s <= Math.round(parseFloat(p.avg_score) || 0)) return ['f-form', 'Your form'];
+        if (s <= (p.best_score || 0)) return ['f-best', 'Your best'];
+        return ['f-stretch', 'Stretch'];
+    }
+    function targetsFor(p) {
+        const out = [], seen = {};
+        const above = allPlayers.filter(x => x.pos < p.pos);
+        if (!above.length) return out;
+        const add = (label, t) => { if (t && !seen[t.id]) { seen[t.id] = 1; out.push({ label, t }); } };
+        add('Next spot', above[above.length - 1]);
+        const lastIn = n => { const xs = above.filter(x => x.pos <= n); return xs[xs.length - 1]; };
+        if (p.pos > 10) add('Top 10', lastIn(10));
+        if (p.pos > 3) add('Podium', lastIn(3));
+        add('Number 1', above[0]);
+        return out;
+    }
+
+    // ---- Where: how the TRGG field scores at the courses coming up (trgg_poy_outlook RPC) ----
+    let outlook = null; // { venues: { key: {label, n, avg} }, overall, upcoming: [{date, name, key, team}] }
+    function venueKey(name) {
+        const CL = window.CourseLink; if (!CL) return null;
+        const slug = CL.slugFor(String(name || '').replace(/[_-]/g, ' ').replace(/\bcounty\b/gi, 'country'));
+        return slug ? (CL.venueOf(slug) || slug) : null;
+    }
+    async function loadOutlook() {
+        const sb = window.SupabaseDB?.client; if (!sb) { setTimeout(loadOutlook, 500); return; }
+        const { data, error } = await sb.rpc('trgg_poy_outlook');
+        if (error || !data) { console.warn('[POY] outlook', error); return; }
+        const venues = {}; let tot = 0, cnt = 0;
+        (data.venues || []).forEach(v => {
+            const k = venueKey((v.course_name || '') + ' ' + (v.course_id || '')); if (!k) return;
+            const o = venues[k] || (venues[k] = { label: '', top: 0, n: 0, sum: 0 });
+            if (v.n > o.top) { o.top = v.n; o.label = String(v.course_name || '').replace(/\s*\(.*?\)\s*/g, ' ').trim(); }
+            o.n += v.n; o.sum += v.n * Number(v.avg); tot += v.n * Number(v.avg); cnt += v.n;
+        });
+        Object.values(venues).forEach(o => { o.avg = o.n ? o.sum / o.n : null; });
+        const upcoming = (data.upcoming || []).map(e => {
+            const raw = String(e.course_name || ''), k = venueKey(raw);
+            const first = raw.split('\n')[0].trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+            return { date: e.event_date, key: k, team: /scramble|waltz|team|ambrose|texas/i.test(raw),
+                     name: (k && venues[k] && venues[k].label) || first };
+        });
+        outlook = { venues, overall: cnt ? tot / cnt : null, rounds: cnt, upcoming };
+        // re-render any open paths so they pick up the course block
+        document.querySelectorAll('.path').forEach(el => {
+            const host = el.closest('[data-pid]'); const p = host && allPlayers.find(x => String(x.id) === host.getAttribute('data-pid'));
+            if (p) el.innerHTML = pathHTML(p, el.classList.contains('path-me'));
+        });
+    }
+    function dayLabel(iso) {
+        try { return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }); } catch (e) { return iso; }
+    }
+    function courseChip(ev) {
+        if (ev.team) return '<span class="ev-c c-neutral">Team format</span>';
+        const v = ev.key && outlook.venues[ev.key];
+        if (!v || v.n < 8) return '<span class="ev-c c-neutral">Few rounds yet</span>';
+        const d = v.avg - outlook.overall, a = v.avg.toFixed(1);
+        if (d >= 1) return `<span class="ev-c f-form">Avg ${a} · scores well</span>`;
+        if (d <= -1.5) return `<span class="ev-c f-out">Avg ${a} · tough</span>`;
+        return `<span class="ev-c c-neutral">Avg ${a}</span>`;
+    }
+    function whereHTML(aim) {
+        if (!outlook) return '<div class="path-p mut">Loading upcoming TRGG days…</div>';
+        if (!outlook.upcoming.length) return '<div class="path-p mut">No TRGG days on the schedule yet.</div>';
+        const solo = outlook.upcoming.filter(e => !e.team && e.key && outlook.venues[e.key] && outlook.venues[e.key].n >= 8);
+        const picks = [], used = {};
+        solo.slice().sort((a, b) => outlook.venues[b.key].avg - outlook.venues[a.key].avg).forEach(e => {
+            if (picks.length < 2 && !used[e.key] && outlook.venues[e.key].avg - outlook.overall >= 0.5) { used[e.key] = 1; picks.push(e); }
+        });
+        let h = '';
+        if (picks.length) {
+            h += `<div class="path-p" style="margin-bottom:6px;">Best chances${aim ? ` for a <b>${aim}+</b>` : ''}: ` +
+                 picks.map(e => `<b>${esc(e.name)}</b> <span class="mut">(${esc(dayLabel(e.date))})</span>`).join(' and ') +
+                 '. The field scores above its usual there.</div>';
+        }
+        h += outlook.upcoming.slice(0, 8).map(e =>
+            `<div class="ev"><span class="ev-d">${esc(dayLabel(e.date))}</span><div class="ev-m"><div class="ev-n">${esc(e.name)}</div>${courseChip(e)}</div></div>`).join('');
+        h += `<div class="path-foot">Avg = average Stableford of the TRGG field at that course (${outlook.rounds} TRGG rounds scored in the app; overall ${outlook.overall.toFixed(1)}).</div>`;
+        return h;
+    }
+
+    function pathHTML(p, isMe) {
+        const asc = cardAsc(p), filled = (p.scores || []).length, weak = asc[0];
+        const avgR = Math.round(parseFloat(p.avg_score) || 0);
+        const you = isMe ? 'You' : 'They', your = isMe ? 'your' : 'their';
+        let h = `<div class="path-h">${isMe ? 'Your card' : 'Their card'}</div><div class="path-p">`;
+        if (filled < SLOTS) {
+            h += `<b>${filled} of 20</b> counting slots filled. The next <b>${SLOTS - filled}</b> rounds each add their full score, so every round played moves ${isMe ? 'you' : 'them'} up.`;
+        } else {
+            h += `All 20 slots filled. Weakest counting score: <b>${weak}</b>. Only a <b>${weak + 1}+</b> adds points: a ${Math.max(weak + 4, 38)} adds ${Math.max(weak + 4, 38) - weak}.`;
+        }
+        h += ` <span class="mut">Best ${p.best_score} · counting avg ${p.avg_score}</span></div>`;
+
+        const tg = targetsFor(p);
+        if (!tg.length) {
+            // Leader: show the cushion and what the chaser needs
+            const second = allPlayers.find(x => x.pos > p.pos);
+            h += `<div class="path-h">Holding #1</div><div class="rung"><div class="rung-top"><span class="rung-t">${isMe ? 'You lead' : 'Leading'}</span>`;
+            if (second) {
+                const G = p.pts - second.pts + 1, sa = cardAsc(second), s3 = needScore(sa, G, 3);
+                h += `<span class="rung-gap">+${p.pts - second.pts} pts clear</span></div>` +
+                     `<div class="rung-who">Chaser: ${esc(second.display_name)} · ${second.pts} pts</div>` +
+                     `<div class="rung-note">The chaser needs <b>${s3 ? '3 rounds of ' + s3 + '+' : 'more than 3 rounds'}</b> to pass. ` +
+                     (filled >= SLOTS ? `${you} extend the lead with any <b>${weak + 1}+</b>.` : `Every round ${isMe ? 'you play' : 'they play'} extends the lead.`) + `</div>`;
+            } else h += `</div>`;
+            h += `</div>`;
+        } else {
+            h += `<div class="path-h">What it takes</div>`;
+            tg.forEach(({ label, t }) => {
+                const G = t.pts - p.pts + 1;
+                const opt = r => { const s = needScore(asc, G, r), f = feas(s, p);
+                    return `<div class="opt ${f[0]}"><div class="opt-l">${r} round${r > 1 ? 's' : ''}</div><div class="opt-v">${s == null ? '–' : s <= 10 ? 'Any' : s + '+'}</div><div class="opt-f">${f[1]}</div></div>`; };
+                // Far targets: 1/3/5 rounds would all read "too far", so show the long road instead
+                const near5 = needScore(asc, G, 5), rs = (near5 != null && near5 <= 45) ? [1, 3, 5] : [5, 10, 20];
+                const nAvg = avgR > 0 ? roundsAt(asc, G, avgR) : null;
+                let note;
+                if (nAvg) note = `At ${your} counting average of <b>${avgR}</b>: <b>${nAvg} round${nAvg > 1 ? 's' : ''}</b> to get there.`;
+                else if (avgR > 0 && avgR <= weak) note = `A ${avgR} (${your} counting average) adds nothing now: it has to beat ${weak}.`;
+                else note = `Even 20 rounds of ${avgR} (${your} counting average) is not enough: it needs bigger scores.`;
+                if (label === 'Number 1') {
+                    const la = cardAsc(t), lFull = (t.scores || []).length >= SLOTS;
+                    note += lFull ? ` The leader only adds points with a <b>${la[0] + 1}+</b> (weakest counting ${la[0]}).`
+                                  : ` The leader still has open slots, so every round they play adds to the gap.`;
+                }
+                h += `<div class="rung"><div class="rung-top"><span class="rung-t">${label} · #${t.pos}</span><span class="rung-gap">+${G} pts</span></div>` +
+                     `<div class="rung-who">Pass ${esc(t.display_name)} · ${t.pts} pts</div>` +
+                     `<div class="opts">${rs.map(opt).join('')}</div><div class="rung-note">${note}</div></div>`;
+            });
+        }
+        const firstG = tg.length ? tg[0].t.pts - p.pts + 1 : null;
+        const aim = firstG ? needScore(asc, firstG, 3) : null;
+        h += `<div class="path-h">Where to score</div>` + whereHTML(aim && aim <= 45 ? aim : null);
+        if (tg.length) h += `<div class="path-foot">Score needed per round, if the players above add nothing. They keep playing too, so treat these as the minimum.</div>`;
+        return h;
+    }
+
+    // ---- Signed-in player's own card (embed in the app only: name from the parent session) ----
+    const normName = s => String(s || '').toLowerCase().replace(/\(\d+\)/g, ' ').replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ');
+    let meTries = 0;
+    function renderMe() {
+        if (!EMBED || !allPlayers.length) return;
+        let nm = null;
+        try { const u = parent.AppState && parent.AppState.currentUser; nm = u && (u.name || u.displayName || u.username); } catch (e) {}
+        if (!nm) { if (meTries++ < 20) setTimeout(renderMe, 1000); return; }
+        const key = normName(nm); if (!key) return;
+        const hits = allPlayers.filter(x => normName(x.display_name) === key);
+        if (hits.length !== 1) return; // no match or ambiguous: never guess who someone is
+        const p = hits[0];
+        document.getElementById('meCard').innerHTML =
+            `<div class="me-card" data-pid="${p.id}"><div class="me-top"><div class="me-pos">#${p.pos}</div>` +
+            `<div style="min-width:0;"><div class="me-name">Your standing</div><div class="me-sub">${p.pts} pts · ${(p.scores || []).length} of 20 counting · of ${allPlayers.length} players</div></div></div>` +
+            `<div class="path path-me">${pathHTML(p, true)}</div></div>`;
+    }
+
+    loadOutlook();
 
     // Load on ready
     if (document.readyState === 'loading') {

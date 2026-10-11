@@ -240,6 +240,7 @@
 .pw-cad:not([disabled]):active{transform:scale(.97)}
 .pw-cad[disabled]{cursor:default}
 .pw-cad.sk i{background:var(--line)}
+@media (min-width:768px){.pw-cads-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));overflow-x:hidden;overflow-y:auto;max-height:316px;margin:8px 0 0;padding:2px 4px 4px 2px;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--chipLine) transparent}.pw-cads-row::-webkit-scrollbar{display:block;width:8px}.pw-cads-row::-webkit-scrollbar-thumb{background:var(--chipLine);border-radius:8px}.pw-cad{min-width:0}.pw-cad span{max-width:100%}.pw-cad:not([disabled]){cursor:pointer}.pw-cad:not([disabled]):hover{border-color:var(--acc)}}
 .pw-code{margin:12px 0 0;border-radius:14px;padding:12px;text-align:center;border:1.5px dashed var(--acc);background:var(--accSoft);color:var(--accSoftInk)}
 .pw-code small{display:block;font-size:10.5px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
 .pw-code b{display:block;font:800 28px 'JetBrains Mono',monospace;letter-spacing:.04em;color:var(--ink);margin:2px 0}

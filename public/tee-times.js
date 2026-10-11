@@ -290,6 +290,8 @@
 .ttx-cad span{font-size:9.5px;font-weight:700;color:var(--acc);max-width:62px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ttx-cad.on{border-color:var(--acc);box-shadow:0 0 0 2px rgba(34,197,94,.3)}
 .ttx-cad.dead{opacity:.5;cursor:default}.ttx-cad.dead span{color:#ef4444}
+/* desktop (Pete 10-11): a hidden-scrollbar strip cut caddies off with nothing to scroll by mouse. In the centred sheet the roster is a grid: every caddy in view, a big roster scrolls DOWN like any list. */
+@media (min-width:768px){.ttx-cads{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:7px;overflow-x:hidden;overflow-y:auto;max-height:316px;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--chipLine) transparent;padding:2px 4px 4px 2px}.ttx-cads::-webkit-scrollbar{display:block;width:8px}.ttx-cads::-webkit-scrollbar-thumb{background:var(--chipLine);border-radius:8px}.ttx-cad{min-width:0}.ttx-cad span{max-width:100%}.ttx-cad:not(.dead){cursor:pointer}.ttx-cad:not(.dead):hover{border-color:var(--acc)}}
 .ttx-opts{display:flex;gap:6px;flex-wrap:wrap}
 .ttx-opt{flex:1 1 90px;border-radius:12px;border:1.5px solid var(--chipLine);padding:8px 10px;background:var(--card2);color:var(--ink);text-align:left}
 .ttx-opt b{display:block;font-size:12.5px;font-weight:800}

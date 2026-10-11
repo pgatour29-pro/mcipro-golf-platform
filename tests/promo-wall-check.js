@@ -58,5 +58,9 @@ if (/[—–]/.test(pub)) fail.push('tee-time-deals: no em/en dashes on a public
 if (!/<style id="no-ptr">html,body\{overscroll-behavior-y:none\}<\/style>/.test(pub)) fail.push('tee-time-deals: needs the no-ptr style');
 if (!/tee-time-deals/.test(read('public/sitemap.xml'))) fail.push('sitemap.xml: /tee-time-deals/ missing');
 
+// desktop: a mouse can't swipe a hidden-scrollbar strip, so the caddy pickers are a scrolling grid from 768px (Pete 10-11)
+if (!/@media \(min-width:768px\)\{\.ttx-cads\{display:grid[^}]*overflow-y:auto/.test(tt)) fail.push('tee-times.js: caddy picker must be a vertical grid on desktop');
+if (!/@media \(min-width:768px\)\{\.pw-cads-row\{display:grid[^}]*overflow-y:auto/.test(pw)) fail.push('promo-wall.js: deal caddies must be a vertical grid on desktop');
+
 if (fail.length) { console.error('✗ promotions wall:\n  ' + fail.join('\n  ')); process.exit(1); }
 console.log('✓ promotions wall: expiry required, public fields only, places locked + handed back, ' + keys.size + ' strings in 4 languages');

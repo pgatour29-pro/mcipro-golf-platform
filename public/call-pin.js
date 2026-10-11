@@ -198,7 +198,7 @@
       document.body.insertAdjacentHTML('beforeend', '<div id="cpSheet" role="dialog" aria-modal="true"><div class="sh"><div class="gr"></div>' +
         '<div class="hd"><h3>' + esc(this.t(cur ? 'title' : 'titleSet')) + '</h3><button type="button" class="x" data-cpx aria-label="' + esc(this.t('close')) + '">&times;</button></div>' +
         '<p>' + esc(this.t('lead')) + '</p>' +
-        '<div class="bxw"><div class="bx">' + boxes + '</div><input id="cpIn" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore aria-label="' + esc(this.t('hdr')) + '"></div>' +
+        '<div class="bxw"><div class="bx">' + boxes + '</div><input id="cpIn" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" enterkeyhint="go" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore aria-label="' + esc(this.t('hdr')) + '"></div>' +
         '<div class="msg" id="cpMsg"></div>' +
         '<div class="rules">' + esc(this.t('rules')) + '</div>' +
         '<div class="pv">' + ICON + '<span>' + esc(this.t('every')) + '</span></div>' +
@@ -214,16 +214,17 @@
       inp.addEventListener('input', function () { draw(); self._msg('', ''); });
       inp.addEventListener('focus', function () { wrap.classList.add('foc'); });
       inp.addEventListener('blur', function () { wrap.classList.remove('foc'); });
-      inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); self._save(inp.value); } });
+      inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); self._save(inp.value, true); } });
       sh.addEventListener('click', function (e) {
         if (e.target === sh || e.target.closest('[data-cpx]')) { sh.remove(); return; }
-        if (e.target.closest('[data-cps]')) self._save(inp.value);
+        if (e.target.closest('[data-cps]')) self._save(inp.value, true);
         else if (e.target.closest('[data-cpg]')) self._save('');
       });
       if (!cur) setTimeout(function () { try { inp.focus(); } catch (e) { } }, 60);
     },
     _msg: function (cls, txt) { var m = document.getElementById('cpMsg'); if (m) { m.className = 'msg' + (cls ? ' ' + cls : ''); m.textContent = txt; } },
-    async _save(v) {
+    // close = Save pill / keypad Go: the sheet closes itself once saved (Pete v1529). Give me one stays open to show the number.
+    async _save(v, close) {
       if (this._busy) return;
       v = String(v || '').replace(/\D/g, '');
       if (v && v.length !== 6) { this._msg('bad', this.t('fmt')); return; }
@@ -240,6 +241,10 @@
         var inp = document.getElementById('cpIn'); if (inp) { inp.value = d.pin; inp.dispatchEvent(new Event('input')); }
         this._msg('ok', this.t('saved', { p: fmt(d.pin) }));
         this.paint(); this.decorate();
+        if (close && sh) {
+          try { if (document.activeElement) document.activeElement.blur(); } catch (e) { }   // drop the keypad
+          setTimeout(function () { if (sh.isConnected) sh.remove(); }, 700);
+        }
         return;
       }
       var why = d && d.reason;

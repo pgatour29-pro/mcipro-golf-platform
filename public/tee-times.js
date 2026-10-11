@@ -261,6 +261,9 @@
 #ttxSheet[data-look=glass] .sh{background:rgba(12,28,20,.86);backdrop-filter:blur(22px) saturate(1.2);-webkit-backdrop-filter:blur(22px) saturate(1.2);border:1px solid rgba(255,255,255,.18);border-bottom:0}
 @media (max-width:767px){#ttxSheet .sh{padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))}}
 @media (min-width:768px){#ttxSheet{align-items:center}#ttxSheet .sh{border-radius:22px;max-height:88vh}}
+/* desktop (Pete 10-11 "not all of the information is showing"): one 520px column ran past the screen, the bill and Book were below the fold.
+   Two columns, kept clear of the bottom update bar; the right column (bill + Book) stays in view if a short screen still scrolls. */
+@media (min-width:900px){#ttxSheet{padding:24px 24px 88px}#ttxSheet .sh{max-width:960px;max-height:100%;padding:8px 22px 20px}#ttxSheet .ttx-grab{display:none}#ttxSheet .ttx-shh{padding-top:8px}.ttx-cols{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:0 26px;align-items:start}.ttx-c2{position:sticky;top:0}.ttx-c2>.ttx-lbl:first-child{margin-top:12px}}
 .ttx-grab{width:40px;height:4px;border-radius:2px;background:var(--chipLine);margin:0 auto 10px}
 .ttx-shh{display:flex;align-items:flex-start;gap:10px;margin-bottom:8px}
 .ttx-shh .tm{font:800 30px 'JetBrains Mono',monospace;letter-spacing:-.03em;line-height:1}
@@ -1179,6 +1182,7 @@
       '<button type="button" class="ttx-x" data-act="close" aria-label="' + esc(T('ttx.close', 'Close')) + '">' + P('close') + '</button></div>';
     if (sh.promo) h += '<div class="ttx-deal" style="margin:10px 0 0">' + PF('sell') + '<div class="w"><b>' + esc(sh.promo.title) + '</b><span>' + esc([baht(sh.promo.price) + (sh.promo.unit ? ' ' + sh.promo.unit : ''), sh.promo.limit_total ? F('pw.left.of2', '{a} of {b} places left', { a: sh.promo.limit_left, b: sh.promo.limit_total }) : ''].filter(Boolean).join(' · ')) + '</span></div></div>';
     if (sh.cols && !sh.cols.length) h += '<div class="ttx-warn">' + esc(T('ttx.gone.now', 'This time was just taken — pick another one.')) + '</div>';
+    h += '<div class="ttx-cols"><div class="ttx-c1">';   // desktop: who + caddies left, cart + bill + Book right (one screen)
     if (sh.cols && sh.cols.length > 1) {
       h += '<div class="ttx-lbl">' + esc(T('ttx.start', 'Start')) + '</div><div class="ttx-opts">' + sh.cols.map(s => '<button type="button" class="ttx-opt' + (+s.col === sh.col ? ' on' : '') + '" data-act="col" data-v="' + (+s.col) + '"><b>' + esc(nineLabel(c, s.nine)) + '</b><span>' + esc(F('ttx.spots', '{n} open', { n: s.left })) + '</span></button>').join('') + '</div>';
     }
@@ -1205,6 +1209,7 @@
       return '<button type="button" class="ttx-cad' + (taken >= 0 ? ' on' : '') + (r.busy ? ' dead' : '') + '" data-act="cad" data-id="' + esc(r.id) + '"' + (r.busy ? ' disabled' : '') + '>' +
         (r.photo ? '<img src="' + esc(r.photo) + '" alt="" loading="lazy">' : '<i>' + esc(r.num) + '</i>') + '<b>#' + esc(r.num) + '</b><span>' + esc(r.busy || (taken >= 0 ? (sh.players[taken].me ? T('ttx.you', 'You') : (sh.players[taken].name || F('ttx.pn', 'Player {n}', { n: taken + 1 }))) : (r.name || T('ttx.free', 'Free')))) + '</span></button>';
     }).join('') + '</div>';
+    h += '</div><div class="ttx-c2">';
     // carts (course's cart sharing setting)
     const sharing = (c.rates && c.rates.cart_sharing) || 'shared', n = sh.players.length;
     const opts = [];
@@ -1238,7 +1243,7 @@
     const ctaTxt = q.rule === 'none' ? F('ttx.cta.book', 'Book {t}', { t: sh.t }) : q.rule === 'full' ? F('ttx.cta.full', 'Hold {t} · pay {a}', { t: sh.t, a: baht(q.amount) }) : F('ttx.cta.dep', 'Hold {t} · pay {a} deposit', { t: sh.t, a: baht(q.amount) });
     const blocked = (sh.cols && !sh.cols.length) || (cur && sh.players.length > maxP);
     h += '<button type="button" class="ttx-cta" data-act="book"' + (sh.busy || blocked ? ' disabled' : '') + '>' + PF('lock') + esc(sh.busy ? T('ttx.booking', 'Booking…') : ctaTxt) + '</button>' +
-      '<div class="ttx-trust">' + PF('verified_user') + '<span>' + esc(F('ttx.trust', 'You pay {c} directly. MyCaddiPro never takes payment and charges no booking fee.', { c: c.short || c.name })) + '</span></div></div>';
+      '<div class="ttx-trust">' + PF('verified_user') + '<span>' + esc(F('ttx.trust', 'You pay {c} directly. MyCaddiPro never takes payment and charges no booking fee.', { c: c.short || c.name })) + '</span></div></div></div></div>';
     const keepScroll = el.querySelector('.sh') ? el.querySelector('.sh').scrollTop : 0;
     const focusI = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.in === 'pname' ? document.activeElement.dataset.i : null;
     el.innerHTML = h;

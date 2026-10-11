@@ -201,6 +201,10 @@
 .pw-ph .tg.hot{background:#ea580c;color:#fff}
 .pw-ph .tg .material-symbols-outlined{font-size:14px}
 .pw-bd{padding:14px 16px 0}
+.pw-r.pw-bd{padding-top:0}
+/* desktop (Pete 10-11 "not all of the information is showing"): one 520px column ran past the screen with Book below the fold.
+   Two columns when the deal carries caddies, kept clear of the bottom update bar. */
+@media (min-width:900px){#pwSheet{padding:24px 24px 88px}#pwSheet .sh{max-height:100%}#pwSheet .sh.two{max-width:960px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start;padding-bottom:20px}#pwSheet .sh.two .pw-ph{height:200px}#pwSheet .sh.two .pw-r{padding:4px 20px 0;position:sticky;top:0}#pwSheet .sh.two .pw-r .pw-cads{margin-top:12px}#pwSheet .sh.two .pw-r .pw-cads-row{margin:8px 0 0}}
 .pw-pr{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
 .pw-pr b{font:800 30px 'JetBrains Mono',monospace;letter-spacing:-.04em;line-height:1}
 .pw-pr s{font:600 15px 'JetBrains Mono',monospace;color:var(--mute)}
@@ -336,7 +340,8 @@
     const pub = S.mode === 'public';
     const code = !pub && S.claims[p.id];
     const books = bookable(p);
-    return '<div class="sh" role="dialog" aria-modal="true" aria-label="' + esc(p.title) + '">' +
+    const two = S.mode === 'app' && withCaddies(p);   // desktop: the deal left, caddies + Book right (CSS, >=900px)
+    return '<div class="sh' + (two ? ' two' : '') + '" role="dialog" aria-modal="true" aria-label="' + esc(p.title) + '"><div class="pw-l">' +
       '<div class="pw-ph" style="background-image:url(\'' + esc(photoFor(p.slug, p.photo)) + '\')">' + tag(p) +
         '<button type="button" class="x" data-pw="close" aria-label="' + esc(T('pw.close', 'Close')) + '">' + P('close') + '</button>' +
         '<div class="nm"><small>' + esc(p.course_name) + (p.region ? ' · ' + esc(p.region) : '') + '</small><b>' + esc(p.title) + '</b></div></div>' +
@@ -346,6 +351,7 @@
         (p.limit_total ? '<div class="pw-bar"><i style="width:' + Math.max(0, Math.min(100, p.limit_left / p.limit_total * 100)).toFixed(0) + '%"></i></div>' : '') +
         (p.body ? '<div class="pw-txt">' + esc(p.body) + '</div>' : '') +
         '<div class="pw-facts">' + P('event') + '<b>' + esc(days) + '</b>' + (hours ? P('schedule') + '<b>' + esc(hours) + '</b>' : '') + P(t[3]) + '<b>' + esc(T(t[1], t[2])) + '</b>' + P('location_on') + '<b>' + esc([p.area, p.region].filter(Boolean).join(', ') || p.course_name) + '</b></div>' +
+      '</div></div><div class="pw-r pw-bd">' +
         caddiesHtml(p) +
         '<div class="pw-acts">' +
           (pub || p.hot ? '' : '<button type="button" class="pw-btn gh' + (fol ? ' on' : '') + '" data-pw="follow" data-slug="' + esc(p.slug) + '" aria-pressed="' + fol + '">' + P('favorite') + esc(fol ? T('pw.following', 'Following') : T('pw.follow', 'Follow')) + '</button>') +

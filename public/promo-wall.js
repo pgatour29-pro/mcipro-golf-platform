@@ -454,9 +454,15 @@
         '<button type="button" class="pw-btn pri" data-pw="pfsave"' + (d.busy || (d.scope === 'following' && !d.follows.length) ? ' disabled' : '') + '>' + P('check') + esc(d.busy ? T('pw.pf.saving', 'Saving…') : T('pw.pf.save', 'Save')) + '</button></div>' +
       '</div>';
   }
-  function openPrefs() {
-    if (S.mode !== 'app') return;
-    if (S.signedIn === false) { if (S.opts.onSignIn) S.opts.onSignIn(); return; }
+  async function openPrefs() {
+    if (S.mode !== 'app' || S.checking) return;
+    // v1523: a golfer who is signed in is never told to sign in again. Not confirmed yet (the session can arrive after the
+    // wall loaded)? The host checks the live login, repairs it, reloads the prefs, and only then opens.
+    if (S.signedIn !== true && S.opts.ensureSignedIn) {
+      S.checking = true; let ok = false;
+      try { ok = await S.opts.ensureSignedIn(); } catch (e) { ok = false; } finally { S.checking = false; }
+      if (!ok) { if (S.opts.onSignIn) S.opts.onSignIn(); return; }
+    } else if (S.signedIn === false) { if (S.opts.onSignIn) S.opts.onSignIn(); return; }
     closeSheet();
     const g = S.prefs || blankPrefs();
     S.draft = { types: (g.types || []).slice(), regions: (g.regions || []).slice(), days: g.days || 'any', tod: (g.tod || []).slice(), max_price: g.max_price || null,

@@ -586,7 +586,7 @@
     }
     if (S.view === 'pay' || S.view === 'ticket') paintQrs();
     const pwHost = r.querySelector('#pwHost');
-    if (pwHost && W.PromoWall) { W.PromoWall.mount(pwHost, { mode: 'app', onBook: bookPromo, onFollow: followPromo, onOpen: seenPromo, loadCaddies: loadPromoCaddies, onSavePrefs: savePromoPrefs, onSignIn: promoSignIn }); if (!S.promoLoaded) loadPromos(); }
+    if (pwHost && W.PromoWall) { W.PromoWall.mount(pwHost, { mode: 'app', onBook: bookPromo, onFollow: followPromo, onOpen: seenPromo, loadCaddies: loadPromoCaddies, onSavePrefs: savePromoPrefs, onSignIn: promoSignIn, ensureSignedIn: promoEnsureSignedIn }); if (!S.promoLoaded) loadPromos(); }
     const slipIn = r.querySelector('[data-in="slip"]');
     if (slipIn) slipIn.addEventListener('change', () => { if (slipIn.files && slipIn.files[0]) uploadSlip(slipIn.files[0]); });
     const sel = r.querySelector('.ttx-d.on'); if (sel && sel.scrollIntoView && S.view !== 'pay' && S.view !== 'ticket') { try { sel.parentNode.scrollLeft = Math.max(0, sel.offsetLeft - 60); } catch (e) {} }
@@ -728,7 +728,15 @@
   // verified login (promo_prefs_get / promo_prefs_set), so the For you tab and the LINE alerts follow the same choices.
   async function loadPromoPrefs() {
     if (!W.PromoWall) return;
+    // the login can be confirmed AFTER the wall loaded (LIFF mints the session late): reload the prefs when it lands
+    const c = sb();
+    if (c && c.auth && !S.authWatch) { S.authWatch = true; try { c.auth.onAuthStateChange(ev => { if ((ev === 'SIGNED_IN' || ev === 'TOKEN_REFRESHED') && W.PromoWall && W.PromoWall._S.signedIn !== true) setTimeout(loadPromoPrefs, 0); }); } catch (e) {} }
     try { const r = await rpc('promo_prefs_get', { p_test: promoTest() }); S.prefsLoaded = true; W.PromoWall.setPrefs(r || {}); } catch (e) { console.warn('[TeeTimes] deal prefs', e.message || e); }
+  }
+  // v1523: confirm the login live (refresh / mint it quietly) and reload the prefs before Your deals opens
+  async function promoEnsureSignedIn() {
+    if (!(W.ensureVerifiedLogin && await W.ensureVerifiedLogin())) return false;
+    try { const r = await rpc('promo_prefs_get', { p_test: promoTest() }); S.prefsLoaded = true; if (W.PromoWall) W.PromoWall.setPrefs(r || {}); return !!(r && r.signed_in); } catch (e) { return false; }
   }
   function promoSignIn() { const OI = W.OffersInbox; if (OI && OI.signInMsg) OI.signInMsg(); else toast(T('ttx.login', 'Log in to book a tee time'), 'error'); }
   async function savePromoPrefs(d) {

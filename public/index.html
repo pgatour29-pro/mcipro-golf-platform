@@ -457,8 +457,8 @@
     <!-- REMOVED: hole-by-hole-leaderboard-enhancement.js causes mobile stack overflow -->
     <script src="golf-buddies-v2.js?v=17" defer></script>
     <script src="food-fgv1.js?v=1396" defer></script>
-    <script src="promo-wall.js?v=1522" defer></script>
-    <script src="tee-times.js?v=1522" defer></script>
+    <script src="promo-wall.js?v=1523" defer></script>
+    <script src="tee-times.js?v=1523" defer></script>
     <script src="rain-out.js?v=1463" defer></script>
     <script src="content-moderation.js?v=1352" defer></script>
 
@@ -13325,7 +13325,7 @@
                 'mkt.seg.caddy': 'Golfers who book caddies',
                 'fp.body': 'You played here recently. Get their deals and open tee times on LINE. Stop any time in Messages › Offers.',
                 'fp.done': 'Following {c}',
-                'fp.signin': 'Sign out and sign in again to follow courses — it confirms it is really you.',
+                'fp.signin': 'Your login on this device has expired. Log in with LINE again to save this.',
                 'fp.fail': 'Could not follow right now. Try again from Messages › Offers.',
                 'fp.no': 'Not now',
                 'fp.title': 'Follow {c} for offers?',
@@ -17180,7 +17180,7 @@
                 'mkt.seg.caddy': 'นักกอล์ฟที่จองแคดดี้',
                 'fp.body': 'คุณเพิ่งเล่นที่นี่ รับดีลและทีไทม์ว่างทาง LINE หยุดได้ทุกเมื่อใน ข้อความ › ข้อเสนอ',
                 'fp.done': 'กำลังติดตาม {c}',
-                'fp.signin': 'ออกจากระบบแล้วเข้าสู่ระบบอีกครั้งเพื่อติดตามสนาม — เพื่อยืนยันว่าเป็นคุณจริง',
+                'fp.signin': 'การเข้าสู่ระบบบนอุปกรณ์นี้หมดอายุแล้ว เข้าสู่ระบบด้วย LINE อีกครั้งเพื่อบันทึก',
                 'fp.fail': 'ติดตามไม่ได้ตอนนี้ ลองอีกครั้งจาก ข้อความ › ข้อเสนอ',
                 'fp.no': 'ไว้ทีหลัง',
                 'fp.title': 'ติดตาม {c} เพื่อรับข้อเสนอไหม?',
@@ -20896,7 +20896,7 @@
                 'mkt.seg.caddy': '캐디를 예약하는 골퍼',
                 'fp.body': '최근 이곳에서 플레이하셨습니다. 특가와 빈 티타임을 LINE으로 받아보세요. 메시지 › 제안에서 언제든 끌 수 있습니다.',
                 'fp.done': '{c} 팔로우 중',
-                'fp.signin': '코스를 팔로우하려면 로그아웃 후 다시 로그인하세요 — 본인 확인을 위해서입니다.',
+                'fp.signin': '이 기기의 로그인이 만료되었습니다. 저장하려면 LINE으로 다시 로그인하세요.',
                 'fp.fail': '지금은 팔로우할 수 없습니다. 메시지 › 제안에서 다시 시도하세요.',
                 'fp.no': '나중에',
                 'fp.title': '{c}의 제안을 받으려면 팔로우할까요?',
@@ -24794,7 +24794,7 @@
                 'mkt.seg.caddy': 'キャディーを予約するゴルファー',
                 'fp.body': '最近ここでプレーしました。お得情報や空きティータイムをLINEで受け取れます。メッセージ › オファーでいつでも停止できます。',
                 'fp.done': '{c}をフォロー中',
-                'fp.signin': 'コースをフォローするには一度ログアウトして再ログインしてください — ご本人確認のためです。',
+                'fp.signin': 'この端末のログインの有効期限が切れました。保存するにはLINEで再度ログインしてください。',
                 'fp.fail': '今はフォローできません。メッセージ › オファーから再度お試しください。',
                 'fp.no': '今はしない',
                 'fp.title': '{c}をフォローしてオファーを受け取りますか？',
@@ -143392,6 +143392,34 @@ console.log('[AdminInbox] ✅ Module loaded');
 //
 // BADGE IDS are deliberately NOT 'offers-badge' / 'dashboard-offers-badge' — MarketplaceSystem
 // owns those for 19th Hole bids on listings, which are a different thing entirely.
+// v1523 (Pete 2026-10-11: "I'm already signed in, that should already register that its me"): NEVER send a signed-in
+// golfer to sign out and back in. The verified identity is the Supabase session's line_id claim (public.line_id()); it can
+// be missing for a moment after boot (LIFF mints the session after the dashboard paints) or sit on a stale token. Look at the
+// live session, refresh it, and in the LINE app mint it quietly from the LINE id_token, exactly like boot does.
+window.ensureVerifiedLogin = async function () {
+    const sb = window.SupabaseDB && window.SupabaseDB.client;
+    if (!sb || !sb.auth) return false;
+    let me = null; try { me = localStorage.getItem('line_user_id'); } catch (e) {}
+    const claim = (s) => { try { const b = s.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(decodeURIComponent(escape(atob(b)))).line_id || null; } catch (e) { return null; } };
+    const ok = (s) => { const c = s && claim(s); return !!c && (!me || c === me); };   // the session must be THIS golfer (v1184 identity bleed)
+    try {
+        let s = (await sb.auth.getSession()).data.session;
+        if (ok(s)) return true;
+        if (s && !claim(s)) { const r = await sb.auth.refreshSession(); s = r && r.data && r.data.session; if (ok(s)) return true; }
+        if (!s && window.liff && typeof liff.getIDToken === 'function' && (typeof liff.isLoggedIn !== 'function' || liff.isLoggedIn())) {
+            const idToken = liff.getIDToken();
+            if (idToken) {
+                const res = await fetch(sb.supabaseUrl + '/functions/v1/line-auth-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id_token: idToken }) });
+                const j = res.ok ? await res.json() : null;
+                if (j && j.token_hash && !(await sb.auth.verifyOtp({ token_hash: j.token_hash, type: 'magiclink' })).error) {
+                    if (ok((await sb.auth.getSession()).data.session)) return true;
+                }
+            }
+        }
+    } catch (e) { console.warn('[auth] ensureVerifiedLogin:', (e && e.message) || e); }
+    return false;
+};
+
 const OffersInbox = {
     offers: [],
     follows: new Set(),
@@ -143652,12 +143680,10 @@ const OffersInbox = {
     },
 
     // v1511: follows and offer consent are written by the verified login only (sql/course_follows_lock_v1511.sql)
-    async signedIn() {
-        try { const { data } = await this._sb().auth.getSession(); return !!(data && data.session); } catch (e) { return false; }
-    },
-    signInMsg() {
+    async signedIn() { return window.ensureVerifiedLogin(); },   // v1523: repairs the session instead of asking
+    signInMsg() {   // only when there is truly no login on this device (an expired session outside the LINE app)
         const k = 'fp.signin', v = (typeof t === 'function') ? t(k) : k;
-        window.NotificationManager?.show?.(v === k ? 'Sign out and sign in again to follow courses — it confirms it is really you.' : v, 'warning', 7000);
+        window.NotificationManager?.show?.(v === k ? 'Your login on this device has expired. Log in with LINE again to save this.' : v, 'warning', 7000);
     },
     async toggleFollow(courseId) {
         const sb = this._sb(), uid = this.uid();

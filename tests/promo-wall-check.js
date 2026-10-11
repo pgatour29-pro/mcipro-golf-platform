@@ -84,6 +84,10 @@ if (!/o\.incl_room room, o\.incl_transport transport/.test(sql)) fail.push('sql:
 if (!/\('accommodation' = any\(g\.types\) and o\.incl_room\)/.test(pf)) fail.push('sql: _deal_match must count a room-included deal as Rooms');
 if (!/\(k === 'accommodation' && !!p\.room\)/.test(pw) || !/\['accommodation', 'pw\.type\.room'/.test(pw)) fail.push('promo-wall.js: Rooms / Transport types + typeHit');
 if (!/\['accommodation', 't_room', 'hotel'\]/.test(cp) || !/room: String\(f\.type === 'accommodation' \|\| !!f\.room\)/.test(cp)) fail.push('course-promos.js: the pro shop must be able to post rooms / transport and tick them as included');
+// v1523 (Pete: "I'm already signed in, that should already register that its me"): a signed-in golfer is never told to sign out and back in
+if (/Sign out and sign in again|로그아웃 후 다시 로그인|ログアウトして再ログイン|ออกจากระบบแล้วเข้าสู่ระบบอีกครั้ง/.test(idx)) fail.push('index.html: never tell a signed-in golfer to sign out and back in');
+if (!/async signedIn\(\) \{ return window\.ensureVerifiedLogin\(\); \}/.test(idx) || !/window\.ensureVerifiedLogin = async function/.test(idx)) fail.push('index.html: follows / consent must repair the login (ensureVerifiedLogin), not ask');
+if (!/if \(S\.signedIn !== true && S\.opts\.ensureSignedIn\)/.test(pw) || !/ensureSignedIn: promoEnsureSignedIn/.test(tt)) fail.push('Your deals must re-check the live login before refusing');
 
 if (fail.length) { console.error('✗ promotions wall:\n  ' + fail.join('\n  ')); process.exit(1); }
 console.log('✓ promotions wall: expiry required, public fields only, places locked + handed back, ' + keys.size + ' strings in 4 languages');

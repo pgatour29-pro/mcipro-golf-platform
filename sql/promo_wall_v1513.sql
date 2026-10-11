@@ -98,7 +98,11 @@ language sql stable security definer set search_path = public as $$
        and x.tot > x.took
        and o.course_id <> 'zz_test' and (coalesce(v.slug, '') <> 'cheechan' or p_test)
   )
-  select coalesce(jsonb_agg(to_jsonb(w) || jsonb_build_object('bookable', coalesce((public.teetime_cfg(w.slug)->>'enabled')::boolean, false))
+  select coalesce(jsonb_agg(to_jsonb(w) || jsonb_build_object('bookable', coalesce((public.teetime_cfg(w.slug)->>'enabled')::boolean, false),
+                              'caddies', (select count(*) from public.caddy_profiles x
+                                           where coalesce(x.is_active, false) and not coalesce(x.is_mock, false) and nullif(trim(x.caddy_number), '') is not null
+                                             and (x.course_id = w.slug or (split_part(lower(coalesce(w.course_name, '')), ' ', 1) <> ''
+                                                  and lower(coalesce(x.course_name, '')) like split_part(lower(w.course_name), ' ', 1) || '%'))))
                             order by w.valid_to), '[]'::jsonb)
     from (select * from w order by valid_to limit 300) w
 $$;
@@ -362,6 +366,7 @@ begin
   prefix := lower(split_part(coalesce(c->>'name', ''), ' ', 1));
   caddy_fee := coalesce((c->'rates'->>'caddy18')::int, 0);
   if pr_ok and pr_type = 'society_package' and coalesce(pr_price, 0) > 0 then caddy_fee := 0; end if;   -- the package price includes them
+  if pr_ok and pr_type = 'caddy' and coalesce(pr_price, 0) > 0 then caddy_fee := pr_price; end if;          -- v1516: a caddy deal prices the caddy
 
   -- players + their caddies, every pick validated BEFORE any write
   i := 0;
@@ -404,14 +409,16 @@ begin
       'caddyWanted', case when cad is not null then 'picked' when coalesce(pl->>'caddy', 'any') = 'any' then 'any' else 'none' end));
   end loop;
 
+  if pr_ok and pr_type = 'caddy' and picks + want_any = 0 then return jsonb_build_object('ok', false, 'reason', 'deal_caddy'); end if;
+
   -- the bill, from the course's own rates (null when the course shows none)
   fee := public.teetime_green_fee(c, p_date, p_time);
   green := coalesce((fee->>'price')::int, 0);
-  if pr_ok and coalesce(pr_price, 0) > 0 then green := pr_price; end if;   -- the deal price replaces the green fee
+  if pr_ok and pr_type <> 'caddy' and coalesce(pr_price, 0) > 0 then green := pr_price; end if;   -- the deal price replaces the green fee
   carts := greatest(0, least(n, coalesce(p_carts, 0)));
   cart_fee := coalesce((c->'rates'->>'cart18')::int, 0);
   if pr_ok and pr_type = 'society_package' and coalesce(pr_price, 0) > 0 then cart_fee := 0; end if;
-  total := case when fee is null and not (pr_ok and coalesce(pr_price, 0) > 0) then null else green * n + caddy_fee * (picks + want_any) + cart_fee * carts end;
+  total := case when fee is null and not (pr_ok and pr_type <> 'caddy' and coalesce(pr_price, 0) > 0) then null else green * n + caddy_fee * (picks + want_any) + cart_fee * carts end;
   rule := c->>'rule';
   if rule = 'deposit' and p_pay = 'full' and (c->>'allow_full')::boolean and total is not null then rule := 'full'; end if;
   amount := case rule when 'deposit' then (c->>'deposit_pp')::int * n when 'full' then coalesce(total, 0) else 0 end;
@@ -423,7 +430,7 @@ begin
   ref := 'MCP-' || upper(substr(translate(encode(decode(md5(bid), 'hex'), 'base64'), '+/=0O1Il', 'XYZ'), 1, 5));
   app := jsonb_build_object('v', 1, 'ref', ref, 'rule', rule, 'amount', amount, 'deposit_pp', case when rule = 'deposit' then (c->>'deposit_pp')::int else null end,
     'state', state, 'due_at', due, 'cancel_until', to_char(cancel_until, 'YYYY-MM-DD"T"HH24:MI'), 'carts', carts,
-    'quote', case when total is null then null else jsonb_build_object('period', case when pr_ok and coalesce(pr_price, 0) > 0 then 'Deal' else fee->>'label' end, 'green_pp', green, 'caddy_pp', caddy_fee,
+    'quote', case when total is null then null else jsonb_build_object('period', case when pr_ok and pr_type <> 'caddy' and coalesce(pr_price, 0) > 0 then 'Deal' else fee->>'label' end, 'green_pp', green, 'caddy_pp', caddy_fee,
                  'caddies', picks + want_any, 'cart_each', cart_fee, 'total', total) end,
     'pay_to', c->'pay_to', 'allow_full', coalesce((c->>'allow_full')::boolean, false) and total is not null, 'created_at', now(), 'booker', p_golfer_id);
 

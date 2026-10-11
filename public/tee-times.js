@@ -577,7 +577,7 @@
     }
     if (S.view === 'pay' || S.view === 'ticket') paintQrs();
     const pwHost = r.querySelector('#pwHost');
-    if (pwHost && W.PromoWall) { W.PromoWall.mount(pwHost, { mode: 'app', onBook: bookPromo, onFollow: followPromo, onOpen: seenPromo }); if (!S.promoLoaded) loadPromos(); }
+    if (pwHost && W.PromoWall) { W.PromoWall.mount(pwHost, { mode: 'app', onBook: bookPromo, onFollow: followPromo, onOpen: seenPromo, loadCaddies: loadPromoCaddies }); if (!S.promoLoaded) loadPromos(); }
     const slipIn = r.querySelector('[data-in="slip"]');
     if (slipIn) slipIn.addEventListener('change', () => { if (slipIn.files && slipIn.files[0]) uploadSlip(slipIn.files[0]); });
     const sel = r.querySelector('.ttx-d.on'); if (sel && sel.scrollIntoView && S.view !== 'pay' && S.view !== 'ticket') { try { sel.parentNode.scrollLeft = Math.max(0, sel.offsetLeft - 60); } catch (e) {} }
@@ -763,14 +763,27 @@
   // Book this deal: a tee time or package at a course taking online bookings opens the course on the deal's first
   // playable day, times filtered to the deal's hours, and the book sheet carries the deal price (teetime_book p_promo
   // checks it all again). Anything else gets a deal code to show at the pro shop.
-  async function bookPromo(p) {
+  // the course's caddies for the deal sheet (same roster rule as the book sheet: active, real, this course)
+  async function loadPromoCaddies(p) {
+    const c = sb(); if (!c || !p) return [];
+    const prefix = String(p.course_name || '').toLowerCase().split(' ')[0];
+    const { data } = await c.from('caddy_profiles').select('id,caddy_number,name,photo_url').eq('is_active', true).eq('is_mock', false)
+      .or('course_id.eq.' + p.slug + (prefix ? ',course_name.ilike.' + prefix + '%' : '')).limit(400);
+    return (data || []).filter(r => r.caddy_number != null && String(r.caddy_number).trim())
+      .map(r => ({ id: r.id, num: String(r.caddy_number).trim(), name: r.name && !/^caddy\s*#/i.test(r.name) ? r.name : '', photo: r.photo_url || null }))
+      .sort((a, b) => (parseInt(a.num, 10) || 9999) - (parseInt(b.num, 10) || 9999));
+  }
+  async function bookPromo(p, o) {
     if (!p) return;
     if (!me()) { toast(T('ttx.login', 'Log in to book a tee time'), 'error'); return; }
+    S.preCaddy = (o && o.caddy) || null;   // a caddy tapped on the deal sheet rides into the book sheet
     if (p.hot) { if (W.PromoWall) W.PromoWall.closeSheet(); if (W.HotDeals && W.HotDeals.open) W.HotDeals.open(p.id); return; }
     if (W.PromoWall && W.PromoWall.bookable(p)) {
       W.PromoWall.closeSheet();
       S.promo = p;
-      const first = promoDays(p)[0];
+      // the deal's first playable day; after 15:00 Bangkok today rarely has anything left, so the next deal day
+      const days = promoDays(p), late = +new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', hour: '2-digit', hour12: false }).format(new Date()) >= 15;
+      const first = days[0] === bkkToday() && late && days[1] ? days[1] : days[0];
       if (first) S.date = first;
       S.tod = 'any';
       return openCourse(p.slug);
@@ -1083,12 +1096,14 @@
     let cfg = (S.cfg && S.cfg.slug === slug) ? S.cfg : (venue(slug) || {}).cfg;
     if (!cfg || !cfg.slug) { try { cfg = await rpc('teetime_cfg', { p_slug: slug }); } catch (e) {} }
     if (!cfg) return;
-    const players = [{ name: myName(), id: me(), caddy: 'any', me: true }];
+    const pre = S.preCaddy && S.promo && S.promo.slug === slug ? S.preCaddy : null; S.preCaddy = null;
+    const players = [{ name: myName(), id: me(), caddy: pre || 'any', me: true }];
     for (let i = 1; i < S.players; i++) players.push({ name: '', id: null, caddy: 'any' });
     const sharing = (cfg.rates && cfg.rates.cart_sharing) || 'shared';
     S.sheet = { slug, t, col: +col || 0, cfg, players, carts: sharing === 'single' ? players.length : Math.ceil(players.length / 2), cartTouched: false,
       pay: 'default', notes: '', active: 0, roster: null, cols: null, busy: false,
       promo: S.promo && S.promo.slug === slug && promoDay(S.date) && promoTime(t) ? S.promo : null };
+    if (pre && players.length > 1) S.sheet.active = 1;
     paintSheet();
     refreshSheetAvail();
     loadRoster();
@@ -1124,15 +1139,20 @@
         return { id: r.id, num, name: r.name && !/^caddy\s*#/i.test(r.name) ? r.name : '', photo: r.photo_url || null,
           busy: off ? T('ttx.cad.off', 'Day off') : job ? F('ttx.cad.out', 'Out to {t}', { t: String(job.end_time || '').slice(0, 5) || '—' }) : '' };
       }).sort((a, b) => (!!a.busy - !!b.busy) || ((parseInt(a.num, 10) || 9999) - (parseInt(b.num, 10) || 9999)));
+      sh.players.forEach(pl => {
+        const r = pl.caddy && pl.caddy !== 'any' && pl.caddy !== 'none' ? sh.roster.find(x => x.id === pl.caddy) : null;
+        if (r && r.busy) { pl.caddy = 'any'; toast(F('pw.cad.busy', 'Caddy #{c} is not free at {t}. Pick another or let the pro shop assign.', { c: r.num, t: sh.t }), 'info', 6000); }
+      });
       paintSheet();
     } catch (e) { if (S.sheet === sh) { sh.roster = []; paintSheet(); } }
   }
   function sheetQuote(sh) {
     const c = sh.cfg, n = sh.players.length;
     const pr = sh.promo, pkg = pr && pr.type === 'society_package' && +pr.price > 0;
-    const g = pr && +pr.price > 0 ? { label: T('pw.deal', 'Deal'), price: +pr.price } : greenFor(c, S.date, sh.t);
+    const cdeal = pr && pr.type === 'caddy' && +pr.price > 0;
+    const g = pr && +pr.price > 0 && !cdeal ? { label: T('pw.deal', 'Deal'), price: +pr.price } : greenFor(c, S.date, sh.t);
     const cads = sh.players.filter(p => p.caddy !== 'none').length;
-    const caddyFee = pkg ? 0 : (c.rates && c.rates.caddy18) || 0, cartFee = pkg ? 0 : (c.rates && c.rates.cart18) || 0;
+    const caddyFee = pkg ? 0 : cdeal ? +pr.price : (c.rates && c.rates.caddy18) || 0, cartFee = pkg ? 0 : (c.rates && c.rates.cart18) || 0;
     const total = g ? g.price * n + caddyFee * cads + cartFee * sh.carts : null;
     let rule = c.rule;
     if (rule === 'deposit' && sh.pay === 'full' && c.allow_full && total) rule = 'full';
@@ -1196,11 +1216,14 @@
     // the bill (course's own rates) + how it is held
     h += '<div class="ttx-bill">';
     if (q.g) {
-      h += '<div class="r">' + esc(sh.promo && +sh.promo.price > 0 ? F('pw.bill.deal', 'Deal {n} × {a}', { n: q.n, a: baht(q.g.price) }) : F('ttx.bill.green', 'Green fee {n} × {a} ({p})', { n: q.n, a: baht(q.g.price), p: q.g.label })) + '<b>' + esc(baht(q.g.price * q.n)) + '</b></div>' +
-        (q.cads && q.caddyFee ? '<div class="r">' + esc(F('ttx.bill.caddy', 'Caddy {n} × {a}', { n: q.cads, a: baht(q.caddyFee) })) + '<b>' + esc(baht(q.caddyFee * q.cads)) + '</b></div>' : '') +
+      h += '<div class="r">' + esc(sh.promo && +sh.promo.price > 0 && sh.promo.type !== 'caddy' ? F('pw.bill.deal', 'Deal {n} × {a}', { n: q.n, a: baht(q.g.price) }) : F('ttx.bill.green', 'Green fee {n} × {a} ({p})', { n: q.n, a: baht(q.g.price), p: q.g.label })) + '<b>' + esc(baht(q.g.price * q.n)) + '</b></div>' +
+        (q.cads && q.caddyFee ? '<div class="r">' + esc(F(sh.promo && sh.promo.type === 'caddy' ? 'pw.bill.caddy' : 'ttx.bill.caddy', sh.promo && sh.promo.type === 'caddy' ? 'Caddy deal {n} × {a}' : 'Caddy {n} × {a}', { n: q.cads, a: baht(q.caddyFee) })) + '<b>' + esc(baht(q.caddyFee * q.cads)) + '</b></div>' : '') +
         (sh.carts && q.cartFee ? '<div class="r">' + esc(F('ttx.bill.cart', 'Cart {n} × {a}', { n: sh.carts, a: baht(q.cartFee) })) + '<b>' + esc(baht(q.cartFee * sh.carts)) + '</b></div>' : '') +
         ((q.cads && !q.caddyFee) || (sh.carts && !q.cartFee) ? '<div class="r">' + esc(sh.promo && sh.promo.type === 'society_package' ? T('pw.bill.incl', 'Caddy and cart included') : T('pw.bill.extras', 'Caddy and cart paid at the pro shop')) + '</div>' : '') +
         '<div class="r tot">' + esc(T('ttx.bill.total', 'Total at the course')) + '<b>' + esc(baht(q.total)) + '</b></div>';
+    } else if (sh.promo && sh.promo.type === 'caddy' && q.cads && q.caddyFee) {   // a caddy deal at a course that shows no rates
+      h += '<div class="r">' + esc(F('pw.bill.caddy', 'Caddy deal {n} × {a}', { n: q.cads, a: baht(q.caddyFee) })) + '<b>' + esc(baht(q.caddyFee * q.cads)) + '</b></div>' +
+        '<div class="r">' + esc(T('pw.bill.green', 'Green fee and cart paid at the pro shop')) + '</div>';
     } else {
       h += '<div class="r">' + esc(T('ttx.bill.atshop', 'Green fee, caddy and cart are paid at the pro shop')) + '</div>';
     }
@@ -1266,7 +1289,7 @@
     players: ['ttx.err.players', 'Choose 1 to 4 players.'], no_golfer: ['ttx.login', 'Log in to book a tee time'],
     deal_gone: ['pw.err.gone', 'This deal has ended.'], deal_left: ['pw.err.leftn', 'Only {l} places left on this deal.'],
     deal_day: ['pw.notday', 'The deal is not on this day. Pick a day it plays.'], deal_time: ['pw.err.time', 'That time is outside the deal\'s hours.'],
-    deal_already: ['pw.err.already', 'You already booked this deal.'], deal_course: ['pw.err.gone', 'This deal has ended.']
+    deal_already: ['pw.err.already', 'You already booked this deal.'], deal_caddy: ['pw.err.caddy', 'This deal is for a caddy. Give at least one player a caddy.'], deal_course: ['pw.err.gone', 'This deal has ended.']
   };
   async function book() {
     const sh = S.sheet; if (!sh || sh.busy) return;

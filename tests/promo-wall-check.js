@@ -40,6 +40,10 @@ if (!/rpc\('promo_wall'/.test(tt) || !/call\('promo_wall'/.test(pub)) fail.push(
 if (!/\$\('promos-btn'\)\.addEventListener\('click'/.test(ps) || !/promo-wall\.js\?v=/.test(ps) || !/course-promos\.js\?v=/.test(ps)) fail.push('proshop-teesheet.html: Promotions button / scripts not wired');
 if (!/<script src="promo-wall\.js\?v=\d+" defer><\/script>/.test(idx)) fail.push('index.html: promo-wall.js not loaded');
 if (!/TeeTimes\.openPromo\(/.test(idx)) fail.push('index.html: /?promo= links must open the deal');
+// caddies in the deal (Pete: "In these modals where are the caddies?"): the sheet shows the course's caddies, a tapped
+// caddy rides into the book sheet, a caddy deal prices the caddy and needs one
+if (!/caddiesHtml\(p\) \+/.test(pw) || !/loadCaddies: loadPromoCaddies/.test(tt) || !/S\.preCaddy = \(o && o\.caddy\)/.test(tt)) fail.push('caddies must show in the deal sheet and carry into the booking');
+if (!/'caddies', \(select count\(\*\) from public\.caddy_profiles/.test(sql) || !/pr_type = 'caddy' and picks \+ want_any = 0/.test(sql)) fail.push('sql: promo_wall caddy count / caddy deal needs a caddy');
 // strings: every pw.* / ttx.mode.* key in EN, TH, KO, JA (index.html dictionaries)
 const keys = new Set();
 [pw, tt].forEach(s => (s.match(/[TF]\('((?:pw|ttx\.mode)\.[a-z0-9.]+)'/g) || []).forEach(m => keys.add(m.slice(3, -1))));

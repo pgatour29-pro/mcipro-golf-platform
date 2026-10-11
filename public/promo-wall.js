@@ -37,7 +37,7 @@
     ['Chiang Mai', 'ttx.region.chiangmai', 'Chiang Mai'], ['Bangkok', 'ttx.region.bangkok', 'Bangkok']];
   const typeOf = k => TYPES.find(t => t[0] === k) || TYPES[TYPES.length - 1];
 
-  const S = { host: null, mode: 'app', list: [], loaded: false, tab: 'all', area: 'all', when: 'any', type: 'all', page: 0, pop: null, follows: [], claims: {}, pendingOpen: null, sheetId: null, tick: null, sheetTick: null, opts: {} };
+  const S = { host: null, mode: 'app', list: [], loaded: false, tab: 'all', area: 'all', when: 'any', type: 'all', page: 0, pop: null, follows: [], claims: {}, caddies: {}, pendingOpen: null, sheetId: null, tick: null, sheetTick: null, opts: {} };
 
   /* ------------------------------------------------------------------ time */
   const msLeft = p => new Date(p.valid_to).getTime() - Date.now();
@@ -57,7 +57,26 @@
   }
   const urgent = p => msLeft(p) < 6 * 3600000;
   // books onto the tee sheet (a tee time or package at a course taking online bookings); anything else = a deal code
-  const bookable = p => !!p && !p.hot && p.bookable !== false && (p.type === 'tee_time' || p.type === 'society_package');
+  const bookable = p => !!p && !p.hot && p.bookable !== false && (p.type === 'tee_time' || p.type === 'society_package' || p.type === 'caddy');
+  // deals played with a round carry the course's caddies in the sheet (Pete: "In these modals where are the caddies?")
+  const withCaddies = p => !!p && (p.hot || p.type === 'tee_time' || p.type === 'society_package' || p.type === 'caddy');
+  function caddiesHtml(p) {
+    if (!withCaddies(p)) return '';
+    const nm = p.short || p.course_name, n = +p.caddies || 0, pkg = p.type === 'society_package';
+    const head = pkg ? T('pw.cad.incl', 'Caddy included in the price') : p.type === 'caddy' ? T('pw.cad.deal', 'Your caddy at the deal price') : T('pw.cad.h', 'Caddies');
+    if (S.mode === 'public' || !S.opts.loadCaddies) {
+      return '<div class="pw-cads"><div class="pw-cads-h"><b>' + P('person') + esc(head) + '</b><span>' + esc(n ? F('pw.cad.n', '{n} caddies at {c}. Pick yours when you book.', { n: n, c: nm }) : T('pw.cad.shop', 'The pro shop assigns your caddy.')) + '</span></div></div>';
+    }
+    const list = S.caddies[p.slug];
+    const tap = bookable(p) || p.hot;
+    let row;
+    if (list === undefined) row = '<div class="pw-cads-row">' + Array.from({ length: 5 }).map(() => '<span class="pw-cad sk"><i></i><b>&nbsp;</b></span>').join('') + '</div>';
+    else if (!list.length) row = '';
+    else row = '<div class="pw-cads-row">' + list.slice(0, 40).map(c => '<button type="button" class="pw-cad" data-pw="caddy" data-id="' + esc(p.id) + '" data-cad="' + esc(c.id) + '"' + (tap ? '' : ' disabled') + '>' +
+      (c.photo ? '<img src="' + esc(c.photo) + '" alt="" loading="lazy">' : '<i>' + esc(c.num) + '</i>') + '<b>#' + esc(c.num) + '</b><span>' + esc(c.name || '') + '</span></button>').join('') + '</div>';
+    const sub = list && !list.length ? T('pw.cad.shop', 'The pro shop assigns your caddy.') : tap ? F('pw.cad.tap', '{n} at {c}. Tap one to book this deal with them.', { n: (list || []).length || n, c: nm }) : F('pw.cad.n', '{n} caddies at {c}. Pick yours when you book.', { n: n, c: nm });
+    return '<div class="pw-cads"><div class="pw-cads-h"><b>' + P('person') + esc(head) + '</b><span>' + esc(sub) + '</span></div>' + row + '</div>';
+  }
   function playsOn(p, from, to) {   // the promotion's play window overlaps [from, to] (ISO dates)
     const a = p.play_from || bkkToday(), b = p.play_to || addDays(bkkToday(), 365);
     return a <= to && b >= from;
@@ -208,6 +227,19 @@
 .pw-btn.gh:only-child{flex:1}
 .pw-btn.gh.on{background:var(--accSoft);color:var(--accSoftInk);border-color:var(--acc)}
 .pw-btn.gh.on .material-symbols-outlined{font-variation-settings:'FILL' 1,'wght' 500}
+.pw-cads{margin:12px 0 0}
+.pw-cads-h b{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:900;color:var(--ink)}
+.pw-cads-h b .material-symbols-outlined{font-size:18px;color:var(--acc)}
+.pw-cads-h span{display:block;font-size:12px;font-weight:600;color:var(--mute);margin-top:2px}
+.pw-cads-row{display:flex;gap:8px;overflow-x:auto;margin:8px -16px 0;padding:2px 16px 4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.pw-cads-row::-webkit-scrollbar{display:none}
+.pw-cad{flex:0 0 66px;display:flex;flex-direction:column;align-items:center;gap:3px;border:1px solid var(--chipLine);background:var(--card2);border-radius:14px;padding:8px 4px 7px;color:var(--ink)}
+.pw-cad img,.pw-cad i{width:44px;height:44px;border-radius:50%;object-fit:cover;display:flex;align-items:center;justify-content:center;background:#14532d;color:#fff;font:800 13px 'JetBrains Mono',monospace;font-style:normal}
+.pw-cad b{font:800 11.5px 'JetBrains Mono',monospace}
+.pw-cad span{font-size:10px;font-weight:700;color:var(--mute);max-width:60px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pw-cad:not([disabled]):active{transform:scale(.97)}
+.pw-cad[disabled]{cursor:default}
+.pw-cad.sk i{background:var(--line)}
 .pw-code{margin:12px 0 0;border-radius:14px;padding:12px;text-align:center;border:1.5px dashed var(--acc);background:var(--accSoft);color:var(--accSoftInk)}
 .pw-code small{display:block;font-size:10.5px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
 .pw-code b{display:block;font:800 28px 'JetBrains Mono',monospace;letter-spacing:.04em;color:var(--ink);margin:2px 0}
@@ -313,6 +345,7 @@
         (p.limit_total ? '<div class="pw-bar"><i style="width:' + Math.max(0, Math.min(100, p.limit_left / p.limit_total * 100)).toFixed(0) + '%"></i></div>' : '') +
         (p.body ? '<div class="pw-txt">' + esc(p.body) + '</div>' : '') +
         '<div class="pw-facts">' + P('event') + '<b>' + esc(days) + '</b>' + (hours ? P('schedule') + '<b>' + esc(hours) + '</b>' : '') + P(t[3]) + '<b>' + esc(T(t[1], t[2])) + '</b>' + P('location_on') + '<b>' + esc([p.area, p.region].filter(Boolean).join(', ') || p.course_name) + '</b></div>' +
+        caddiesHtml(p) +
         '<div class="pw-acts">' +
           (pub || p.hot ? '' : '<button type="button" class="pw-btn gh' + (fol ? ' on' : '') + '" data-pw="follow" data-slug="' + esc(p.slug) + '" aria-pressed="' + fol + '">' + P('favorite') + esc(fol ? T('pw.following', 'Following') : T('pw.follow', 'Follow')) + '</button>') +
           (code ? '' : '<button type="button" class="pw-btn pri" data-pw="book" data-id="' + esc(p.id) + '">' + P(pub ? 'person_add' : p.hot ? 'bolt' : books ? 'event_available' : 'redeem') + esc(pub ? T('pw.register', 'Register to book') : p.hot ? T('pw.grab', 'Grab it') : books ? T('pw.book', 'Book this deal') : T('pw.claim', 'Get this deal')) + '</button>') + '</div>' +
@@ -333,6 +366,9 @@
     document.body.appendChild(el);
     S.sheetId = id;
     try { if (S.opts.onOpen) S.opts.onOpen(p); } catch (e) {}
+    if (S.mode === 'app' && S.opts.loadCaddies && withCaddies(p) && S.caddies[p.slug] === undefined) {
+      Promise.resolve(S.opts.loadCaddies(p)).then(l => { S.caddies[p.slug] = Array.isArray(l) ? l : []; repaintSheet(); }).catch(() => { S.caddies[p.slug] = []; repaintSheet(); });
+    }
     S.sheetTick = setInterval(() => {
       const n = el.querySelector('[data-pwclock]'); if (!n) return;
       if (!live(p)) { closeSheet(); paint(); return; }
@@ -376,6 +412,9 @@
     } else if (k === 'book') {
       const p = S.list.find(x => x.id === a.dataset.id);
       if (S.opts.onBook) S.opts.onBook(p);
+    } else if (k === 'caddy') {
+      const p = S.list.find(x => x.id === a.dataset.id);
+      if (S.opts.onBook) S.opts.onBook(p, { caddy: a.dataset.cad });
     }
   }
 

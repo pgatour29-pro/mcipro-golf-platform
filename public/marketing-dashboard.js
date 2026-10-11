@@ -650,7 +650,7 @@
                 const { data, error } = await db().rpc('count_offer_segment', { p_hcp_min: seg.hcp_min ?? null, p_hcp_max: seg.hcp_max ?? null, p_course_names: seg.course_names, p_lang: seg.lang || null, p_played_since: seg.played_since || null,
                     p_audience: seg.audience || null, p_venue: seg.venue || null, p_dows: seg.dows || null, p_days: seg.days || 90 });
                 if (error) throw error;
-                el.textContent = (data >= 1 && data <= 4 ? tr('mkt.under5', 'under 5') : fmtN(data)) + ' ' + tr('mk.golfers', 'golfers');   // v1509: 1–4 never shown as a number
+                el.textContent = (data === -1 ? tr('mkt.under5', 'under 5') : fmtN(data)) + ' ' + tr('mk.golfers', 'golfers');   // v1509: the server sends 1–4 as -1 (under 5)
             } catch (e) { el.textContent = '—'; }
         },
         async publish() {

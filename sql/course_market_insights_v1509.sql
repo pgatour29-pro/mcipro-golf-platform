@@ -227,7 +227,9 @@ create function public.count_offer_segment(p_hcp_min numeric default null, p_hcp
   p_lang text default null, p_played_since date default null, p_audience text default null, p_venue text default null,
   p_dows integer[] default null, p_days integer default 90)
 returns integer language sql stable security definer set search_path = public as $$
-  select count(*)::int from public.offer_segment_ids(p_hcp_min, p_hcp_max, p_course_names, p_lang, p_played_since, p_audience, p_venue, p_dows, p_days)
+  -- 1..4 never leaves the server as a number: -1 means "under 5" (the composer shows the words)
+  select case when n between 1 and 4 then -1 else n end
+  from (select count(*)::int n from public.offer_segment_ids(p_hcp_min, p_hcp_max, p_course_names, p_lang, p_played_since, p_audience, p_venue, p_dows, p_days)) q
 $$;
 grant execute on function public.count_offer_segment(numeric, numeric, text[], text, date, text, text, integer[], integer) to anon, authenticated;
 
@@ -369,6 +371,9 @@ language plpgsql security definer set search_path = public as $$
 begin
   if coalesce(p_user, '') = '' or coalesce(p_course_id, '') = '' then return false; end if;
   if not exists (select 1 from public.courses where id = p_course_id) then return false; end if;
+  -- only the course this golfer was actually asked about: a round at that venue in the last 14 days
+  if not exists (select 1 from public.rounds x where x.golfer_id = p_user and x.played_at >= now() - interval '14 days'
+                 and public.venue_of(x.course_name) = public.course_venue(p_course_id)) then return false; end if;
   insert into public.course_follow_prompts (golfer_line_id, course_id, answer) values (p_user, p_course_id, case when p_yes then 'yes' else 'no' end)
   on conflict (golfer_line_id, course_id) do update set answer = excluded.answer, asked_at = now();
   if p_yes then

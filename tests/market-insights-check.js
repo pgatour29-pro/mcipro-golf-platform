@@ -23,7 +23,8 @@ if (!/p_audience: seg\.audience \?\? null/.test(edge)) fail.push('line-push-noti
 if (!/market: MK\.loadMarket/.test(mk)) fail.push('marketing-dashboard.js: Market tab not registered');
 if (!/rpc\('market_insights'/.test(mk)) fail.push('marketing-dashboard.js: Market must read market_insights');
 if (/from\('rounds'\)|from\('course_follows'\)|from\('course_offer_reads'\)/.test(mk)) fail.push('marketing-dashboard.js: the dashboard must never read golfer rows directly');
-if (!/data >= 1 && data <= 4 \? tr\('mkt\.under5'/.test(mk)) fail.push('marketing-dashboard.js: the composer count must show 1–4 as "under 5"');
+if (!/data === -1 \? tr\('mkt\.under5'/.test(mk) || !/when n between 1 and 4 then -1/.test(sql)) fail.push('count_offer_segment must send 1–4 as -1 and the composer must show "under 5"');
+if (!/only the course this golfer was actually asked about/.test(sql)) fail.push('sql: follow_prompt_answer must only accept a course the golfer played in the last 14 days');
 if (!/id="marketing-market"/.test(idx) || !/showMarketingTab\('market', event\)/.test(idx)) fail.push('index.html: Market pane / tab button missing');
 
 // strings: every mkt.* / fp.* key in EN, TH, KO, JA

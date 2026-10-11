@@ -175,6 +175,7 @@
             <div class="how-body">
                 <ul>
                     <li>Your POY points are your <b>best 20 Stableford scores</b> added together.</li>
+                    <li><b>Only singles events count.</b> Team days (scramble, waltz and other team formats) do not.</li>
                     <li>Under 20 rounds? <b>Every round adds its full score.</b> Playing more is the fastest way up.</li>
                     <li>Already 20? A new round only counts if it beats your <b>weakest counting score</b>, and it adds the difference.</li>
                 </ul>
@@ -464,6 +465,7 @@
 
     // ---- Where: how the TRGG field scores at the courses coming up (trgg_poy_outlook RPC) ----
     let outlook = null; // { venues: { key: {label, n, avg} }, overall, upcoming: [{date, name, key, team}] }
+    const TEAM_RE = /scramble|waltz|team|ambrose|texas|pairs|four\s*ball|fourball|better\s*ball|foursome|greensome|\b(2|3|4|two|three|four)\s*-?\s*(man|men|person|ball)\b/i;
     function venueKey(name) {
         const CL = window.CourseLink; if (!CL) return null;
         const slug = CL.slugFor(String(name || '').replace(/[_-]/g, ' ').replace(/\bcounty\b/gi, 'country'));
@@ -484,7 +486,8 @@
         const upcoming = (data.upcoming || []).map(e => {
             const raw = String(e.course_name || ''), k = venueKey(raw);
             const first = raw.split('\n')[0].trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
-            return { date: e.event_date, key: k, team: /scramble|waltz|team|ambrose|texas/i.test(raw),
+            // Only SINGLES events count toward POY (Pete 2026-10-11): any team format is a non-counting day
+            return { date: e.event_date, key: k, team: TEAM_RE.test(raw),
                      name: (k && venues[k] && venues[k].label) || first };
         });
         outlook = { venues, overall: cnt ? tot / cnt : null, rounds: cnt, upcoming };
@@ -498,7 +501,7 @@
         try { return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }); } catch (e) { return iso; }
     }
     function courseChip(ev) {
-        if (ev.team) return '<span class="ev-c c-neutral">Team format</span>';
+        if (ev.team) return '<span class="ev-c c-neutral">Team day · doesn\'t count</span>';
         const v = ev.key && outlook.venues[ev.key];
         if (!v || v.n < 8) return '<span class="ev-c c-neutral">Few rounds yet</span>';
         const d = v.avg - outlook.overall, a = v.avg.toFixed(1);
@@ -520,6 +523,8 @@
                  picks.map(e => `<b>${esc(e.name)}</b> <span class="mut">(${esc(dayLabel(e.date))})</span>`).join(' and ') +
                  '. The field scores above its usual there.</div>';
         }
+        const nSingles = outlook.upcoming.filter(e => !e.team).length;
+        h += `<div class="path-p" style="margin-bottom:4px;"><b>${nSingles}</b> singles day${nSingles === 1 ? '' : 's'} in the next 3 weeks <span class="mut">(only singles count)</span></div>`;
         h += outlook.upcoming.slice(0, 8).map(e =>
             `<div class="ev"><span class="ev-d">${esc(dayLabel(e.date))}</span><div class="ev-m"><div class="ev-n">${esc(e.name)}</div>${courseChip(e)}</div></div>`).join('');
         h += `<div class="path-foot">Avg = average Stableford of the TRGG field at that course (${outlook.rounds} TRGG rounds scored in the app; overall ${outlook.overall.toFixed(1)}).</div>`;

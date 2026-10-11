@@ -64,6 +64,9 @@ if (!/@media \(min-width:768px\)\{\.pw-cads-row\{display:grid[^}]*overflow-y:aut
 // desktop: book + deal sheets are two columns from 900px so the bill and the Book button sit on screen (Pete 10-11 "not all of the information is showing")
 if (!/@media \(min-width:900px\)\{#ttxSheet\{padding:[^}]*\}[^@]*\.ttx-cols\{display:grid/.test(tt) || !/<div class="ttx-cols"><div class="ttx-c1">/.test(tt) || !/<\/div><div class="ttx-c2">/.test(tt)) fail.push('tee-times.js: book sheet must be two columns on desktop');
 if (!/@media \(min-width:900px\)\{#pwSheet\{padding:[^}]*\}[^@]*\.sh\.two\{[^}]*display:grid/.test(pw) || !/<div class="pw-r pw-bd">/.test(pw)) fail.push('promo-wall.js: deal sheet must be two columns on desktop');
+// phones: Book rides the bottom of the scrolling sheet (sticky), solid to the edge above the app's back button
+if (!/@media \(max-width:899px\)\{#ttxSheet \.sh:has\(\.ttx-ctabar\)\{padding-bottom:0\}\.ttx-ctabar\{position:sticky;bottom:0/.test(tt) || !/<div class="ttx-ctabar"><button type="button" class="ttx-cta" data-act="book"/.test(tt)) fail.push('tee-times.js: Book must be pinned to the bottom of the phone sheet');
+if (!/@media \(max-width:899px\)\{#pwSheet \.sh:has\(\.pw-acts\)\{padding-bottom:0\}\.pw-acts\{position:sticky;bottom:0/.test(pw)) fail.push('promo-wall.js: deal buttons must be pinned to the bottom of the phone sheet');
 
 if (fail.length) { console.error('✗ promotions wall:\n  ' + fail.join('\n  ')); process.exit(1); }
 console.log('✓ promotions wall: expiry required, public fields only, places locked + handed back, ' + keys.size + ' strings in 4 languages');

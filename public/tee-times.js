@@ -314,6 +314,10 @@
 .ttx-cta{width:100%;min-height:52px;border-radius:14px;border:0;margin-top:11px;background:var(--acc);color:var(--accInk);font-weight:900;font-size:15.5px;display:flex;align-items:center;justify-content:center;gap:7px}
 #ttxSheet[data-look=white] .ttx-cta,#ttxRoot[data-look=white] .ttx-cta{color:#fff}
 .ttx-cta:disabled{opacity:.6}
+/* phones: the sheet scrolls, so Book rides the bottom of it and is always on screen (desktop has it in the sticky right column) */
+@media (max-width:899px){#ttxSheet .sh:has(.ttx-ctabar){padding-bottom:0}.ttx-ctabar{position:sticky;bottom:0;z-index:3;margin:0 -16px;padding:1px 16px calc(12px + env(safe-area-inset-bottom,0px));background:#fff;box-shadow:0 -10px 14px -12px rgba(15,23,42,.35)}#ttxSheet[data-look=dark] .ttx-ctabar{background:#111a2b}#ttxSheet[data-look=glass] .ttx-ctabar{background:rgba(12,28,20,.97)}}
+/* the app's back button + update bar sit over the bottom of a phone sheet: the bar keeps Book above them, solid to the edge */
+@media (max-width:767px){.ttx-ctabar{padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))}}
 .ttx-trust{display:flex;align-items:flex-start;gap:7px;margin-top:9px;font-size:11.5px;font-weight:600;color:var(--mute);line-height:1.4}
 .ttx-trust .material-symbols-outlined{font-size:16px;color:var(--acc);flex:none}
 .ttx-warn{border-radius:12px;background:var(--amberBg);color:var(--amber);font-size:12px;font-weight:700;padding:8px 10px;margin-top:8px}
@@ -1242,8 +1246,8 @@
     h += '</div>';
     const ctaTxt = q.rule === 'none' ? F('ttx.cta.book', 'Book {t}', { t: sh.t }) : q.rule === 'full' ? F('ttx.cta.full', 'Hold {t} · pay {a}', { t: sh.t, a: baht(q.amount) }) : F('ttx.cta.dep', 'Hold {t} · pay {a} deposit', { t: sh.t, a: baht(q.amount) });
     const blocked = (sh.cols && !sh.cols.length) || (cur && sh.players.length > maxP);
-    h += '<button type="button" class="ttx-cta" data-act="book"' + (sh.busy || blocked ? ' disabled' : '') + '>' + PF('lock') + esc(sh.busy ? T('ttx.booking', 'Booking…') : ctaTxt) + '</button>' +
-      '<div class="ttx-trust">' + PF('verified_user') + '<span>' + esc(F('ttx.trust', 'You pay {c} directly. MyCaddiPro never takes payment and charges no booking fee.', { c: c.short || c.name })) + '</span></div></div></div></div>';
+    h += '<div class="ttx-trust">' + PF('verified_user') + '<span>' + esc(F('ttx.trust', 'You pay {c} directly. MyCaddiPro never takes payment and charges no booking fee.', { c: c.short || c.name })) + '</span></div>' +
+      '<div class="ttx-ctabar"><button type="button" class="ttx-cta" data-act="book"' + (sh.busy || blocked ? ' disabled' : '') + '>' + PF('lock') + esc(sh.busy ? T('ttx.booking', 'Booking…') : ctaTxt) + '</button></div></div></div></div>';
     const keepScroll = el.querySelector('.sh') ? el.querySelector('.sh').scrollTop : 0;
     const focusI = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.in === 'pname' ? document.activeElement.dataset.i : null;
     el.innerHTML = h;

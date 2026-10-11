@@ -224,6 +224,9 @@
 .pw-facts .material-symbols-outlined{font-size:18px;color:var(--mute)}
 .pw-facts b{font-weight:700;color:var(--ink)}
 .pw-acts{display:flex;gap:8px;margin:14px 0 0}
+/* phones: Follow + Book ride the bottom of the scrolling sheet so the deal can always be booked without hunting for it */
+@media (max-width:899px){#pwSheet .sh:has(.pw-acts){padding-bottom:0}.pw-acts{position:sticky;bottom:0;z-index:3;margin:14px -16px 0;padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px));background:#fff;box-shadow:0 -10px 14px -12px rgba(15,23,42,.35)}#pwSheet[data-look=dark] .pw-acts{background:#111a2b}#pwSheet[data-look=glass] .pw-acts{background:rgba(12,28,20,.97)}}
+@media (max-width:767px){#pwSheet.inapp .pw-acts{padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))}}
 .pw-btn{flex:1;min-height:48px;border-radius:13px;border:0;font-weight:800;font-size:14.5px;display:flex;align-items:center;justify-content:center;gap:6px;padding:0 12px}
 .pw-btn.pri{background:var(--acc);color:#fff}
 #pwSheet[data-look=dark] .pw-btn.pri,#pwSheet[data-look=glass] .pw-btn.pri{color:var(--accInk)}
@@ -353,12 +356,12 @@
         '<div class="pw-facts">' + P('event') + '<b>' + esc(days) + '</b>' + (hours ? P('schedule') + '<b>' + esc(hours) + '</b>' : '') + P(t[3]) + '<b>' + esc(T(t[1], t[2])) + '</b>' + P('location_on') + '<b>' + esc([p.area, p.region].filter(Boolean).join(', ') || p.course_name) + '</b></div>' +
       '</div></div><div class="pw-r pw-bd">' +
         caddiesHtml(p) +
-        '<div class="pw-acts">' +
-          (pub || p.hot ? '' : '<button type="button" class="pw-btn gh' + (fol ? ' on' : '') + '" data-pw="follow" data-slug="' + esc(p.slug) + '" aria-pressed="' + fol + '">' + P('favorite') + esc(fol ? T('pw.following', 'Following') : T('pw.follow', 'Follow')) + '</button>') +
-          (code ? '' : '<button type="button" class="pw-btn pri" data-pw="book" data-id="' + esc(p.id) + '">' + P(pub ? 'person_add' : p.hot ? 'bolt' : books ? 'event_available' : 'redeem') + esc(pub ? T('pw.register', 'Register to book') : p.hot ? T('pw.grab', 'Grab it') : books ? T('pw.book', 'Book this deal') : T('pw.claim', 'Get this deal')) + '</button>') + '</div>' +
         (code ? '<div class="pw-code"><small>' + esc(T('pw.code', 'Your deal code')) + '</small><b>' + esc(code) + '</b><span>' + esc(T('pw.code.sub', 'Show it at the pro shop. You pay the course.')) + '</span></div>' : '') +
         (pub ? '<div class="pw-note">' + esc(T('pw.free', 'Free to join. Pay the course directly, never MyCaddiPro.')) + ' <a href="/?promo=' + encodeURIComponent(p.id) + '&signin=1">' + esc(T('pw.signin', 'Sign in')) + '</a></div>'
              : code ? '' : '<div class="pw-note">' + esc(books || p.hot ? F('pw.note.app', 'Booked straight onto {c}\'s tee sheet. You pay the course.', { c: p.short || p.course_name }) : F('pw.note.claim', 'You get a code to show at {c}. You pay the course.', { c: p.short || p.course_name })) + '</div>') +
+        '<div class="pw-acts">' +
+          (pub || p.hot ? '' : '<button type="button" class="pw-btn gh' + (fol ? ' on' : '') + '" data-pw="follow" data-slug="' + esc(p.slug) + '" aria-pressed="' + fol + '">' + P('favorite') + esc(fol ? T('pw.following', 'Following') : T('pw.follow', 'Follow')) + '</button>') +
+          (code ? '' : '<button type="button" class="pw-btn pri" data-pw="book" data-id="' + esc(p.id) + '">' + P(pub ? 'person_add' : p.hot ? 'bolt' : books ? 'event_available' : 'redeem') + esc(pub ? T('pw.register', 'Register to book') : p.hot ? T('pw.grab', 'Grab it') : books ? T('pw.book', 'Book this deal') : T('pw.claim', 'Get this deal')) + '</button>') + '</div>' +
       '</div></div>';
   }
   function openSheet(id) {

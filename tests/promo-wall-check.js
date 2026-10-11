@@ -13,6 +13,7 @@ const cp = read('public/course-promos.js');
 const idx = read('public/index.html');
 const ps = read('public/proshop-teesheet.html');
 const pub = read('public/tee-time-deals/index.html');
+const pf = read('sql/promo_prefs_v1521.sql');
 const fail = [];
 
 // expiry: required everywhere
@@ -67,6 +68,16 @@ if (!/@media \(min-width:900px\)\{#pwSheet\{padding:[^}]*\}[^@]*\.sh\.two\{[^}]*
 // phones: Book rides the bottom of the scrolling sheet (sticky), solid to the edge above the app's back button
 if (!/@media \(max-width:899px\)\{#ttxSheet \.sh:has\(\.ttx-ctabar\)\{padding-bottom:0\}\.ttx-ctabar\{position:sticky;bottom:0/.test(tt) || !/<div class="ttx-ctabar"><button type="button" class="ttx-cta" data-act="book"/.test(tt)) fail.push('tee-times.js: Book must be pinned to the bottom of the phone sheet');
 if (!/@media \(max-width:899px\)\{#pwSheet \.sh:has\(\.pw-acts\)\{padding-bottom:0\}\.pw-acts\{position:sticky;bottom:0/.test(pw)) fail.push('promo-wall.js: deal buttons must be pinned to the bottom of the phone sheet');
+// v1521 Your deals: the golfer's choices are theirs (verified login), drive For you AND the LINE alerts with ONE rule
+if (!/alter table public\.golfer_deal_prefs enable row level security;/.test(pf) || !/revoke all on public\.golfer_deal_prefs from anon, authenticated;/.test(pf)) fail.push('sql: golfer_deal_prefs must be RLS-locked, RPC only');
+if (!/me text := public\.line_id\(\);[\s\S]*?if me is null or me = '' then return jsonb_build_object\('ok', false, 'reason', 'signin'\)/.test(pf)) fail.push('sql: promo_prefs_set must use the verified login only');
+['_deal_match(public.golfer_deal_prefs, public.course_offers)', '_deal_for(text, public.course_offers)', '_deal_push(text, public.course_offers)'].forEach(f => { if (pf.indexOf('revoke execute on function public.' + f + ' from public, anon, authenticated;') < 0) fail.push('sql: ' + f + ' must stay server-only'); });
+if (!/if v_offer\.on_wall then\s+p_recipients := coalesce\(array\(select r from unnest\(p_recipients\) r where public\._deal_for\(r, v_offer\)\)/.test(pf) || !/case when v_offer\.on_wall then public\._deal_push\(r, v_offer\)/.test(pf)) fail.push('sql: deliver_course_offer must send a wall deal only to the golfers it is for');
+// the same tee-off buckets on both sides
+['00:00', '08:00', '11:00', '14:00', '24:00'].forEach(t => { if (pf.indexOf("'" + t + "'") < 0 || pw.indexOf("'" + t + "'") < 0) fail.push('tee-off bucket ' + t + ' must match in SQL and promo-wall.js'); });
+if (!/function dealMatch\(p, g\)/.test(pw) || !/S\.tab === 'foryou'\) l = S\.prefs \? l\.filter\(p => fits\(p, S\.prefs, S\.follows\)\)/.test(pw)) fail.push('promo-wall.js: For you must filter with dealMatch');
+if (!/rpc\('promo_prefs_get'/.test(tt) || !/rpc\('promo_prefs_set'/.test(tt)) fail.push('tee-times.js: Your deals must load + save through the RPCs');
+if (!/@media \(min-width:900px\)\{#pwSheet \.sh\.pf\{max-width:960px\}[^@]*\.pf-cols\{display:grid/.test(pw) || !/\.pf-foot\{position:sticky;bottom:0/.test(pw) || !/#pwSheet\.inapp \.sh\.pf\{padding:0\}/.test(pw)) fail.push('promo-wall.js: Your deals sheet must be two columns on desktop with Save pinned on phones');
 
 if (fail.length) { console.error('✗ promotions wall:\n  ' + fail.join('\n  ')); process.exit(1); }
 console.log('✓ promotions wall: expiry required, public fields only, places locked + handed back, ' + keys.size + ' strings in 4 languages');

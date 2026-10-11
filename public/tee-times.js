@@ -586,7 +586,7 @@
     }
     if (S.view === 'pay' || S.view === 'ticket') paintQrs();
     const pwHost = r.querySelector('#pwHost');
-    if (pwHost && W.PromoWall) { W.PromoWall.mount(pwHost, { mode: 'app', onBook: bookPromo, onFollow: followPromo, onOpen: seenPromo, loadCaddies: loadPromoCaddies }); if (!S.promoLoaded) loadPromos(); }
+    if (pwHost && W.PromoWall) { W.PromoWall.mount(pwHost, { mode: 'app', onBook: bookPromo, onFollow: followPromo, onOpen: seenPromo, loadCaddies: loadPromoCaddies, onSavePrefs: savePromoPrefs, onSignIn: promoSignIn }); if (!S.promoLoaded) loadPromos(); }
     const slipIn = r.querySelector('[data-in="slip"]');
     if (slipIn) slipIn.addEventListener('change', () => { if (slipIn.files && slipIn.files[0]) uploadSlip(slipIn.files[0]); });
     const sel = r.querySelector('.ttx-d.on'); if (sel && sel.scrollIntoView && S.view !== 'pay' && S.view !== 'ticket') { try { sel.parentNode.scrollLeft = Math.max(0, sel.offsetLeft - 60); } catch (e) {} }
@@ -721,7 +721,27 @@
       S.promoLoaded = true;
       paintModes();
       loadFollows();
+      if (!S.prefsLoaded) loadPromoPrefs();
     } catch (e) { console.warn('[TeeTimes] promos', e.message || e); if (!S.promoLoaded) PW.setData([]); }
+  }
+  // Your deals (v1521, Pete: "each golfer will get exactly what they are looking for"): saved on the server against the
+  // verified login (promo_prefs_get / promo_prefs_set), so the For you tab and the LINE alerts follow the same choices.
+  async function loadPromoPrefs() {
+    if (!W.PromoWall) return;
+    try { const r = await rpc('promo_prefs_get', { p_test: promoTest() }); S.prefsLoaded = true; W.PromoWall.setPrefs(r || {}); } catch (e) { console.warn('[TeeTimes] deal prefs', e.message || e); }
+  }
+  function promoSignIn() { const OI = W.OffersInbox; if (OI && OI.signInMsg) OI.signInMsg(); else toast(T('ttx.login', 'Log in to book a tee time'), 'error'); }
+  async function savePromoPrefs(d) {
+    const OI = W.OffersInbox;
+    if (OI && OI.signedIn && !(await OI.signedIn())) { promoSignIn(); return false; }
+    try {
+      const r = await rpc('promo_prefs_set', { p: d });
+      if (!r || !r.ok) { if (r && r.reason === 'signin') promoSignIn(); else toast(T('pw.pf.fail', 'Could not save your deals'), 'error'); return false; }
+      await loadFollows();
+      if (OI && OI.follows && S.followMap) { OI.follows.clear(); Object.keys(S.followMap).forEach(k => OI.follows.add(k)); }
+      toast(T('pw.pf.saved', 'Saved. For you now shows only your deals.'), 'success');
+      return true;
+    } catch (e) { toast(T('pw.pf.fail', 'Could not save your deals') + ' (' + (e.message || e) + ')', 'error'); return false; }
   }
   // the golfer's follows (OffersInbox owns them, keyed on courses.id) as venue slugs for the wall's Following tab
   async function loadFollows() {

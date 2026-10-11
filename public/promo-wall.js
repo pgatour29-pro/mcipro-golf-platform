@@ -37,7 +37,36 @@
     ['Chiang Mai', 'ttx.region.chiangmai', 'Chiang Mai'], ['Bangkok', 'ttx.region.bangkok', 'Bangkok']];
   const typeOf = k => TYPES.find(t => t[0] === k) || TYPES[TYPES.length - 1];
 
-  const S = { host: null, mode: 'app', list: [], loaded: false, tab: 'all', area: 'all', when: 'any', type: 'all', page: 0, pop: null, follows: [], claims: {}, caddies: {}, pendingOpen: null, sheetId: null, tick: null, sheetTick: null, opts: {} };
+  // Your deals (v1521): the golfer's saved choices. THE rule, kept in step with public._deal_match (sql/promo_prefs_v1521.sql)
+  const TOD = [['early', 'ttx.tod.early', 'Early', '00:00', '08:00'], ['morning', 'ttx.tod.morning', 'Morning', '08:00', '11:00'],
+    ['midday', 'ttx.tod.midday', 'Midday', '11:00', '14:00'], ['afternoon', 'ttx.tod.afternoon', 'Afternoon', '14:00', '24:00']];
+  const DAYS = [['any', 'pw.when.any', 'Any day'], ['weekday', 'pw.pf.days.wd', 'Weekdays'], ['weekend', 'pw.pf.days.we', 'Weekends']];
+  const PRICES = [0, 1000, 1500, 2000, 3000];
+  const ROUND = ['tee_time', 'society_package', 'caddy'], KNOWN = ['tee_time', 'society_package', 'caddy', 'food_beverage'];
+  const bkkDate = ts => { try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ts)); } catch (e) { return bkkToday(); } };
+  function dealMatch(p, g) {
+    if (!g) return true;
+    if (g.types && g.types.length && !(g.types.indexOf(p.type) >= 0 || (g.types.indexOf('promotion') >= 0 && KNOWN.indexOf(p.type) < 0))) return false;
+    if (g.regions && g.regions.length && g.regions.indexOf(p.region) < 0) return false;
+    if (g.max_price && p.price != null && +p.price > g.max_price) return false;
+    if (g.days && g.days !== 'any') {
+      const t = bkkToday(), d0 = p.play_from && p.play_from > t ? p.play_from : t;
+      let d1 = p.play_to || p.play_from || bkkDate(p.valid_to); if (d1 > addDays(d0, 6)) d1 = addDays(d0, 6);
+      let ok = false;
+      for (let d = d0; d <= d1 && !ok; d = addDays(d, 1)) { const w = new Date(d + 'T12:00:00Z').getUTCDay(); ok = g.days === 'weekend' ? (w === 0 || w === 6) : (w >= 1 && w <= 5); }
+      if (!ok) return false;
+    }
+    if (g.tod && g.tod.length && ROUND.indexOf(p.type) >= 0 && (p.time_from || p.time_to)) {
+      const tf = p.time_from || '00:00', tt = p.time_to || '23:59';
+      if (!TOD.some(b => g.tod.indexOf(b[0]) >= 0 && tf < b[4] && tt > b[3])) return false;
+    }
+    return true;
+  }
+  const fits = (p, g, fol) => dealMatch(p, g) && (!g || g.scope !== 'following' || fol.indexOf(p.slug) >= 0);
+  const blankPrefs = () => ({ types: [], regions: [], days: 'any', tod: [], max_price: null, scope: 'any', alerts: true });
+
+  const S = { prefs: null, signedIn: null, venues: [], draft: null, tabTouched: false,
+    host: null, mode: 'app', list: [], loaded: false, tab: 'all', area: 'all', when: 'any', type: 'all', page: 0, pop: null, follows: [], claims: {}, caddies: {}, pendingOpen: null, sheetId: null, tick: null, sheetTick: null, opts: {} };
 
   /* ------------------------------------------------------------------ time */
   const msLeft = p => new Date(p.valid_to).getTime() - Date.now();
@@ -100,7 +129,8 @@
   }
   function shown() {
     let l = base();
-    if (S.tab === 'following') l = l.filter(p => S.follows.indexOf(p.slug) >= 0);
+    if (S.tab === 'foryou') l = S.prefs ? l.filter(p => fits(p, S.prefs, S.follows)) : l;
+    else if (S.tab === 'following') l = l.filter(p => S.follows.indexOf(p.slug) >= 0);
     else if (S.tab !== 'all') l = l.filter(p => p.slug === S.tab);
     return l.sort((a, b) => msLeft(a) - msLeft(b));   // ending soonest first — it has to sell quickly
   }
@@ -177,6 +207,73 @@
 .pw-empty{border:1px dashed var(--chipLine);border-radius:16px;padding:22px 16px;text-align:center;color:var(--mute);font-size:13px;font-weight:600}
 .pw-empty b{display:block;color:var(--ink);font-size:14px;margin-bottom:4px}
 .pw-empty button{margin-top:10px;height:38px;border-radius:999px;border:1px solid var(--chipLine);background:var(--card);color:var(--ink);font-weight:800;font-size:12.5px;padding:0 14px}
+/* Your deals (v1521): summary bar on the wall + the settings sheet */
+.pw-you{display:flex;align-items:center;gap:11px;width:100%;margin:0 0 10px;padding:11px 12px;border-radius:16px;border:1px solid var(--chipLine);background:var(--card);color:var(--ink);text-align:left;box-shadow:var(--shadow);font:inherit}
+.pw-you .ic{width:38px;height:38px;border-radius:12px;background:var(--accSoft);color:var(--accSoftInk);display:flex;align-items:center;justify-content:center;flex:none}
+.pw-you .w{flex:1;min-width:0}
+.pw-you .w b{display:block;font-size:14px;font-weight:900}
+.pw-you .w span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12px;font-weight:600;color:var(--mute);line-height:1.35;margin-top:1px}
+.pw-you.set .w span{color:var(--sub)}
+.pw-you .go{flex:none;height:36px;border-radius:999px;border:0;background:var(--acc);color:#fff;font-weight:800;font-size:13px;padding:0 14px;display:flex;align-items:center;gap:4px;text-decoration:none;white-space:nowrap}
+.pw-you .go .material-symbols-outlined{font-size:16px}
+.pw-you.set .go{background:transparent;color:var(--acc);padding:0 2px}
+@media (max-width:479px){.pw-you:not(.set){flex-wrap:wrap}.pw-you:not(.set) .w{flex:1 1 calc(100% - 50px)}.pw-you:not(.set) .w span{-webkit-line-clamp:3}.pw-you:not(.set) .go{flex:1 1 100%;justify-content:center;height:40px}}
+.pw[data-look=dark] .pw-you:not(.set) .go,.pw[data-look=glass] .pw-you:not(.set) .go{color:var(--accInk)}
+#pwSheet .sh.pf,#pwSheet.inapp .sh.pf{padding:0}   /* beats the in-app 76px sheet padding: the sticky foot carries it instead */
+.pf-h{display:flex;align-items:flex-start;gap:10px;padding:16px 16px 4px}
+.pf-h .w{flex:1;min-width:0}
+.pf-h b{display:flex;align-items:center;gap:7px;font-size:18px;font-weight:900;letter-spacing:-.01em}
+.pf-h b .material-symbols-outlined{color:var(--acc);font-size:22px}
+.pf-h span{display:block;font-size:12.5px;color:var(--mute);font-weight:600;margin-top:2px}
+.pf-h .x{width:36px;height:36px;border-radius:50%;border:1px solid var(--chipLine);background:var(--card2);color:var(--mute);display:flex;align-items:center;justify-content:center;flex:none}
+.pf-cols{padding:0 16px 6px}
+.pf-sec{padding:12px 0;border-top:1px solid var(--line)}
+.pf-c1 .pf-sec:first-child{border-top:0}
+.pf-sec h4{margin:0;font-size:13.5px;font-weight:900;color:var(--ink)}
+.pf-sec p{margin:2px 0 0;font-size:11.5px;font-weight:600;color:var(--mute)}
+.pf-sec h5{margin:12px 0 0;font-size:12px;font-weight:800;color:var(--sub);display:flex;gap:6px;align-items:center}
+.pf-sec h5 em{font-style:normal;font:800 11px 'JetBrains Mono',monospace;background:var(--card2);border:1px solid var(--line);border-radius:7px;padding:1px 6px}
+.pf-chips,.pf-fol{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.pf-chip{min-height:38px;border-radius:999px;border:1.5px solid var(--chipLine);background:var(--card2);color:var(--sub);font-size:12.5px;font-weight:800;padding:0 12px 0 9px;display:flex;align-items:center;gap:5px;max-width:100%}
+.pf-chip .material-symbols-outlined{font-size:16px;flex:none}
+.pf-chip.on{border-color:var(--acc);background:var(--accSoft);color:var(--accSoftInk)}
+.pf-chip.ni{padding:0 12px}
+.pf-fol .pf-chip{padding:0 8px 0 9px}
+#pwSheet .pf-fol .fill{font-variation-settings:'FILL' 1,'wght' 500;color:#dc2626}
+.pf-seg{display:flex;gap:4px;margin-top:8px;padding:3px;border-radius:13px;background:var(--card2);border:1px solid var(--line)}
+.pf-seg button{flex:1 1 0;min-width:0;min-height:38px;border-radius:10px;border:0;background:transparent;color:var(--sub);font-size:12.5px;font-weight:800;padding:4px 4px;line-height:1.2}
+.pf-seg button.on{background:var(--card);color:var(--ink);box-shadow:0 0 0 1.5px var(--acc),0 1px 4px rgba(15,23,42,.12)}
+#pwSheet[data-look=white] .pf-seg button.on{background:#fff}
+.pf-warn{margin-top:8px;font-size:12px;font-weight:700;color:var(--amber);background:var(--amberBg);border:1px solid var(--amberLine);border-radius:10px;padding:7px 10px}
+.pf-none{font-size:12px;font-weight:600;color:var(--mute);padding:8px 2px 2px}
+.pf-q{display:flex;align-items:center;margin-top:10px;height:44px;border-radius:12px;border:1px solid var(--chipLine);background:var(--card2);padding:0 12px;color:var(--mute)}
+.pf-q input{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);font-size:16px;outline:0;font-family:inherit}
+.pf-res{margin-top:6px;max-height:228px;overflow-y:auto;overscroll-behavior:contain;border:1px solid var(--line);border-radius:12px;scrollbar-width:thin;scrollbar-color:var(--chipLine) transparent}
+.pf-res .pf-none{padding:12px}
+.pf-crs{display:flex;align-items:center;gap:8px;width:100%;min-height:48px;border:0;border-top:1px solid var(--line);background:transparent;color:var(--ink);padding:6px 10px;text-align:left}
+.pf-crs:first-child{border-top:0}
+.pf-crs .w{flex:1;min-width:0}
+.pf-crs b{display:block;font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pf-crs small{font-size:11px;color:var(--mute);font-weight:600}
+.pf-crs .hf{flex:none;display:flex;align-items:center;gap:3px;height:32px;border-radius:999px;border:1.5px solid var(--chipLine);padding:0 10px;font-size:12px;font-weight:800;color:var(--sub)}
+.pf-crs .hf .material-symbols-outlined{font-size:15px}
+.pf-crs:hover .hf{border-color:var(--acc);color:var(--acc)}
+.pf-sw{display:flex;align-items:center;gap:12px;width:100%;margin-top:8px;min-height:50px;border-radius:12px;border:1px solid var(--line);background:var(--card2);color:var(--ink);padding:8px 12px;text-align:left}
+.pf-sw .w{flex:1;font-size:12.5px;font-weight:700;line-height:1.35}
+.pf-sw i{flex:none;width:46px;height:28px;border-radius:999px;background:var(--chipLine);position:relative;transition:background .15s}
+.pf-sw i::after{content:'';position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .15s}
+.pf-sw.on i{background:var(--acc)}
+.pf-sw.on i::after{transform:translateX(18px)}
+.pf-foot{position:sticky;bottom:0;z-index:3;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px));background:#fff;border-top:1px solid var(--line);box-shadow:0 -10px 14px -12px rgba(15,23,42,.35)}
+#pwSheet[data-look=dark] .pf-foot{background:#111a2b}
+#pwSheet[data-look=glass] .pf-foot{background:rgba(12,28,20,.97)}
+.pf-foot .n{flex:1 1 100%;font-size:12px;font-weight:800;color:var(--acc)}
+.pf-foot .pw-btn{flex:1 1 0;margin:0}
+.pf-foot .pw-btn.gh{flex:0 0 auto;padding:0 18px}
+.pw-btn[disabled]{opacity:.55;cursor:default}
+@media (max-width:767px){#pwSheet.inapp .pf-foot{padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))}}
+@media (min-width:900px){#pwSheet .sh.pf{max-width:960px}.pf-h{padding:14px 22px 0}.pf-sec{padding:9px 0}.pf-chips,.pf-fol,.pf-seg{margin-top:7px}.pf-chip{min-height:34px;font-size:12px;padding:0 10px 0 8px;gap:4px}.pf-chip.ni{padding:0 11px}.pf-seg button{min-height:34px}.pf-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 28px;padding:0 22px 2px}.pf-c2 .pf-sec:first-child{border-top:0}
+  .pf-foot{padding:12px 22px;flex-wrap:nowrap}.pf-foot .n{flex:1 1 auto}.pf-foot .pw-btn.pri{flex:0 0 auto;min-width:160px}.pf-res{max-height:170px}}
 @media (max-width:439px){.pw-solo .pw-fb > .material-symbols-outlined:first-child{display:none}.pw-solo .pw-fb{padding:0 6px}}
 @media (min-width:900px){.pw-cube{aspect-ratio:16/10}}
 @media (max-width:379px){.pw-cube .tm .material-symbols-outlined{display:none}.pw-cube .tm{padding:0 4px}.pw-cube .tg{left:5px}.pw-cube .tm{right:5px}.pw-fb > .material-symbols-outlined:first-child{display:none}.pw-fb{padding:0 6px}.pw-cube .bt .p{font-size:14px}.pw-cube .bt .p s{display:none}.pw-cube .bt .h{font-size:10px}.pw-grid{gap:6px}}
@@ -286,26 +383,129 @@
     if (S.pop === 'type') rows = TYPES.map(t => [t[0], T(t[1], t[2]), t[3], t[0] === 'all' ? live0.length : live0.filter(p => p.type === t[0]).length, S.type === t[0]]);
     return '<div class="pw-pop" role="listbox">' + rows.map(r => '<button type="button" role="option" aria-selected="' + r[4] + '" class="' + (r[4] ? 'on' : '') + (r[3] ? '' : ' off') + '" data-pw="set" data-k="' + S.pop + '" data-v="' + esc(r[0]) + '">' + P(r[4] ? 'check' : r[2]) + esc(r[1]) + '<em>' + r[3] + '</em></button>').join('') + '</div>';
   }
+  /* ------------------------------------------------------------------ your deals */
+  function prefsSummary(g) {
+    const ty = g.types && g.types.length ? g.types.map(k => { const t = typeOf(k); return T(t[1], t[2]); }).join(', ') : T('pw.you.alltypes', 'All deal types');
+    const ar = g.regions && g.regions.length ? g.regions.map(r => { const a = AREAS.find(x => x[0] === r); return a ? T(a[1], a[2]) : r; }).join(', ') : T('pw.area.all', 'All areas');
+    const dy = DAYS.find(d => d[0] === g.days);
+    return [ty, ar, g.days && g.days !== 'any' && dy ? T(dy[1], dy[2]) : '',
+      g.tod && g.tod.length ? TOD.filter(b => g.tod.indexOf(b[0]) >= 0).map(b => T(b[1], b[2])).join(', ') : '',
+      g.max_price ? F('pw.you.upto', 'up to {a}', { a: baht(g.max_price) }) : '',
+      g.scope === 'following' ? F('pw.you.fol', 'courses you follow ({n})', { n: S.follows.length }) : '',
+      g.alerts ? T('pw.you.alerts.on', 'LINE alerts on') : T('pw.you.alerts.off', 'LINE alerts off')].filter(Boolean).join(' · ');
+  }
+  function youBar() {
+    if (S.mode === 'public') return '<div class="pw-you"><span class="ic">' + P('tune') + '</span><div class="w"><b>' + esc(T('pw.you.h', 'Get only the deals you want')) + '</b><span>' +
+      esc(T('pw.pub.sub', 'Register free, pick your courses, deal types, days and price, and we tell you when one fits.')) + '</span></div><a class="go" href="/?signup=1&amp;next=deals">' + esc(T('pw.pub.go', 'Register free')) + '</a></div>';
+    if (!S.prefs) return '<div class="pw-you"><span class="ic">' + P('tune') + '</span><div class="w"><b>' + esc(T('pw.you.h', 'Get only the deals you want')) + '</b><span>' +
+      esc(T('pw.you.sub', 'Pick your courses, deal types, areas, days and price. LINE tells you when one fits.')) + '</span></div><button type="button" class="go" data-pw="prefs">' + esc(T('pw.you.go', 'Set up')) + '</button></div>';
+    return '<button type="button" class="pw-you set" data-pw="prefs"><span class="ic">' + P('tune') + '</span><div class="w"><b>' + esc(T('pw.you.title', 'Your deals')) + '</b><span>' + esc(prefsSummary(S.prefs)) + '</span></div><span class="go">' + P('edit') + esc(T('pw.you.edit', 'Edit')) + '</span></button>';
+  }
+  const has = (arr, v) => (arr || []).indexOf(v) >= 0;
+  const hr = t => String(+t.slice(0, 2));   // '08:00' -> '8'
+  const chip = (k, v, on, label, icon) => '<button type="button" class="pf-chip' + (on ? ' on' : '') + (icon || on ? '' : ' ni') + '" data-pw="pf" data-k="' + k + '" data-v="' + esc(v) + '" aria-pressed="' + !!on + '">' + (on ? P('check') : icon ? P(icon) : '') + esc(label) + '</button>';
+  const pfSec = (title, sub, body) => '<section class="pf-sec"><h4>' + esc(title) + '</h4>' + (sub ? '<p>' + esc(sub) + '</p>' : '') + body + '</section>';
+  function pfResults() {
+    const d = S.draft, q = (d.q || '').trim().toLowerCase();
+    let v = S.venues.filter(x => d.follows.indexOf(x.slug) < 0);
+    if (q) v = v.filter(x => (x.name + ' ' + x.short + ' ' + (x.region || '')).toLowerCase().indexOf(q) >= 0);
+    else if (d.regions.length) v = v.filter(x => d.regions.indexOf(x.region) >= 0);
+    if (!v.length) return '<div class="pf-none">' + esc(q ? T('pw.pf.nores', 'No course by that name') : T('pw.pf.allfol', 'You follow every course here.')) + '</div>';
+    return v.slice(0, 60).map(x => '<button type="button" class="pf-crs" data-pw="pfol" data-v="' + esc(x.slug) + '"><span class="w"><b>' + esc(x.name) + '</b><small>' + esc(x.region || '') + '</small></span><span class="hf">' + P('favorite') + esc(T('pw.follow', 'Follow')) + '</span></button>').join('');
+  }
+  function prefsHtml() {
+    const d = S.draft, nameOf = sl => (S.venues.find(x => x.slug === sl) || { short: sl }).short;
+    const n = S.list.filter(live).filter(p => fits(p, d, d.follows)).length;
+    const regions = AREAS.slice(1).filter(a => !S.venues.length || S.venues.some(x => x.region === a[0]));
+    const left = pfSec(T('pw.pf.types', 'Deal types'), T('pw.pf.types.sub', 'None picked means every type.'), '<div class="pf-chips">' + TYPES.slice(1).map(t => chip('types', t[0], has(d.types, t[0]), T(t[1], t[2]), t[3])).join('') + '</div>') +
+      pfSec(T('pw.pf.areas', 'Areas'), T('pw.pf.areas.sub', 'None picked means every area.'), '<div class="pf-chips">' + regions.map(a => chip('regions', a[0], has(d.regions, a[0]), T(a[1], a[2]), 'location_on')).join('') + '</div>') +
+      pfSec(T('pw.pf.days', 'Days'), '', '<div class="pf-seg">' + DAYS.map(x => '<button type="button" class="' + (d.days === x[0] ? 'on' : '') + '" data-pw="pf" data-k="days" data-v="' + x[0] + '">' + esc(T(x[1], x[2])) + '</button>').join('') + '</div>') +
+      pfSec(T('pw.pf.tod', 'Tee off'), T('pw.pf.tod.sub', 'For tee times, packages and caddies.'), '<div class="pf-chips">' + TOD.map(b => chip('tod', b[0], has(d.tod, b[0]), T(b[1], b[2]) + ' ' + (b[3] === '00:00' ? '<' + hr(b[4]) : b[4] === '24:00' ? hr(b[3]) + '+' : hr(b[3]) + '-' + hr(b[4])), '')).join('') + '</div>') +
+      pfSec(T('pw.pf.price', 'Price per player, up to'), '', '<div class="pf-seg">' + PRICES.map(v => '<button type="button" class="' + ((d.max_price || 0) === v ? 'on' : '') + '" data-pw="pf" data-k="max_price" data-v="' + v + '">' + esc(v ? baht(v) : T('pw.pf.price.any', 'Any')) + '</button>').join('') + '</div>');
+    const fol = d.follows.length ? '<div class="pf-fol">' + d.follows.map(sl => '<button type="button" class="pf-chip on" data-pw="pfol" data-v="' + esc(sl) + '" aria-label="' + esc(T('pw.unfollow', 'Unfollow') + ' ' + nameOf(sl)) + '">' + '<span class="material-symbols-outlined fill">favorite</span>' + esc(nameOf(sl)) + P('close') + '</button>').join('') + '</div>'
+      : '<div class="pf-none">' + esc(T('pw.pf.fol.none', 'You follow no courses yet. Find one below.')) + '</div>';
+    const right = pfSec(T('pw.pf.courses', 'Courses'), '', '<div class="pf-seg">' +
+        '<button type="button" class="' + (d.scope !== 'following' ? 'on' : '') + '" data-pw="pf" data-k="scope" data-v="any">' + esc(T('pw.pf.scope.any', 'Any course')) + '</button>' +
+        '<button type="button" class="' + (d.scope === 'following' ? 'on' : '') + '" data-pw="pf" data-k="scope" data-v="following">' + esc(T('pw.pf.scope.fol', 'Only courses I follow')) + '</button></div>' +
+        (d.scope === 'following' && !d.follows.length ? '<div class="pf-warn">' + esc(T('pw.pf.fol.need', 'Follow at least one course, or choose Any course.')) + '</div>' : '') +
+        '<h5>' + esc(T('pw.pf.fol.h', 'Courses you follow')) + ' <em>' + d.follows.length + '</em></h5>' + fol +
+        '<label class="pf-q"><input type="text" inputmode="search" enterkeyhint="search" data-pfq autocomplete="off" placeholder="' + esc(T('pw.pf.find', 'Find a course to follow')) + '" value="' + esc(d.q || '') + '"></label>' +
+        '<div class="pf-res">' + pfResults() + '</div>') +
+      pfSec(T('pw.pf.alerts', 'LINE alerts'), '', '<button type="button" class="pf-sw' + (d.alerts ? ' on' : '') + '" data-pw="pf" data-k="alerts" role="switch" aria-checked="' + !!d.alerts + '"><span class="w">' + esc(T('pw.pf.alerts.sub', 'Tell me on LINE when a deal for me is posted.')) + '</span><i></i></button>');
+    return '<div class="sh pf" role="dialog" aria-modal="true" aria-label="' + esc(T('pw.you.title', 'Your deals')) + '">' +
+      '<div class="pf-h"><div class="w"><b>' + P('tune') + esc(T('pw.you.title', 'Your deals')) + '</b><span>' + esc(T('pw.pf.sub', 'Only the deals you want, on the wall and in your LINE alerts.')) + '</span></div>' +
+        '<button type="button" class="x" data-pw="close" aria-label="' + esc(T('pw.close', 'Close')) + '">' + P('close') + '</button></div>' +
+      '<div class="pf-cols"><div class="pf-c1">' + left + '</div><div class="pf-c2">' + right + '</div></div>' +
+      '<div class="pf-foot"><span class="n">' + esc(n === 1 ? T('pw.pf.match1', '1 deal on the wall fits right now') : F('pw.pf.match', '{n} deals on the wall fit right now', { n: n })) + '</span>' +
+        '<button type="button" class="pw-btn gh" data-pw="pfreset">' + esc(T('pw.pf.reset', 'Reset')) + '</button>' +
+        '<button type="button" class="pw-btn pri" data-pw="pfsave"' + (d.busy || (d.scope === 'following' && !d.follows.length) ? ' disabled' : '') + '>' + P('check') + esc(d.busy ? T('pw.pf.saving', 'Saving…') : T('pw.pf.save', 'Save')) + '</button></div>' +
+      '</div>';
+  }
+  function openPrefs() {
+    if (S.mode !== 'app') return;
+    if (S.signedIn === false) { if (S.opts.onSignIn) S.opts.onSignIn(); return; }
+    closeSheet();
+    const g = S.prefs || blankPrefs();
+    S.draft = { types: (g.types || []).slice(), regions: (g.regions || []).slice(), days: g.days || 'any', tod: (g.tod || []).slice(), max_price: g.max_price || null,
+      scope: g.scope || 'any', alerts: g.alerts !== false, follows: S.follows.slice(), q: '', busy: false };
+    const el = document.createElement('div'); el.id = 'pwSheet';
+    el.dataset.look = (S.host && S.host.closest('[data-look]') && S.host.closest('[data-look]').dataset.look) || 'white';
+    el.className = 'inapp';
+    el.innerHTML = prefsHtml();
+    el.addEventListener('click', e => { if (e.target === el) closeSheet(); else onClick(e); });
+    el.addEventListener('input', e => {
+      if (!e.target.matches('[data-pfq]') || !S.draft) return;
+      S.draft.q = e.target.value; const r = el.querySelector('.pf-res'); if (r) { r.innerHTML = pfResults(); r.scrollTop = 0; }
+    });
+    document.body.appendChild(el);
+  }
+  function repaintPrefs() {
+    const sh = document.querySelector('#pwSheet .sh.pf'); if (!sh || !S.draft) return;
+    const st = sh.scrollTop, rs = (sh.querySelector('.pf-res') || {}).scrollTop || 0;
+    sh.outerHTML = prefsHtml();
+    const n = document.querySelector('#pwSheet .sh.pf'); if (!n) return;
+    n.scrollTop = st; const r = n.querySelector('.pf-res'); if (r) r.scrollTop = rs;
+  }
+  async function savePrefs() {
+    const d = S.draft; if (!d || d.busy) return;
+    const out = { types: d.types, regions: d.regions, days: d.days, tod: d.tod, max_price: d.max_price || null, scope: d.scope, alerts: d.alerts, follows: d.follows };
+    d.busy = true; repaintPrefs();
+    let ok = false;
+    try { ok = S.opts.onSavePrefs ? await S.opts.onSavePrefs(out) : false; } catch (e) { ok = false; }
+    if (!S.draft) return;
+    if (!ok) { S.draft.busy = false; repaintPrefs(); return; }
+    S.prefs = { types: out.types, regions: out.regions, days: out.days, tod: out.tod, max_price: out.max_price, scope: out.scope, alerts: out.alerts };
+    S.follows = out.follows.slice(); S.tab = 'foryou'; S.page = 0;
+    closeSheet(); paint();
+  }
+
   function html() {
     const tabs = courseTabs(), b = base(), list = shown();
-    if (S.tab !== 'all' && S.tab !== 'following' && !tabs.some(t => t.slug === S.tab)) S.tab = 'all';
+    if (S.tab === 'foryou' && !S.prefs) S.tab = 'all';
+    if (S.tab !== 'all' && S.tab !== 'following' && S.tab !== 'foryou' && !tabs.some(t => t.slug === S.tab)) S.tab = 'all';
     const pages = Math.max(1, Math.ceil(list.length / PER_PAGE)); if (S.page >= pages) S.page = pages - 1;
     const pageL = list.slice(S.page * PER_PAGE, S.page * PER_PAGE + PER_PAGE);
     const fN = b.filter(p => S.follows.indexOf(p.slug) >= 0).length;
-    let h = '<div class="pw-tabs" role="tablist">' +
+    const yN = S.prefs ? b.filter(p => fits(p, S.prefs, S.follows)).length : 0;
+    let h = youBar() + '<div class="pw-tabs" role="tablist">' +
+      (S.mode === 'app' && S.prefs ? '<button type="button" role="tab" class="pw-tab' + (S.tab === 'foryou' ? ' on' : '') + '" data-pw="tab" data-v="foryou">' + P('person_check') + esc(T('pw.tab.foryou', 'For you')) + '<i>' + yN + '</i></button>' : '') +
       '<button type="button" role="tab" class="pw-tab' + (S.tab === 'all' ? ' on' : '') + '" data-pw="tab" data-v="all">' + P('apps') + esc(T('pw.tab.all', 'All courses')) + '<i>' + b.length + '</i></button>' +
       (S.mode === 'app' ? '<button type="button" role="tab" class="pw-tab' + (S.tab === 'following' ? ' on' : '') + '" data-pw="tab" data-v="following">' + P('favorite') + esc(T('pw.tab.following', 'Following')) + '<i>' + fN + '</i></button>' : '') +
       tabs.map(t => '<button type="button" role="tab" class="pw-tab' + (S.tab === t.slug ? ' on' : '') + '" data-pw="tab" data-v="' + esc(t.slug) + '">' + esc(t.name) + '<i>' + t.n + '</i></button>').join('') + '</div>';
     const ar = AREAS.find(a => a[0] === S.area), wh = WHEN.find(w => w[0] === S.when), ty = typeOf(S.type);
     h += '<div class="pw-filt">' + filterBtn('area', 'location_on', T(ar[1], ar[2]), S.area !== 'all') + filterBtn('when', 'calendar_month', T(wh[1], wh[2]), S.when !== 'any') + filterBtn('type', S.type === 'all' ? 'tune' : ty[3], T(ty[1], ty[2]), S.type !== 'all') + popHtml() + '</div>';
-    const cur = S.tab === 'all' ? T('pw.h.all', 'Ending soonest') : S.tab === 'following' ? T('pw.h.following', 'Courses you follow') : ((tabs.find(t => t.slug === S.tab) || {}).name || '');
+    const cur = S.tab === 'foryou' ? T('pw.h.foryou', 'Deals for you') : S.tab === 'all' ? T('pw.h.all', 'Ending soonest') : S.tab === 'following' ? T('pw.h.following', 'Courses you follow') : ((tabs.find(t => t.slug === S.tab) || {}).name || '');
     h += '<div class="pw-head"><b>' + esc(cur) + '</b><span>' + esc(list.length ? F('pw.range', '{a}-{b} of {n}', { a: S.page * PER_PAGE + 1, b: S.page * PER_PAGE + pageL.length, n: list.length }) : '') + '</span></div>';
     if (!S.loaded) h += '<div class="pw-grid">' + Array.from({ length: 9 }).map(() => '<div class="pw-cube" style="background:var(--card2)"></div>').join('') + '</div>';
     else if (!pageL.length) {
       const filtered = S.area !== 'all' || S.when !== 'any' || S.type !== 'all';
-      h += '<div class="pw-empty"><b>' + esc(S.tab === 'following' && !fN ? T('pw.empty.follow', 'No promotions from courses you follow') : T('pw.empty', 'No promotions match')) + '</b>' +
+      if (S.tab === 'foryou') h += '<div class="pw-empty"><b>' + esc(T('pw.empty.foryou', 'No deals fit your choices right now')) + '</b>' +
+        esc(S.prefs && S.prefs.alerts ? T('pw.empty.foryou.al', 'Courses post new deals all the time. LINE tells you the minute one fits.') : T('pw.empty.foryou.sub', 'Courses post new deals all the time. Change your choices or see every deal.')) +
+        '<br><button type="button" data-pw="prefs">' + esc(T('pw.pf.change', 'Change your deals')) + '</button> <button type="button" data-pw="tab" data-v="all">' + esc(T('pw.seeall', 'See all deals')) + '</button></div>';
+      else h += '<div class="pw-empty"><b>' + esc(S.tab === 'following' && !fN ? T('pw.empty.follow', 'No promotions from courses you follow') : T('pw.empty', 'No promotions match')) + '</b>' +
         esc(S.tab === 'following' ? T('pw.empty.follow.sub', 'Open any promotion and tap Follow to hear first when that course posts a deal.') : T('pw.empty.sub', 'Courses post new deals all the time. Try another day or area.')) +
-        (filtered ? '<br><button type="button" data-pw="clear">' + esc(T('pw.clear', 'Clear filters')) + '</button>' : '') + '</div>';
+        (filtered ? '<br><button type="button" data-pw="clear">' + esc(T('pw.clear', 'Clear filters')) + '</button>' : '') +
+        (S.tab === 'following' && S.mode === 'app' ? (filtered ? ' ' : '<br>') + '<button type="button" data-pw="prefs">' + esc(T('pw.follow.find', 'Follow courses')) + '</button>' : '') + '</div>';
     } else h += '<div class="pw-grid">' + pageL.map(cube).join('') + '</div>';
     if (pages > 1) h += '<div class="pw-pager"><button type="button" data-pw="page" data-v="-1" aria-label="' + esc(T('pw.prev', 'Previous')) + '"' + (S.page ? '' : ' disabled') + '>' + P('chevron_left') + '</button><span>' + (S.page + 1) + ' / ' + pages + '</span><button type="button" data-pw="page" data-v="1" aria-label="' + esc(T('pw.next', 'Next')) + '"' + (S.page < pages - 1 ? '' : ' disabled') + '>' + P('chevron_right') + '</button></div>';
     return h;
@@ -393,7 +593,7 @@
   function closeSheet() {
     const el = document.getElementById('pwSheet'); if (el) el.remove();
     if (S.sheetTick) { clearInterval(S.sheetTick); S.sheetTick = null; }
-    S.sheetId = null;
+    S.sheetId = null; S.draft = null;
   }
 
   /* ------------------------------------------------------------------ input */
@@ -401,7 +601,20 @@
     const a = e.target.closest('[data-pw]');
     if (!a) { if (S.pop && !e.target.closest('.pw-pop')) { S.pop = null; paint(); } return; }
     const k = a.dataset.pw, v = a.dataset.v;
-    if (k === 'tab') { S.tab = v; S.page = 0; S.pop = null; paint(); }
+    if (k === 'tab') { S.tab = v; S.tabTouched = true; S.page = 0; S.pop = null; paint(); }
+    else if (k === 'prefs') openPrefs();
+    else if (k === 'pf' && S.draft) {
+      const key = a.dataset.k, d = S.draft;
+      if (key === 'types' || key === 'regions' || key === 'tod') { const i = d[key].indexOf(v); if (i >= 0) d[key].splice(i, 1); else d[key].push(v); }
+      else if (key === 'days' || key === 'scope') d[key] = v;
+      else if (key === 'max_price') d.max_price = +v || null;
+      else if (key === 'alerts') d.alerts = !d.alerts;
+      repaintPrefs();
+    } else if (k === 'pfol' && S.draft) {
+      const i = S.draft.follows.indexOf(v); if (i >= 0) S.draft.follows.splice(i, 1); else S.draft.follows.push(v);
+      repaintPrefs();
+    } else if (k === 'pfreset' && S.draft) { Object.assign(S.draft, blankPrefs()); repaintPrefs(); }
+    else if (k === 'pfsave') savePrefs();
     else if (k === 'pop') { S.pop = S.pop === v ? null : v; paint(); }
     else if (k === 'set') { S[a.dataset.k] = v; S.pop = null; S.page = 0; paint(); }
     else if (k === 'clear') { S.area = 'all'; S.when = 'any'; S.type = 'all'; S.page = 0; paint(); }
@@ -443,8 +656,19 @@
     if (S.sheetId) { const p = S.list.find(x => x.id === S.sheetId); if (!p || !live(p)) closeSheet(); else repaintSheet(); }
     if (S.pendingOpen) { const id = S.pendingOpen; S.pendingOpen = null; openSheet(id); }
   }
+  // the host hands over {signed_in, venues, follows, prefs} from promo_prefs_get
+  function setPrefs(r) {
+    r = r || {};
+    S.signedIn = r.signed_in === true ? true : r.signed_in === false ? false : null;
+    if (Array.isArray(r.venues)) S.venues = r.venues;
+    if (Array.isArray(r.follows) && r.signed_in) S.follows = r.follows.slice();
+    const g = r.prefs;
+    S.prefs = g ? { types: g.types || [], regions: g.regions || [], days: g.days || 'any', tod: g.tod || [], max_price: g.max_price || null, scope: g.scope || 'any', alerts: g.alerts !== false } : null;
+    if (S.prefs && !S.tabTouched) S.tab = 'foryou';
+    paint();
+  }
   function setFollows(follows) { S.follows = (follows || []).slice(); paint(); repaintSheet(); }
   function setClaims(map) { S.claims = Object.assign({}, map || {}); repaintSheet(); }
   W.PromoWall = { mount, setData, setFollows, setClaims, paint, openSheet, closeSheet, count, find: id => S.list.find(x => x.id === id) || null, bookable,
-    isOpen: () => !!S.sheetId, cubeHtml: p => { css(); return cube(p); }, leftShort, _S: S };
+    isOpen: () => !!S.sheetId || !!S.draft, setPrefs, openPrefs, dealMatch, cubeHtml: p => { css(); return cube(p); }, leftShort, _S: S };
 })();

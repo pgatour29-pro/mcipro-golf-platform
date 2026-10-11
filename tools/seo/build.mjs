@@ -169,7 +169,7 @@ ${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld)}</script
 <div class="hero">${kicker ? `<div class="kick">${esc(kicker)}</div>` : ''}<h1>${esc(h1)}</h1><p>${esc(lead)}</p>${stats || ''}</div></div></header>
 <main><div class="wrap">${body}</div></main>
 <section class="gpref"><div class="wrap"><div><b>See MyCaddiPro first on Google</b><span>Add us as a preferred source and Google shows more of our golf pages in your results.</span></div><div google-add-preferred-source-btn data-lang="en"></div></div></section>
-<footer><div class="wrap">MyCaddiPro · tee times, caddies, societies and live scoring for golf in Pattaya and the eastern seaboard · <a href="/privacy.html">Privacy</a> · <a href="/about/">About</a> · <a href="/features/">What we offer</a> · <a href="/golf-this-week/">Golf this week</a> · <a href="/">Open the app</a></div></footer>
+<footer><div class="wrap">MyCaddiPro · tee times, caddies, societies and live scoring for golf in Pattaya and the eastern seaboard · <a href="/privacy.html">Privacy</a> · <a href="/about/">About</a> · <a href="/features/">What we offer</a> · <a href="/golf-this-week/">Golf this week</a> · <a href="/tee-time-deals/">Tee time deals</a> · <a href="/">Open the app</a></div></footer>
 </body></html>`;
 }
 function write(path, html) { const dir = join(PUB, path); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'index.html'), html); }
@@ -321,7 +321,7 @@ ${weeks.slice(0, 20).map((w) => `<item><title>${esc(w.title)}</title><link>${SIT
 // --- sitemap + robots
 const lastmod = ISO(TODAY);
 writeFileSync(join(PUB, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-    [['/', '1.0'], ['/about/', '0.9'], ['/features/', '0.9'], ...urls.filter((u) => u !== '/about/').map((u) => [u, u.split('/').length > 3 ? '0.7' : '0.8']), ['/privacy.html', '0.2']]
+    [['/', '1.0'], ['/about/', '0.9'], ['/features/', '0.9'], ['/tee-time-deals/', '0.9'], ...urls.filter((u) => u !== '/about/').map((u) => [u, u.split('/').length > 3 ? '0.7' : '0.8']), ['/privacy.html', '0.2']]
         .map(([u, p]) => `  <url><loc>${SITE}${u}</loc><lastmod>${lastmod}</lastmod><priority>${p}</priority></url>`)
         .concat(weekUrls.map(([u, d], i) => `  <url><loc>${SITE}${u}</loc><lastmod>${d}</lastmod><priority>${i < 2 ? '0.9' : '0.5'}</priority></url>`)).join('\n') + '\n</urlset>\n');
 writeFileSync(join(PUB, 'robots.txt'), `User-agent: *

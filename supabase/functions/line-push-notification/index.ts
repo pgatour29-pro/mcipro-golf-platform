@@ -1939,7 +1939,15 @@ async function handleCourseOffer(supabase: any, record: any) {
   for (const [lang, ids] of byLang) {
     const c = copyFor(lang);
     const venue = offer.course_name || offer.course_id;
-    const text = `\u26F3 ${venue}\n\n${c.title}\n${c.body}`;
+    // v1513 Promotions Wall: price, end time and a link that opens this deal in Tee Times
+    let extra = "";
+    if (offer.on_wall) {
+      const baht = (n: number) => "\u0E3F" + Math.round(n).toLocaleString("en-US");
+      const ends = new Date(offer.valid_to).toLocaleString("en-GB", { timeZone: "Asia/Bangkok", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+      if (offer.price) extra += `\n${baht(offer.price)}${offer.was_price ? " (was " + baht(offer.was_price) + ")" : ""}`;
+      extra += `\nEnds ${ends}\nhttps://mycaddipro.com/?promo=${offer.id}`;
+    }
+    const text = `\u26F3 ${venue}\n\n${c.title}${c.body ? "\n" + c.body : ""}${extra}`;
     for (const batch of chunkArray(ids, 500)) {
       totalSent += await sendMulticast(batch, [{ type: "text", text }]);
     }

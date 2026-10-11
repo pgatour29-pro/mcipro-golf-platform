@@ -52,7 +52,8 @@
     day: null, dayKey: '', daySeq: 0, dayLoading: false,
     slug: null, cfg: null, slots: null, slotsKey: '', slotSeq: 0, start: 'all', sel: null,
     mine: [], mineSeq: 0, mineLoaded: false, bid: null,
-    caddyCount: null, chan: null, chanKey: '', tick: null, sheet: null, busy: false, dirty: false, wired: false
+    caddyCount: null, chan: null, chanKey: '', tick: null, sheet: null, busy: false, dirty: false, wired: false,
+    promo: null, promoSeq: 0, promoLoaded: false, followMap: {}, seen: {}, pchan: null
   };
 
   /* ------------------------------------------------------------------ look (WHITE / DARK / GLASS) */
@@ -118,6 +119,20 @@
 .ttx-d.on{background:var(--acc);border-color:var(--acc);color:var(--accInk)}
 #ttxRoot[data-look=white] .ttx-d.on{color:#fff}
 .ttx-d.on small{color:inherit;opacity:.9}
+.ttx-deal{display:flex;align-items:center;gap:10px;margin:0 0 10px;border-radius:14px;padding:10px 10px 10px 12px;background:var(--amberBg);border:1px solid var(--amberLine);color:var(--amber)}
+.ttx-deal > .material-symbols-outlined{font-size:22px}
+.ttx-deal .w{flex:1;min-width:0}
+.ttx-deal .w b{display:block;font-size:14px;font-weight:900;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ttx-deal .w span{display:block;font-size:11.5px;font-weight:700}
+.ttx-deal .w span.no{color:var(--ink);margin-top:2px}
+.ttx-deal button{flex:none;width:34px;height:34px;border-radius:10px;border:1px solid var(--amberLine);background:transparent;color:var(--amber);display:flex;align-items:center;justify-content:center}
+.ttx-d.dl{box-shadow:inset 0 -3px 0 #f59e0b}
+.ttx-modes{display:flex;gap:3px;padding:3px;border-radius:14px;background:var(--chip);border:1px solid var(--chipLine);margin:0 0 10px;box-shadow:var(--shadow)}
+.ttx-modes button{flex:1;height:40px;border:0;border-radius:11px;background:transparent;color:var(--sub);font-size:13.5px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:6px}
+.ttx-modes button .material-symbols-outlined{font-size:18px}
+.ttx-modes button.on{background:var(--acc);color:#fff}
+#ttxRoot[data-look=dark] .ttx-modes button.on,#ttxRoot[data-look=glass] .ttx-modes button.on{color:var(--accInk)}
+.ttx-modes button i{font-style:normal;font:800 11px 'JetBrains Mono',monospace;min-width:20px;height:20px;border-radius:7px;background:#f59e0b;color:#1c1300;display:flex;align-items:center;justify-content:center;padding:0 4px}
 .ttx-row{display:flex;gap:6px;margin:0 -12px 8px;padding:2px 12px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;align-items:center}
 .ttx-row::-webkit-scrollbar{display:none}
 .ttx-seg{display:flex;align-items:center;background:var(--card);border:1px solid var(--chipLine);border-radius:999px;padding:3px;flex:none;box-shadow:var(--shadow)}
@@ -547,6 +562,7 @@
     else if (S.view === 'pay') r.innerHTML = vPay();
     else if (S.view === 'ticket') r.innerHTML = vTicket();
     else if (S.view === 'mine') r.innerHTML = vMine();
+    else if (S.view === 'promos') r.innerHTML = vPromos();
     else r.innerHTML = vHome();
     afterPaint();
   }
@@ -560,6 +576,8 @@
       else hd.style.display = 'none';
     }
     if (S.view === 'pay' || S.view === 'ticket') paintQrs();
+    const pwHost = r.querySelector('#pwHost');
+    if (pwHost && W.PromoWall) { W.PromoWall.mount(pwHost, { mode: 'app', onBook: bookPromo, onFollow: followPromo, onOpen: seenPromo }); if (!S.promoLoaded) loadPromos(); }
     const slipIn = r.querySelector('[data-in="slip"]');
     if (slipIn) slipIn.addEventListener('change', () => { if (slipIn.files && slipIn.files[0]) uploadSlip(slipIn.files[0]); });
     const sel = r.querySelector('.ttx-d.on'); if (sel && sel.scrollIntoView && S.view !== 'pay' && S.view !== 'ticket') { try { sel.parentNode.scrollLeft = Math.max(0, sel.offsetLeft - 60); } catch (e) {} }
@@ -589,7 +607,7 @@
     const today = bkkToday(); let h = '<div class="ttx-dates" role="tablist">';
     for (let i = 0; i < 14; i++) {
       const d = addDays(today, i), dow = new Date(d + 'T12:00:00Z').getUTCDay();
-      h += '<button type="button" class="ttx-d' + (d === S.date ? ' on' : '') + ((dow === 0 || dow === 6) ? ' wk' : '') + '" data-act="date" data-v="' + d + '">' +
+      h += '<button type="button" class="ttx-d' + (d === S.date ? ' on' : '') + ((dow === 0 || dow === 6) ? ' wk' : '') + (promoOn() && promoDay(d) ? ' dl' : '') + '" data-act="date" data-v="' + d + '">' +
         '<small>' + esc(i === 0 ? T('ttx.today', 'Today') : dayFmt(d, { weekday: 'short' })) + '</small><b>' + (+d.slice(8, 10)) + '</b></button>';
     }
     return h + '</div>';
@@ -640,7 +658,7 @@
       : st === 'gone' ? PF('event_busy') + esc(a.state === 'released' ? T('ttx.st.released', 'Released by the pro shop') : T('ttx.st.expired', 'Released · not paid in time'))
       : PF('event_available') + esc(T('ttx.st.booked', 'Booked · pay at the course'));
     const cad = (b.golfers || []).filter(g => g && g.caddyNumber).length, open = +b.caddies_needed || 0;
-    const sub = [nineLabel({ nines: ['A', 'B'], holes: 18, nine_names: b.nine_names }, b.nine || 'A'), F('ttx.np', '{n} players', { n: b.players || 1 }),
+    const sub = [a.promo ? F('pw.hold.deal', 'Deal: {t}', { t: a.promo.title }) : '', nineLabel({ nines: ['A', 'B'], holes: 18, nine_names: b.nine_names }, b.nine || 'A'), F('ttx.np', '{n} players', { n: b.players || 1 }),
       st !== 'gone' && cad ? F('ttx.cad.n', '{n} caddies', { n: cad }) : '', st !== 'gone' && open ? F('ttx.cad.open', '{n} by the pro shop', { n: open }) : ''].filter(Boolean).join(' · ');
     const acts = st === 'due' ? '<button type="button" class="ttx-btn amb" data-act="open-pay" data-id="' + esc(b.id) + '">' + P('qr_code_2') + esc(a.rule === 'full' ? T('ttx.pay.full', 'Pay in full') : T('ttx.pay.deposit', 'Pay deposit')) + '</button>'
       : st === 'gone' ? '<button type="button" class="ttx-btn gh" data-act="course" data-slug="' + esc(b.slug) + '">' + P('refresh') + esc(T('ttx.rebook', 'Book again')) + '</button>' : '';
@@ -652,7 +670,7 @@
   }
   function vHome() {
     const mine = upcomingMine(), act = activeMine();
-    let h = '<div class="ttx-top"><div class="ttx-ttl"><b>' + esc(T('ttx.title', 'Tee Times')) + '</b><span><i class="ttx-pulse"></i>' + esc(T('ttx.sub', 'Live course sheets')) + '</span></div>' + looksRail(false) + '</div>' +
+    let h = topBar() + modes() +
       '<div class="ttx-search"><label class="ttx-sbox ttx-gl">' + P('search') + '<input type="search" data-in="q" autocomplete="off" value="' + esc(S.q) + '" placeholder="' + esc(T('ttx.search', 'Course or area')) + '" aria-label="' + esc(T('ttx.search', 'Course or area')) + '"></label>' +
       '<button type="button" class="ttx-mine ttx-gl" data-act="mine">' + P('confirmation_number') + esc(T('ttx.mine', 'Mine')) + (act.length ? '<i>' + act.length + '</i>' : '') + '</button></div>' +
       datesStrip() +
@@ -666,6 +684,131 @@
     h += '<div data-slot="deals"></div>';
     h += '<div id="ttxList">' + listHtml() + '</div>';
     return h;
+  }
+  function topBar() {
+    return '<div class="ttx-top"><div class="ttx-ttl"><b>' + esc(T('ttx.title', 'Tee Times')) + '</b><span><i class="ttx-pulse"></i>' + esc(T('ttx.sub', 'Live course sheets')) + '</span></div>' + looksRail(false) + '</div>';
+  }
+  // Pete 2026-10-11: the promotions wall "sits inside the Tee Times cube where it belongs" — a second mode, not a new cube
+  function modes() {
+    const n = W.PromoWall ? W.PromoWall.count() : 0;
+    return '<div class="ttx-modes ttx-gl" role="tablist">' +
+      '<button type="button" role="tab" class="' + (S.view === 'promos' ? '' : 'on') + '" data-act="mode" data-v="home">' + P('schedule') + esc(T('ttx.mode.times', 'Open times')) + '</button>' +
+      '<button type="button" role="tab" class="' + (S.view === 'promos' ? 'on' : '') + '" data-act="mode" data-v="promos">' + P('sell') + esc(T('ttx.mode.promos', 'Promotions')) + (n ? '<i>' + n + '</i>' : '') + '</button></div>';
+  }
+  function vPromos() { return topBar() + modes() + '<div id="pwHost"></div>'; }
+  function paintModes() { const m = root() && root().querySelector('.ttx-modes'); if (m) m.outerHTML = modes(); }
+
+  /* ------------------------------------------------------------------ promotions wall (promo-wall.js draws it; this loads + acts) */
+  const promoTest = () => { try { return localStorage.getItem('mcipro_promo_test') === '1'; } catch (e) { return false; } };   // Chee Chan (tester course) deals
+  async function loadPromos() {
+    const seq = ++S.promoSeq, PW = W.PromoWall; if (!PW) return;
+    try {
+      const [list, claims] = await Promise.all([rpc('promo_wall', { p_test: promoTest() }),
+        me() ? rpc('promo_my_claims', { p_golfer_id: me() }).catch(() => []) : Promise.resolve([])]);
+      if (seq !== S.promoSeq) return;
+      const cl = {}; (claims || []).forEach(k => { if (k && !k.booking_id) cl[k.offer_id] = k.ref; });
+      PW.setClaims(cl);
+      PW.setData(Array.isArray(list) ? list : []);
+      S.promoLoaded = true;
+      paintModes();
+      loadFollows();
+    } catch (e) { console.warn('[TeeTimes] promos', e.message || e); if (!S.promoLoaded) PW.setData([]); }
+  }
+  // the golfer's follows (OffersInbox owns them, keyed on courses.id) as venue slugs for the wall's Following tab
+  async function loadFollows() {
+    const c = sb(), id = me(); if (!c || !id || !W.PromoWall) return;
+    try {
+      const { data } = await c.from('course_follows').select('course_id').eq('golfer_line_id', id);
+      const ids = (data || []).map(r => r.course_id);
+      S.followMap = ids.length ? (await rpc('promo_follow_slugs', { p_ids: ids })) || {} : {};
+      W.PromoWall.setFollows(Object.values(S.followMap));
+    } catch (e) {}
+  }
+  function watchPromos() {   // a new, withdrawn or sold-out deal shows up without a reload
+    const c = sb(); if (!c || S.pchan || typeof c.channel !== 'function') return;
+    let tmr = null;
+    S.pchan = c.channel('ttx-promos-' + Math.random().toString(36).slice(2, 7))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'course_offers' }, () => {
+        if (tmr) return; tmr = setTimeout(() => { tmr = null; if (!document.hidden) loadPromos(); }, 400);
+      }).subscribe();
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && tabActive()) loadPromos(); });
+  }
+  function seenPromo(p) {
+    if (!p || p.hot || S.seen[p.id]) return;
+    S.seen[p.id] = 1;
+    rpc('promo_seen', { p_id: p.id }).catch(() => {});
+  }
+  async function followPromo(slug, on, p) {
+    const c = sb(), id = me(), OI = W.OffersInbox;
+    if (!c || !id || !p) return false;
+    if (OI && !(await OI.signedIn())) { OI.signInMsg(); return false; }
+    try {
+      if (on) {
+        const { error } = await c.from('course_follows').upsert({ golfer_line_id: id, course_id: p.course_id || slug, source: 'promo_wall' }, { onConflict: 'golfer_line_id,course_id' });
+        if (error) throw error;
+        S.followMap[p.course_id || slug] = slug;
+        if (OI) { OI.follows.add(p.course_id || slug); if (!OI.consent) await OI.setConsent(true, true); }
+        toast(F('pw.followed', 'Following {c}. You hear first when they post a deal.', { c: p.short || p.course_name }), 'success');
+      } else {
+        const ids = Object.keys(S.followMap).filter(k => S.followMap[k] === slug);
+        if (!ids.length) return true;
+        const { error } = await c.from('course_follows').delete().eq('golfer_line_id', id).in('course_id', ids);
+        if (error) throw error;
+        ids.forEach(k => { delete S.followMap[k]; if (OI) OI.follows.delete(k); });
+        toast(T('pw.unfollowed', 'Unfollowed'), 'success');
+      }
+      return true;
+    } catch (e) { toast(T('pw.follow.fail', 'Could not change follow') + ' (' + (e.message || e) + ')', 'error'); return false; }
+  }
+  // Book this deal: a tee time or package at a course taking online bookings opens the course on the deal's first
+  // playable day, times filtered to the deal's hours, and the book sheet carries the deal price (teetime_book p_promo
+  // checks it all again). Anything else gets a deal code to show at the pro shop.
+  async function bookPromo(p) {
+    if (!p) return;
+    if (!me()) { toast(T('ttx.login', 'Log in to book a tee time'), 'error'); return; }
+    if (p.hot) { if (W.PromoWall) W.PromoWall.closeSheet(); if (W.HotDeals && W.HotDeals.open) W.HotDeals.open(p.id); return; }
+    if (W.PromoWall && W.PromoWall.bookable(p)) {
+      W.PromoWall.closeSheet();
+      S.promo = p;
+      const first = promoDays(p)[0];
+      if (first) S.date = first;
+      S.tod = 'any';
+      return openCourse(p.slug);
+    }
+    return claimPromo(p);
+  }
+  async function claimPromo(p) {
+    const ok = W.askConfirm ? await W.askConfirm({ title: T('pw.claim.q', 'Get this deal?'), message: p.title + ' · ' + (p.short || p.course_name) + '\n' + T('pw.claim.sub', 'You get a code to show at the pro shop.'), confirmText: T('pw.claim', 'Get this deal') }) : true;
+    if (!ok) return;
+    try {
+      const r = await rpc('promo_claim', { p_id: p.id, p_golfer_id: me(), p_golfer_name: myName(), p_qty: 1 });
+      if (!r || !r.ok) {
+        toast(r && r.reason === 'deal_left' ? T('pw.err.left', 'All places on this deal are taken.') : T('pw.err.gone', 'This deal has ended.'), 'error', 6000);
+        loadPromos(); return;
+      }
+      const cl = Object.assign({}, (W.PromoWall && W.PromoWall._S.claims) || {}); cl[p.id] = r.ref;
+      if (W.PromoWall) W.PromoWall.setClaims(cl);
+      toast(F('pw.claimed', 'Your code {r}. Show it at the pro shop.', { r: r.ref }), 'success', 7000);
+      loadPromos();
+    } catch (e) { toast(T('pw.err.generic', 'Could not get that deal') + ' (' + (e.message || e) + ')', 'error', 6000); }
+  }
+  // the deal's playable days from today (inside the course's booking window), for the date strip
+  function promoDays(p) {
+    const out = [], today = bkkToday();
+    for (let i = 0; i < 14; i++) { const d = addDays(today, i); if ((!p.play_from || d >= p.play_from) && (!p.play_to || d <= p.play_to)) out.push(d); }
+    return out;
+  }
+  const promoOn = () => !!(S.promo && S.view === 'course' && S.promo.slug === S.slug);
+  const promoTime = t => { const p = S.promo; return !p || ((!p.time_from || t >= p.time_from) && (!p.time_to || t <= p.time_to)); };
+  const promoDay = d => { const p = S.promo; return !p || ((!p.play_from || d >= p.play_from) && (!p.play_to || d <= p.play_to)); };
+  function promoBanner() {
+    const p = S.promo; if (!promoOn()) return '';
+    const hrs = p.time_from || p.time_to ? [p.time_from || '', p.time_to || ''].join(' - ') : '';
+    const days = p.play_from ? (p.play_from === p.play_to ? dayFmt(p.play_from, { weekday: 'short', day: 'numeric', month: 'short' }) : dayFmt(p.play_from, { day: 'numeric', month: 'short' }) + ' - ' + dayFmt(p.play_to || p.play_from, { day: 'numeric', month: 'short' })) : '';
+    return '<div class="ttx-deal ttx-gl">' + PF('sell') + '<div class="w"><b>' + esc(p.title) + '</b><span>' +
+      esc([p.price ? baht(p.price) + (p.unit ? ' ' + p.unit : '') : '', days, hrs, W.PromoWall ? F('pw.ends.in', 'ends in {t}', { t: W.PromoWall.leftShort(p) }) : ''].filter(Boolean).join(' · ')) + '</span>' +
+      (promoDay(S.date) ? '' : '<span class="no">' + esc(T('pw.notday', 'The deal is not on this day. Pick a day it plays.')) + '</span>') +
+      '</div><button type="button" data-act="promo-off" aria-label="' + esc(T('pw.leave', 'Leave the deal')) + '">' + P('close') + '</button></div>';
   }
   function listHtml() {
     if (!S.day) return '<div class="ttx-sech"><b>' + esc(T('ttx.loading', 'Loading open times…')) + '</b></div><div class="ttx-list"><div class="ttx-skel"></div><div class="ttx-skel"></div></div>';
@@ -718,7 +861,7 @@
       '<div class="t"><b>' + esc(c.name || S.slug) + '</b><span>' + esc([c.area, F('ttx.holes', '{n} holes', { n: c.holes || 18 }), F('ttx.par', 'Par {n}', { n: c.par || 72 })].filter(Boolean).join(' · ')) + '</span>' +
       '<div class="pills">' + (c.enabled ? '<em class="g"><span class="ttx-pulse" style="background:#bbf7d0"></span>' + esc(T('ttx.live2', 'Live sheet')) + '</em><em>' + P('payments') + esc(rb.text) + '</em>' : '<em>' + esc(T('ttx.offline', 'Online booking off')) + '</em>') +
       (cadN ? '<em>' + P('person') + esc(F('ttx.cad.n', '{n} caddies', { n: cadN })) + '</em>' : '') + '</div></div></div>';
-    h += '<div class="ttx-cwrap">' + datesStrip();
+    h += '<div class="ttx-cwrap">' + promoBanner() + datesStrip();
     const nines = c.nines || ['A', 'B'], cols = nines.length * (c.tees || 1);
     h += '<div class="ttx-row">' + playersSeg() + (cols > 1 ? ['all'].concat(nines).map(n => '<button type="button" class="ttx-fc ttx-gl' + (S.start === n ? ' on' : '') + '" data-act="start" data-v="' + esc(n) + '">' + esc(n === 'all' ? T('ttx.start.all', 'Any start') : nineLabel(c, n)) + '</button>').join('') : '') + '</div>';
     if (!S.slots) h += '<div class="ttx-list"><div class="ttx-skel" style="height:160px"></div></div>';
@@ -726,7 +869,8 @@
     else {
       // one chip per time: the chosen start, else the first column with room
       const by = {};
-      S.slots.forEach(s => { if (S.start !== 'all' && s.nine !== S.start) return; if (!by[s.t] || (+s.left > +by[s.t].left)) by[s.t] = s; });
+      const dealOnly = promoOn();
+      S.slots.forEach(s => { if (S.start !== 'all' && s.nine !== S.start) return; if (dealOnly && (!promoDay(S.date) || !promoTime(s.t))) return; if (!by[s.t] || (+s.left > +by[s.t].left)) by[s.t] = s; });
       const multi = {}; S.slots.forEach(s => { (multi[s.t] = multi[s.t] || []).push(s.nine); });
       const list = Object.keys(by).sort().map(t => by[t]);
       if (!list.length) h += '<div class="ttx-empty">' + esc(F('ttx.none.day', 'No open times for {n} on this day.', { n: F('ttx.np', '{n} players', { n: S.players }) })) + '</div>';
@@ -806,7 +950,7 @@
     const cfgLike = { nines: ['A', 'B'], holes: 18, nine_names: b.nine_names };
     let h = head + '<div class="ttx-tk ttx-gl"><div class="ok ' + band[0] + '">' + PF(band[1]) + esc(band[2]) + (a && a.ref ? '<em>' + esc(a.ref) + '</em>' : '') + '</div>' +
       '<div class="main"><div class="tm">' + esc(b.time) + '</div><div class="w"><b>' + esc(dayFmt(b.date, { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })) + '</b><span>' + esc(nineLabel(cfgLike, b.nine || 'A') + ' · ' + F('ttx.bethere', 'be there by {t}', { t: by })) + '</span></div></div>' +
-      '<div class="cn">' + esc(b.course) + '<span>' + esc([F('ttx.np', '{n} players', { n: b.players || 1 }), a && a.carts ? F(a.carts === 1 ? 'ttx.cart1' : 'ttx.carts.n', a.carts === 1 ? '1 cart' : '{n} carts', { n: a.carts }) : ''].filter(Boolean).join(' · ')) + '</span></div>' +
+      '<div class="cn">' + esc(b.course) + '<span>' + esc([a && a.promo ? F('pw.hold.deal', 'Deal: {t}', { t: a.promo.title }) : '', F('ttx.np', '{n} players', { n: b.players || 1 }), a && a.carts ? F(a.carts === 1 ? 'ttx.cart1' : 'ttx.carts.n', a.carts === 1 ? '1 cart' : '{n} carts', { n: a.carts }) : ''].filter(Boolean).join(' · ')) + '</span></div>' +
       '<div class="ttx-perf"><b></b></div><div class="ttx-who">' +
       (b.golfers || []).map((g, i) => '<div class="p">' + esc(i === 0 && b.mine ? T('ttx.you', 'You') : (g.name || ('Player ' + (i + 1)))) +
         (g.caddyNumber ? '<em>' + esc(F('ttx.caddy.num', 'Caddy #{n}', { n: g.caddyNumber })) + '</em>' : g.caddyWanted === 'none' ? '<em class="z">' + esc(T('ttx.nocaddy', 'No caddy')) + '</em>' : '<em class="n">' + esc(T('ttx.caddy.shop', 'Pro shop assigns')) + '</em>') + '</div>').join('') + '</div>';
@@ -943,7 +1087,8 @@
     for (let i = 1; i < S.players; i++) players.push({ name: '', id: null, caddy: 'any' });
     const sharing = (cfg.rates && cfg.rates.cart_sharing) || 'shared';
     S.sheet = { slug, t, col: +col || 0, cfg, players, carts: sharing === 'single' ? players.length : Math.ceil(players.length / 2), cartTouched: false,
-      pay: 'default', notes: '', active: 0, roster: null, cols: null, busy: false };
+      pay: 'default', notes: '', active: 0, roster: null, cols: null, busy: false,
+      promo: S.promo && S.promo.slug === slug && promoDay(S.date) && promoTime(t) ? S.promo : null };
     paintSheet();
     refreshSheetAvail();
     loadRoster();
@@ -984,9 +1129,10 @@
   }
   function sheetQuote(sh) {
     const c = sh.cfg, n = sh.players.length;
-    const g = greenFor(c, S.date, sh.t);
+    const pr = sh.promo, pkg = pr && pr.type === 'society_package' && +pr.price > 0;
+    const g = pr && +pr.price > 0 ? { label: T('pw.deal', 'Deal'), price: +pr.price } : greenFor(c, S.date, sh.t);
     const cads = sh.players.filter(p => p.caddy !== 'none').length;
-    const caddyFee = (c.rates && c.rates.caddy18) || 0, cartFee = (c.rates && c.rates.cart18) || 0;
+    const caddyFee = pkg ? 0 : (c.rates && c.rates.caddy18) || 0, cartFee = pkg ? 0 : (c.rates && c.rates.cart18) || 0;
     const total = g ? g.price * n + caddyFee * cads + cartFee * sh.carts : null;
     let rule = c.rule;
     if (rule === 'deposit' && sh.pay === 'full' && c.allow_full && total) rule = 'full';
@@ -1009,6 +1155,7 @@
     let h = '<div class="sh ttx-gl"><div class="ttx-grab"></div>' +
       '<div class="ttx-shh"><div class="tm">' + esc(sh.t) + '</div><div class="w"><b>' + esc(dayFmt(S.date, { weekday: 'short', day: 'numeric', month: 'short' }) + ' · ' + nineLabel(c, (cur && cur.nine) || (c.nines || ['A'])[Math.floor(sh.col / (c.tees || 1))] || 'A')) + '</b><span>' + esc(c.name) + '</span></div>' +
       '<button type="button" class="ttx-x" data-act="close" aria-label="' + esc(T('ttx.close', 'Close')) + '">' + P('close') + '</button></div>';
+    if (sh.promo) h += '<div class="ttx-deal" style="margin:10px 0 0">' + PF('sell') + '<div class="w"><b>' + esc(sh.promo.title) + '</b><span>' + esc([baht(sh.promo.price) + (sh.promo.unit ? ' ' + sh.promo.unit : ''), sh.promo.limit_total ? F('pw.left.of2', '{a} of {b} places left', { a: sh.promo.limit_left, b: sh.promo.limit_total }) : ''].filter(Boolean).join(' · ')) + '</span></div></div>';
     if (sh.cols && !sh.cols.length) h += '<div class="ttx-warn">' + esc(T('ttx.gone.now', 'This time was just taken — pick another one.')) + '</div>';
     if (sh.cols && sh.cols.length > 1) {
       h += '<div class="ttx-lbl">' + esc(T('ttx.start', 'Start')) + '</div><div class="ttx-opts">' + sh.cols.map(s => '<button type="button" class="ttx-opt' + (+s.col === sh.col ? ' on' : '') + '" data-act="col" data-v="' + (+s.col) + '"><b>' + esc(nineLabel(c, s.nine)) + '</b><span>' + esc(F('ttx.spots', '{n} open', { n: s.left })) + '</span></button>').join('') + '</div>';
@@ -1049,9 +1196,10 @@
     // the bill (course's own rates) + how it is held
     h += '<div class="ttx-bill">';
     if (q.g) {
-      h += '<div class="r">' + esc(F('ttx.bill.green', 'Green fee {n} × {a} ({p})', { n: q.n, a: baht(q.g.price), p: q.g.label })) + '<b>' + esc(baht(q.g.price * q.n)) + '</b></div>' +
-        (q.cads ? '<div class="r">' + esc(F('ttx.bill.caddy', 'Caddy {n} × {a}', { n: q.cads, a: baht(q.caddyFee) })) + '<b>' + esc(baht(q.caddyFee * q.cads)) + '</b></div>' : '') +
-        (sh.carts ? '<div class="r">' + esc(F('ttx.bill.cart', 'Cart {n} × {a}', { n: sh.carts, a: baht(q.cartFee) })) + '<b>' + esc(baht(q.cartFee * sh.carts)) + '</b></div>' : '') +
+      h += '<div class="r">' + esc(sh.promo && +sh.promo.price > 0 ? F('pw.bill.deal', 'Deal {n} × {a}', { n: q.n, a: baht(q.g.price) }) : F('ttx.bill.green', 'Green fee {n} × {a} ({p})', { n: q.n, a: baht(q.g.price), p: q.g.label })) + '<b>' + esc(baht(q.g.price * q.n)) + '</b></div>' +
+        (q.cads && q.caddyFee ? '<div class="r">' + esc(F('ttx.bill.caddy', 'Caddy {n} × {a}', { n: q.cads, a: baht(q.caddyFee) })) + '<b>' + esc(baht(q.caddyFee * q.cads)) + '</b></div>' : '') +
+        (sh.carts && q.cartFee ? '<div class="r">' + esc(F('ttx.bill.cart', 'Cart {n} × {a}', { n: sh.carts, a: baht(q.cartFee) })) + '<b>' + esc(baht(q.cartFee * sh.carts)) + '</b></div>' : '') +
+        ((q.cads && !q.caddyFee) || (sh.carts && !q.cartFee) ? '<div class="r">' + esc(sh.promo && sh.promo.type === 'society_package' ? T('pw.bill.incl', 'Caddy and cart included') : T('pw.bill.extras', 'Caddy and cart paid at the pro shop')) + '</div>' : '') +
         '<div class="r tot">' + esc(T('ttx.bill.total', 'Total at the course')) + '<b>' + esc(baht(q.total)) + '</b></div>';
     } else {
       h += '<div class="r">' + esc(T('ttx.bill.atshop', 'Green fee, caddy and cart are paid at the pro shop')) + '</div>';
@@ -1115,7 +1263,10 @@
     already: ['ttx.err.already', 'You already have this time booked.'], past: ['ttx.err.past', 'That time is too soon to book online — call the pro shop.'],
     too_far: ['ttx.err.far', 'That day is not open for online booking yet.'], off_grid: ['ttx.err.grid', 'That time is not on the course\'s sheet.'],
     closed: ['ttx.err.closed', 'This course is not taking online bookings right now.'], caddy_taken: ['ttx.err.caddy', 'Caddy #{c} is not free at that time — pick another.'],
-    players: ['ttx.err.players', 'Choose 1 to 4 players.'], no_golfer: ['ttx.login', 'Log in to book a tee time']
+    players: ['ttx.err.players', 'Choose 1 to 4 players.'], no_golfer: ['ttx.login', 'Log in to book a tee time'],
+    deal_gone: ['pw.err.gone', 'This deal has ended.'], deal_left: ['pw.err.leftn', 'Only {l} places left on this deal.'],
+    deal_day: ['pw.notday', 'The deal is not on this day. Pick a day it plays.'], deal_time: ['pw.err.time', 'That time is outside the deal\'s hours.'],
+    deal_already: ['pw.err.already', 'You already booked this deal.'], deal_course: ['pw.err.gone', 'This deal has ended.']
   };
   async function book() {
     const sh = S.sheet; if (!sh || sh.busy) return;
@@ -1124,15 +1275,18 @@
       const players = sh.players.map((p, i) => ({ name: (i === 0 ? myName() : (p.name || '')).trim(), id: i === 0 ? me() : (p.id || null), caddy: p.caddy || 'any' }));
       const q = sheetQuote(sh);
       const r = await rpc('teetime_book', { p_slug: sh.slug, p_date: S.date, p_time: sh.t, p_col: sh.col, p_golfer_id: me(), p_golfer_name: myName(),
-        p_players: players, p_carts: sh.carts, p_pay: q.rule === 'full' && sh.cfg.rule === 'deposit' ? 'full' : null, p_notes: sh.notes || null });
+        p_players: players, p_carts: sh.carts, p_pay: q.rule === 'full' && sh.cfg.rule === 'deposit' ? 'full' : null, p_notes: sh.notes || null,
+        p_promo: sh.promo ? sh.promo.id : null });
       if (!r || !r.ok) {
         const rs = REASONS[(r && r.reason) || ''] || ['ttx.err.generic', 'Could not book that time'];
-        toast(F(rs[0], rs[1], { c: (r && r.caddy) || '' }), 'error', 6000);
+        toast(F(rs[0], rs[1], { c: (r && r.caddy) || '', l: r && r.left != null ? r.left : '' }), 'error', 6000);
+        if (r && /^deal_/.test(r.reason)) { loadPromos(); if (r.reason === 'deal_gone' || r.reason === 'deal_course') { S.promo = null; closeSheet(); render(); } }
         if (r && (r.reason === 'full' || r.reason === 'blocked')) { await Promise.all([loadDay(true), S.view === 'course' ? loadSlots(true) : null]); render(); refreshSheetAvail(); }
         if (r && r.reason === 'caddy_taken') loadRoster();
         return;
       }
       closeSheet();
+      if (r.deal) { S.promo = null; loadPromos(); }
       S.sel = null; S.bid = r.booking_id;
       toast(r.state === 'due' ? F('ttx.ok.due', '{t} is held for you — pay the course to secure it', { t: r.time }) : F('ttx.ok.booked', '{t} booked — it is on the course\'s sheet', { t: r.time }), 'success', 5000);
       await loadMine();
@@ -1217,6 +1371,8 @@
         if (S.view === 'course') { await loadSlots(true); render(); } else { await loadDay(true); render(); }
         return;
       }
+      case 'mode': if (a.dataset.v !== S.view) { S.view = a.dataset.v === 'promos' ? 'promos' : 'home'; render(); if (S.view === 'promos') loadPromos(); } return;
+      case 'promo-off': { const back2 = !!S.promo; S.promo = null; if (back2) { S.view = 'promos'; render(); } else render(); return; }
       case 'tod': S.tod = a.dataset.v; return render();
       case 'region': S.region = a.dataset.v; return render();
       case 'mine': return go('mine');
@@ -1259,12 +1415,14 @@
     }
   }
   function canBack() {
-    if (S.sheet || sheetEl()) return true;
+    if (S.sheet || sheetEl() || (W.PromoWall && W.PromoWall.isOpen())) return true;
     return tabActive() && S.view !== 'home';
   }
   function back() {
+    if (W.PromoWall && W.PromoWall.isOpen()) { W.PromoWall.closeSheet(); return true; }
     if (S.sheet || sheetEl()) { closeSheet(); return true; }
     if (S.view === 'pay' || S.view === 'ticket') { const f = S.from; S.view = (f === 'mine' || f === 'course') ? f : 'home'; S.from = 'home'; render(); return true; }
+    if (S.view === 'course' && S.promo) { S.promo = null; S.view = 'promos'; S.sel = null; render(); return true; }
     if (S.view !== 'home') { S.view = 'home'; S.sel = null; render(); return true; }
     return false;
   }
@@ -1282,9 +1440,17 @@
     ensureRoot(); render();
     subscribe();
     const first = !S.mineLoaded;
-    await Promise.all([loadDay(S.dirty), loadMine(), loadCaddyCounts(), S.view === 'course' ? loadSlots(S.dirty) : null]);
+    watchPromos();
+    await Promise.all([loadDay(S.dirty), loadMine(), loadCaddyCounts(), S.view === 'course' ? loadSlots(S.dirty) : null, loadPromos()]);
     S.dirty = false;
     if (tabActive() || first) render();
   }
-  W.TeeTimes = { open, render, back, canBack, closeSheet, _s: S, _payload: promptPayPayload };
+  // a link to one deal (LINE push, the public page after sign-up): the wall, then that deal's sheet
+  async function openPromo(id) {
+    S.view = 'promos'; S.promo = null;
+    try { if (!tabActive() && typeof W.showGolferTab === 'function') W.showGolferTab('booking', null); } catch (e) {}
+    await open({ keep: true, view: 'promos' });
+    if (id && W.PromoWall && !W.PromoWall.openSheet(id) && S.promoLoaded) toast(T('pw.err.gone', 'This deal has ended.'), 'info', 5000);
+  }
+  W.TeeTimes = { open, openPromo, loadPromos, render, back, canBack, closeSheet, _s: S, _payload: promptPayPayload };
 })();

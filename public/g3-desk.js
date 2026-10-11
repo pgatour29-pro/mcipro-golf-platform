@@ -358,6 +358,7 @@
       dash.insertBefore(rail, dash.firstChild);
       try { if (window.PartnerPickWatch && PartnerPickWatch._ready) PartnerPickWatch.renderBadges(); } catch (e) {}   /* rail built after the first paint */
       try { if (window.PairingsWatch) PairingsWatch.paint(); } catch (e) {}
+      try { if (window.CallPin) CallPin.paint(); } catch (e) {}   /* v1528: the golfer's Call PIN under their name */
       /* title in the header */
       var hdrRow = dash.querySelector(':scope > header.nav-header .flex.justify-between');
       if (hdrRow) {

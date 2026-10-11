@@ -175,6 +175,7 @@
         if (ev.target.closest('.g3-me')) { try { RoleSwitcher.switchToGolfer(); } catch (e) {} }
       });
       dash.insertBefore(rail, dash.firstChild);
+      try { if (window.CallPin) CallPin.paint(); } catch (e) {}   /* v1528: the organizer's own Call PIN under their name */
       /* title + view toggle in the desktop header row */
       var row = dash.querySelector(':scope > header.nav-header .hidden.md\\:flex');
       if (row) {

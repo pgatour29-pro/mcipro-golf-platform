@@ -456,13 +456,7 @@
   }
   async function openPrefs() {
     if (S.mode !== 'app' || S.checking) return;
-    // v1523: a golfer who is signed in is never told to sign in again. Not confirmed yet (the session can arrive after the
-    // wall loaded)? The host checks the live login, repairs it, reloads the prefs, and only then opens.
-    if (S.signedIn !== true && S.opts.ensureSignedIn) {
-      S.checking = true; let ok = false;
-      try { ok = await S.opts.ensureSignedIn(); } catch (e) { ok = false; } finally { S.checking = false; }
-      if (!ok) { if (S.opts.onSignIn) S.opts.onSignIn(); return; }
-    } else if (S.signedIn === false) { if (S.opts.onSignIn) S.opts.onSignIn(); return; }
+    // v1526: inside the app the golfer is signed in. Your deals opens, every time, no login check (Pete: "we are already logged in").
     closeSheet();
     const g = S.prefs || blankPrefs();
     S.draft = { types: (g.types || []).slice(), regions: (g.regions || []).slice(), days: g.days || 'any', tod: (g.tod || []).slice(), max_price: g.max_price || null,

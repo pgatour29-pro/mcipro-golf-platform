@@ -16,6 +16,7 @@ const pub = read('public/tee-time-deals/index.html');
 const pf = read('sql/promo_prefs_v1521.sql');
 const wa = read('sql/passkey_session_v1525.sql');
 const waFn = read('supabase/functions/passkey-session/index.ts');
+const app = read('sql/deal_prefs_app_login_v1526.sql');
 const fail = [];
 
 // expiry: required everywhere
@@ -88,11 +89,13 @@ if (!/\(k === 'accommodation' && !!p\.room\)/.test(pw) || !/\['accommodation', '
 if (!/\['accommodation', 't_room', 'hotel'\]/.test(cp) || !/room: String\(f\.type === 'accommodation' \|\| !!f\.room\)/.test(cp)) fail.push('course-promos.js: the pro shop must be able to post rooms / transport and tick them as included');
 // v1523 (Pete: "I'm already signed in, that should already register that its me"): a signed-in golfer is never told to sign out and back in
 if (/Sign out and sign in again|로그아웃 후 다시 로그인|ログアウトして再ログイン|ออกจากระบบแล้วเข้าสู่ระบบอีกครั้ง/.test(idx)) fail.push('index.html: never tell a signed-in golfer to sign out and back in');
-if (!/async signedIn\(\) \{ return window\.ensureVerifiedLogin\(\); \}/.test(idx) || !/window\.ensureVerifiedLogin = async function/.test(idx)) fail.push('index.html: follows / consent must repair the login (ensureVerifiedLogin), not ask');
-if (!/if \(S\.signedIn !== true && S\.opts\.ensureSignedIn\)/.test(pw) || !/ensureSignedIn: promoEnsureSignedIn/.test(tt)) fail.push('Your deals must re-check the live login before refusing');
-// v1524: when the server can't confirm the login (fingerprint / passkey phones), ONE tap with the account's own provider, then straight back
-if (!/window\.confirmLogin = function \(resume\)/.test(idx) || !/signInMsg\(resume\) \{ window\.confirmLogin\(resume\); \}/.test(idx) || !/if \(p\.prefs\) setTimeout\(function\(\)\{ try \{ window\.PromoWall && window\.PromoWall\.openPrefs\(\)/.test(idx)) fail.push('index.html: confirm-with-provider sheet + resume into Your deals');
-if (!/OI\.signInMsg\('dealprefs'\)/.test(tt)) fail.push('tee-times.js: Your deals must resume after the confirm');
+// v1526 (Pete: "we are already logged in" / "no difference than setting up the profile settings"): Your deals, follows and the
+// offer switch save for the golfer the app has signed in. Nothing in them may check the login, confirm it, or send anyone to LINE.
+if (/window\.confirmLogin|signInMsg|ensureSignedIn|promoSignIn|fp\.confirm\.|fp\.signin/.test(idx + tt + pw)) fail.push('Your deals / follows must never ask a signed-in golfer to log in or confirm');
+if (/from\('course_follows'\)/.test(tt + idx)) fail.push('follows must go through golfer_follow / golfer_offer_state, not the table');
+if (!/rpc\('promo_prefs_set', \{ p: d, p_golfer: me\(\) \|\| null \}\)/.test(tt) || !/rpc\('promo_prefs_get', \{ p_test: promoTest\(\), p_golfer: me\(\) \|\| null \}\)/.test(tt)) fail.push('tee-times.js: Your deals must load + save for the app\'s golfer');
+if (!/coalesce\(nullif\(public\.line_id\(\), ''\),\s*\(select up\.line_user_id from public\.user_profiles up where up\.line_user_id = nullif\(p_golfer, ''\)/.test(app)) fail.push('sql: _app_golfer = the verified login, else a REAL signed-in account');
+if ((app.match(/public\._app_golfer\(/g) || []).length < 8) fail.push('sql: every deal / follow / consent function must use _app_golfer');
 // v1525: a fingerprint login the server can trust. The browser key may only ADD a credential (never read / rewrite / bind),
 // only a session verified for the account binds it, and the function checks challenge, origin, rpId, UV and the signature
 if (!/revoke all on public\.webauthn_credentials from anon, authenticated;/.test(wa) || !/grant insert \(user_id, credential_id, public_key, user_name, device_name, created_at\) on public\.webauthn_credentials/.test(wa) || /tmp_update/.test(wa.replace(/drop policy if exists tmp_update/, ''))) fail.push('sql: webauthn_credentials must be insert-only for the browser key');

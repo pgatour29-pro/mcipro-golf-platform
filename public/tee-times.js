@@ -586,7 +586,7 @@
     }
     if (S.view === 'pay' || S.view === 'ticket') paintQrs();
     const pwHost = r.querySelector('#pwHost');
-    if (pwHost && W.PromoWall) { W.PromoWall.mount(pwHost, { mode: 'app', onBook: bookPromo, onFollow: followPromo, onOpen: seenPromo, loadCaddies: loadPromoCaddies, onSavePrefs: savePromoPrefs, onSignIn: promoSignIn, ensureSignedIn: promoEnsureSignedIn }); if (!S.promoLoaded) loadPromos(); }
+    if (pwHost && W.PromoWall) { W.PromoWall.mount(pwHost, { mode: 'app', onBook: bookPromo, onFollow: followPromo, onOpen: seenPromo, loadCaddies: loadPromoCaddies, onSavePrefs: savePromoPrefs }); if (!S.promoLoaded) loadPromos(); }
     const slipIn = r.querySelector('[data-in="slip"]');
     if (slipIn) slipIn.addEventListener('change', () => { if (slipIn.files && slipIn.files[0]) uploadSlip(slipIn.files[0]); });
     const sel = r.querySelector('.ttx-d.on'); if (sel && sel.scrollIntoView && S.view !== 'pay' && S.view !== 'ticket') { try { sel.parentNode.scrollLeft = Math.max(0, sel.offsetLeft - 60); } catch (e) {} }
@@ -724,27 +724,22 @@
       if (!S.prefsLoaded) loadPromoPrefs();
     } catch (e) { console.warn('[TeeTimes] promos', e.message || e); if (!S.promoLoaded) PW.setData([]); }
   }
-  // Your deals (v1521, Pete: "each golfer will get exactly what they are looking for"): saved on the server against the
-  // verified login (promo_prefs_get / promo_prefs_set), so the For you tab and the LINE alerts follow the same choices.
+  // Your deals (v1521, Pete: "each golfer will get exactly what they are looking for"): saved on the server for the signed-in
+  // golfer (promo_prefs_get / promo_prefs_set), so the For you tab and the LINE alerts follow the same choices.
+  // v1526 (Pete: "we are already logged in" / "no difference than setting up the profile settings"): the golfer the app has
+  // signed in IS the golfer. No login check, no confirm, no prompt (sql/deal_prefs_app_login_v1526.sql).
   async function loadPromoPrefs() {
     if (!W.PromoWall) return;
     // the login can be confirmed AFTER the wall loaded (LIFF mints the session late): reload the prefs when it lands
     const c = sb();
     if (c && c.auth && !S.authWatch) { S.authWatch = true; try { c.auth.onAuthStateChange(ev => { if ((ev === 'SIGNED_IN' || ev === 'TOKEN_REFRESHED') && W.PromoWall && W.PromoWall._S.signedIn !== true) setTimeout(loadPromoPrefs, 0); }); } catch (e) {} }
-    try { const r = await rpc('promo_prefs_get', { p_test: promoTest() }); S.prefsLoaded = true; W.PromoWall.setPrefs(r || {}); } catch (e) { console.warn('[TeeTimes] deal prefs', e.message || e); }
+    try { const r = await rpc('promo_prefs_get', { p_test: promoTest(), p_golfer: me() || null }); S.prefsLoaded = true; W.PromoWall.setPrefs(r || {}); } catch (e) { console.warn('[TeeTimes] deal prefs', e.message || e); }
   }
-  // v1523: confirm the login live (refresh / mint it quietly) and reload the prefs before Your deals opens
-  async function promoEnsureSignedIn() {
-    if (!(W.ensureVerifiedLogin && await W.ensureVerifiedLogin())) return false;
-    try { const r = await rpc('promo_prefs_get', { p_test: promoTest() }); S.prefsLoaded = true; if (W.PromoWall) W.PromoWall.setPrefs(r || {}); return !!(r && r.signed_in); } catch (e) { return false; }
-  }
-  function promoSignIn() { const OI = W.OffersInbox; if (OI && OI.signInMsg) OI.signInMsg('dealprefs'); else toast(T('ttx.login', 'Log in to book a tee time'), 'error'); }
   async function savePromoPrefs(d) {
     const OI = W.OffersInbox;
-    if (OI && OI.signedIn && !(await OI.signedIn())) { promoSignIn(); return false; }
     try {
-      const r = await rpc('promo_prefs_set', { p: d });
-      if (!r || !r.ok) { if (r && r.reason === 'signin') promoSignIn(); else toast(T('pw.pf.fail', 'Could not save your deals'), 'error'); return false; }
+      const r = await rpc('promo_prefs_set', { p: d, p_golfer: me() || null });
+      if (!r || !r.ok) { toast(T('pw.pf.fail', 'Could not save your deals'), 'error'); return false; }
       await loadFollows();
       if (OI && OI.follows && S.followMap) { OI.follows.clear(); Object.keys(S.followMap).forEach(k => OI.follows.add(k)); }
       toast(T('pw.pf.saved', 'Saved. For you now shows only your deals.'), 'success');
@@ -755,8 +750,8 @@
   async function loadFollows() {
     const c = sb(), id = me(); if (!c || !id || !W.PromoWall) return;
     try {
-      const { data } = await c.from('course_follows').select('course_id').eq('golfer_line_id', id);
-      const ids = (data || []).map(r => r.course_id);
+      const st = await rpc('golfer_offer_state', { p_golfer: id });
+      const ids = (st && Array.isArray(st.follow_ids)) ? st.follow_ids : [];
       S.followMap = ids.length ? (await rpc('promo_follow_slugs', { p_ids: ids })) || {} : {};
       W.PromoWall.setFollows(Object.values(S.followMap));
     } catch (e) {}
@@ -778,19 +773,15 @@
   async function followPromo(slug, on, p) {
     const c = sb(), id = me(), OI = W.OffersInbox;
     if (!c || !id || !p) return false;
-    if (OI && !(await OI.signedIn())) { OI.signInMsg('deals'); return false; }
     try {
       if (on) {
-        const { error } = await c.from('course_follows').upsert({ golfer_line_id: id, course_id: p.course_id || slug, source: 'promo_wall' }, { onConflict: 'golfer_line_id,course_id' });
-        if (error) throw error;
+        if (!(await rpc('golfer_follow', { p_golfer: id, p_on: true, p_course_id: p.course_id || null, p_slug: slug, p_source: 'promo_wall' }))) throw new Error('not saved');
         S.followMap[p.course_id || slug] = slug;
         if (OI) { OI.follows.add(p.course_id || slug); if (!OI.consent) await OI.setConsent(true, true); }
         toast(F('pw.followed', 'Following {c}. You hear first when they post a deal.', { c: p.short || p.course_name }), 'success');
       } else {
         const ids = Object.keys(S.followMap).filter(k => S.followMap[k] === slug);
-        if (!ids.length) return true;
-        const { error } = await c.from('course_follows').delete().eq('golfer_line_id', id).in('course_id', ids);
-        if (error) throw error;
+        if (!(await rpc('golfer_follow', { p_golfer: id, p_on: false, p_slug: slug }))) throw new Error('not saved');
         ids.forEach(k => { delete S.followMap[k]; if (OI) OI.follows.delete(k); });
         toast(T('pw.unfollowed', 'Unfollowed'), 'success');
       }

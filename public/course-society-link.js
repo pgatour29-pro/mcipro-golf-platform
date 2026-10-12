@@ -115,11 +115,55 @@
       cadRefuse: '{c} ไม่ว่าง: {r}', cadSaved: 'บันทึกแล้ว', unpaired: 'ยังไม่จับกลุ่ม',
       to: 'ถึง', toAll: 'ผู้จัด + ผู้เล่นทุกคน ({n})', toGroup: '{g} · {n} คน', msgT: 'ส่งข้อความ', everyone: 'ทุกคน', toTyping: 'ส่งข้อความถึง {t}…',
       cc: 'สำเนา', bcc: 'สำเนาลับ', ccBcc: 'สำเนา / สำเนาลับ', rcAdd: '+ เพิ่ม', organizer: 'ผู้จัด', rcSearch: 'ค้นหาผู้เล่นหรือกลุ่ม…', noRcpt: 'เพิ่มผู้รับก่อน', rcNone: 'ไม่มีผู้รับอื่นให้เพิ่ม'
+    },
+    ko: {
+      societies: '소사이어티', golfCourse: '골프장', upcoming: '이 골프장의 소사이어티 일정 — 앞으로 3주',
+      none: '앞으로 3주간 예약된 소사이어티 일정이 없습니다.', registered: '등록', needed: '필요한 조',
+      paired: '조 편성', held: '확보한 슬롯', teeOff: '티오프', depart: '출발', newRegs: '신규',
+      needMore: '슬롯 {n}개 더 필요', spare: '여유 슬롯 {n}개', ok: '슬롯 일치', notSet: '슬롯 미설정 — {n}개 필요',
+      save: '저장', firstTee: '첫 티', showOnSheet: '시트에서 보기', groups: '조 편성', noGroups: '아직 조 편성이 없습니다.',
+      group: '조', thread: '메시지', typeMsg: '메시지 입력…', send: '보내기', ask: '요청', release: '1개 반납',
+      approve: '승인', decline: '거절', approved: '승인됨', declined: '거절됨',
+      reqMore: '슬롯 {n}개 추가 요청', reqLess: '슬롯 {n}개 반납', nowHolds: '골프장이 {t}부터 슬롯 {n}개를 확보했습니다',
+      courseHolds: '골프장이 {t}부터 슬롯 {n}개를 확보 중입니다', courseNotSet: '골프장이 아직 슬롯을 정하지 않았습니다.',
+      noMsgs: '아직 메시지가 없습니다 — 인사를 건네 보세요.', open: '빈자리', you: '나', courseSide: '골프장', close: '닫기', slotsSaved: '저장됨',
+      newMsg: '새 메시지', alertRegs: '{e}: {n}명 등록 (+{d})', unmatched: '이 일정의 골프장을 티 시트와 연결하지 못했습니다.',
+      groupsCaddies: '조 편성 & 캐디', booked: '예약 {n}', toConfirm: '확인 대기 {n}', withoutCaddy: '캐디 없음 {n}',
+      players: '명', caddyOne: '캐디', caddyMany: '캐디', addCaddy: '+ 캐디', pending: '예약됨', confirmed: '확정',
+      confirmT: '확정', changeT: '변경', cancelT: '취소', sure: '확실합니까?', pickCaddy: '캐디 번호 또는 이름…',
+      free: '가능', outAt: '근무 중 {a}–{b}', dayOff: '휴무', inGroup: '이 조에 있음', noCaddyOpt: '캐디 없음',
+      notPaired: '등록 — 아직 조 미편성', loading: '불러오는 중…', noRoster: '이 골프장의 캐디 명단이 아직 없습니다.',
+      cadSetMsg: '{p}에게 {c} 배정 ({g})', cadOkMsg: '{p}의 {c} 확정', cadCancelMsg: '{p}의 {c} 취소',
+      cadRefuse: '{c} 불가: {r}', cadSaved: '저장됨', unpaired: '미편성',
+      to: '받는 사람', toAll: '주최자 + 모든 선수 ({n})', toGroup: '{g} · {n}명', msgT: '메시지', everyone: '모두', toTyping: '{t}에게 메시지…',
+      cc: '참조', bcc: '숨은 참조', ccBcc: '참조 / 숨은 참조', rcAdd: '+ 추가', organizer: '주최자', rcSearch: '선수 또는 조 검색…', noRcpt: '받는 사람을 먼저 추가하세요', rcNone: '더 추가할 사람이 없습니다'
+    },
+    ja: {
+      societies: 'ソサエティ', golfCourse: 'ゴルフ場', upcoming: 'このゴルフ場のソサエティ予定 — 今後3週間',
+      none: '今後3週間、ソサエティの予約はありません。', registered: '登録', needed: '必要な組数',
+      paired: '組分け済み', held: '確保枠', teeOff: 'ティーオフ', depart: '出発', newRegs: '新規',
+      needMore: 'あと{n}枠必要', spare: '空き{n}枠', ok: '枠数一致', notSet: '枠未設定 — {n}枠必要',
+      save: '保存', firstTee: '最初のティー', showOnSheet: 'シートで表示', groups: '組分け', noGroups: 'まだ組分けがありません。',
+      group: 'グループ', thread: 'メッセージ', typeMsg: 'メッセージを入力…', send: '送信', ask: '依頼', release: '1枠返却',
+      approve: '承認', decline: '却下', approved: '承認済み', declined: '却下済み',
+      reqMore: '{n}枠の追加を依頼', reqLess: '{n}枠を返却', nowHolds: 'ゴルフ場が{t}から{n}枠を確保しました',
+      courseHolds: 'ゴルフ場が{t}から{n}枠を確保しています', courseNotSet: 'ゴルフ場はまだ枠を設定していません。',
+      noMsgs: 'まだメッセージはありません — あいさつしましょう。', open: '空き', you: 'あなた', courseSide: 'ゴルフ場', close: '閉じる', slotsSaved: '保存しました',
+      newMsg: '新しいメッセージ', alertRegs: '{e}: {n}名登録 (+{d})', unmatched: 'この予定のゴルフ場をティーシートと照合できませんでした。',
+      groupsCaddies: '組分け & キャディ', booked: '予約 {n}', toConfirm: '確認待ち {n}', withoutCaddy: 'キャディなし {n}',
+      players: '名', caddyOne: 'キャディ', caddyMany: 'キャディ', addCaddy: '+ キャディ', pending: '予約済み', confirmed: '確定',
+      confirmT: '確定', changeT: '変更', cancelT: 'キャンセル', sure: 'よろしいですか？', pickCaddy: 'キャディ番号または名前…',
+      free: '空き', outAt: '稼働中 {a}–{b}', dayOff: '休み', inGroup: 'この組にいます', noCaddyOpt: 'キャディなし',
+      notPaired: '登録済み — 組未定', loading: '読み込み中…', noRoster: 'このゴルフ場のキャディ名簿はまだありません。',
+      cadSetMsg: '{p}に{c}を割り当て ({g})', cadOkMsg: '{p}の{c}を確定', cadCancelMsg: '{p}の{c}をキャンセル',
+      cadRefuse: '{c}は利用できません: {r}', cadSaved: '保存しました', unpaired: '組未定',
+      to: '宛先', toAll: '主催者 + 全プレーヤー ({n})', toGroup: '{g} · {n}名', msgT: 'メッセージ', everyone: '全員', toTyping: '{t}へのメッセージ…',
+      cc: 'CC', bcc: 'BCC', ccBcc: 'CC / BCC', rcAdd: '+ 追加', organizer: '主催者', rcSearch: 'プレーヤーまたはグループを検索…', noRcpt: '先に宛先を追加してください', rcNone: '追加できる人はいません'
     }
   };
 
   var CL = window.CourseLink = {
-    _v: 1537,
+    _v: 1538,
     KEYS: KEYS,
     sb: null,
     lang: 'en',
@@ -240,7 +284,7 @@
         sb.from('event_pairings').select('event_id,groups').in('event_id', ids),
         sb.from('course_event_slots').select('*').in('event_id', ids),
         socIds.length ? sb.from('society_profiles').select('id,society_name').in('id', socIds) : Promise.resolve({ data: [] }),
-        sb.from('event_course_messages').select('event_id,side,created_at,org_sees').in('event_id', ids).order('created_at', { ascending: false }).limit(1000),
+        sb.rpc('ecm_list', { p_event_ids: ids, p_token: self._tok(), p_light: true }),   // v1538: the server decides what this side may see
         dates.length ? sb.from('caddy_bookings').select('id,golfer_id,user_id,golfer_name,caddie_name,caddy_id,status,tee_time,start_time,booking_date,course_id,course_name,booking_source,special_requests,teesheet_booking_id,created_at,caddy_profiles(caddy_number,name,photo_url)')
           .in('booking_date', dates).neq('status', 'cancelled').limit(1000) : Promise.resolve({ data: [] }),
         slugs.length ? sb.from('caddy_profiles').select('id,caddy_number,name,photo_url,course_id,course_name').eq('is_active', true).eq('is_mock', false).or(rosterOr).limit(600) : Promise.resolve({ data: [] })
@@ -353,19 +397,24 @@
       return r.data;
     },
     loadMsgs: async function (evId) {
-      var r = await this.sb.from('event_course_messages').select('*').eq('event_id', evId).order('created_at', { ascending: true }).limit(400);
+      var r = await this.sb.rpc('ecm_list', { p_event_ids: [evId], p_token: this._tok() });
       if (r.error) { console.warn('[CourseLink] msgs', r.error); return this.state.msgs[evId] || []; }
       var self = this;
-      this.state.msgs[evId] = (r.data || []).filter(function (m) { return self._vis(m); });
-      return this.state.msgs[evId];
+      var mine = (this.state.msgs[evId] || []).filter(function (m) { return m._local; });   // sent here, not readable back without a course PIN
+      var got = (r.data || []).filter(function (m) { return self._vis(m); });
+      mine.forEach(function (m) { if (!got.some(function (x) { return x.id === m.id; })) got.push(m); });
+      got.sort(function (a, b) { return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0; });
+      this.state.msgs[evId] = got;
+      return got;
     },
     send: async function (ev, fields) {
       var st = this.state;
       var row = Object.assign({ event_id: ev.id, course_slug: ev.slug || st.slug || '', side: st.side,
         sender_id: st.me && st.me.id, sender_name: st.me && st.me.name, kind: 'text' }, fields);
-      var r = await this.sb.from('event_course_messages').insert(row).select();
+      row.id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'.replace(/x/g, function () { return (Math.random() * 16 | 0).toString(16); });
+      var r = await this.sb.from('event_course_messages').insert(row);
       if (r.error) throw r.error;
-      var m = r.data && r.data[0];
+      var m = Object.assign({ created_at: new Date().toISOString(), _local: true }, row);
       if (m) { (st.msgs[ev.id] = st.msgs[ev.id] || []).push(m); ev.msgTimes.unshift({ event_id: ev.id, side: m.side, created_at: m.created_at }); this._markRead(ev.id); }
       return m;
     },
@@ -457,10 +506,11 @@
           var r = p.new && p.new.booking_date ? p.new : p.old, d = r && r.booking_date;
           if ((d && self.state.events.some(function (ev) { return ev.date === d; })) || gone(p, r)) bump();
         })
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'event_course_messages' }, function (p) {
-          var m = p.new; if (!m || !mine(m.event_id) || !self._vis(m)) return;
-          var list = self.state.msgs[m.event_id];
-          if (list && !list.some(function (x) { return x.id === m.id; })) list.push(m);
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'event_course_pings' }, async function (p) {
+          var pg = p.new; if (!pg || !mine(pg.event_id) || !self._vis(pg)) return;
+          var known = (self.state.msgs[pg.event_id] || []).some(function (x) { return x.id === pg.msg_id; });
+          var list = await self.loadMsgs(pg.event_id);   // v1538: text comes through ecm_list, never the realtime payload
+          var m = list.filter(function (x) { return x.id === pg.msg_id; })[0]; if (!m || known) { if (self._panel()) self.renderPanel(); return; }
           var ev = self.state.byId[m.event_id];
           if (ev && !ev.msgTimes.some(function (x) { return x.created_at === m.created_at && x.side === m.side; })) ev.msgTimes.unshift({ event_id: m.event_id, side: m.side, created_at: m.created_at });
           if (m.side !== self.state.side) {
@@ -627,7 +677,7 @@
       msgs.forEach(function (m) {
         var mine = m.side === st.side;
         var tm = ''; try { tm = new Date(m.created_at).toLocaleString(self.lang === 'th' ? 'th-TH' : 'en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { }
-        h += '<div class="cl-m ' + (mine ? 'me' : 'them') + ' k-' + E(m.kind) + '"><div class="cl-mh">' + E(mine ? self.t('you') : (m.sender_name || (m.side === 'course' ? self.t('courseSide') : ''))) + (m.side === 'course' && m.kind === 'text' ? ' → ' + E(m.to_kind === 'event' || !m.to_kind ? self.t('everyone') : (m.to_label || '')) + (m.cc_label ? ' · ' + E(self.t('cc')) + ' ' + E(m.cc_label) : '') + (m.bcc_label && st.side === 'course' ? ' · ' + E(self.t('bcc')) + ' ' + E(m.bcc_label) : '') : '') + ' · ' + E(tm) + '</div>' +
+        h += '<div class="cl-m ' + (mine ? 'me' : 'them') + ' k-' + E(m.kind) + '"><div class="cl-mh">' + E(mine ? self.t('you') : (m.sender_name || (m.side === 'course' ? self.t('courseSide') : ''))) + (m.side === 'course' && m.kind === 'text' ? ' → ' + E(m.to_kind === 'event' || !m.to_kind ? self.t('everyone') : self._lbl(m.to_label)) + (m.cc_label ? ' · ' + E(self.t('cc')) + ' ' + E(self._lbl(m.cc_label)) : '') + (m.bcc_label && st.side === 'course' ? ' · ' + E(self.t('bcc')) + ' ' + E(self._lbl(m.bcc_label)) : '') : '') + ' · ' + E(tm) + '</div>' +
           '<div class="cl-mb">' + E(self._msgText(m)) + '</div>';
         if (m.kind === 'request' && st.side === 'course' && !mine) {
           h += answered[m.id]
@@ -915,13 +965,14 @@
     _rcMap: function (ev) {
       var self = this, out = {}, gi = 0;
       out.all = { k: 'all', label: this.t('everyone'), sub: this.t('toAll', { n: ev.regs || 0 }) };
-      out.org = { k: 'org', label: this.t('organizer'), sub: this.shortName(ev), ids: ['ORGANIZER'] };
-      var addGroup = function (k, label, pl) {
-        out[k] = { k: k, label: label, sub: pl.length + ' ' + self.t('players'), ids: pl.map(function (x) { return x.id; }).filter(Boolean) };
+      out.org = { k: 'org', label: this.t('organizer'), tok: '@ORG', sub: this.shortName(ev), ids: ['ORGANIZER'] };
+      var addGroup = function (k, n, pl) {
+        var label = self._lbl('@G:' + n);
+        out[k] = { k: k, label: label, tok: '@G:' + n, sub: pl.length + ' ' + self.t('players'), ids: pl.map(function (x) { return x.id; }).filter(Boolean) };
         pl.forEach(function (p) { var pk = 'p:' + self._pkey(p); out[pk] = { k: pk, label: p.name, sub: label, ids: p.id ? [p.id] : [] }; });
       };
-      ev.groups.forEach(function (g) { if (!g.players.length) return; gi++; addGroup('g:' + gi, self.t('group') + ' ' + gi, g.players); });
-      if (ev.unpaired && ev.unpaired.length) addGroup('g:0', this.t('notPaired'), ev.unpaired);
+      ev.groups.forEach(function (g) { if (!g.players.length) return; gi++; addGroup('g:' + gi, gi, g.players); });
+      if (ev.unpaired && ev.unpaired.length) addGroup('g:0', 0, ev.unpaired);
       return out;
     },
     _rcHtml: function (ev) {
@@ -975,7 +1026,7 @@
       if (R.to.indexOf('all') !== -1) return { to_kind: 'event' };
       var line = function (keys) {
         var ids = [], labels = [];
-        keys.forEach(function (k) { var o = M[k]; if (!o) return; labels.push(o.label); (o.ids || []).forEach(function (i) { if (ids.indexOf(i) === -1) ids.push(i); }); });
+        keys.forEach(function (k) { var o = M[k]; if (!o) return; labels.push(o.tok || String(o.label).replace(/@/g, '')); (o.ids || []).forEach(function (i) { if (ids.indexOf(i) === -1) ids.push(i); }); });
         return { ids: ids, label: labels.join(', ') };
       };
       var to = line(R.to), cc = line(R.cc), bcc = line(R.bcc);
@@ -983,7 +1034,14 @@
       return { to_kind: 'custom', to_ids: to.ids, to_label: to.label || null, cc_ids: cc.ids, cc_label: cc.label || null, bcc_ids: bcc.ids, bcc_label: bcc.label || null };
     },
     /* the organizer's side never shows a course message that did not include them (1-to-1 stays 1-to-1) */
-    _vis: function (m) { return this.state.side !== 'society' || m.side !== 'course' || m.org_sees !== false; },
+    _vis: function (m) { return this.state.side !== 'society' || m.org_sees !== false; },
+    /* the pro shop's own-PIN desk token: the server shows this course its private messages only with it */
+    _tok: function () { if (this.state.side !== 'course') return null; try { return localStorage.getItem('ps_desk_token_v1') || null; } catch (e) { return null; } },
+    /* labels travel as tokens (@ORG, @G:n) so every reader and every recipient sees them in their own language */
+    _lbl: function (s) {
+      var self = this;
+      return String(s || '').split('@ORG').join(this.t('organizer')).replace(/@G:(\d+)/g, function (x, n) { return n === '0' ? self.t('notPaired') : self.t('group') + ' ' + n; });
+    },
     _focusIn: function () { var i = document.querySelector('#clPanel .cl-in'); if (i) i.focus(); },
     _sendFrom: async function (inp) {
       if (!inp) return;
@@ -1103,7 +1161,7 @@
         '#clPanel .cl-mh{font-size:11px;color:var(--cl-muted)}',
         '#clPanel .cl-rc{display:flex;flex-direction:column;gap:4px;margin:0 0 6px}',
         '#clPanel .cl-rr{display:flex;align-items:flex-start;gap:8px}',
-        '#clPanel .cl-rl{flex:none;width:34px;padding-top:5px;font-size:12px;font-weight:800;color:var(--cl-muted)}',
+        '#clPanel .cl-rl{flex:none;min-width:34px;white-space:nowrap;padding-top:5px;font-size:12px;font-weight:800;color:var(--cl-muted)}',
         '#clPanel .cl-chips{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:4px;align-items:center}',
         '#clPanel .cl-chip{display:inline-flex;align-items:center;gap:2px;max-width:100%;background:var(--cl-hi);border:1px solid var(--cl-line2);border-radius:14px;padding:2px 2px 2px 10px;font-size:12.5px;font-weight:700;color:var(--cl-ink)}',
         '#clPanel .cl-chip.bcc{border-style:dashed}',

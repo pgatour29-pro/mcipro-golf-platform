@@ -457,12 +457,12 @@
             // team chip rides its own line under the course — inline it pushed GROSS/DIFF off a 360px screen
             const teamChip = r._team ? '<span class="hl-chip dim">' + ({ scramble: 'SCRAMBLE', waltz: 'WALTZ' }[r._team] || 'TEAM') + ' · NOT COUNTED</span>' : '';
             if (r._nine) tags.push('<span class="hl-chip dim">9H×2</span>');
-            else if (r._short) tags.push('<span class="hl-chip dim">' + r._short + 'H→18</span>');   // 2026-10-10 rain-out pro-rata
+            else if (r._short) tags.push('<span class="hl-chip dim">' + r._short + 'H→18</span>');   // 2026-10-10 rain-out pro-rata; v1533 GROSS shows the 18-hole figure too (a raw 13-hole 55 read as a scramble)
             return `<div class="hl-row${counts ? ' counts' : ''}${aging ? ' aging' : ''}">
                 <div class="r-date">${dateShort(r)}</div>
                 <div class="r-course">${esc(r.course_name || r.course || 'Course')}</div>
                 <div class="r-tags">${tags.join('')}</div>
-                <div class="r-num">${r.total_gross}</div>
+                <div class="r-num">${r._short ? r._adjGross : r.total_gross}</div>
                 <div class="r-diff">${r._diff.toFixed(1)}</div>
                 ${teamChip ? `<div class="r-team">${teamChip}</div>` : ''}
             </div>`;

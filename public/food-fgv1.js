@@ -153,7 +153,8 @@
         if (rv && rv.open && (!rv.test || testMode())) { k = S.roundKey; S.fromRound = true; }
         else if (S.prefs.venue && byKey(S.prefs.venue) && listed(byKey(S.prefs.venue))) k = S.prefs.venue;
         if (k !== S.venueKey) { S.venueKey = k; S.menuLoaded = false; S.stay = null; S.stayKey = null; }
-        if (k && S.basket.length && S.basketVenue && S.basketVenue !== k) { S.basket = []; localStorage.setItem('fgv1_basket', '[]'); }
+        // a basket never travels between kitchens; one from before v1532 (no venue) was priced off the sample menu
+        if (S.basket.length && (!S.basketVenue || (k && S.basketVenue !== k))) { S.basket = []; localStorage.setItem('fgv1_basket', '[]'); }
     }
     async function loadStay() {
         const v = venue(), c = sb(), me = uid();
@@ -884,7 +885,7 @@
     function syncBar() {
         let bar = document.getElementById('fg2Bar');
         const n = basketCount();
-        const show = foodVisible() && n > 0 && !isDesk() && S.view === 'home';
+        const show = foodVisible() && n > 0 && !isDesk() && S.view === 'home' && !!venue();
         if (!show) { if (bar) bar.remove(); document.documentElement.classList.remove('fg2-barup'); return; }
         if (!bar) {
             bar = document.createElement('button'); bar.id = 'fg2Bar'; bar.className = 'fg2-bar';

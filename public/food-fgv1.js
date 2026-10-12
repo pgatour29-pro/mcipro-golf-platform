@@ -274,6 +274,7 @@
             '.fg2-bar .n .material-symbols-outlined{font-size:21px}.fg2-bar .n b{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;border-radius:10px;background:#fff;color:#16a34a;font-size:11.5px;line-height:20px;text-align:center;padding:0 4px}',
             '.fg2-bar .l{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fg2-bar .l small{display:block;font-size:11.5px;font-weight:600;opacity:.88;overflow:hidden;text-overflow:ellipsis}.fg2-bar .t{padding:0 12px;font-weight:800}',
             'html.fg2-barup #globalScrollToTopBtn{display:none!important}',
+            'html:has(#appUpdateBar) .fg2-bar{bottom:calc(74px + env(safe-area-inset-bottom))}',   // the Update-ready bar owns the bottom edge while it shows
             '.fg2-fly{position:fixed;z-index:9500;width:56px;height:56px;border-radius:50%;overflow:hidden;border:3px solid #fff;box-shadow:0 8px 22px rgba(0,0,0,.28);pointer-events:none}.fg2-fly img{width:100%;height:100%;object-fit:cover}',
             /* overlays: item page + basket sheet */
             'html.fg2-lock #dashboardBackBtn,html.fg2-lock #globalScrollToTopBtn{display:none!important}',

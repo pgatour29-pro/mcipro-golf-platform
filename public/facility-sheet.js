@@ -213,6 +213,9 @@
         this.view = slug; this.remember(); this.paintRail();
         var kp = document.getElementById('fx-kpis'); if (kp) kp.hidden = true;
         await this.api.switchCourse(slug);   // the sheet's own course switch: settings, caches, roster, fetch, render
+        // v1536: ALL view → the course that is ALREADY selected fires no change event, so nothing repainted and the
+        // ALL grid stayed up; afterSwitchOpen then clicked the same ALL pill → openOn → … forever (froze the page)
+        if (this.api.el.gridBody.querySelector('.fx-slot')) this.api.render();
       } finally { this._switching = false; }
       this.paintRail(); this.paintHeader(); this.paintOthers();
     },
@@ -439,7 +442,7 @@
     afterSwitchOpen: function (p) {
       // a society day / caddy job pill: once on that course's sheet, its own pill (same event / job) opens the panel
       var sel = p.dataset.eventId ? '.pill[data-event-id="' + p.dataset.eventId + '"]' : null;
-      var q = sel && document.querySelector(sel); if (q) q.click();
+      var q = sel && document.querySelector(sel); if (q && !q.closest('.fx-slot')) q.click();   // never the ALL pill itself (v1536 loop)
     },
     paintKpis: function () {
       var kp = document.getElementById('fx-kpis'); if (!kp) return;

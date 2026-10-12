@@ -90,7 +90,9 @@
       cadSetMsg: '{c} set for {p} ({g})', cadOkMsg: '{c} confirmed for {p}', cadCancelMsg: '{c} cancelled for {p}',
       cadRefuse: '{c} is not available: {r}', cadSaved: 'Saved', unpaired: 'Unpaired',
       // v1535 the message box goes to people: the whole event, one group, or one player (in-app + LINE)
-      to: 'To', toAll: 'Organizer + every player ({n})', toGroup: '{g} · {n} players', msgT: 'Message', everyone: 'Everyone', toTyping: 'Message {t}…'
+      to: 'To', toAll: 'Organizer + every player ({n})', toGroup: '{g} · {n} players', msgT: 'Message', everyone: 'Everyone', toTyping: 'Message {t}…',
+      // v1537 To / Cc / Bcc
+      cc: 'Cc', bcc: 'Bcc', ccBcc: 'Cc / Bcc', rcAdd: '+ Add', organizer: 'Organizer', rcSearch: 'Search a player or group…', noRcpt: 'Add a recipient first', rcNone: 'Nobody else to add'
     },
     th: {
       societies: 'สมาคม', golfCourse: 'สนามกอล์ฟ', upcoming: 'อีเวนต์สมาคมที่สนามนี้ — 3 สัปดาห์ข้างหน้า',
@@ -111,12 +113,13 @@
       notPaired: 'ลงทะเบียนแล้ว — ยังไม่จับกลุ่ม', loading: 'กำลังโหลด…', noRoster: 'สนามนี้ยังไม่มีรายชื่อแคดดี้',
       cadSetMsg: 'กำหนด {c} ให้ {p} ({g})', cadOkMsg: 'ยืนยัน {c} ให้ {p}', cadCancelMsg: 'ยกเลิก {c} ของ {p}',
       cadRefuse: '{c} ไม่ว่าง: {r}', cadSaved: 'บันทึกแล้ว', unpaired: 'ยังไม่จับกลุ่ม',
-      to: 'ถึง', toAll: 'ผู้จัด + ผู้เล่นทุกคน ({n})', toGroup: '{g} · {n} คน', msgT: 'ส่งข้อความ', everyone: 'ทุกคน', toTyping: 'ส่งข้อความถึง {t}…'
+      to: 'ถึง', toAll: 'ผู้จัด + ผู้เล่นทุกคน ({n})', toGroup: '{g} · {n} คน', msgT: 'ส่งข้อความ', everyone: 'ทุกคน', toTyping: 'ส่งข้อความถึง {t}…',
+      cc: 'สำเนา', bcc: 'สำเนาลับ', ccBcc: 'สำเนา / สำเนาลับ', rcAdd: '+ เพิ่ม', organizer: 'ผู้จัด', rcSearch: 'ค้นหาผู้เล่นหรือกลุ่ม…', noRcpt: 'เพิ่มผู้รับก่อน', rcNone: 'ไม่มีผู้รับอื่นให้เพิ่ม'
     }
   };
 
   var CL = window.CourseLink = {
-    _v: 1535,
+    _v: 1537,
     KEYS: KEYS,
     sb: null,
     lang: 'en',
@@ -237,12 +240,12 @@
         sb.from('event_pairings').select('event_id,groups').in('event_id', ids),
         sb.from('course_event_slots').select('*').in('event_id', ids),
         socIds.length ? sb.from('society_profiles').select('id,society_name').in('id', socIds) : Promise.resolve({ data: [] }),
-        sb.from('event_course_messages').select('event_id,side,created_at').in('event_id', ids).order('created_at', { ascending: false }).limit(1000),
+        sb.from('event_course_messages').select('event_id,side,created_at,org_sees').in('event_id', ids).order('created_at', { ascending: false }).limit(1000),
         dates.length ? sb.from('caddy_bookings').select('id,golfer_id,user_id,golfer_name,caddie_name,caddy_id,status,tee_time,start_time,booking_date,course_id,course_name,booking_source,special_requests,teesheet_booking_id,created_at,caddy_profiles(caddy_number,name,photo_url)')
           .in('booking_date', dates).neq('status', 'cancelled').limit(1000) : Promise.resolve({ data: [] }),
         slugs.length ? sb.from('caddy_profiles').select('id,caddy_number,name,photo_url,course_id,course_name').eq('is_active', true).eq('is_mock', false).or(rosterOr).limit(600) : Promise.resolve({ data: [] })
       ]);
-      var regs = res[0], pair = (res[1].data || []), alloc = (res[2].data || []), socs = (res[3].data || []), msgs = (res[4].data || []);
+      var regs = res[0], pair = (res[1].data || []), alloc = (res[2].data || []), socs = (res[3].data || []), msgs = (res[4].data || []).filter(function (m) { return self._vis(m); });
       var jobs = res[5].data || [], rosterRows = res[6].data || [];
       if (res[5].error) console.warn('[CourseLink] jobs', res[5].error);
       // roster by venue → number
@@ -352,7 +355,8 @@
     loadMsgs: async function (evId) {
       var r = await this.sb.from('event_course_messages').select('*').eq('event_id', evId).order('created_at', { ascending: true }).limit(400);
       if (r.error) { console.warn('[CourseLink] msgs', r.error); return this.state.msgs[evId] || []; }
-      this.state.msgs[evId] = r.data || [];
+      var self = this;
+      this.state.msgs[evId] = (r.data || []).filter(function (m) { return self._vis(m); });
       return this.state.msgs[evId];
     },
     send: async function (ev, fields) {
@@ -454,7 +458,7 @@
           if ((d && self.state.events.some(function (ev) { return ev.date === d; })) || gone(p, r)) bump();
         })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'event_course_messages' }, function (p) {
-          var m = p.new; if (!m || !mine(m.event_id)) return;
+          var m = p.new; if (!m || !mine(m.event_id) || !self._vis(m)) return;
           var list = self.state.msgs[m.event_id];
           if (list && !list.some(function (x) { return x.id === m.id; })) list.push(m);
           var ev = self.state.byId[m.event_id];
@@ -511,10 +515,17 @@
         var self = this;
         p.addEventListener('click', function (e) { self._click(e); });
         // v1347: the caddy picker filters as you type (list repaint only — the input keeps focus)
-        p.addEventListener('input', function (e) { if (e.target.classList.contains('cl-pick-in') && self._pick) { self._pick.q = e.target.value; self._paintPick(); } });
+        p.addEventListener('input', function (e) {
+          if (e.target.classList.contains('cl-pick-in') && self._pick) { self._pick.q = e.target.value; self._paintPick(); }
+          if (e.target.classList.contains('cl-rq')) {   // v1537 recipient search: list repaint only, the input keeps focus
+            var card = e.target.closest('.cl-card'), ev = card && self.state.byId[card.getAttribute('data-ev')]; if (!ev) return;
+            self._rcOf(ev).q = e.target.value; var l = card.querySelector('.cl-rlist'); if (l) l.innerHTML = self._rcListHtml(ev);
+          }
+        });
         p.addEventListener('keydown', function (e) {
           if (e.key === 'Enter' && e.target.classList.contains('cl-in')) { e.preventDefault(); self._sendFrom(e.target); }
           if (e.key === 'Enter' && e.target.classList.contains('cl-pick-in')) { e.preventDefault(); var first = p.querySelector('.cl-pick .cl-pk[data-a="cadset"]'); if (first) first.click(); }
+          if (e.key === 'Enter' && e.target.classList.contains('cl-rq')) { e.preventDefault(); var ro = p.querySelector('.cl-rlist .cl-ro'); if (ro) ro.click(); }
           if (e.key === 'Escape') { if (self._pick) { self._pick = null; self.renderPanel(); } else self.closePanel(); }
           e.stopPropagation();   // the tee sheet's type-anywhere quick find must not steal these keys
         });
@@ -616,7 +627,7 @@
       msgs.forEach(function (m) {
         var mine = m.side === st.side;
         var tm = ''; try { tm = new Date(m.created_at).toLocaleString(self.lang === 'th' ? 'th-TH' : 'en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { }
-        h += '<div class="cl-m ' + (mine ? 'me' : 'them') + ' k-' + E(m.kind) + '"><div class="cl-mh">' + E(mine ? self.t('you') : (m.sender_name || (m.side === 'course' ? self.t('courseSide') : ''))) + (m.side === 'course' && m.kind === 'text' ? ' → ' + E(m.to_kind === 'event' || !m.to_kind ? self.t('everyone') : (m.to_label || '')) : '') + ' · ' + E(tm) + '</div>' +
+        h += '<div class="cl-m ' + (mine ? 'me' : 'them') + ' k-' + E(m.kind) + '"><div class="cl-mh">' + E(mine ? self.t('you') : (m.sender_name || (m.side === 'course' ? self.t('courseSide') : ''))) + (m.side === 'course' && m.kind === 'text' ? ' → ' + E(m.to_kind === 'event' || !m.to_kind ? self.t('everyone') : (m.to_label || '')) + (m.cc_label ? ' · ' + E(self.t('cc')) + ' ' + E(m.cc_label) : '') + (m.bcc_label && st.side === 'course' ? ' · ' + E(self.t('bcc')) + ' ' + E(m.bcc_label) : '') : '') + ' · ' + E(tm) + '</div>' +
           '<div class="cl-mb">' + E(self._msgText(m)) + '</div>';
         if (m.kind === 'request' && st.side === 'course' && !mine) {
           h += answered[m.id]
@@ -628,9 +639,13 @@
         h += '</div>';
       });
       h += '</div>';
-      var to = st.side === 'course' ? this._toOf(ev) : null;
-      if (to) h += '<div class="cl-to"><span>' + E(this.t('to')) + '</span><b>' + E(to.label) + '</b>' + (to.kind !== 'event' ? '<button class="cl-btn" data-a="toall">' + E(this.t('everyone')) + '</button>' : '') + '</div>';
-      h += '<div class="cl-send"><input class="cl-in" type="text" maxlength="2000" placeholder="' + E(to && to.kind !== 'event' ? this.t('toTyping', { t: to.label }) : this.t('typeMsg')) + '"><button class="cl-btn pri" data-a="send">' + E(this.t('send')) + '</button></div></div>';
+      var ph = this.t('typeMsg');
+      if (st.side === 'course') {
+        h += this._rcHtml(ev);
+        var R = this._rcOf(ev), one = R.to.length === 1 && R.to[0] !== 'all' && !R.cc.length && !R.bcc.length && this._rcMap(ev)[R.to[0]];
+        if (one) ph = this.t('toTyping', { t: one.label });
+      }
+      h += '<div class="cl-send"><input class="cl-in" type="text" maxlength="2000" placeholder="' + E(ph) + '"><button class="cl-btn pri" data-a="send">' + E(this.t('send')) + '</button></div></div>';
       return h + '</div>';
     },
     _click: async function (e) {
@@ -682,18 +697,13 @@
           this.renderPanel(); return;
         }
         if (a === 'send') return this._sendFrom(card.querySelector('.cl-in'));
-        if (a === 'toall') { delete this._to[ev.id]; this.renderPanel(); this._focusIn(); return; }
-        if (a === 'msgto') {
-          var row = b.closest('[data-pk]'), f = row && this._player(ev, row.getAttribute('data-pk')); if (!f) return;
-          this._to[ev.id] = { kind: 'player', ids: f.p.id ? [f.p.id] : [], label: f.p.name };
+        if (a === 'msgto' || a === 'msgtog') {   // ✉ on a player / group row = a 1-to-1 (or group-only) message
+          var row = b.closest('[data-pk]'), k0 = a === 'msgtog' ? 'g:' + (parseInt(b.getAttribute('data-gi'), 10) || 0) : row && 'p:' + row.getAttribute('data-pk');
+          if (!k0) return;
+          var R0 = this._rcOf(ev); R0.to = [k0]; R0.cc = []; R0.bcc = []; R0.pick = null;
           this.renderPanel(); this._focusIn(); return;
         }
-        if (a === 'msgtog') {
-          var gi2 = parseInt(b.getAttribute('data-gi'), 10) || 0, gs = ev.groups.filter(function (g) { return g.players.length; });
-          var pl = gi2 ? (gs[gi2 - 1] || {}).players || [] : (ev.unpaired || []);
-          this._to[ev.id] = { kind: 'group', ids: pl.map(function (x) { return x.id; }).filter(Boolean), label: this.t('toGroup', { g: gi2 ? this.t('group') + ' ' + gi2 : this.t('notPaired'), n: pl.length }) };
-          this.renderPanel(); this._focusIn(); return;
-        }
+        if (a === 'rcadd' || a === 'rcmore' || a === 'rcpick' || a === 'rcx') return this._rcAction(a, b, ev);
       } catch (err) {
         console.warn('[CourseLink]', err);
         this.toast('⚠ ' + (err && err.message ? err.message : 'Failed'));
@@ -898,19 +908,94 @@
       } catch (err) { this._fail('cancelCaddy', err); }
     },
 
-    _to: {},             // v1535 evId → { kind:'group'|'player', ids, label }; none = the whole event
-    _toOf: function (ev) {
-      return this._to[ev.id] || { kind: 'event', label: this.t('toAll', { n: ev.regs || 0 }) };
+    // ---------- v1537 recipients: To / Cc / Bcc, picked from THIS event's people ----------
+    _rc: {},             // evId → { to:[key], cc:[key], bcc:[key], more, pick:'to'|'cc'|'bcc'|null, q }
+    _rcOf: function (ev) { return this._rc[ev.id] || (this._rc[ev.id] = { to: ['all'], cc: [], bcc: [], more: false, pick: null, q: '' }); },
+    /* key → { k, label, sub, ids } — 'all', 'org', 'g:<n>' (0 = not paired), 'p:<player key>' */
+    _rcMap: function (ev) {
+      var self = this, out = {}, gi = 0;
+      out.all = { k: 'all', label: this.t('everyone'), sub: this.t('toAll', { n: ev.regs || 0 }) };
+      out.org = { k: 'org', label: this.t('organizer'), sub: this.shortName(ev), ids: ['ORGANIZER'] };
+      var addGroup = function (k, label, pl) {
+        out[k] = { k: k, label: label, sub: pl.length + ' ' + self.t('players'), ids: pl.map(function (x) { return x.id; }).filter(Boolean) };
+        pl.forEach(function (p) { var pk = 'p:' + self._pkey(p); out[pk] = { k: pk, label: p.name, sub: label, ids: p.id ? [p.id] : [] }; });
+      };
+      ev.groups.forEach(function (g) { if (!g.players.length) return; gi++; addGroup('g:' + gi, self.t('group') + ' ' + gi, g.players); });
+      if (ev.unpaired && ev.unpaired.length) addGroup('g:0', this.t('notPaired'), ev.unpaired);
+      return out;
     },
+    _rcHtml: function (ev) {
+      var E = this.esc.bind(this), self = this, R = this._rcOf(ev), M = this._rcMap(ev);
+      var fields = (R.more || R.cc.length || R.bcc.length) ? ['to', 'cc', 'bcc'] : ['to'];
+      var h = '<div class="cl-rc">';
+      fields.forEach(function (f) {
+        h += '<div class="cl-rr"><span class="cl-rl">' + E(self.t(f)) + '</span><div class="cl-chips">';
+        R[f].forEach(function (k) {
+          var o = M[k]; if (!o) return;
+          h += '<span class="cl-chip' + (f === 'bcc' ? ' bcc' : '') + '" title="' + E(o.sub || '') + '">' + E(k === 'all' ? self.t('toAll', { n: ev.regs || 0 }) : o.label) +
+            '<button type="button" data-a="rcx" data-f="' + f + '" data-k="' + E(k) + '" aria-label="×">×</button></span>';
+        });
+        h += '<button type="button" class="cl-rc-add' + (R.pick === f ? ' on' : '') + '" data-a="rcadd" data-f="' + f + '">' + E(self.t('rcAdd')) + '</button></div>';
+        if (f === 'to' && fields.length === 1) h += '<button type="button" class="cl-rc-more" data-a="rcmore">' + E(self.t('ccBcc')) + '</button>';
+        h += '</div>';
+        if (R.pick === f) h += '<div class="cl-rpick"><input class="cl-rq" type="text" autocomplete="off" placeholder="' + E(self.t('rcSearch')) + '" value="' + E(R.q || '') + '"><div class="cl-rlist">' + self._rcListHtml(ev) + '</div></div>';
+      });
+      return h + '</div>';
+    },
+    _rcListHtml: function (ev) {
+      var E = this.esc.bind(this), R = this._rcOf(ev), M = this._rcMap(ev), f = R.pick, q = String(R.q || '').trim().toLowerCase();
+      var used = {}; R.to.concat(R.cc, R.bcc).forEach(function (k) { used[k] = 1; });
+      var keys = Object.keys(M).filter(function (k) {
+        if (used[k] || (k === 'all' && f !== 'to')) return false;
+        return !q || (M[k].label + ' ' + (M[k].sub || '')).toLowerCase().indexOf(q) !== -1;
+      });
+      if (!keys.length) return '<div class="cl-empty sm">' + E(this.t('rcNone')) + '</div>';
+      return keys.slice(0, 80).map(function (k) {
+        var o = M[k];
+        return '<div class="cl-ro' + (k.charAt(0) === 'p' ? '' : ' grp') + '" data-a="rcpick" data-k="' + E(k) + '"><b>' + E(o.label) + '</b><em>' + E(k === 'all' ? o.sub : (o.sub || '')) + '</em></div>';
+      }).join('');
+    },
+    _rcAction: function (a, b, ev) {
+      var R = this._rcOf(ev), f = b.getAttribute('data-f') || R.pick, k = b.getAttribute('data-k');
+      if (a === 'rcmore') { R.more = true; R.pick = 'cc'; R.q = ''; }
+      else if (a === 'rcadd') { R.pick = R.pick === f ? null : f; R.q = ''; }
+      else if (a === 'rcx') { R[f] = R[f].filter(function (x) { return x !== k; }); }
+      else if (a === 'rcpick' && f) {
+        ['to', 'cc', 'bcc'].forEach(function (x) { R[x] = R[x].filter(function (y) { return y !== k; }); });
+        if (k === 'all') R.to = ['all'];
+        else { if (f === 'to') R.to = R.to.filter(function (y) { return y !== 'all'; }); R[f].push(k); }
+        R.pick = null; R.q = '';
+      }
+      this.renderPanel();
+      var rq = document.querySelector('#clPanel .cl-rq'); if (rq) rq.focus(); else if (a === 'rcpick') this._focusIn();
+    },
+    /* what the server needs: to_kind 'event', or 'custom' + ids / labels per line; null = nobody picked */
+    _rcFields: function (ev) {
+      var R = this._rcOf(ev), M = this._rcMap(ev);
+      if (R.to.indexOf('all') !== -1) return { to_kind: 'event' };
+      var line = function (keys) {
+        var ids = [], labels = [];
+        keys.forEach(function (k) { var o = M[k]; if (!o) return; labels.push(o.label); (o.ids || []).forEach(function (i) { if (ids.indexOf(i) === -1) ids.push(i); }); });
+        return { ids: ids, label: labels.join(', ') };
+      };
+      var to = line(R.to), cc = line(R.cc), bcc = line(R.bcc);
+      if (!to.label && !cc.label && !bcc.label) return null;
+      return { to_kind: 'custom', to_ids: to.ids, to_label: to.label || null, cc_ids: cc.ids, cc_label: cc.label || null, bcc_ids: bcc.ids, bcc_label: bcc.label || null };
+    },
+    /* the organizer's side never shows a course message that did not include them (1-to-1 stays 1-to-1) */
+    _vis: function (m) { return this.state.side !== 'society' || m.side !== 'course' || m.org_sees !== false; },
     _focusIn: function () { var i = document.querySelector('#clPanel .cl-in'); if (i) i.focus(); },
     _sendFrom: async function (inp) {
       if (!inp) return;
       var body = inp.value.trim(); if (!body) return;
       var card = inp.closest('.cl-card'), ev = card && this.state.byId[card.getAttribute('data-ev')]; if (!ev) return;
-      inp.value = ''; inp.disabled = true;
-      var to = this.state.side === 'course' ? this._toOf(ev) : null;
       var f = { kind: 'text', body: body };
-      if (to) { f.to_kind = to.kind; f.to_label = to.label; if (to.kind !== 'event') f.to_ids = to.ids; }
+      if (this.state.side === 'course') {
+        var rc = this._rcFields(ev);
+        if (!rc) { this.toast('⚠ ' + this.t('noRcpt')); return; }
+        Object.assign(f, rc);
+      }
+      inp.value = ''; inp.disabled = true;
       try { await this.send(ev, f); }
       catch (err) { inp.value = body; this.toast('⚠ ' + (err.message || 'Failed')); }
       inp.disabled = false; this.renderPanel();
@@ -1016,9 +1101,24 @@
         '#clPanel .cl-m.k-system{align-self:center;background:var(--cl-card);border:1px solid var(--cl-line);max-width:100%;text-align:center}',
         '#clPanel .cl-m.k-request{border:1px solid #f59e0b}',
         '#clPanel .cl-mh{font-size:11px;color:var(--cl-muted)}',
-        '#clPanel .cl-to{display:flex;align-items:center;gap:8px;margin:0 0 6px;font-size:12.5px;color:var(--cl-muted)}',
-        '#clPanel .cl-to b{color:var(--cl-ink);font-weight:800;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-        '#clPanel .cl-to .cl-btn{padding:3px 10px;font-size:12px}',
+        '#clPanel .cl-rc{display:flex;flex-direction:column;gap:4px;margin:0 0 6px}',
+        '#clPanel .cl-rr{display:flex;align-items:flex-start;gap:8px}',
+        '#clPanel .cl-rl{flex:none;width:34px;padding-top:5px;font-size:12px;font-weight:800;color:var(--cl-muted)}',
+        '#clPanel .cl-chips{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:4px;align-items:center}',
+        '#clPanel .cl-chip{display:inline-flex;align-items:center;gap:2px;max-width:100%;background:var(--cl-hi);border:1px solid var(--cl-line2);border-radius:14px;padding:2px 2px 2px 10px;font-size:12.5px;font-weight:700;color:var(--cl-ink)}',
+        '#clPanel .cl-chip.bcc{border-style:dashed}',
+        '#clPanel .cl-chip button{border:0;background:transparent;color:var(--cl-muted);font-size:15px;line-height:1;width:22px;height:22px;border-radius:50%;cursor:pointer;padding:0}',
+        '#clPanel .cl-rc-add,#clPanel .cl-rc-more{border:1px dashed var(--cl-line2);background:transparent;color:var(--cl-green-soft);border-radius:14px;padding:3px 10px;font-size:12px;font-weight:800;cursor:pointer}',
+        '#clPanel .cl-rc-add.on{border-style:solid;background:var(--cl-hi)}',
+        '#clPanel .cl-rc-more{flex:none;border-style:solid;color:var(--cl-muted)}',
+        '#clPanel .cl-rpick{margin:2px 0 4px 42px;background:var(--cl-card);border:1px solid var(--cl-line2);border-radius:10px;padding:6px}',
+        '#clPanel .cl-rq{width:100%;height:36px;border-radius:8px;border:1px solid var(--cl-line2);background:var(--cl-bg);color:var(--cl-ink);font-size:16px;padding:0 10px;margin-bottom:4px;box-sizing:border-box}',
+        '#clPanel .cl-rlist{max-height:200px;overflow:auto;display:flex;flex-direction:column;gap:2px}',
+        '#clPanel .cl-ro{display:flex;align-items:baseline;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer}',
+        '#clPanel .cl-ro:hover{background:var(--cl-hi)}',
+        '#clPanel .cl-ro b{font-size:13px;color:var(--cl-ink)}',
+        '#clPanel .cl-ro.grp b{color:var(--cl-green-soft)}',
+        '#clPanel .cl-ro em{font-style:normal;font-size:11.5px;color:var(--cl-muted);margin-left:auto;text-align:right}',
         '#clPanel .cl-ic.msg{margin-left:4px}',
         '#clPanel .cl-mb{font-size:14px;white-space:pre-wrap;word-break:break-word}',
         '#clPanel .cl-acts-req{display:flex;gap:6px;margin-top:6px}',

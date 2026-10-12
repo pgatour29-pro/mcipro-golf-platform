@@ -1643,7 +1643,8 @@
             this.renderBody();
         },
         setTab(t) { this.tab = t; this.editing = null; this.renderShell(); },
-        setCat(c) { this.menuCat = c; this.renderBody(); },
+        // by index into this kitchen's own categories: no menu text ever lands inside an onclick
+        setCat(i) { this.menuCat = i == null ? null : [...new Set(S.items.map(x => x.category))][i]; this.renderBody(); },
         renderBody() {
             const b = document.getElementById('kqBody');
             if (!b) return;
@@ -1721,7 +1722,7 @@
             return '<div class="kmm">'
                 + '<div class="kmm-top"><div class="kchips">'
                 + '<button class="kc' + (!cat ? ' on' : '') + '" onclick="KitchenQueue.setCat(null)">ALL ' + all.length + '</button>'
-                + cats.map(c => '<button class="kc' + (cat === c ? ' on' : '') + '" onclick="KitchenQueue.setCat(\'' + esc(c) + '\')">' + esc(catMeta(c).label).toUpperCase() + ' ' + all.filter(i => i.category === c).length + '</button>').join('')
+                + cats.map((c, ci) => '<button class="kc' + (cat === c ? ' on' : '') + '" onclick="KitchenQueue.setCat(' + ci + ')">' + esc(catMeta(c).label).toUpperCase() + ' ' + all.filter(i => i.category === c).length + '</button>').join('')
                 + '</div><button class="knew" onclick="KitchenQueue.edit(null)">+ NEW ITEM</button></div>'
                 + '<div class="kadmin"><div class="klist">'
                 + all.filter(it => !cat || it.category === cat).map(it => '<div class="krow' + (ed && ed.id === it.id ? ' sel' : '') + (!it.available ? ' off' : '') + '" onclick="KitchenQueue.edit(\'' + it.id + '\')">'

@@ -1,5 +1,5 @@
 /* ============================================================================
-   FGV1 — Food & Beverage, the Grab way (2026-08-02)
+   FGV1 — Food & Beverage, the Grab way (2026-08-02) · FGV2 golfer storefront v1531 (2026-10-12)
    Golfer: storefront home → menu → item sheet (gallery + modifiers) → one-sheet
    basket/checkout → live tracking. Kitchen: 3-tab dashboard (Queue / Menu / Alerts).
    Data: menu_items + food_item_media + food_favorites + kitchen_settings + food_orders.
@@ -85,11 +85,11 @@
 
     /* ---------------- state ---------------- */
     const S = {
-        items: [], media: {}, favs: new Set(), orders: [],
+        items: [], media: {}, favs: new Set(), orders: [], deals: [], dealsLoaded: false,
         basket: JSON.parse(localStorage.getItem('fgv1_basket') || '[]'),
         prefs: JSON.parse(localStorage.getItem('fgv1_prefs') || '{}'),   // {deliver, pay, hole}
         view: 'home', stack: [], cat: null, search: '', itemOpen: null, galIdx: 0,
-        sheetSel: { spice: null, addons: [], qty: 1, note: '' },
+        sheetSel: { spice: null, addons: [], drinks: [], qty: 1, note: '' },
         settings: null, menuLoaded: false, ordersLoaded: false,
         trackOpen: null, _menuChan: null, _ordChan: null
     };
@@ -184,51 +184,630 @@
         } catch (e) { }
     }
 
-    /* ---------------- golfer: shell render ---------------- */
+    /* ---------------- FGV2 styles (injected once; old .fgv-* rules stay for the kitchen + tracking) ---------------- */
+    function injectCss() {
+        if (document.getElementById('fgv2Css')) return;
+        const s = document.createElement('style'); s.id = 'fgv2Css';
+        s.textContent = [
+            '.fg2t{--bg:#F4F5F7;--card:#fff;--tx:#0F1419;--sub:#5B6672;--fa:#8A96A3;--hr:rgba(15,23,42,.08);--chip:#F1F3F5;--ink:#0F1419;--inktx:#fff;--glass:rgba(255,255,255,.93);--g:#16a34a;--g2:#22c55e;--gd:#14532d;--gl:#dcfce7;--gtx:#15803d;--sh:0 1px 2px rgba(15,23,42,.05),0 6px 18px rgba(15,23,42,.06)}',
+            'body:not(.theme-light) .fg2t,body:not(.theme-light).fg2t{--bg:#0B0F13;--card:#151B21;--tx:#F2F5F7;--sub:#9AA4AE;--fa:#6B7580;--hr:rgba(255,255,255,.09);--chip:#1E262E;--ink:#F2F5F7;--inktx:#0F1419;--glass:rgba(21,27,33,.9);--gl:rgba(34,197,94,.16);--gtx:#4ade80;--sh:0 1px 2px rgba(0,0,0,.3)}',
+            '#golfer-food.fg2on{padding:0!important;background:var(--bg,#F4F5F7)!important;overflow:clip;border-radius:24px}',
+            'body.theme-light #golfer-food.fg2on{background:#F4F5F7!important}body:not(.theme-light) #golfer-food.fg2on{background:#0B0F13!important}',
+            '#golfer-food.fg2on>.fgv-head,#golfer-food.fg2on>#fgvPill{display:none!important}',
+            '.fg2{font-family:Inter,-apple-system,"Segoe UI",sans-serif;color:var(--tx);padding-bottom:110px;background:var(--bg)}',
+            '.fg2 *,.fg2-ov *,.fg2-bar *,.fg2-tabs *{box-sizing:border-box}',
+            '.fg2 button,.fg2-ov button{font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}',
+            '.fg2-hero{position:relative;height:210px;background:#1f2a22;overflow:hidden}.fg2-hero .bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}',
+            '.fg2-hero:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.32),rgba(0,0,0,0) 42%,rgba(0,0,0,.12))}',
+            '.fg2-hero.sk,.fg2-store.sk{animation:fg2sk 1.2s ease-in-out infinite alternate}@keyframes fg2sk{to{opacity:.6}}',
+            '.fg2-hbar{position:absolute;z-index:2;top:12px;left:12px;right:12px;display:flex;gap:8px;justify-content:flex-end}',
+            '.fg2t .gl{position:relative;width:42px;height:42px;border-radius:50%;border:0;background:var(--glass);color:var(--tx);display:grid;place-items:center;box-shadow:0 2px 10px rgba(0,0,0,.18);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}',
+            '.fg2t .gl .material-symbols-outlined{font-size:21px}.fg2t .gl.fav{color:#ef4444}.fg2t .gl.fav .material-symbols-outlined{font-variation-settings:"FILL" 1}',
+            '.fg2t .gl .bd{position:absolute;top:-3px;right:-3px;min-width:19px;height:19px;padding:0 5px;border-radius:10px;background:#ef4444;color:#fff;font:800 11px/15px Inter,sans-serif;border:2px solid #fff}',
+            '.fg2t .gl.pop,.fg2-bar.pop .n,.fg2-side.pop{animation:fg2pop .42s cubic-bezier(.3,1.6,.5,1)}@keyframes fg2pop{40%{transform:scale(1.18)}}',
+            '.fg2-store{position:relative;z-index:3;margin:-58px 14px 0;background:var(--card);border-radius:20px;padding:14px;display:flex;gap:12px;box-shadow:0 8px 28px rgba(15,23,42,.13)}',
+            '.fg2-store .lg{flex:none;width:58px;height:58px;border-radius:15px;overflow:hidden;background:var(--chip);display:grid;place-items:center}.fg2-store .lg img{width:100%;height:100%;object-fit:cover}',
+            '.fg2-store .w{flex:1;min-width:0}.fg2-store h1{margin:0;font-size:19px;font-weight:800;letter-spacing:-.02em;line-height:1.15;color:var(--tx)}',
+            '.fg2-store .cs{font-size:12.5px;color:var(--sub);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+            '.fg2-store .mt{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:7px;font-size:12px;font-weight:600}',
+            '.fg2-store .mt span{display:inline-flex;align-items:center;gap:4px}.fg2-store .mt .material-symbols-outlined{font-size:15px;color:var(--g)}',
+            '.fg2-store .op{color:var(--gtx)}.fg2-store .op:before,.fg2-store .cl:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--g2);box-shadow:0 0 0 3px rgba(34,197,94,.2)}',
+            '.fg2-store .cl{color:#dc2626}.fg2-store .cl:before{background:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.2)}',
+            '.fg2-modes{display:flex;gap:8px;overflow-x:auto;padding:14px 14px 2px;scrollbar-width:none;overscroll-behavior-x:contain}.fg2-modes::-webkit-scrollbar{display:none}',
+            '.fg2-mode{flex:none;display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 14px;border-radius:20px;background:var(--card);border:1px solid var(--hr);font:600 13px Inter,sans-serif;color:var(--tx);white-space:nowrap}',
+            '.fg2-mode .material-symbols-outlined{font-size:18px;color:var(--sub)}',
+            '.fg2-mode.on{background:var(--ink);color:var(--inktx);border-color:var(--ink)}.fg2-mode.on .material-symbols-outlined{color:var(--g2)}',
+            '.fg2-mode .tg{font:800 10.5px Inter,sans-serif;padding:3px 7px;border-radius:9px;background:var(--gl);color:var(--gtx)}',
+            '.fg2-mode.on .tg{background:rgba(34,197,94,.22);color:#16a34a}body:not(.theme-light) .fg2-mode.on .tg{color:#15803d}',
+            '.fg2-deals{display:flex;gap:10px;overflow-x:auto;padding:14px 14px 4px;scrollbar-width:none;overscroll-behavior-x:contain}.fg2-deals::-webkit-scrollbar{display:none}',
+            '.fg2-deal{position:relative;flex:none;width:258px;display:flex;align-items:center;gap:10px;background:var(--card);border-radius:16px;padding:12px 12px 12px 16px;border:1px dashed rgba(22,163,74,.5)}',
+            '.fg2-deal:before,.fg2-deal:after{content:"";position:absolute;left:-7px;top:50%;width:12px;height:12px;margin-top:-6px;border-radius:50%;background:var(--bg);border-right:1px dashed rgba(22,163,74,.5)}',
+            '.fg2-deal:after{left:auto;right:-7px;border-right:0;border-left:1px dashed rgba(22,163,74,.5)}',
+            '.fg2-deal .w{flex:1;min-width:0}.fg2-deal b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:15px;font-weight:800;letter-spacing:-.01em}',
+            '.fg2-deal .cd{font-size:11.5px;color:var(--sub);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fg2-deal .cd code{font:700 11.5px "JetBrains Mono",monospace;color:var(--tx)}',
+            '.fg2-deal .en{font-size:11px;color:var(--fa);margin-top:1px}',
+            '.fg2-deal button{flex:none;height:34px;padding:0 15px;border-radius:17px;border:0;background:var(--gd);color:#fff;font:700 12.5px Inter,sans-serif}',
+            '.fg2-deal button.cl{background:var(--gl);color:var(--gtx)}',
+            '.fg2-srch{margin:14px 14px 0;display:flex;align-items:center;gap:8px;height:46px;padding:0 14px;border-radius:14px;background:var(--card);border:1px solid var(--hr);color:var(--fa)}',
+            '.fg2-srch .material-symbols-outlined{font-size:20px}.fg2-srch input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:500 15px Inter,sans-serif;color:var(--tx);-webkit-appearance:none}',
+            '.fg2-srch input::placeholder{color:var(--fa)}',
+            '.fg2-tabs{display:flex;gap:4px;overflow-x:auto;margin-top:12px;padding:8px 14px;background:var(--bg);border-bottom:1px solid var(--hr);scrollbar-width:none;font-family:Inter,-apple-system,sans-serif}',
+            '.fg2-tabs::-webkit-scrollbar{display:none}',
+            '.fg2-tabs.pin{position:fixed;top:0;z-index:60;margin:0;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 4px 14px rgba(15,23,42,.08)}',
+            '.fg2-tabs a{flex:none;padding:8px 14px;border-radius:18px;font:700 13px Inter,sans-serif;color:var(--sub);text-decoration:none;white-space:nowrap;cursor:pointer}',
+            '.fg2-tabs a.on{background:var(--ink);color:var(--inktx)}',
+            '.fg2-sec{padding:20px 14px 2px}.fg2-sec h2{margin:0;font-size:20px;font-weight:800;letter-spacing:-.02em;color:var(--tx)}.fg2-sec p{margin:2px 0 0;font-size:12.5px;color:var(--sub)}',
+            '.fg2-none{padding:30px 14px;text-align:center;color:var(--sub);font-size:14px}',
+            '.fg2-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 14px 0}',
+            '.fg2-card{position:relative;display:flex;flex-direction:column;background:var(--card);border-radius:18px;padding:8px;box-shadow:var(--sh);cursor:pointer}',
+            '.fg2-card .ph{position:relative;aspect-ratio:1/.82;border-radius:13px;overflow:hidden;background:var(--chip)}',
+            '.fg2t .ph img,.fg2-iph img{width:100%;height:100%;object-fit:cover;display:block}.fg2t .ph img.pk{object-fit:contain;padding:8px;background:#fff}',
+            '.fg2-art{display:grid;place-items:center;width:100%;height:100%;background:radial-gradient(circle at 50% 40%,var(--w2),var(--w1))}.fg2-art svg{width:62%;height:62%}',
+            '.fg2-card .hrt{position:absolute;top:7px;right:7px;width:32px;height:32px;border-radius:50%;border:0;background:rgba(255,255,255,.93);display:grid;place-items:center;color:#0F1419}',
+            '.fg2-card .hrt .material-symbols-outlined{font-size:18px}.fg2-card .hrt.on{color:#ef4444}.fg2-card .hrt.on .material-symbols-outlined{font-variation-settings:"FILL" 1}',
+            '.fg2-card .tag{position:absolute;left:7px;top:7px;font:800 10px Inter,sans-serif;letter-spacing:.02em;padding:4px 7px;border-radius:8px;background:#0F1419;color:#fff}',
+            '.fg2-card .nm{margin:8px 2px 0;font-size:14px;font-weight:700;line-height:1.25;letter-spacing:-.01em;color:var(--tx);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
+            '.fg2-card .ft{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:auto 2px 1px;padding-top:6px}',
+            '.fg2-card .pr{font-size:15px;font-weight:800;color:var(--tx)}.fg2-card .tm{display:block;font-size:11.5px;color:var(--sub);font-weight:600;margin-top:1px}',
+            '.fg2-card.na,.fg2-row.na{opacity:.55}',
+            '.fg2-add{width:38px;height:38px;border-radius:12px;border:0;background:var(--g2);color:#fff;display:grid;place-items:center;box-shadow:0 4px 12px rgba(34,197,94,.35);transition:transform .12s}',
+            '.fg2-add:active{transform:scale(.9)}.fg2-add .material-symbols-outlined{font-size:23px;font-weight:700}',
+            '.fg2-stp{display:inline-flex;align-items:center;height:38px;border-radius:12px;background:var(--ink);color:var(--inktx);overflow:hidden;animation:fg2in .18s ease-out}@keyframes fg2in{from{transform:scale(.85);opacity:.4}}',
+            '.fg2-stp button{width:32px;height:100%;border:0;background:transparent;color:inherit;font:700 19px/1 Inter,sans-serif}.fg2-stp b{min-width:16px;text-align:center;font-size:14px;color:inherit}',
+            '.fg2-stp.lt{background:var(--chip);color:var(--tx);height:36px;animation:none}',
+            '.fg2-so{font:700 11.5px Inter,sans-serif;color:var(--sub);padding:6px 8px;border-radius:9px;background:var(--chip)}',
+            '.fg2-list{padding:4px 14px 0}',
+            '.fg2-row{display:flex;gap:12px;padding:14px 0;border-bottom:1px solid var(--hr);cursor:pointer}',
+            '.fg2-row .w{flex:1;min-width:0}.fg2-row .nm{font-size:15px;font-weight:700;letter-spacing:-.01em;color:var(--tx)}',
+            '.fg2-row .pop{display:inline-block;margin-left:7px;vertical-align:2px;font:800 10px Inter,sans-serif;padding:2px 6px;border-radius:7px;background:var(--gl);color:var(--gtx)}',
+            '.fg2-row .ds{font-size:12.5px;color:var(--sub);margin-top:3px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
+            '.fg2-row .pr{margin-top:6px;font-size:14.5px;font-weight:800;color:var(--tx)}.fg2-row .pr small{font-size:11.5px;color:var(--sub);font-weight:600;margin-left:6px}',
+            '.fg2-row .ph{position:relative;flex:none;width:106px;height:106px;border-radius:14px;overflow:hidden;background:var(--chip)}',
+            '.fg2-row .acw{position:absolute;right:6px;bottom:6px}',
+            '.fg2-row .fg2-add{width:34px;height:34px;border-radius:50%;background:#fff;color:#0F1419;box-shadow:0 2px 8px rgba(0,0,0,.22)}',
+            '.fg2-row .fg2-stp{height:34px;border-radius:17px;background:#0F1419;color:#fff}',
+            '.fg2-side{display:none}',
+            /* basket bar (phone) */
+            '.fg2-bar{position:fixed;z-index:80;left:70px;right:14px;bottom:calc(14px + env(safe-area-inset-bottom));height:58px;border-radius:29px;border:0;background:#16a34a;color:#fff;display:flex;align-items:center;gap:10px;padding:0 8px;box-shadow:0 10px 30px rgba(22,163,74,.42);font:700 15px Inter,sans-serif;text-align:left;animation:fg2up .25s ease-out}',
+            '@keyframes fg2up{from{transform:translateY(30px);opacity:0}}',
+            '.fg2-bar .n{position:relative;flex:none;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.2);display:grid;place-items:center}',
+            '.fg2-bar .n .material-symbols-outlined{font-size:21px}.fg2-bar .n b{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;border-radius:10px;background:#fff;color:#16a34a;font-size:11.5px;line-height:20px;text-align:center;padding:0 4px}',
+            '.fg2-bar .l{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fg2-bar .l small{display:block;font-size:11.5px;font-weight:600;opacity:.88;overflow:hidden;text-overflow:ellipsis}.fg2-bar .t{padding:0 12px;font-weight:800}',
+            'html.fg2-barup #globalScrollToTopBtn{display:none!important}',
+            '.fg2-fly{position:fixed;z-index:9500;width:56px;height:56px;border-radius:50%;overflow:hidden;border:3px solid #fff;box-shadow:0 8px 22px rgba(0,0,0,.28);pointer-events:none}.fg2-fly img{width:100%;height:100%;object-fit:cover}',
+            /* overlays: item page + basket sheet */
+            'html.fg2-lock #dashboardBackBtn,html.fg2-lock #globalScrollToTopBtn{display:none!important}',
+            '#fg2Ovl{position:fixed;inset:0;z-index:9000;font-family:Inter,-apple-system,"Segoe UI",sans-serif;color:var(--tx)}',
+            '.fg2-dim{position:absolute;inset:0;background:rgba(15,20,25,.48);animation:fg2fade .2s}@keyframes fg2fade{from{opacity:0}}',
+            '.fg2-ov.item .fg2-dim{display:none}',
+            '.fg2-ipage{position:absolute;inset:0;overflow-y:auto;overscroll-behavior:contain;background:var(--card);animation:fg2slide .26s cubic-bezier(.2,.8,.2,1)}@keyframes fg2slide{from{transform:translateY(40px);opacity:.3}}',
+            '.fg2-iph{position:relative;height:300px;background:var(--chip)}.fg2-iph img.pk{object-fit:contain;padding:18px;background:#fff}.fg2-iph .fg2-art svg{width:46%;height:46%}',
+            '.fg2-iph:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.3),transparent 35%);pointer-events:none}',
+            '.fg2-iph .tb{position:absolute;z-index:2;top:calc(14px + env(safe-area-inset-top));left:14px;right:14px;display:flex;gap:8px}.fg2-iph .tb .sp{flex:1}',
+            '.fg2-ibd{position:relative;margin-top:-22px;background:var(--card);border-radius:22px 22px 0 0;padding:20px 18px 24px}',
+            '.fg2-ibd h1{margin:0;font-size:24px;font-weight:800;letter-spacing:-.025em;color:var(--tx)}.fg2-ibd .pz{font-size:18px;font-weight:800;margin-top:4px}',
+            '.fg2-ibd .dz{font-size:14px;color:var(--sub);margin-top:8px;line-height:1.45}',
+            '.fg2-ibd .ch{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}.fg2-ibd .ch>span{display:inline-flex;align-items:center;gap:4px;font:700 12px Inter,sans-serif;padding:6px 10px;border-radius:10px;background:var(--chip);color:var(--sub)}',
+            '.fg2-ibd .ch .material-symbols-outlined{font-size:15px}.fg2-ibd .ch>.gr{background:var(--gl);color:var(--gtx)}.fg2-ibd .ch>.bad{background:rgba(239,68,68,.12);color:#dc2626}',
+            '.fg2-grp{margin:22px -18px 0;padding:18px 18px 0;border-top:8px solid var(--bg)}',
+            '.fg2-grp .hd{display:flex;align-items:center;gap:8px;margin-bottom:4px}.fg2-grp .hd b{font-size:16.5px;font-weight:800;letter-spacing:-.01em}',
+            '.fg2-grp .hd em{font-style:normal;font:700 11px Inter,sans-serif;padding:3px 8px;border-radius:8px;background:var(--chip);color:var(--sub)}.fg2-grp .hd em.rq{background:#fef3c7;color:#92400e}',
+            '.fg2-grp .hd small{margin-left:auto;font-size:12px;color:var(--fa)}',
+            '.fg2-opt{display:flex;width:100%;align-items:center;gap:12px;padding:13px 0;border:0;border-bottom:1px solid var(--hr);background:transparent;font:500 15px Inter,sans-serif;color:var(--tx);text-align:left}',
+            '.fg2-opt:last-child{border-bottom:0}.fg2-opt .p{margin-left:auto;color:var(--sub);font-size:14px;white-space:nowrap}',
+            '.fg2-opt .cb{flex:none;width:23px;height:23px;border-radius:7px;border:2px solid #CBD5E1;display:grid;place-items:center}',
+            '.fg2-opt .rd{flex:none;width:23px;height:23px;border-radius:50%;border:2px solid #CBD5E1;transition:border .12s}',
+            '.fg2-opt.on .cb{background:var(--g);border-color:var(--g)}.fg2-opt.on .rd{border:7px solid var(--g)}',
+            '.fg2-opt .th{flex:none;width:46px;height:46px;border-radius:11px;overflow:hidden;background:#fff;border:1px solid var(--hr)}.fg2-opt .th img{width:100%;height:100%;object-fit:cover}.fg2-opt .th img.pk{object-fit:contain;padding:3px}',
+            '.fg2-note{display:block;width:100%;margin:10px 0 0;min-height:76px;border-radius:14px;border:1px solid var(--hr);background:var(--bg);padding:12px 14px;font:15px Inter,sans-serif;color:var(--tx);resize:vertical}',
+            '.fg2-cta{position:sticky;bottom:0;z-index:5;display:flex;gap:10px;padding:12px 14px calc(14px + env(safe-area-inset-bottom));background:color-mix(in srgb,var(--card) 95%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--hr)}',
+            '.fg2-cta .q{flex:none;display:flex;align-items:center;height:54px;border-radius:27px;border:1px solid var(--hr);padding:0 4px}',
+            '.fg2-cta .q button{width:42px;height:46px;border:0;background:transparent;font:500 24px/1 Inter,sans-serif;color:var(--tx)}.fg2-cta .q b{width:22px;text-align:center;font-size:16px}',
+            '.fg2-cta .go{flex:1;height:54px;border-radius:27px;border:0;background:#16a34a;color:#fff;font:800 16px Inter,sans-serif;box-shadow:0 8px 22px rgba(22,163,74,.35)}',
+            '.fg2-cta .go:disabled{background:#94a3b8;box-shadow:none}',
+            '.fg2-sheet{position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow-y:auto;overscroll-behavior:contain;background:var(--card);border-radius:24px 24px 0 0;padding:8px 16px 100px;animation:fg2sheet .28s cubic-bezier(.2,.8,.2,1)}',
+            '@keyframes fg2sheet{from{transform:translateY(60%)}}',
+            '.fg2-sheet .hn{width:40px;height:5px;border-radius:3px;background:#D5DBE1;margin:2px auto 12px}',
+            '.fg2-cta.sh{position:absolute;left:0;right:0;bottom:0}',
+            '.fg2-bh{display:flex;align-items:baseline;gap:8px}.fg2-bh b{font-size:22px;font-weight:800;letter-spacing:-.02em}.fg2-bh span{color:var(--sub);font-size:13px}',
+            '.fg2-bh .clr{margin-left:auto;border:0;background:transparent;font:700 13px Inter,sans-serif;color:var(--sub);padding:6px 0}',
+            '.fg2-bempty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:34px 10px;color:var(--sub);font-size:14px;text-align:center}.fg2-bempty .material-symbols-outlined{font-size:40px;color:var(--fa)}',
+            '.fg2-dest{display:flex;align-items:center;gap:12px;margin-top:12px;padding:12px;border-radius:16px;background:var(--gl);border:1px solid rgba(34,197,94,.35)}',
+            '.fg2-dest .ic{flex:none;width:42px;height:42px;border-radius:12px;background:#16a34a;color:#fff;display:grid;place-items:center}',
+            '.fg2-dest .w{flex:1;min-width:0}.fg2-dest b{display:block;font-size:15px}.fg2-dest small{display:block;font-size:12.5px;color:var(--sub);margin-top:1px}',
+            '.fg2-dmodes{display:flex;gap:6px;margin-top:8px}.fg2-dmodes button{flex:1;height:36px;border-radius:12px;border:1px solid var(--hr);background:var(--card);font:700 12.5px Inter,sans-serif;color:var(--sub)}',
+            '.fg2-dmodes button.on{background:var(--ink);border-color:var(--ink);color:var(--inktx)}',
+            '.fg2-hole{display:flex;align-items:center;gap:10px;margin-top:8px;font:700 14px Inter,sans-serif}.fg2-hole input{width:80px;height:42px;border-radius:12px;border:2px solid #16a34a;background:var(--card);color:var(--tx);font:800 18px Inter,sans-serif;text-align:center}',
+            '.fg2-li{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--hr)}',
+            '.fg2-li .ph{flex:none;width:58px;height:58px;border-radius:13px;overflow:hidden;background:var(--chip)}',
+            '.fg2-li .w{flex:1;min-width:0}.fg2-li b{display:block;font-size:14.5px}.fg2-li small{display:block;font-size:12px;color:var(--sub);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fg2-li .pr{font-weight:800;font-size:14px;margin-top:3px}',
+            '.fg2-x{margin-top:16px}.fg2-x .t{font-size:15px;font-weight:800}.fg2-x .r{display:flex;gap:10px;overflow-x:auto;margin-top:10px;scrollbar-width:none}.fg2-x .r::-webkit-scrollbar{display:none}',
+            '.fg2-xc{flex:none;width:118px;cursor:pointer}.fg2-xc .ph{position:relative;height:96px;border-radius:14px;overflow:hidden;background:#fff;border:1px solid var(--hr)}',
+            '.fg2-xc .ph .fg2-ac{position:absolute;right:5px;bottom:5px}.fg2-xc .fg2-add{width:32px;height:32px;border-radius:50%}.fg2-xc .fg2-stp{height:32px;border-radius:16px}.fg2-xc .fg2-stp button{width:26px}',
+            '.fg2-xc b{display:block;font-size:12.5px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fg2-xc>span{font-size:12.5px;color:var(--sub);font-weight:700}',
+            '.fg2-pay{display:flex;gap:8px;margin-top:10px}.fg2-pay button{flex:1;padding:12px 6px;border-radius:13px;border:1px solid var(--hr);background:var(--card);font:700 13px Inter,sans-serif;color:var(--tx)}',
+            '.fg2-pay button.on{border:2px solid #16a34a;background:var(--gl);color:var(--gtx)}',
+            '.fg2-tot{margin-top:16px}.fg2-tot div{display:flex;justify-content:space-between;font-size:14px;color:var(--sub);padding:4px 0}.fg2-tot b{color:var(--tx)}',
+            '.fg2-tot div.dl,.fg2-tot div.dl b{color:var(--gtx)}',
+            '.fg2-tot div.big{color:var(--tx);font-size:18px;font-weight:800;padding-top:10px;margin-top:6px;border-top:1px dashed var(--hr)}',
+            '.fg2-place{display:block;width:100%;margin-top:14px;height:54px;border-radius:27px;border:0;background:#16a34a;color:#fff;font:800 16px Inter,sans-serif;box-shadow:0 8px 22px rgba(22,163,74,.3)}',
+            '.fg2-place:disabled,.fg2-cta .go:disabled{opacity:.75}',
+            /* tracking: photo thumbs on order rows */
+            '.fg2-thumbs{display:inline-flex;flex:none;margin-right:10px}.fg2-thumbs>span{width:40px;height:40px;border-radius:50%;overflow:hidden;border:2px solid var(--fcard,#fff);background:#eee;margin-left:-12px;box-shadow:0 1px 3px rgba(0,0,0,.12)}',
+            '.fg2-thumbs>span:first-child{margin-left:0}.fg2-thumbs img{width:100%;height:100%;object-fit:cover;display:block}.fg2-thumbs img.pk{object-fit:contain;background:#fff}.fg2-thumbs .fg2-art svg{width:70%;height:70%}',
+            '#golfer-status.fg2st .fgv-orow{align-items:center}#golfer-status.fg2st .fgv-osum{display:flex;align-items:center;gap:6px}#golfer-status.fg2st .fgv-osum .w{flex:1;min-width:0}',
+            '.fg2-bempty.st{padding:40px 10px}',
+            /* tracking in the FGV2 language: flat page, one sans, white cards, green pill CTA */
+            'body.theme-light #golfer-status.fg2st{background:#F4F5F7}body:not(.theme-light) #golfer-status.fg2st{background:#0B0F13}',
+            '#golfer-status.fg2st,#golfer-status.fg2st .fgv-h1{font-family:Inter,-apple-system,"Segoe UI",sans-serif}',
+            '#golfer-status.fg2st .fgv-h1{font-size:24px;font-weight:800;letter-spacing:-.025em}',
+            '#golfer-status.fg2st .fgv-ovl,#golfer-status.fg2st .fgv-sec .t,#golfer-status.fg2st .fgv-track .ovl2{font:800 11px/1 Inter,sans-serif;letter-spacing:.06em}',
+            '#golfer-status.fg2st .fgv-track,#golfer-status.fg2st .fgv-orow{border:0;box-shadow:0 1px 2px rgba(15,23,42,.05),0 8px 24px rgba(15,23,42,.07)}',
+            '#golfer-status.fg2st .fgv-track .eta{font:800 24px/1.2 Inter,sans-serif;letter-spacing:-.025em}',
+            '#golfer-status.fg2st .fgv-cta{height:54px;border-radius:27px;background:#16a34a;box-shadow:0 8px 22px rgba(22,163,74,.3);font:800 15px Inter,sans-serif;color:#fff}',
+            '#golfer-status.fg2st .money{font-family:Inter,sans-serif;font-weight:800}',
+            /* kitchen: photo thumbs, photo picker, add-on editor, deals tab */
+            '.krow .fgv-art.kph{overflow:hidden;padding:0}.krow .kph .ph{display:block;width:100%;height:100%}.krow .kph img{width:100%;height:100%;object-fit:cover;display:block}.krow .kph img.pk{object-fit:contain;background:#fff}',
+            '.kphotos{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}.kphotos span{aspect-ratio:1;border-radius:9px;overflow:hidden;border:2px solid transparent;cursor:pointer;background:#fff}',
+            '.kphotos span img{width:100%;height:100%;object-fit:cover;display:block}.kphotos span.on{border-color:var(--kgreen)}',
+            '.kphotos span.none{grid-column:span 2;aspect-ratio:auto;display:grid;place-items:center;font:600 9px/1.2 "JetBrains Mono",monospace;color:var(--ksub);background:var(--ki);border:1px solid var(--kh2)}.kphotos span.none.on{border:2px solid var(--kgreen)}',
+            '.kaddons .kad{display:flex;gap:5px;margin-bottom:5px}.kaddons .kad .v{flex:1;min-width:0}.kaddons .kad .v.p{flex:0 0 64px}',
+            '.kaddons .kad button{flex:none;width:34px;border-radius:9px;border:1px solid var(--kh2);background:var(--ki);color:var(--ksub);cursor:pointer}',
+            '.kaddons .kadd{width:100%;height:34px;border-radius:9px;border:1px dashed var(--kh2);background:transparent;color:var(--kgreen);font:700 12px Inter,sans-serif;cursor:pointer}',
+            '.kdeals{display:grid;grid-template-columns:320px minmax(0,1fr);gap:14px;margin-top:13px;align-items:start}',
+            '.kdl-form,.kdl-list{border-radius:16px;background:var(--kc);border:1px solid var(--kh2);padding:13px}',
+            '.kdl{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--kh)}.kdl:last-child{border-bottom:0}.kdl .mid{flex:1;min-width:0}.kdl.off{opacity:.55}',
+            '.kdl .knm{font-weight:700;color:var(--kt)}.kdl .kds{font-size:12px;color:var(--ksub);margin-top:2px}.kdl code{font:700 12px "JetBrains Mono",monospace;color:var(--kt)}',
+            '.kdl .kdx{flex:none;width:32px;height:32px;border-radius:9px;border:1px solid var(--kh2);background:var(--ki);color:var(--ksub);cursor:pointer}',
+            '@media (max-width:760px){.kdeals{grid-template-columns:1fr}.kphotos{grid-template-columns:repeat(5,1fr)}}',
+            /* desktop */
+            '@media (min-width:1024px){',
+            ' .fg2-hero{height:260px}',
+            ' .fg2-store{margin:-76px 28px 0;max-width:560px;padding:18px}.fg2-store h1{font-size:22px}',
+            ' .fg2-modes,.fg2-deals{padding-left:28px;padding-right:28px}.fg2-srch{margin-left:28px;margin-right:28px}',
+            ' .fg2-wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px;padding:0 28px 0 14px;align-items:start}',
+            ' .fg2-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}',
+            ' .fg2-list{display:grid;grid-template-columns:1fr 1fr;column-gap:28px}',
+            ' .fg2-side{display:flex;flex-direction:column;max-height:calc(100vh - 90px);margin-top:16px;background:var(--card);border-radius:20px;padding:18px;box-shadow:0 8px 28px rgba(15,23,42,.08);will-change:transform}',
+            ' .fg2-side .sc{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0 -6px;padding:0 6px;scrollbar-width:thin}.fg2-side .fg2-place{flex:none}',
+            ' .fg2-side .fg2-x .r{flex-wrap:nowrap}.fg2-side .fg2-xc{width:94px}.fg2-side .fg2-xc .ph{height:80px}',
+            ' #fg2Ovl.item{display:grid;place-items:center}.fg2-ov.item .fg2-dim{display:block}',
+            ' .fg2-ov.item .fg2-ipage{position:relative;inset:auto;width:560px;max-width:92vw;max-height:90vh;border-radius:22px;box-shadow:0 30px 80px rgba(0,0,0,.35)}',
+            ' .fg2-ov.item .fg2-iph{height:320px}',
+            ' .fg2-sheet{left:auto;right:24px;bottom:24px;top:24px;width:420px;max-height:none;border-radius:22px}.fg2-cta.sh{left:auto;right:24px;bottom:24px;width:420px;border-radius:0 0 22px 22px}',
+            '}'
+        ].join('\n');
+        document.head.appendChild(s);
+    }
+
+    /* ================================================================
+       FGV2 (v1531, Pete 2026-10-12: "like a billion food ordering app") —
+       photo storefront: hero + store card + delivery modes + kitchen deals +
+       pinned category tabs + For-you photo grid + one long menu; item page with
+       add-ons / add a drink; basket sheet (phone) or side panel (desktop);
+       + flies the photo into the basket.
+       Golfer dashboard trap: position:sticky never sticks (body is a scroll
+       container) and the tab carries a transform (position:fixed would pin to
+       the TAB) — pinned bars and overlays live on document.body.
+       ================================================================ */
     function root() { return document.getElementById('fgvRoot'); }
     function statusRoot() { return document.getElementById('fgvStatusRoot'); }
+    const foodTab = () => document.getElementById('golfer-food');
+    const foodVisible = () => { const f = foodTab(); return !!(f && f.classList.contains('active')); };
+    const isDesk = () => window.innerWidth >= 1024;
+    const reduceMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
 
     async function ensureData() {
         if (!S.menuLoaded) { await loadMenu(); subscribeMenu(); }
         if (!S.ordersLoaded) { await loadOrders(); subscribeFoodOrders(); }
+        if (!S.dealsLoaded) { await loadDeals(); }
     }
 
+    /* ---- kitchen deals (food_deals) ---- */
+    async function loadDeals() {
+        const c = sb();
+        if (!c) return;
+        try {
+            const { data } = await c.from('food_deals').select('*').order('created_at', { ascending: false }).limit(40);
+            S.deals = data || []; S.dealsLoaded = true;
+            if (!S._dealChan) {
+                S._dealChan = c.channel('fgv2_deals').on('postgres_changes', { event: '*', schema: 'public', table: 'food_deals' }, async () => {
+                    S.dealsLoaded = false; await loadDeals(); render();
+                    if (document.getElementById('kitchenQueueOverlay') && K.tab === 'deals') K.renderBody();
+                }).subscribe();
+            }
+        } catch (e) { S.deals = []; S.dealsLoaded = true; }
+    }
+    const dealLive = d => d && d.active && (!d.ends_at || new Date(d.ends_at).getTime() > Date.now())
+        && (!d.course_name || d.course_name === courseCtx());   // a course's deal reaches golfers playing there
+    const liveDeals = () => (S.deals || []).filter(dealLive);
+    const claimedDeal = () => { const code = S.prefs.deal; return code ? liveDeals().find(d => d.code === code) || null : null; };
+    const dealEnds = d => {
+        if (!d.ends_at) return 'No end date';
+        const e = new Date(d.ends_at), now = new Date();
+        if (e.toDateString() === now.toDateString()) return 'Ends ' + hhmm(d.ends_at);
+        return 'Ends ' + e.toLocaleDateString([], { day: 'numeric', month: 'short' });
+    };
+
+    /* ---- photos (menu_items.photo is anon-writable → whitelist the path) ---- */
+    const PHOTO_RE = /^images\/food\/[a-z0-9-]+\.(jpg|jpeg|png|webp)$/;
+    const PACKSHOT = /(heineken|chang|singha|energy-bar)\.jpg$/;
+    // the photo library a kitchen picks from (public/images/food, credits in CREDITS.json)
+    const FOOD_PHOTOS = ['caesar-salad', 'shrimp-cocktail', 'tom-yum-soup', 'spring-rolls', 'chicken-satay', 'wagyu-steak', 'grilled-salmon',
+        'club-sandwich', 'thai-green-curry', 'pad-thai', 'fish-chips', 'massaman-curry', 'orange-juice', 'coffee', 'sparkling-water',
+        'house-wine', 'thai-iced-tea', 'coconut-water', 'heineken', 'chang', 'singha', 'smoothie-bowl', 'mango-sticky-rice',
+        'chocolate-cake', 'ice-cream', 'fruit-platter', 'chicken-wings', 'nachos', 'golf-course-mix', 'energy-bar'];
+    const photoOf = it => {
+        if (!it) return null;
+        if (PHOTO_RE.test(String(it.photo || ''))) return it.photo;
+        const m = (S.media[it.id] || [])[0];
+        return m && /^images\/[\w .&-]+\.(jpg|jpeg|png|webp)$/i.test(m) ? m : null;
+    };
+    function pic(it) {
+        const p = photoOf(it);
+        if (!p) return '<span class="fg2-art" style="--w1:' + W(it && it.wash1) + ';--w2:' + W(it && it.wash2) + '">' + artSvg(it && it.art) + '</span>';
+        return '<img src="' + esc(p) + '" alt="" loading="lazy" decoding="async"' + (PACKSHOT.test(p) ? ' class="pk"' : '') + '>';
+    }
+    const ms = n => '<span class="material-symbols-outlined">' + n + '</span>';
+
+    /* ---- money ---- */
+    function totals() {
+        const sub = basketSubtotal();
+        const d = claimedDeal();
+        const disc = d && d.kind === 'percent' ? Math.round(sub * Math.min(90, Number(d.value) || 0) / 100) : 0;
+        const svc = Math.round((sub - disc) * 0.1);
+        const fee = (d && d.kind === 'free_delivery') ? 0 : deliverFee();
+        return { sub, disc, svc, fee, tot: sub - disc + svc + fee, deal: d };
+    }
+    const etaTxt = () => { const p = kitchenPrep(); return p + '–' + (p + 6) + ' min'; };
+    const kitchenOpen = () => {
+        const st = S.settings;
+        if (!st || !st.auto_close || !st.close_time) return true;
+        const [h, m] = String(st.close_time).split(':').map(Number);
+        const n = new Date();
+        return n.getHours() * 60 + n.getMinutes() < (h || 0) * 60 + (m || 0);
+    };
+    const courseLabel = () => courseCtx() || (S.settings && S.settings.course_name && S.settings.course_name !== 'default' ? S.settings.course_name : 'Clubhouse');
+    const qtyOf = id => S.basket.filter(b => b.mid === id).reduce((n, b) => n + b.qty, 0);
+    const orderedCount = id => S.orders.reduce((n, o) => n + ((o.items || []).some(li => li.mid === id) ? 1 : 0), 0);
+    const holeLabel = () => { const h = holeCtx() || Number(S.prefs.hole) || null; return h ? 'To hole ' + h : 'To my hole'; };
+    const destLine = () => {
+        const d = S.prefs.deliver || 'hole';
+        if (d === 'hole') return holeLabel() + ' · ~' + (kitchenPrep() + 3) + ' min';
+        return dLabel(d) + ' · ~' + kitchenPrep() + ' min';
+    };
+
+    /* ---- the add control: + until it is in the basket, then − n + ---- */
+    function addCtl(it) {
+        if (!it.available) return '<span class="fg2-ac" data-mid="' + it.id + '"><span class="fg2-so">Sold out</span></span>';
+        const q = qtyOf(it.id);
+        return '<span class="fg2-ac" data-mid="' + it.id + '">' + (q
+            ? '<span class="fg2-stp"><button aria-label="One less" onclick="FoodFGV1.less(\'' + it.id + '\',event)">−</button><b>' + q + '</b><button aria-label="One more" onclick="FoodFGV1.quickAdd(\'' + it.id + '\',event)">+</button></span>'
+            : '<button class="fg2-add" aria-label="Add ' + esc(it.name) + '" onclick="FoodFGV1.quickAdd(\'' + it.id + '\',event)">' + ms('add') + '</button>') + '</span>';
+    }
+    function refreshAddCtls() {
+        document.querySelectorAll('.fg2-ac[data-mid]').forEach(el => {
+            const it = item(el.getAttribute('data-mid'));
+            if (it) el.outerHTML = addCtl(it);
+        });
+    }
+
+    function card(it, tag) {
+        return '<div class="fg2-card' + (it.available ? '' : ' na') + '" onclick="FoodFGV1.openItem(\'' + it.id + '\')">'
+            + '<div class="ph">' + pic(it) + (tag ? '<span class="tag">' + tag + '</span>' : '')
+            + '<button class="hrt' + (S.favs.has(it.id) ? ' on' : '') + '" aria-label="Favourite" onclick="FoodFGV1.toggleFav(\'' + it.id + '\',event)">' + ms('favorite') + '</button></div>'
+            + '<div class="nm">' + esc(it.name) + '</div>'
+            + '<div class="ft"><div><span class="pr">' + baht(it.price) + '</span><span class="tm">' + it.prep_min + ' min</span></div>'
+            + '<span onclick="event.stopPropagation()">' + addCtl(it) + '</span></div></div>';
+    }
+    function row(it) {
+        return '<div class="fg2-row' + (it.available ? '' : ' na') + '" onclick="FoodFGV1.openItem(\'' + it.id + '\')">'
+            + '<div class="w"><div class="nm">' + esc(it.name) + (it.popular && it.available ? '<span class="pop">Popular</span>' : '') + '</div>'
+            + '<div class="ds">' + esc(it.description || '') + '</div>'
+            + '<div class="pr">' + baht(it.price) + '<small>' + it.prep_min + ' min</small></div></div>'
+            + '<div class="ph">' + pic(it) + '<span class="acw" onclick="event.stopPropagation()">' + addCtl(it) + '</span></div></div>';
+    }
+
+    function forYou() {
+        const counts = {};
+        S.orders.forEach(o => (o.items || []).forEach(li => { if (li.mid) counts[li.mid] = (counts[li.mid] || 0) + (li.quantity || 1); }));
+        const usualId = Object.keys(counts).sort((a, b) => counts[b] - counts[a]).find(id => counts[id] >= 2 && item(id));
+        const out = [], seen = new Set();
+        const push = it => { if (it && !seen.has(it.id)) { seen.add(it.id); out.push(it); } };
+        if (usualId) push(item(usualId));
+        S.items.filter(i => S.favs.has(i.id)).forEach(push);
+        Object.keys(counts).sort((a, b) => counts[b] - counts[a]).forEach(id => push(item(id)));
+        S.items.filter(i => i.popular).forEach(push);
+        S.items.forEach(push);
+        const list = out.filter(i => i.available).concat(out.filter(i => !i.available)).slice(0, 8);
+        return list.map(it => card(it, it.id === usualId ? 'YOUR USUAL' : !it.available ? 'SOLD OUT' : it.popular ? 'POPULAR' : ''));
+    }
+
+    function catsInOrder() {
+        const order = ['appetizers', 'mains', 'beverages', 'desserts', 'snacks'];
+        const cs = [...new Set(S.items.map(i => i.category))];
+        return cs.sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99));
+    }
+
+    function vMain() {
+        const q = S.search.trim().toLowerCase();
+        if (q) {
+            const hits = S.items.filter(i => (i.name + ' ' + (i.description || '')).toLowerCase().includes(q));
+            return '<div class="fg2-sec"><h2>' + hits.length + ' result' + (hits.length === 1 ? '' : 's') + '</h2><p>for “' + esc(S.search.trim()) + '”</p></div>'
+                + (hits.length ? '<div class="fg2-list">' + hits.map(row).join('') + '</div>' : '<div class="fg2-none">Nothing matches. Try “curry”, “beer” or “wings”.</div>');
+        }
+        return '<nav class="fg2-tabs" id="fg2Tabs"><a data-sec="fy" class="on" onclick="FoodFGV1.jump(\'fy\')">For you</a>'
+            + catsInOrder().map(c => '<a data-sec="' + esc(c) + '" onclick="FoodFGV1.jump(\'' + esc(c) + '\')">' + esc(catMeta(c).label) + '</a>').join('') + '</nav>'
+            + '<section data-sec="fy"><div class="fg2-sec"><h2>For you</h2><p>' + (S.orders.length ? 'Your usual and what golfers order most here' : 'What golfers order most here') + '</p></div>'
+            + '<div class="fg2-grid">' + forYou().join('') + '</div></section>'
+            + catsInOrder().map(c => {
+                const L = S.items.filter(i => i.category === c).sort((a, b) => (b.available - a.available) || (a.sort || 0) - (b.sort || 0));
+                return '<section data-sec="' + esc(c) + '"><div class="fg2-sec"><h2>' + esc(catMeta(c).label) + '</h2><p>' + L.length + ' items</p></div>'
+                    + '<div class="fg2-list">' + L.map(row).join('') + '</div></section>';
+            }).join('');
+    }
+
+    function vStore() {
+        const open = kitchenOpen();
+        const top = S.items.find(i => i.popular && photoOf(i)) || S.items.find(i => photoOf(i));
+        const d = S.prefs.deliver || 'hole';
+        const activeOrders = S.orders.filter(o => ['confirmed', 'preparing', 'cooking', 'ready', 'out_for_delivery'].includes(o.status)).length;
+        const deals = liveDeals();
+        const claimed = S.prefs.deal;
+        return '<div class="fg2 fg2t" id="fg2">'
+            + '<div class="fg2-hero"><img src="images/food/hero.jpg" alt="" class="bg"><div class="fg2-hbar">'
+            + '<button class="gl" aria-label="Your orders" onclick="showGolferTab(\'status\', event)">' + ms('receipt_long') + (activeOrders ? '<span class="bd">' + activeOrders + '</span>' : '') + '</button>'
+            + '<button class="gl" id="fg2HBkt" aria-label="Basket" onclick="FoodFGV1.openBasket()">' + ms('shopping_bag') + '<span class="bd" id="fgvBktCount" style="display:none">0</span></button></div></div>'
+            + '<div class="fg2-store"><div class="lg">' + (top ? pic(top) : ms('restaurant')) + '</div><div class="w">'
+            + '<h1>The Kitchen</h1><div class="cs">' + esc(courseLabel()) + '</div>'
+            + '<div class="mt"><span class="' + (open ? 'op' : 'cl') + '">' + (open ? 'Open now' : 'Closed') + '</span>'
+            + '<span>' + ms('schedule') + etaTxt() + '</span><span>' + ms('golf_course') + 'Delivers to your hole</span></div></div></div>'
+            + '<div class="fg2-modes">'
+            + [['hole', 'golf_course', esc(holeLabel()), holeCtx() ? 'AUTO' : ''], ['turn', 'sync_alt', 'At the turn', 'FREE'], ['pickup', 'storefront', 'Pickup', ''], ['table', 'table_restaurant', 'Table', '']]
+                .map(m => '<button class="fg2-mode' + (d === m[0] ? ' on' : '') + '" onclick="FoodFGV1.setDeliver(\'' + m[0] + '\')">' + ms(m[1]) + m[2] + (m[3] ? ' <span class="tg">' + m[3] + '</span>' : '') + '</button>').join('')
+            + '</div>'
+            + (deals.length ? '<div class="fg2-deals">' + deals.map(dl =>
+                '<div class="fg2-deal"><div class="w"><b>' + esc(dl.title) + '</b><div class="cd">' + (dl.detail ? esc(dl.detail) + ' · ' : '') + 'Code <code>' + esc(dl.code) + '</code></div><div class="en">' + dealEnds(dl) + '</div></div>'
+                + (claimed === dl.code ? '<button class="cl" onclick="FoodFGV1.claim(null)">Claimed</button>' : '<button onclick="FoodFGV1.claim(\'' + dl.id + '\')">Claim</button>') + '</div>').join('') + '</div>' : '')
+            + '<label class="fg2-srch"><input id="fgvSearch" type="search" placeholder="Search pad thai, singha, wings…" autocomplete="off" enterkeyhint="search"></label>'
+            + '<div class="fg2-wrap"><div class="fg2-main" id="fg2Main">' + vMain() + '</div>'
+            + '<aside class="fg2-side" id="fg2Side">' + vSide() + '</aside></div>'
+            + '</div>';
+    }
+
+    /* ---- item page ---- */
+    function drinksFor(it) {
+        if (!it || it.category === 'beverages') return [];
+        return S.items.filter(i => i.category === 'beverages' && i.available).sort((a, b) => (b.popular - a.popular) || (a.price - b.price))
+            .filter((x, i, arr) => arr.findIndex(y => y.name.split(' ')[0] === x.name.split(' ')[0]) === i).slice(0, 4);
+    }
+    function sheetPrice(it) {
+        const sel = S.sheetSel;
+        const addon = (it.addons || []).filter(a => sel.addons.includes(a.name)).reduce((n, a) => n + Number(a.price || 0), 0);
+        const drinks = (sel.drinks || []).map(item).filter(Boolean).reduce((n, x) => n + Number(x.price), 0);
+        return (Number(it.price) + addon) * sel.qty + drinks;
+    }
+    const TICK = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.4"><path d="M4 12.5l5.5 5.5L20 6.5"/></svg>';
+    function vItemPage() {
+        const it = item(S.itemOpen);
+        if (!it) return '';
+        const sel = S.sheetSel;
+        const n = orderedCount(it.id);
+        const spice = Array.isArray(it.spice_levels) && it.spice_levels.length ? it.spice_levels : null;
+        const drinks = drinksFor(it);
+        return '<div class="fg2-ipage" id="fg2IPage"><div class="fg2-iph">' + pic(it)
+            + '<div class="tb"><button class="gl" aria-label="Back" onclick="FoodFGV1.back()">' + ms('arrow_back') + '</button><span class="sp"></span>'
+            + '<button class="gl' + (S.favs.has(it.id) ? ' fav' : '') + '" aria-label="Favourite" onclick="FoodFGV1.toggleFav(\'' + it.id + '\',event)">' + ms('favorite') + '</button>'
+            + '<button class="gl" aria-label="Basket" onclick="FoodFGV1.openBasket()">' + ms('shopping_bag') + (basketCount() ? '<span class="bd">' + basketCount() + '</span>' : '') + '</button></div></div>'
+            + '<div class="fg2-ibd"><h1>' + esc(it.name) + '</h1><div class="pz">' + baht(it.price) + '</div>'
+            + (it.description ? '<div class="dz">' + esc(it.description) + '</div>' : '')
+            + '<div class="ch"><span>' + ms('schedule') + it.prep_min + ' min</span>'
+            + (it.popular ? '<span class="gr">' + ms('local_fire_department') + 'Popular</span>' : '')
+            + (n ? '<span>' + ms('history') + 'You ordered it ' + n + '×</span>' : '')
+            + (!it.available ? '<span class="bad">Sold out today</span>' : '') + '</div>'
+            + (spice ? '<div class="fg2-grp"><div class="hd"><b>Spice level</b><em class="rq">Required</em><small>Pick 1</small></div>'
+                + spice.map((sp, si) => '<button class="fg2-opt' + (sel.spice === sp ? ' on' : '') + '" onclick="FoodFGV1.setSpice(' + si + ')"><span class="rd"></span>' + esc(sp) + '</button>').join('') + '</div>' : '')
+            + ((it.addons || []).length ? '<div class="fg2-grp"><div class="hd"><b>Add-ons</b><em>Optional</em></div>'
+                + it.addons.map((a, ai) => { const on = sel.addons.includes(a.name); return '<button class="fg2-opt' + (on ? ' on' : '') + '" onclick="FoodFGV1.toggleAddon(' + ai + ')"><span class="cb">' + (on ? TICK : '') + '</span>' + esc(a.name) + '<span class="p">' + (Number(a.price) > 0 ? '+' + baht(a.price) : 'Free') + '</span></button>'; }).join('') + '</div>' : '')
+            + (drinks.length ? '<div class="fg2-grp"><div class="hd"><b>Add a drink</b><em>Optional</em></div>'
+                + drinks.map(x => { const on = (sel.drinks || []).includes(x.id); return '<button class="fg2-opt' + (on ? ' on' : '') + '" onclick="FoodFGV1.toggleDrink(\'' + x.id + '\')"><span class="cb">' + (on ? TICK : '') + '</span><span class="th">' + pic(x) + '</span>' + esc(x.name) + '<span class="p">+' + baht(x.price) + '</span></button>'; }).join('') + '</div>' : '')
+            + '<div class="fg2-grp"><div class="hd"><b>Note to the kitchen</b><em>Optional</em></div>'
+            + '<textarea class="fg2-note" id="fgvNote" rows="2" placeholder="e.g. no bean sprouts, extra lime" oninput="FoodFGV1.setNote(this.value)">' + esc(sel.note) + '</textarea></div>'
+            + '</div>'
+            + '<div class="fg2-cta"><span class="q"><button aria-label="One less" onclick="FoodFGV1.sheetQty(-1)">−</button><b>' + sel.qty + '</b><button aria-label="One more" onclick="FoodFGV1.sheetQty(1)">+</button></span>'
+            + (it.available ? '<button class="go" id="fg2Go" onclick="FoodFGV1.addFromSheet()">Add to basket · ' + baht(sheetPrice(it)) + '</button>' : '<button class="go" disabled>Sold out today</button>')
+            + '</div></div>';
+    }
+
+    /* ---- basket body: phone sheet + desktop side panel ---- */
+    function vBasketBody(side) {
+        const n = basketCount();
+        let h = '<div class="fg2-bh"><b>Your basket</b>' + (n ? '<span>' + n + ' item' + (n > 1 ? 's' : '') + '</span><button class="clr" onclick="FoodFGV1.clearBasket()">Clear</button>' : '') + '</div>';
+        if (!n) return h + '<div class="fg2-bempty">' + ms('shopping_bag') + '<div>Tap + on anything and it lands here.</div></div>';
+        const d = S.prefs.deliver || 'hole';
+        const hole = holeCtx();
+        const t = totals();
+        h += '<div class="fg2-dest"><span class="ic">' + ms(d === 'hole' ? 'golf_course' : d === 'turn' ? 'sync_alt' : d === 'pickup' ? 'storefront' : 'table_restaurant') + '</span><div class="w"><b>' + esc(destLine()) + '</b><small>'
+            + (d === 'hole' ? (hole ? 'Follows your live round, the runner finds your group' : 'No live round, so tell us your hole') : d === 'turn' ? 'Ready as you make the turn, hole 9 to 10' : d === 'pickup' ? 'Collect at the counter, we ping you' : 'Brought to your clubhouse table')
+            + '</small></div></div>'
+            + '<div class="fg2-dmodes">' + [['hole', 'Hole'], ['turn', 'Turn'], ['pickup', 'Pickup'], ['table', 'Table']].map(m =>
+                '<button class="' + (d === m[0] ? 'on' : '') + '" onclick="FoodFGV1.setDeliver(\'' + m[0] + '\')">' + m[1] + '</button>').join('') + '</div>'
+            + (d === 'hole' && !hole ? '<label class="fg2-hole">Hole <input id="fgvHole" type="number" inputmode="numeric" min="1" max="18" placeholder="#" value="' + esc(S.prefs.hole || '') + '" oninput="FoodFGV1.setHole(this.value)"></label>' : '')
+            + S.basket.map((b, i) => {
+                const it = item(b.mid) || { name: b.name, art: b.art };
+                return '<div class="fg2-li"><div class="ph">' + pic(it) + '</div><div class="w"><b>' + esc(b.name) + '</b>'
+                    + ([b.spice, ...(b.addons || [])].filter(Boolean).length ? '<small>' + esc([b.spice, ...(b.addons || [])].filter(Boolean).join(' · ')) + '</small>' : '')
+                    + (b.note ? '<small>Note: ' + esc(b.note) + '</small>' : '')
+                    + '<div class="pr">' + baht(lineTotal(b)) + '</div></div>'
+                    + '<span class="fg2-stp lt"><button aria-label="One less" onclick="FoodFGV1.qty(' + i + ',-1)">−</button><b>' + b.qty + '</b><button aria-label="One more" onclick="FoodFGV1.qty(' + i + ',1)">+</button></span></div>';
+            }).join('');
+        const inB = new Set(S.basket.map(b => b.mid));
+        const hasDrink = S.basket.some(b => (item(b.mid) || {}).category === 'beverages');
+        const xs = S.items.filter(i => i.available && !inB.has(i.id) && photoOf(i) && (hasDrink ? i.category === 'desserts' || i.category === 'snacks' : i.category === 'beverages' || i.category === 'desserts'))
+            .sort((a, b) => b.popular - a.popular).slice(0, side ? 3 : 6);
+        if (xs.length) h += '<div class="fg2-x"><div class="t">Goes well with</div><div class="r">' + xs.map(x =>
+            '<div class="fg2-xc" onclick="FoodFGV1.openItem(\'' + x.id + '\')"><div class="ph">' + pic(x) + '<span onclick="event.stopPropagation()">' + addCtl(x) + '</span></div><b>' + esc(x.name) + '</b><span>' + baht(x.price) + '</span></div>').join('') + '</div></div>';
+        h += '<div class="fg2-x"><div class="t">Pay with</div><div class="fg2-pay">' + [['counter', 'At the counter'], ['promptpay', 'PromptPay QR']].map(p =>
+            '<button class="' + ((S.prefs.pay || 'counter') === p[0] ? 'on' : '') + '" onclick="FoodFGV1.setPay(\'' + p[0] + '\')">' + p[1] + '</button>').join('') + '</div></div>'
+            + '<div class="fg2-tot"><div><span>Subtotal</span><b>' + baht(t.sub) + '</b></div>'
+            + (t.disc ? '<div class="dl"><span>' + esc(t.deal.code) + ' · ' + Number(t.deal.value) + '% off</span><b>−' + baht(t.disc) + '</b></div>' : '')
+            + '<div><span>Service 10%</span><b>' + baht(t.svc) + '</b></div>'
+            + (d === 'hole' ? '<div' + (t.deal && t.deal.kind === 'free_delivery' ? ' class="dl"' : '') + '><span>Hole delivery' + (t.deal && t.deal.kind === 'free_delivery' ? ' · ' + esc(t.deal.code) : '') + '</span><b>' + (t.fee ? baht(t.fee) : 'Free') + '</b></div>' : '')
+            + '<div class="big"><span>Total</span><span>' + baht(t.tot) + '</span></div></div>';
+        return h;
+    }
+    // desktop panel: the list scrolls inside, Place order stays in view
+    function vSide() {
+        return '<div class="sc">' + vBasketBody(true) + '</div>'
+            + (basketCount() ? '<button class="fg2-place" id="fgvPlace" onclick="FoodFGV1.placeNow()">Place order · ' + baht(totals().tot) + '</button>' : '');
+    }
+    function vSheet() {
+        return '<div class="fg2-dim" onclick="FoodFGV1.back()"></div><div class="fg2-sheet" id="fg2SheetBody"><div class="hn"></div>' + vBasketBody(false) + '</div>'
+            + (basketCount() ? '<div class="fg2-cta sh"><button class="go" id="fgvPlace" onclick="FoodFGV1.placeNow()">Place order · ' + baht(totals().tot) + '</button></div>' : '');
+    }
+
+    /* ---- body-level chrome: overlay, basket bar, pinned tabs ---- */
+    function ovl() {
+        let o = document.getElementById('fg2Ovl');
+        if (!o) { o = document.createElement('div'); o.id = 'fg2Ovl'; o.className = 'fg2t'; document.body.appendChild(o); }
+        return o;
+    }
+    function syncOverlay() {
+        const want = foodVisible() && (S.view === 'item' || S.view === 'basket') ? S.view : null;
+        const o = document.getElementById('fg2Ovl');
+        if (!want) { if (o) o.remove(); document.documentElement.classList.remove('fg2-lock'); return; }
+        const el = ovl();
+        const keep = el.getAttribute('data-v') === want && want === 'item' && el.getAttribute('data-id') === S.itemOpen;
+        const sc = keep && document.getElementById('fg2IPage') ? document.getElementById('fg2IPage').scrollTop : 0;
+        const sh = document.getElementById('fg2SheetBody'); const shs = sh ? sh.scrollTop : 0;
+        el.className = 'fg2t fg2-ov ' + want;
+        el.setAttribute('data-v', want); el.setAttribute('data-id', S.itemOpen || '');
+        el.innerHTML = want === 'item' ? '<div class="fg2-dim d" onclick="FoodFGV1.back()"></div>' + vItemPage() : vSheet();
+        const ip = document.getElementById('fg2IPage'); if (ip && sc) ip.scrollTop = sc;
+        const sb2 = document.getElementById('fg2SheetBody'); if (sb2 && shs) sb2.scrollTop = shs;
+        document.documentElement.classList.add('fg2-lock');
+    }
+    function syncBar() {
+        let bar = document.getElementById('fg2Bar');
+        const n = basketCount();
+        const show = foodVisible() && n > 0 && !isDesk() && S.view === 'home';
+        if (!show) { if (bar) bar.remove(); document.documentElement.classList.remove('fg2-barup'); return; }
+        if (!bar) {
+            bar = document.createElement('button'); bar.id = 'fg2Bar'; bar.className = 'fg2-bar';
+            bar.onclick = () => API.openBasket();
+            document.body.appendChild(bar);
+        }
+        bar.innerHTML = '<span class="n">' + ms('shopping_bag') + '<b id="fg2BarN">' + n + '</b></span><span class="l">View basket<small>' + esc(destLine()) + '</small></span><span class="t">' + baht(totals().tot) + '</span>';
+        document.documentElement.classList.add('fg2-barup');
+    }
+    const T = { ph: null, tb: null };
+    function setupTabs() {
+        const tb = document.getElementById('fg2Tabs');
+        document.querySelectorAll('body > .fg2-tabs').forEach(e => e.remove());
+        T.tb = tb; T.ph = null;
+        if (!tb) return;
+        const ph = document.createElement('div'); ph.className = 'fg2-tabs-ph';
+        tb.parentNode.insertBefore(ph, tb); T.ph = ph;
+        onScroll();
+    }
+    function onScroll() {
+        const tb = T.tb, ph = T.ph;
+        if (!tb || !ph || !ph.isConnected) return;
+        const vis = foodVisible() && S.view !== 'item';
+        const r = ph.getBoundingClientRect();
+        const pin = vis && r.top < 0 && r.top > -(ph.parentNode.getBoundingClientRect().height - 120);
+        if (pin) {
+            if (tb.parentNode !== document.body) { ph.style.height = tb.offsetHeight + 'px'; tb.classList.add('pin', 'fg2t'); document.body.appendChild(tb); }
+            tb.style.left = r.left + 'px'; tb.style.width = r.width + 'px';
+        } else if (tb.parentNode === document.body) {
+            tb.classList.remove('pin', 'fg2t'); tb.style.left = tb.style.width = ''; ph.after(tb); ph.style.height = '0';
+        }
+        // scroll-spy
+        const off = (pin ? tb.offsetHeight : 0) + 24;
+        let cur = 'fy';
+        document.querySelectorAll('#fg2Main section[data-sec]').forEach(s => { if (s.getBoundingClientRect().top <= off) cur = s.getAttribute('data-sec'); });
+        if (tb._cur !== cur) {
+            tb._cur = cur;
+            tb.querySelectorAll('a').forEach(a => {
+                const on = a.getAttribute('data-sec') === cur;
+                a.classList.toggle('on', on);
+                if (on) { const L = a.offsetLeft - 14; if (L < tb.scrollLeft || a.offsetLeft + a.offsetWidth > tb.scrollLeft + tb.clientWidth) tb.scrollTo({ left: Math.max(0, L), behavior: 'smooth' }); }
+            });
+        }
+        // desktop: basket panel follows the scroll inside its column
+        const side = document.getElementById('fg2Side'), wrap = side && side.parentNode;
+        if (side && isDesk() && vis) {
+            const wr = wrap.getBoundingClientRect();
+            const y = Math.max(0, Math.min(-wr.top + 16 + (pin ? tb.offsetHeight : 0), wr.height - side.offsetHeight));
+            side.style.transform = 'translateY(' + Math.round(y) + 'px)';
+        } else if (side) side.style.transform = '';
+    }
+    function syncChrome() { syncOverlay(); syncBar(); onScroll(); }
+
+    /* ---- + flies the photo into the basket ---- */
+    function fly(fromEl, it) {
+        const target = (document.getElementById('fg2Bar') && document.querySelector('#fg2Bar .n'))
+            || (isDesk() && document.querySelector('#fg2Side .fg2-bh')) || document.getElementById('fg2HBkt');
+        const pop = () => { if (!target) return; const t = target.closest('#fg2Bar') || target; t.classList.remove('pop'); void t.offsetWidth; t.classList.add('pop'); };
+        const src = photoOf(it);
+        if (!fromEl || !target || !src || reduceMotion()) { pop(); return; }
+        const a = fromEl.getBoundingClientRect(), b = target.getBoundingClientRect();
+        if (!a.width || b.bottom < 0 || b.top > innerHeight) { pop(); return; }
+        const x0 = a.left + a.width / 2, y0 = a.top + a.height / 2, x1 = b.left + Math.min(b.width, 40) / 2, y1 = b.top + b.height / 2;
+        const cx = (x0 + x1) / 2 + (x1 > x0 ? -40 : 40), cy = Math.min(y0, y1) - 120;
+        const g = document.createElement('div'); g.className = 'fg2-fly';
+        g.innerHTML = '<img src="' + esc(src) + '" alt="">';
+        g.style.left = (x0 - 28) + 'px'; g.style.top = (y0 - 28) + 'px';
+        document.body.appendChild(g);
+        const frames = [];
+        for (let i = 0; i <= 12; i++) {
+            const t = i / 12, x = (1 - t) * (1 - t) * x0 + 2 * (1 - t) * t * cx + t * t * x1, y = (1 - t) * (1 - t) * y0 + 2 * (1 - t) * t * cy + t * t * y1;
+            frames.push({ transform: 'translate(' + (x - x0) + 'px,' + (y - y0) + 'px) scale(' + (1 - 0.6 * t) + ')', opacity: t < 0.85 ? 1 : 0.6 });
+        }
+        const anim = g.animate(frames, { duration: 620, easing: 'cubic-bezier(.45,.05,.55,.95)' });
+        anim.onfinish = () => { g.remove(); pop(); };
+        setTimeout(() => { if (g.isConnected) { g.remove(); pop(); } }, 1200);
+    }
+
+    /* ---- render ---- */
     function render() {
         const r = root();
         if (!r) return;
+        injectCss();
+        const tab = foodTab(); if (tab) tab.classList.add('fg2on');
         if (!S.menuLoaded) {
-            r.innerHTML = '<div class="fgv-empty">Loading the kitchen…</div>';
-            ensureData().then(() => { render(); renderStatus(); updateCubeBadges(); updateKitchenOvl(); });
+            r.innerHTML = '<div class="fg2 fg2t"><div class="fg2-hero sk"></div><div class="fg2-store sk"><div class="w"><h1>The Kitchen</h1><div class="cs">Loading the menu…</div></div></div></div>';
+            ensureData().then(() => { render(); renderStatus(); updateCubeBadges(); });
             return;
         }
-        if (S.view === 'menu') r.innerHTML = vMenu();
-        else if (S.view === 'item') r.innerHTML = vItem();
-        else if (S.view === 'basket') r.innerHTML = vBasket();
-        else r.innerHTML = vHome();
-        updatePill();
+        if (S.view === 'menu') S.view = 'home';
+        r.innerHTML = vStore();
         const se = document.getElementById('fgvSearch');
         if (se) {
             se.value = S.search;
-            se.oninput = () => { S.search = se.value; const l = document.getElementById('fgvMenuList'); if (l) l.innerHTML = menuCards(); };
+            se.oninput = () => {
+                S.search = se.value;
+                const m = document.getElementById('fg2Main');
+                if (m) { m.innerHTML = vMain(); setupTabs(); }
+            };
         }
+        setupTabs();
+        updatePill();
+        syncChrome();
     }
-
-    function updateKitchenOvl() {
-        const el = document.getElementById('fgvKitchenOvl');
-        if (el) el.textContent = 'THE KITCHEN · ' + (courseCtx() || 'CLUBHOUSE').toUpperCase();
+    // light partial refresh after a basket change — never rebuild the page under the thumb
+    function refreshBasketUi() {
+        refreshAddCtls();
+        const side = document.getElementById('fg2Side');
+        if (side && isDesk()) side.innerHTML = vSide();
+        if (S.view === 'basket' || S.view === 'item') syncOverlay();
+        updatePill(); syncBar(); onScroll();
     }
 
     function updatePill() {
-        const n = basketCount(), t = basketSubtotal();
-        const pill = document.getElementById('fgvPill');
-        if (pill) {
-            pill.style.display = (n > 0 && S.view !== 'basket') ? 'flex' : 'none';
-            const pn = document.getElementById('fgvPillN'), pt = document.getElementById('fgvPillT');
-            if (pn) pn.textContent = n;
-            if (pt) pt.textContent = baht(t);
-        }
+        const n = basketCount();
         const bc = document.getElementById('fgvBktCount');
-        if (bc) { bc.textContent = n; bc.style.display = n > 0 ? 'flex' : 'none'; }
+        if (bc) { bc.textContent = n; bc.style.display = n > 0 ? '' : 'none'; }
     }
 
     function updateCubeBadges() {
@@ -237,190 +816,28 @@
         if (ob) { ob.textContent = active.length; ob.style.display = active.length ? 'flex' : 'none'; }
     }
 
-    /* ---------------- golfer: views ---------------- */
-    function artTile(it, cls) {
-        return '<div class="fgv-art ' + (cls || '') + '" style="--w1:' + W(it.wash1) + ';--w2:' + W(it.wash2) + '">' + artSvg(it.art) + '</div>';
-    }
-
-    function heartBtn(it) {
-        return '<button class="fgv-hrt' + (S.favs.has(it.id) ? ' on' : '') + '" aria-label="Favorite" onclick="FoodFGV1.toggleFav(\'' + it.id + '\',event)">' + HEART + '</button>';
-    }
-
-    function itemCard(it) {
-        const na = !it.available;
-        return '<div class="fgv-item' + (na ? ' na' : '') + '">'
-            + (it.popular && !na ? '<span class="hot">HOT</span>' : '')
-            + '<div class="fgv-tap" onclick="FoodFGV1.openItem(\'' + it.id + '\')">' + artTile(it) + '</div>'
-            + '<div class="mn" onclick="FoodFGV1.openItem(\'' + it.id + '\')">'
-            + '<div class="nm">' + esc(it.name) + (na ? ' <span class="so">86’D</span>' : '') + '</div>'
-            + '<div class="ds">' + esc(it.description || '') + '</div>'
-            + '<div class="ft"><span class="pt">' + it.prep_min + ' MIN</span></div></div>'
-            + '<div class="side"><div class="bt2">' + heartBtn(it)
-            + '<button class="addb" ' + (na ? 'disabled' : 'onclick="FoodFGV1.quickAdd(\'' + it.id + '\',event)"') + '>+</button></div>'
-            + '<span class="p">' + baht(it.price) + '</span></div></div>';
-    }
-
-    function vHome() {
-        const cats = {};
-        S.items.forEach(i => { cats[i.category] = (cats[i.category] || 0) + 1; });
-        const favItems = S.items.filter(i => S.favs.has(i.id)).slice(0, 8);
-        const pop = S.items.filter(i => i.popular && i.available).slice(0, 3);
-        const last = S.orders[0];
-        let h = '<div class="fgv-chips">'
-            + '<span class="chip g">OPEN · KITCHEN ~' + kitchenPrep() + ' MIN</span>'
-            + '<span class="chip n">DELIVERS TO YOUR HOLE</span></div>'
-            + '<div class="fgv-search"><span class="material-symbols-outlined">search</span>'
-            + '<input id="fgvSearchHome" placeholder="Search the menu — “pad thai”, “singha”…" onfocus="FoodFGV1.go(\'menu\',null,this.value)"></div>';
-
-        if (last) {
-            const names = (last.items || []).slice(0, 2).map(i => esc(i.name) + (i.quantity > 1 ? ' ×' + i.quantity : '')).join(' · ');
-            const fa = firstArt(last);
-            h += sec('Order it again', '<span class="all" onclick="showGolferTab(\'status\', event)">All orders →</span>')
-                + '<div class="fgv-again"><div class="fgv-art" style="--w1:' + W(fa.w1) + ';--w2:' + W(fa.w2) + '">' + artSvg(fa.art) + '</div>'
-                + '<div class="tx"><div class="wh">' + hhmm(last.created_at) + ' · ' + esc(last.course_name || 'Clubhouse') + '</div>'
-                + '<div class="it">' + names + ((last.items || []).length > 2 ? ' +' + ((last.items || []).length - 2) : '') + '</div>'
-                + '<div class="pr">' + baht(last.total) + '</div></div>'
-                + '<button class="readd" onclick="FoodFGV1.reorder(\'' + last.order_number + '\')">↻ ADD ALL</button></div>';
-        }
-        if (favItems.length) {
-            h += sec('My favorites') + '<div class="fgv-favrow">' + favItems.map(i =>
-                '<div class="fgv-fav" onclick="FoodFGV1.openItem(\'' + i.id + '\')">'
-                + '<div class="fgv-art" style="--w1:' + W(i.wash1) + ';--w2:' + W(i.wash2) + '"><span class="fh">' + HEART + '</span>' + artSvg(i.art) + '</div>'
-                + '<div class="nm">' + esc(i.name) + '</div><div class="pr">' + baht(i.price) + '</div></div>').join('') + '</div>';
-        }
-        h += sec('Browse the kitchen') + '<div class="fgv-catgrid">'
-            + Object.keys(cats).map(c => {
-                const m = catMeta(c);
-                return '<button class="fgv-cat" style="--w1:' + m.w[0] + ';--w2:' + m.w[1] + '" onclick="FoodFGV1.openCat(\'' + esc(c) + '\')">'
-                    + '<h3>' + esc(m.label) + '</h3><span class="n">' + cats[c] + ' ITEMS</span>'
-                    + '<span class="a">' + artSvg(m.art) + '</span></button>';
-            }).join('') + '</div>';
-        if (pop.length) h += sec('Popular right now') + pop.map(itemCard).join('');
-        return h;
-    }
-
     function sec(t, right) { return '<div class="fgv-sec"><span class="t">' + t + '</span>' + (right || '') + '</div>'; }
-
-    function firstArt(order) {
-        const mid = order.items && order.items[0] && order.items[0].mid;
-        const it = mid && item(mid);
-        if (it) return { art: it.art, w1: it.wash1, w2: it.wash2 };
-        return { art: 'fgBeer', w1: '#f4e6c8', w2: '#fcf6e9' };
-    }
 
     function kitchenPrep() {
         const p = S.items.filter(i => i.available).map(i => i.prep_min);
         return p.length ? Math.round(p.reduce((a, b) => a + b, 0) / p.length) + 4 : 12;
     }
 
-    function menuCards() {
-        const q = S.search.trim().toLowerCase();
-        let list = S.items;
-        if (S.cat) list = list.filter(i => i.category === S.cat);
-        if (q) list = list.filter(i => (i.name + ' ' + (i.description || '')).toLowerCase().includes(q));
-        list = list.slice().sort((a, b) => (b.popular - a.popular) || (a.price - b.price));
-        return list.length ? list.map(itemCard).join('') : '<div class="fgv-empty">Nothing matches — try another search.</div>';
-    }
-
-    function vMenu() {
-        const cats = [...new Set(S.items.map(i => i.category))];
-        return '<div class="fgv-back" onclick="FoodFGV1.go(\'home\')">‹ ' + (S.cat ? esc(catMeta(S.cat).label) : 'All items') + '</div>'
-            + '<div class="fgv-search"><span class="material-symbols-outlined">search</span>'
-            + '<input id="fgvSearch" placeholder="Search…"></div>'
-            + '<div class="fgv-catchips"><button class="cchip' + (!S.cat ? ' on' : '') + '" onclick="FoodFGV1.openCat(null)">ALL</button>'
-            + cats.map(c => '<button class="cchip' + (S.cat === c ? ' on' : '') + '" onclick="FoodFGV1.openCat(\'' + esc(c) + '\')">' + esc(catMeta(c).label).toUpperCase() + '</button>').join('') + '</div>'
-            + '<div id="fgvMenuList">' + menuCards() + '</div>';
-    }
-
-    function vItem() {
-        const it = item(S.itemOpen);
-        if (!it) return vHome();
-        const photos = S.media[it.id] || [];
-        const sel = S.sheetSel;
-        const addonTotal = (it.addons || []).filter(a => sel.addons.includes(a.name)).reduce((n, a) => n + Number(a.price || 0), 0);
-        const totalOne = Number(it.price) + addonTotal;
-        const galItems = [{ art: true }].concat(photos.map(p => ({ url: p })));
-        const cur = galItems[Math.min(S.galIdx, galItems.length - 1)];
-        return '<div class="fgv-back" onclick="FoodFGV1.go(S && null)"></div>'.replace('FoodFGV1.go(S && null)', "FoodFGV1.go('menu')").replace('></div>', '>‹ ' + esc(catMeta(it.category).label) + '</div>')
-            + '<div class="fgv-hero" style="--w1:' + W(it.wash1) + ';--w2:' + W(it.wash2) + '">'
-            + (cur.art ? artSvg(it.art) : '<img src="' + esc(cur.url) + '" alt="">')
-            + heartBtn(it)
-            + (galItems.length > 1 ? '<div class="dots">' + galItems.map((g, i) => '<i class="' + (i === S.galIdx ? 'on' : '') + '"></i>').join('') + '</div>' : '')
-            + '</div>'
-            + (galItems.length > 1 ? '<div class="fgv-thumbs">' + galItems.map((g, i) =>
-                '<div class="th' + (i === S.galIdx ? ' on' : '') + '" onclick="FoodFGV1.gal(' + i + ')">' + (g.art ? artSvg(it.art) : '<img src="' + esc(g.url) + '" alt="">') + '</div>').join('') + '</div>'
-                : '<div class="fgv-thumbs"><div class="th on">' + artSvg(it.art) + '</div><div class="th photo">' + CAM + '</div><div class="note">Kitchen photos<br>coming here.</div></div>')
-            + '<div class="fgv-ttl"><h3>' + esc(it.name) + '</h3><span class="money">' + baht(it.price) + '</span></div>'
-            + '<div class="fgv-chips"><span class="chip a">' + it.prep_min + ' MIN</span>'
-            + (it.popular ? '<span class="chip g">POPULAR</span>' : '') + (!it.available ? '<span class="chip b">86’D — NOT AVAILABLE</span>' : '') + '</div>'
-            + '<p class="fgv-desc">' + esc(it.description || '') + '</p>'
-            + (Array.isArray(it.spice_levels) && it.spice_levels.length ?
-                '<div class="fgv-mod"><div class="mt">SPICE</div><div class="segf">' + it.spice_levels.map(sp =>
-                    '<button class="' + (sel.spice === sp ? 'on' : '') + '" onclick="FoodFGV1.setSpice(\'' + esc(sp) + '\')">' + esc(sp) + '</button>').join('') + '</div></div>' : '')
-            + ((it.addons || []).length ?
-                '<div class="fgv-mod"><div class="mt">ADD-ONS</div>' + it.addons.map(a =>
-                    '<div class="fgv-addon' + (sel.addons.includes(a.name) ? ' on' : '') + '" onclick="FoodFGV1.toggleAddon(\'' + esc(a.name) + '\')">'
-                    + '<span class="bx">' + (sel.addons.includes(a.name) ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2"><path d="M4 12.5l5.5 5.5L20 6.5"/></svg>' : '') + '</span>'
-                    + esc(a.name) + '<span class="pp">' + (Number(a.price) > 0 ? '+' + baht(a.price) : 'FREE') + '</span></div>').join('') + '</div>' : '')
-            + '<input class="fgv-note" id="fgvNote" placeholder="Note to the kitchen — “no bean sprouts, please”" value="' + esc(sel.note) + '" oninput="FoodFGV1.setNote(this.value)">'
-            + '<div class="fgv-addbar"><span class="stp"><button onclick="FoodFGV1.sheetQty(-1)">−</button><b>' + sel.qty + '</b><button onclick="FoodFGV1.sheetQty(1)">+</button></span>'
-            + '<button class="fgv-cta" ' + (it.available ? 'onclick="FoodFGV1.addFromSheet()"' : 'disabled') + '>'
-            + (it.available ? 'Add to basket · ' + baht(totalOne * sel.qty) : 'Not available today') + '</button></div>';
-    }
-
-    function vBasket() {
-        if (!S.basket.length) {
-            return '<div class="fgv-back" onclick="FoodFGV1.go(\'home\')">‹ Back to the kitchen</div>'
-                + '<div class="fgv-empty">Basket is empty — tap + on anything.</div>';
-        }
-        const sub = basketSubtotal(), svc = Math.round(sub * 0.1), fee = deliverFee(), tot = sub + svc + fee;
-        const d = S.prefs.deliver || 'hole';
-        const hole = holeCtx();
-        const holeVal = hole || S.prefs.hole || '';
-        return '<div class="fgv-back" onclick="FoodFGV1.go(\'menu\')">‹ Add more items</div>'
-            + '<div class="fgv-bh">Your basket <span>' + basketCount() + ' items</span></div>'
-            + S.basket.map((b, i) => {
-                const it = item(b.mid) || {};
-                return '<div class="fgv-brow"><div class="fgv-art" style="--w1:' + W(it.wash1) + ';--w2:' + W(it.wash2) + '">' + artSvg(b.art) + '</div>'
-                    + '<div class="tx"><div class="nm">' + esc(b.name) + '</div>'
-                    + '<div class="md">' + esc([b.spice, ...(b.addons || []), b.note].filter(Boolean).join(' · ') || '—') + '</div></div>'
-                    + '<div class="r"><span class="stp"><button onclick="FoodFGV1.qty(' + i + ',-1)">−</button><b>' + b.qty + '</b><button onclick="FoodFGV1.qty(' + i + ',1)">+</button></span>'
-                    + '<span class="p">' + baht(lineTotal(b)) + '</span></div></div>';
-            }).join('')
-            + sec('Where it goes')
-            + '<div class="fgv-dlv">'
-            + dCard('hole', 'location_on', 'To my hole' + (hole ? ' <span class="auto">AUTO</span>' : ''),
-                hole ? 'Hole ' + hole + ' · follows your live round'
-                    : '<input class="fgv-hole" id="fgvHole" type="number" min="1" max="18" placeholder="Hole #" value="' + esc(holeVal) + '" onclick="event.stopPropagation()" oninput="FoodFGV1.setHole(this.value)"> No live round — set your hole', '฿50', d)
-            + dCard('turn', 'schedule', 'At the turn', 'Ready as you make the turn · hole 9 → 10', 'FREE', d)
-            + dCard('pickup', 'storefront', 'Clubhouse pickup', 'Counter collection — we ping you when ready', 'FREE', d)
-            + dCard('table', 'table_restaurant', 'Table service', 'We bring it to your table at the clubhouse', 'FREE', d)
-            + '</div>'
-            + sec('How you pay')
-            + '<div class="segf pay">' + [['counter', 'At counter'], ['promptpay', 'PromptPay QR'], ['room', 'Room charge']].map(p =>
-                '<button class="' + ((S.prefs.pay || 'counter') === p[0] ? 'on' : '') + '" onclick="FoodFGV1.setPay(\'' + p[0] + '\')">' + p[1] + '</button>').join('') + '</div>'
-            + '<div class="fgv-tot">'
-            + '<div class="r"><span>Subtotal</span><b>' + baht(sub) + '</b></div>'
-            + '<div class="r"><span>Service 10%</span><b>' + baht(svc) + '</b></div>'
-            + (fee ? '<div class="r"><span>Hole delivery</span><b>' + baht(fee) + '</b></div>' : '')
-            + '<div class="r big"><span>Total</span><b class="money">' + baht(tot) + '</b></div></div>'
-            + '<button class="fgv-cta big" id="fgvPlace" onclick="FoodFGV1.placeNow()">Place order · ' + baht(tot) + '</button>'
-            + '<div class="fgv-instant">Instant checkout — saved default: <b>' + dLabel(d) + ' + ' + payLabel(S.prefs.pay || 'counter') + '</b>. Change anytime.</div>';
-    }
-
-    function dCard(key, icon, title, sub, fee, cur) {
-        return '<div class="fgv-dcard' + (cur === key ? ' on' : '') + '" onclick="FoodFGV1.setDeliver(\'' + key + '\')">'
-            + '<span class="ic"><span class="material-symbols-outlined">' + icon + '</span></span>'
-            + '<div class="tx"><div class="t">' + title + '</div><div class="s">' + sub + '</div></div>'
-            + '<span class="fee">' + fee + '</span></div>';
-    }
     const dLabel = d => ({ hole: 'Hole delivery', turn: 'At the turn', pickup: 'Clubhouse pickup', table: 'Table service' }[d] || d);
     const payLabel = p => ({ counter: 'pay at counter', promptpay: 'PromptPay', room: 'room charge' }[p] || p);
 
     /* ---------------- golfer: status / tracking ---------------- */
+    function thumbs(o) {
+        return '<span class="fg2-thumbs">' + (o.items || []).slice(0, 3).map(li => {
+            const it = (li.mid && item(li.mid)) || S.items.find(x => x.name === li.name);
+            return '<span>' + (it ? pic(it) : '') + '</span>';
+        }).join('') + '</span>';
+    }
     function renderStatus() {
         const r = statusRoot();
         if (!r) return;
+        injectCss();
+        const tab = document.getElementById('golfer-status'); if (tab) tab.classList.add('fg2st');
         if (!S.ordersLoaded) {
             r.innerHTML = '<div class="fgv-empty">Loading your orders…</div>';
             ensureData().then(() => renderStatus());
@@ -431,7 +848,7 @@
         const hist = S.orders.filter(o => ['delivered', 'cancelled'].includes(o.status) && new Date(o.created_at).getTime() > cleared).slice(0, 10);
         if (S.trackOpen == null && active.length) S.trackOpen = active[0].order_number;
         let h = '';
-        if (!active.length && !hist.length) h += '<div class="fgv-empty">No orders yet — the kitchen is waiting.</div>';
+        if (!active.length && !hist.length) h += '<div class="fg2-bempty st">' + ms('receipt_long') + '<div>No orders yet. The kitchen is waiting.</div></div>';
         if (active.length) {
             h += sec('Active', '<span class="all">' + active.length + ' live</span>');
             h += active.map(o => (o.order_number === S.trackOpen ? trackCard(o) : orderRow(o, true))).join('');
@@ -440,7 +857,7 @@
             h += sec('Recent', '<button class="fgv-clear" onclick="FoodFGV1.clearHistory()">CLEAR</button>');
             h += hist.map(o => orderRow(o, false)).join('');
         }
-        h += '<div class="fgv-actions"><button class="fgv-cta" onclick="showGolferTab(\'food\', event)"><span class="material-symbols-outlined">restaurant</span> Order Food &amp; Drinks</button>'
+        h += '<div class="fgv-actions"><button class="fgv-cta" onclick="showGolferTab(\'food\', event)"><span class="material-symbols-outlined">restaurant</span> Order food &amp; drinks</button>'
             + (S.settings && S.settings.phone ? '<button class="fgv-ghost" onclick="FoodFGV1.callKitchen()"><span class="material-symbols-outlined">call</span> Kitchen</button>' : '')
             + '</div>';
         r.innerHTML = h;
@@ -451,6 +868,7 @@
         const m = stMeta(o.status);
         const names = (o.items || []).slice(0, 3).map(i => esc(i.name)).join(', ');
         return '<div class="fgv-orow" onclick="' + (active ? 'FoodFGV1.track(\'' + o.order_number + '\')' : '') + '">'
+            + thumbs(o)
             + '<div class="tx"><div class="r1"><span class="ochip ' + m.cls + '">' + m.chip + '</span><span class="no">#' + esc(o.order_number) + '</span><span class="tm">' + hhmm(o.created_at) + '</span></div>'
             + '<div class="its">' + names + ((o.items || []).length > 3 ? ' +' + ((o.items || []).length - 3) : '') + '</div></div>'
             + '<div class="rr"><span class="money">' + baht(o.total) + '</span>'
@@ -494,106 +912,156 @@
             + (S.settings && S.settings.phone ? '<button class="tbtn" onclick="FoodFGV1.callKitchen()"><span class="material-symbols-outlined">call</span>Call kitchen</button>' : '')
             + (o.status === 'confirmed' ? '<button class="tbtn bad" onclick="FoodFGV1.cancelOrder(\'' + o.order_number + '\')"><span class="material-symbols-outlined">close</span>Cancel order</button>' : '')
             + '</div>'
-            + '<div class="fgv-osum"><b>' + (o.items || []).reduce((n, i) => n + (i.quantity || 1), 0) + ' items</b> · '
-            + (o.items || []).slice(0, 3).map(i => esc(i.name)).join(', ')
+            + '<div class="fgv-osum">' + thumbs(o) + '<span class="w"><b>' + (o.items || []).reduce((n, i) => n + (i.quantity || 1), 0) + ' items</b> · '
+            + (o.items || []).slice(0, 3).map(i => esc(i.name)).join(', ') + (o.deal_code ? ' · ' + esc(o.deal_code) : '') + '</span>'
             + '<span class="money">' + baht(o.total) + '</span></div></div>';
     }
 
-    /* Internal back stack — home/menu are waypoints, item/basket are leaves.
+    /* Internal back stack — home is the waypoint, item/basket are leaves.
        dashboardGoBack() steps through this before popping the tab. */
     function setView(next) {
-        if (S.view !== next && (S.view === 'home' || S.view === 'menu')) {
+        if (S.view !== next && S.view === 'home') {
             S.stack.push(S.view);
             if (S.stack.length > 10) S.stack.shift();
         }
         S.view = next;
     }
+    function addLine(it, qty, extra) {
+        extra = extra || {};
+        const plain = !extra.spice && !(extra.addons || []).length && !extra.note;
+        const same = plain && S.basket.find(b => b.mid === it.id && !b.spice && !(b.addons || []).length && !b.note);
+        if (same) same.qty += qty;
+        else S.basket.push({ mid: it.id, name: it.name, price: Number(it.price), addonTotal: extra.addonTotal || 0, qty, spice: extra.spice || null, addons: extra.addons || [], note: extra.note || '', art: it.art, prep: it.prep_min });
+    }
 
     /* ---------------- golfer: actions ---------------- */
     const API = {
-        canBack() { return S.view !== 'home' || S.stack.length > 0; },
+        canBack() { return S.view !== 'home'; },
         back() {
-            let prev = null;
-            while (S.stack.length && (prev = S.stack.pop()) === S.view) prev = null;
-            if (!prev) prev = S.view !== 'home' ? 'home' : null;
-            if (!prev) return false;
-            S.view = prev;
-            if (prev !== 'item') S.itemOpen = null;
-            render();
+            if (S.view === 'home') return false;
+            S.view = 'home'; S.stack = []; S.itemOpen = null;
+            syncChrome(); updatePill();
             return true;
         },
         go(view, cat, search) {
-            setView(view || 'home');
-            if (cat !== undefined) S.cat = cat;
             if (search !== undefined && search !== null) S.search = search;
-            if (view !== 'item') { S.itemOpen = null; }
+            if (view === 'item' || view === 'basket') { setView(view); syncChrome(); return; }
+            S.view = 'home'; S.stack = []; S.itemOpen = null;
             render();
-            try { document.getElementById('golfer-food').scrollIntoView({ block: 'start' }); } catch (e) { }
+            if (cat) API.jump(cat);
         },
-        openCat(c) { S.cat = c; setView('menu'); render(); },
+        jump(sec) {
+            const s = document.querySelector('#fg2Main section[data-sec="' + sec + '"]');
+            if (!s) return;
+            const tbH = (T.tb && T.tb.offsetHeight) || 52;
+            const y = s.getBoundingClientRect().top + (window.scrollY || document.documentElement.scrollTop) - tbH - 4;
+            window.scrollTo({ top: Math.max(0, y), behavior: reduceMotion() ? 'auto' : 'smooth' });
+        },
+        openCat(c) { if (S.view !== 'home') API.back(); if (c) API.jump(c); else window.scrollTo({ top: 0 }); },
         openItem(id) {
             const it = item(id);
             if (!it) return;
-            S.itemOpen = id; S.galIdx = 0;
-            S.sheetSel = { spice: Array.isArray(it.spice_levels) && it.spice_levels.length ? it.spice_levels[Math.min(1, it.spice_levels.length - 1)] : null, addons: [], qty: 1, note: '' };
-            setView('item'); render();
+            S.itemOpen = id;
+            S.sheetSel = { spice: Array.isArray(it.spice_levels) && it.spice_levels.length ? it.spice_levels[Math.min(1, it.spice_levels.length - 1)] : null, addons: [], drinks: [], qty: 1, note: '' };
+            if (S.view === 'basket') S.view = 'home';
+            setView('item'); syncChrome();
+            const ip = document.getElementById('fg2IPage'); if (ip) ip.scrollTop = 0;
         },
-        gal(i) { S.galIdx = i; render(); },
-        setSpice(sp) { S.sheetSel.spice = sp; render(); },
-        toggleAddon(name) {
-            const a = S.sheetSel.addons;
-            const ix = a.indexOf(name);
+        gal() { },
+        setSpice(i) { const it = item(S.itemOpen); const L = (it && it.spice_levels) || []; if (typeof i === 'number') { if (L[i] != null) S.sheetSel.spice = L[i]; } else S.sheetSel.spice = i; syncOverlay(); },
+        toggleAddon(k) {
+            const it = item(S.itemOpen); const ad = typeof k === 'number' ? ((it && it.addons) || [])[k] : { name: k };
+            if (!ad) return;
+            const name = ad.name, a = S.sheetSel.addons, ix = a.indexOf(name);
             if (ix >= 0) a.splice(ix, 1); else a.push(name);
-            render();
+            syncOverlay();
+        },
+        toggleDrink(id) {
+            const a = S.sheetSel.drinks = S.sheetSel.drinks || [], ix = a.indexOf(id);
+            if (ix >= 0) a.splice(ix, 1); else a.push(id);
+            syncOverlay();
         },
         setNote(v) { S.sheetSel.note = v; },
-        sheetQty(d) { S.sheetSel.qty = Math.max(1, S.sheetSel.qty + d); render(); },
+        sheetQty(d) { S.sheetSel.qty = Math.max(1, S.sheetSel.qty + d); syncOverlay(); },
         addFromSheet() {
             const it = item(S.itemOpen);
             if (!it || !it.available) return;
             const sel = S.sheetSel;
             const addonTotal = (it.addons || []).filter(a => sel.addons.includes(a.name)).reduce((n, a) => n + Number(a.price || 0), 0);
-            S.basket.push({ mid: it.id, name: it.name, price: Number(it.price), addonTotal, qty: sel.qty, spice: sel.spice, addons: sel.addons.slice(), note: sel.note.trim(), art: it.art, prep: it.prep_min });
+            addLine(it, sel.qty, { spice: sel.spice, addons: sel.addons.slice(), note: sel.note.trim(), addonTotal });
+            (sel.drinks || []).map(item).filter(x => x && x.available).forEach(x => addLine(x, 1));
             saveBasket();
-            notify(it.name + ' added to basket', 'success');
-            API.go('menu');
+            const from = document.querySelector('#fg2IPage .fg2-iph');
+            const r0 = from && from.getBoundingClientRect();
+            S.view = 'home'; S.stack = []; S.itemOpen = null;
+            syncChrome(); refreshBasketUi();
+            if (r0) {   // the overlay is gone: fly from where its photo was
+                const ghost = document.createElement('div');
+                ghost.style.cssText = 'position:fixed;left:' + (r0.left + r0.width / 2 - 40) + 'px;top:' + (r0.top + Math.min(r0.height, 260) / 2 - 40) + 'px;width:80px;height:80px;pointer-events:none';
+                document.body.appendChild(ghost); fly(ghost, it); ghost.remove();
+            }
         },
         quickAdd(id, ev) {
-            if (ev) ev.stopPropagation();
+            if (ev) { ev.stopPropagation(); ev.preventDefault && ev.preventDefault(); }
             const it = item(id);
             if (!it || !it.available) return;
-            const same = S.basket.find(b => b.mid === id && !b.spice && !(b.addons || []).length && !b.note);
-            if (same) same.qty += 1;
-            else S.basket.push({ mid: it.id, name: it.name, price: Number(it.price), addonTotal: 0, qty: 1, spice: null, addons: [], note: '', art: it.art, prep: it.prep_min });
+            const src = ev && ev.currentTarget && ev.currentTarget.closest ? ev.currentTarget.closest('.fg2-card,.fg2-row,.fg2-xc') : null;
+            const from = src ? src.querySelector('.ph') : null;
+            addLine(it, 1);
             saveBasket();
-            notify(it.name + ' added to basket', 'success');
-            if (S.view === 'basket') render();
+            refreshBasketUi();
+            fly(from, it);
+        },
+        less(id, ev) {
+            if (ev) ev.stopPropagation();
+            for (let i = S.basket.length - 1; i >= 0; i--) {
+                if (S.basket[i].mid === id) { S.basket[i].qty -= 1; if (S.basket[i].qty <= 0) S.basket.splice(i, 1); break; }
+            }
+            saveBasket(); refreshBasketUi();
         },
         qty(i, d) {
             const b = S.basket[i];
             if (!b) return;
             b.qty += d;
             if (b.qty <= 0) S.basket.splice(i, 1);
-            saveBasket(); render();
+            saveBasket(); refreshBasketUi();
+            if (!S.basket.length && S.view === 'basket') API.back();
         },
-        openBasket() { setView('basket'); render(); },
-        setDeliver(d) { S.prefs.deliver = d; savePrefs(); render(); },
-        setPay(p) { S.prefs.pay = p; savePrefs(); render(); },
+        clearBasket() {
+            if (!S.basket.length) return;
+            S.basket = []; saveBasket(); refreshBasketUi();
+            if (S.view === 'basket') API.back();
+        },
+        openBasket() {
+            if (isDesk() && S.view === 'home' && document.getElementById('fg2Side')) {
+                const s = document.getElementById('fg2Side');
+                s.classList.remove('pop'); void s.offsetWidth; s.classList.add('pop');
+                return;
+            }
+            if (S.view === 'item') S.view = 'home';
+            setView('basket'); syncChrome();
+        },
+        claim(id) {
+            const dl = id ? liveDeals().find(d => d.id === id) : null;
+            const code = dl ? dl.code : null;
+            S.prefs.deal = code; savePrefs();
+            if (code) notify('Deal ' + code + ' claimed. It comes off at checkout.', 'success');
+            render();
+        },
+        setDeliver(d) { S.prefs.deliver = d; savePrefs(); if (S.view === 'home') render(); else { syncChrome(); refreshBasketUi(); } },
+        setPay(p) { S.prefs.pay = p; savePrefs(); refreshBasketUi(); },
         setHole(v) { S.prefs.hole = v; savePrefs(); },
         async toggleFav(id, ev) {
-            if (ev) ev.stopPropagation();
+            if (ev) { ev.stopPropagation(); }
             const me = uid(); const c = sb();
-            if (!me || !c) { notify('Log in to save favorites', 'info'); return; }
+            if (!me || !c) { notify('Sign in to save favourites', 'info'); return; }
+            const on = !S.favs.has(id);
+            if (on) S.favs.add(id); else S.favs.delete(id);
+            document.querySelectorAll('.fg2-card .hrt[onclick*="' + id + '"], .fg2-iph .gl[onclick*="' + id + '"]').forEach(b => b.classList.toggle(b.classList.contains('hrt') ? 'on' : 'fav', on));
             try {
-                if (S.favs.has(id)) {
-                    S.favs.delete(id);
-                    await c.from('food_favorites').delete().eq('line_user_id', me).eq('item_id', id);
-                } else {
-                    S.favs.add(id);
-                    await c.from('food_favorites').insert({ line_user_id: me, item_id: id });
-                }
+                if (on) await c.from('food_favorites').insert({ line_user_id: me, item_id: id });
+                else await c.from('food_favorites').delete().eq('line_user_id', me).eq('item_id', id);
             } catch (e) { }
-            render();
         },
         async placeNow() {
             if (!S.basket.length) { notify('Basket is empty', 'error'); return; }
@@ -601,10 +1069,14 @@
             if (!c) { notify('No connection — try again in a moment', 'error'); return; }
             const d = S.prefs.deliver || 'hole';
             const hole = holeCtx() || Number(S.prefs.hole) || null;
-            if (d === 'hole' && !hole) { notify('Set your hole number first', 'error'); const el = document.getElementById('fgvHole'); if (el) el.focus(); return; }
-            const btn = document.getElementById('fgvPlace');
-            if (btn) { btn.disabled = true; btn.textContent = 'Placing…'; }
-            const sub = basketSubtotal(), svc = Math.round(sub * 0.1), fee = deliverFee(), tot = sub + svc + fee;
+            if (d === 'hole' && !hole) {
+                notify('Which hole are you on? Set it in the basket', 'error');
+                if (isDesk()) { const el = document.getElementById('fgvHole'); if (el) el.focus(); }
+                else { if (S.view !== 'basket') API.openBasket(); setTimeout(() => { const el = document.getElementById('fgvHole'); if (el) el.focus(); }, 60); }
+                return;
+            }
+            document.querySelectorAll('#fgvPlace').forEach(btn => { btn.disabled = true; btn.textContent = 'Placing…'; });
+            const t = totals();
             let note = dLabel(d);
             if (d === 'hole' && hole) note += ' · On course — hole ' + hole;
             const now = new Date().toISOString();
@@ -617,7 +1089,8 @@
                     totalPrice: lineTotal(b), prepTime: b.prep,
                     spice: b.spice || null, addons: b.addons || [], note: b.note || null, art: b.art
                 })),
-                subtotal: sub, service_charge: svc, delivery_fee: fee, total: tot,
+                subtotal: t.sub, service_charge: t.svc, delivery_fee: t.fee, total: t.tot,
+                discount: t.disc, deal_code: t.deal ? t.deal.code : null,
                 status: 'confirmed', delivery_type: d, delivery_note: note,
                 course_name: courseCtx() || 'Clubhouse',
                 status_times: { confirmed: now },
@@ -626,17 +1099,18 @@
             try {
                 const { data, error } = await c.from('food_orders').insert(payload).select().single();
                 if (error) throw error;
-                S.basket = []; saveBasket(); savePrefs();
+                S.basket = []; S.prefs.deal = null; saveBasket(); savePrefs();
                 S.orders.unshift(data); S.trackOpen = data.order_number;
                 subscribeFoodOrders();
-                notify('Order #' + data.order_number + ' placed — ' + baht(tot), 'success');
-                S.view = 'home'; S.stack = [];
-                render(); renderStatus(); updateCubeBadges();
+                notify('Order #' + data.order_number + ' placed — ' + baht(t.tot), 'success');
+                S.view = 'home'; S.stack = []; S.itemOpen = null;
+                syncChrome(); render(); renderStatus(); updateCubeBadges();
                 try { showGolferTab('status', null); } catch (e) { }
+                syncChrome();
             } catch (e) {
-                console.warn('[FGV1] order insert failed', e);
+                console.warn('[FGV2] order insert failed', e);
                 notify('Could not place the order — please try again', 'error');
-                if (btn) { btn.disabled = false; btn.textContent = 'Place order · ' + baht(tot); }
+                document.querySelectorAll('#fgvPlace').forEach(btn => { btn.disabled = false; btn.textContent = 'Place order · ' + baht(t.tot); });
             }
         },
         track(no) { S.trackOpen = no; renderStatus(); },
@@ -644,19 +1118,17 @@
             const o = S.orders.find(x => x.order_number === orderNo);
             if (!o) return;
             await loadMenu();
-            let added = 0, dropped = [];
+            let added = 0; const dropped = [];
             (o.items || []).forEach(li => {
-                let it = (li.mid && item(li.mid)) || S.items.find(x => x.name === li.name);
-                if (it && it.available) {
-                    S.basket.push({ mid: it.id, name: it.name, price: Number(it.price), addonTotal: 0, qty: li.quantity || 1, spice: li.spice || null, addons: [], note: li.note || '', art: it.art, prep: it.prep_min });
-                    added++;
-                } else dropped.push(li.name);
+                const it = (li.mid && item(li.mid)) || S.items.find(x => x.name === li.name);
+                if (it && it.available) { addLine(it, li.quantity || 1, { spice: li.spice || null, note: li.note || '' }); added++; }
+                else dropped.push(li.name);
             });
             saveBasket();
             if (added) {
                 notify(added + ' item' + (added > 1 ? 's' : '') + ' back in your basket' + (dropped.length ? ' — ' + dropped.join(', ') + ' unavailable' : ''), dropped.length ? 'info' : 'success');
                 try { showGolferTab('food', null); } catch (e) { }
-                S.view = 'basket'; render();
+                S.view = 'home'; render(); API.openBasket();
             } else notify('Those items aren’t on the menu right now', 'error');
         },
         async cancelOrder(orderNo) {
@@ -684,6 +1156,21 @@
         }
     };
 
+    // the chrome follows the tab: leave Food and the bar, pinned tabs and overlays go with it
+    let _chromeBound = false;
+    function bindChrome() {
+        if (_chromeBound) return;
+        const f = foodTab();
+        if (!f) return;
+        _chromeBound = true;
+        new MutationObserver(() => {
+            if (!foodVisible() && S.view !== 'home') { S.view = 'home'; S.stack = []; S.itemOpen = null; }
+            syncChrome();
+        }).observe(f, { attributes: true, attributeFilter: ['class', 'style'] });
+        document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+        let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (foodVisible()) render(); }, 150); });
+    }
+
     /* ================================================================
        KITCHEN DASHBOARD v2 — #kitchen hash. 3 tabs: QUEUE / MENU / ALERTS.
        Always dark. Tablet-first.
@@ -701,9 +1188,10 @@
                 document.body.appendChild(ov);
             }
             ov.style.display = 'block';
+            injectCss();
             document.documentElement.classList.add('fgv-kq-open');
             try { if (window.ThemeMode && ThemeMode.apply) ThemeMode.apply(); } catch (e) { }
-            await Promise.all([this.load(), loadMenu(), loadSettings()]);
+            await Promise.all([this.load(), loadMenu(), loadSettings(), loadDeals()]);
             this.subscribe(); subscribeMenu();
             this.renderShell();
             if (!this.tick) this.tick = setInterval(() => { if (this.tab === 'queue') this.renderBody(); }, 30000);
@@ -770,7 +1258,7 @@
                 + '<div class="khead"><div><div class="kovl">KITCHEN · ' + esc((S.settings && S.settings.course_name !== 'default' && S.settings.course_name) || courseCtx() || 'MCIPRO') + '</div>'
                 + '<h3 id="kqTitle">Kitchen</h3></div>'
                 + '<div class="ktabs">'
-                + ['queue', 'menu', 'alerts'].map(t => '<button class="kt' + (this.tab === t ? ' on' : '') + '" onclick="KitchenQueue.setTab(\'' + t + '\')">' + t.toUpperCase() + '</button>').join('')
+                + ['queue', 'menu', 'deals', 'alerts'].map(t => '<button class="kt' + (this.tab === t ? ' on' : '') + '" onclick="KitchenQueue.setTab(\'' + t + '\')">' + t.toUpperCase() + '</button>').join('')
                 + '</div>'
                 + '<button class="kx" data-theme-toggle onclick="ThemeMode.toggle()" title="Toggle Light / Dark theme" aria-label="Theme">'
                 + '<span class="material-symbols-outlined theme-toggle-icon" style="font-size:17px;vertical-align:middle;">light_mode</span></button>'
@@ -784,6 +1272,7 @@
             if (!b) return;
             const title = document.getElementById('kqTitle');
             if (this.tab === 'menu') { if (title) title.textContent = 'Menu Manager'; b.innerHTML = this.vMenu(); }
+            else if (this.tab === 'deals') { if (title) title.textContent = 'Deals'; b.innerHTML = this.vDeals(); }
             else if (this.tab === 'alerts') { if (title) title.textContent = 'Tracking & Alerts'; b.innerHTML = this.vAlerts(); }
             else { if (title) title.textContent = this.openOrders().length + ' open orders'; b.innerHTML = this.vQueue(); }
         },
@@ -801,7 +1290,7 @@
                 + '<div class="where">→ ' + esc(o.delivery_note || dLabel(o.delivery_type) || '') + ' · ' + esc(o.customer_name || 'Guest') + '</div>'
                 + '<div class="its">' + (o.items || []).map(li => '<b>' + (li.quantity || 1) + '×</b> ' + esc(li.name)
                     + (li.spice || (li.addons || []).length || li.note ? ' <span class="md">(' + esc([li.spice, ...(li.addons || []), li.note].filter(Boolean).join(' · ')) + ')</span>' : '')).join(' · ') + '</div>'
-                + '<div class="kq-total">' + baht(o.total) + (o.payment_method ? ' · ' + payLabel(o.payment_method).toUpperCase() : '') + '</div>'
+                + '<div class="kq-total">' + baht(o.total) + (o.payment_method ? ' · ' + payLabel(o.payment_method).toUpperCase() : '') + (o.deal_code ? ' · DEAL ' + esc(o.deal_code) + (Number(o.discount) ? ' −' + baht(o.discount) : '') : '') + '</div>'
                 + (o.status === 'ready' ? '<div class="krun"><input id="krn_' + o.id + '" placeholder="Runner" value="' + esc(o.runner_name || '') + '"><input id="krc_' + o.id + '" placeholder="Cart #" value="' + esc(o.runner_cart || '') + '"></div>' : '')
                 + (o.runner_name && o.status === 'out_for_delivery' ? '<span class="krchip">🛺 ' + esc(o.runner_name) + (o.runner_cart ? ' · CART ' + esc(o.runner_cart) : '') + '</span>' : '')
                 + (showAdv ? '<button class="kadv s-' + esc(o.status) + '" onclick="KitchenQueue.advance(\'' + o.id + '\')">' + (this.ADV[o.status] || '→') + '</button>' : '')
@@ -856,7 +1345,7 @@
                 + '</div><button class="knew" onclick="KitchenQueue.edit(null)">+ NEW ITEM</button></div>'
                 + '<div class="kadmin"><div class="klist">'
                 + all.map(it => '<div class="krow' + (ed && ed.id === it.id ? ' sel' : '') + (!it.available ? ' off' : '') + '" onclick="KitchenQueue.edit(\'' + it.id + '\')">'
-                    + '<div class="fgv-art" style="--w1:' + W(it.wash1) + ';--w2:' + W(it.wash2) + '">' + artSvg(it.art) + '</div>'
+                    + '<div class="fgv-art kph fg2t" style="--w1:' + W(it.wash1) + ';--w2:' + W(it.wash2) + '">' + (photoOf(it) ? '<span class="ph">' + pic(it) + '</span>' : artSvg(it.art)) + '</div>'
                     + '<div class="mid"><div class="knm">' + esc(it.name) + '</div><div class="kds">' + esc(!it.available && it.eightysix_at ? '86’d ' + hhmm(it.eightysix_at) + (it.eightysix_reason ? ' — ' + it.eightysix_reason : '') : (it.description || '')) + '</div></div>'
                     + '<span class="kst ' + (it.station === 'bar' ? 'bar' : it.station === 'dessert' ? 'des' : 'kit') + '">' + esc((it.station || 'kitchen').toUpperCase()) + '</span>'
                     + '<span class="kpr">' + baht(it.price) + '</span>'
@@ -868,10 +1357,10 @@
                 + '</div></div>';
         },
         edit(id) {
-            this.editing = id ? Object.assign({}, item(id)) : {
+            this.editing = id ? Object.assign({}, item(id), { addons: (item(id).addons || []).map(a => ({ name: a.name, price: Number(a.price) || 0 })) }) : {
                 id: null, name: '', description: '', price: 100, prep_min: 10,
                 category: 'mains', station: 'grill', art: 'fgCurry',
-                wash1: '#d9efe1', wash2: '#f2faf5', available: true, popular: false, spice_levels: null, addons: []
+                wash1: '#d9efe1', wash2: '#f2faf5', available: true, popular: false, spice_levels: null, addons: [], photo: null
             };
             this.renderBody();
         },
@@ -887,8 +1376,14 @@
                     '<span class="' + (e.station === s ? 'on' : '') + '" onclick="KitchenQueue.eset(\'station\',\'' + s + '\')">' + s.toUpperCase() + '</span>').join('') + '</div></div>'
                 + '<div class="kf"><div class="l">Category</div><div class="kseg">' + ['appetizers', 'mains', 'beverages', 'desserts', 'snacks'].map(c =>
                     '<span class="' + (e.category === c ? 'on' : '') + '" onclick="KitchenQueue.eset(\'category\',\'' + c + '\')">' + catMeta(c).label.split(' ')[0].toUpperCase() + '</span>').join('') + '</div></div>'
-                + '<div class="kf"><div class="l">Artwork</div><div class="kartpick">' + ARTS.map(a =>
-                    '<span class="' + (e.art === a ? 'on' : '') + '" style="--w1:' + ART_WASH[a][0] + ';--w2:' + ART_WASH[a][1] + '" onclick="KitchenQueue.eset(\'art\',\'' + a + '\')">' + artSvg(a) + '</span>').join('') + '</div></div>'
+                + '<div class="kf"><div class="l">Photo</div><div class="kphotos fg2t">' + FOOD_PHOTOS.map(p =>
+                    '<span class="' + (e.photo === 'images/food/' + p + '.jpg' ? 'on' : '') + '" title="' + p + '" onclick="KitchenQueue.eset(\'photo\',\'' + p + '\')"><img src="images/food/' + p + '.jpg" alt="" loading="lazy"></span>').join('')
+                + '<span class="none' + (!e.photo ? ' on' : '') + '" onclick="KitchenQueue.eset(\'photo\',\'\')">No photo</span></div></div>'
+                + (!e.photo ? '<div class="kf"><div class="l">Artwork (no photo)</div><div class="kartpick">' + ARTS.map(a =>
+                    '<span class="' + (e.art === a ? 'on' : '') + '" style="--w1:' + ART_WASH[a][0] + ';--w2:' + ART_WASH[a][1] + '" onclick="KitchenQueue.eset(\'art\',\'' + a + '\')">' + artSvg(a) + '</span>').join('') + '</div></div>' : '')
+                + '<div class="kf"><div class="l">Add-ons (golfer ticks them on the item page)</div><div class="kaddons">'
+                + (e.addons || []).map((a, i) => '<div class="kad"><input class="v" id="kdAdN' + i + '" placeholder="e.g. Extra shrimp" value="' + esc(a.name) + '"><input class="v p" id="kdAdP' + i + '" type="number" min="0" placeholder="฿" value="' + (Number(a.price) || 0) + '"><button onclick="KitchenQueue.addonRm(' + i + ')" aria-label="Remove">✕</button></div>').join('')
+                + '<button class="kadd" onclick="KitchenQueue.addonAdd()">+ Add-on</button></div></div>'
                 + '<div class="kf2">'
                 + '<div class="kf"><div class="l">Thai spice picker</div><button class="ktgl' + (Array.isArray(e.spice_levels) && e.spice_levels.length ? ' on' : '') + '" onclick="KitchenQueue.eset(\'spice\')"></button></div>'
                 + '<div class="kf"><div class="l">Popular badge</div><button class="ktgl' + (e.popular ? ' on' : '') + '" onclick="KitchenQueue.eset(\'popular\')"></button></div></div>'
@@ -897,12 +1392,24 @@
                 + '<div class="kdel2 mut" onclick="KitchenQueue.edit(null); KitchenQueue.editing=null; KitchenQueue.renderBody()">CLOSE</div>'
                 + '</div>';
         },
+        readAddons() {
+            const e = this.editing;
+            if (!e) return;
+            e.addons = (e.addons || []).map((a, i) => {
+                const n = document.getElementById('kdAdN' + i), p = document.getElementById('kdAdP' + i);
+                return { name: n ? n.value : a.name, price: Math.max(0, Number(p ? p.value : a.price) || 0) };
+            });
+        },
+        addonAdd() { this.readAddons(); this.editing.addons.push({ name: '', price: 0 }); this.eset('_'); },
+        addonRm(i) { this.readAddons(); this.editing.addons.splice(i, 1); this.eset('_'); },
         eset(k, v) {
             const e = this.editing;
+            if (k !== '_') this.readAddons();
             if (k === 'spice') e.spice_levels = (Array.isArray(e.spice_levels) && e.spice_levels.length) ? null : ['No spice', 'Mild', 'Thai hot'];
             else if (k === 'popular') e.popular = !e.popular;
             else if (k === 'art') { e.art = v; e.wash1 = ART_WASH[v][0]; e.wash2 = ART_WASH[v][1]; }
-            else e[k] = v;
+            else if (k === 'photo') e.photo = v && FOOD_PHOTOS.includes(v) ? 'images/food/' + v + '.jpg' : null;
+            else if (k !== '_') e[k] = v;
             ['kdName', 'kdPrice', 'kdPrep', 'kdDesc'].forEach(id => {
                 const el = document.getElementById(id);
                 if (!el) return;
@@ -920,18 +1427,21 @@
             e.price = Number((document.getElementById('kdPrice') || {}).value || e.price);
             e.prep_min = Number((document.getElementById('kdPrep') || {}).value || e.prep_min);
             e.description = (document.getElementById('kdDesc') || {}).value || '';
+            this.readAddons();
             if (!e.name.trim()) { notify('Name it first', 'error'); return; }
             const row = {
                 name: e.name.trim(), description: e.description, price: e.price, prep_min: e.prep_min,
                 category: e.category, station: e.station, art: e.art, wash1: e.wash1, wash2: e.wash2,
-                popular: !!e.popular, spice_levels: e.spice_levels, updated_at: new Date().toISOString()
+                popular: !!e.popular, spice_levels: e.spice_levels, updated_at: new Date().toISOString(),
+                photo: PHOTO_RE.test(String(e.photo || '')) ? e.photo : null,
+                addons: (e.addons || []).map(a => ({ name: String(a.name || '').trim().slice(0, 40), price: Math.max(0, Math.round(Number(a.price) || 0)) })).filter(a => a.name)
             };
             try {
                 if (e.id) {
                     const { error } = await c.from('menu_items').update(row).eq('id', e.id);
                     if (error) throw error;
                 } else {
-                    row.available = true; row.active = true; row.addons = [];
+                    row.available = true; row.active = true;
                     const { error } = await c.from('menu_items').insert(row);
                     if (error) throw error;
                 }
@@ -965,6 +1475,60 @@
                 Object.assign(it, patch);
                 this.renderBody();
             } catch (e) { notify('Update failed', 'error'); }
+        },
+
+        /* ----- DEALS (food_deals) — coupons golfers Claim on the food page ----- */
+        vDeals() {
+            const all = (S.deals || []).filter(d => !d.course_name || !kitchenCourse() || d.course_name === kitchenCourse());
+            const f = this.dealForm || (this.dealForm = { kind: 'percent' });
+            return '<div class="kdeals fg2t">'
+                + '<div class="kdl-form"><div class="kd-t">NEW DEAL</div>'
+                + '<div class="kf"><div class="l">Title golfers see</div><input class="v" id="kdlTitle" maxlength="40" placeholder="15% off at the turn"></div>'
+                + '<div class="kf2"><div class="kf"><div class="l">Code</div><input class="v" id="kdlCode" maxlength="16" placeholder="TURN15" style="text-transform:uppercase"></div>'
+                + '<div class="kf"><div class="l">Ends</div><input class="v" id="kdlEnds" type="date"></div></div>'
+                + '<div class="kf"><div class="l">What it does</div><div class="kseg">'
+                + [['percent', '% OFF FOOD'], ['free_delivery', 'FREE HOLE DELIVERY']].map(k => '<span class="' + (f.kind === k[0] ? 'on' : '') + '" onclick="KitchenQueue.dealKind(\'' + k[0] + '\')">' + k[1] + '</span>').join('') + '</div></div>'
+                + (f.kind === 'percent' ? '<div class="kf"><div class="l">Percent off (1–90)</div><input class="v" id="kdlVal" type="number" min="1" max="90" value="15"></div>' : '')
+                + '<div class="kf"><div class="l">Small print (optional)</div><input class="v" id="kdlDetail" maxlength="40" placeholder="Holes 10–18 today"></div>'
+                + '<button class="ksave" onclick="KitchenQueue.dealSave()">Post deal — live on golfer phones</button></div>'
+                + '<div class="kdl-list"><div class="kd-t">LIVE + PAST DEALS</div>'
+                + (all.length ? all.map(d => '<div class="kdl' + (dealLive(d) ? '' : ' off') + '"><div class="mid"><div class="knm">' + esc(d.title) + '</div>'
+                    + '<div class="kds"><code>' + esc(d.code) + '</code> · ' + (d.kind === 'percent' ? Number(d.value) + '% off food' : 'Free hole delivery') + ' · ' + esc(dealEnds(d)) + (d.detail ? ' · ' + esc(d.detail) : '') + '</div></div>'
+                    + '<button class="ktgl' + (d.active ? ' on' : '') + '" aria-label="Live" onclick="KitchenQueue.dealToggle(\'' + d.id + '\')"></button>'
+                    + '<button class="kdx" aria-label="Delete" onclick="KitchenQueue.dealDelete(\'' + d.id + '\')">✕</button></div>').join('')
+                    : '<div class="kempty">No deals yet. Post one and it shows on the food page with a Claim button.</div>')
+                + '</div></div>';
+        },
+        dealKind(k) { this.dealForm = { kind: k }; this.renderBody(); },
+        async dealSave() {
+            const c = sb(); if (!c) return;
+            const v = id => ((document.getElementById(id) || {}).value || '').trim();
+            const title = v('kdlTitle'), code = v('kdlCode').toUpperCase().replace(/[^A-Z0-9-]/g, '');
+            const kind = (this.dealForm && this.dealForm.kind) || 'percent';
+            const val = kind === 'percent' ? Math.round(Number(v('kdlVal')) || 0) : 0;
+            if (!title) { notify('Give the deal a title', 'error'); return; }
+            if (!code) { notify('Give the deal a code (letters and numbers)', 'error'); return; }
+            if (kind === 'percent' && (val < 1 || val > 90)) { notify('Percent off must be 1 to 90', 'error'); return; }
+            const ends = v('kdlEnds');
+            const row = { title: title.slice(0, 40), code: code.slice(0, 16), kind, value: val, detail: v('kdlDetail').slice(0, 40) || null,
+                ends_at: ends ? new Date(ends + 'T23:59:00').toISOString() : null, course_name: kitchenCourse() || null, active: true };
+            try {
+                const { error } = await c.from('food_deals').insert(row);
+                if (error) throw error;
+                this.dealForm = { kind: 'percent' };
+                S.dealsLoaded = false; await loadDeals(); this.renderBody();
+                notify('Deal posted — golfers can claim it now', 'success');
+            } catch (e) { console.warn(e); notify('Could not post the deal — retry', 'error'); }
+        },
+        async dealToggle(id) {
+            const d = (S.deals || []).find(x => x.id === id); const c = sb();
+            if (!d || !c) return;
+            try { await c.from('food_deals').update({ active: !d.active, updated_at: new Date().toISOString() }).eq('id', id); d.active = !d.active; this.renderBody(); } catch (e) { notify('Update failed', 'error'); }
+        },
+        async dealDelete(id) {
+            const d = (S.deals || []).find(x => x.id === id); const c = sb();
+            if (!d || !c || !confirm('Delete the deal “' + d.title + '”?')) return;
+            try { await c.from('food_deals').delete().eq('id', id); S.deals = S.deals.filter(x => x.id !== id); this.renderBody(); } catch (e) { notify('Delete failed', 'error'); }
         },
 
         /* ----- ALERTS ----- */
@@ -1072,7 +1636,7 @@
     const KQ_BOOT = location.hash === '#kitchen';
     function boot() {
         if (KQ_BOOT || location.hash === '#kitchen') { setTimeout(() => K.open(), 1200); setTimeout(() => { if (!document.getElementById('kitchenQueueOverlay')) K.open(); }, 4000); }
-        if (document.getElementById('fgvRoot')) render();
+        if (document.getElementById('fgvRoot')) { bindChrome(); render(); }
         if (document.getElementById('fgvStatusRoot')) renderStatus();
         updatePill();
     }

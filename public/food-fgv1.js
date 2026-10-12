@@ -1467,8 +1467,26 @@
         /* v1532: a kitchen is ONE venue. Identity = a token: the golf bar's kitchen token, or the course's own
            pro shop desk token (proshop_pin_login). No token → sign in with the venue / course PIN. */
         venue: null,
+        station: null,
+        loginShowing() { const l = document.getElementById('loginScreen'); return !!(l && l.classList.contains('active')); },
+        // v1532e: from the login screen's Kitchen chip — the kitchen takes the whole app (its own screen), never an overlay ON the login page
+        async station() {
+            this.stationMode = true;
+            try { ScreenManager.showScreen('kitchenScreen', true); } catch (e) { const k = document.getElementById('kitchenScreen'); document.querySelectorAll('.screen').forEach(x => x.classList.remove('active')); if (k) k.classList.add('active'); }
+            await this.open();
+        },
+        leaveStation() {
+            this.stationMode = false;
+            try { ScreenManager.showScreen('loginScreen', true); } catch (e) { }
+        },
         token() { try { return localStorage.getItem('food_kitchen_token_v1') || localStorage.getItem('ps_desk_token_v1') || null; } catch (e) { return null; } },
         async open() {
+            // never an overlay over the login page: from there the kitchen is its own station screen
+            if (!this.stationMode && this.loginShowing()) {
+                if (this.token()) return this.station();
+                if (window.loginWithPin) window.loginWithPin('kitchen');
+                return;
+            }
             let ov = document.getElementById('kitchenQueueOverlay');
             if (!ov) {
                 ov = document.createElement('div');
@@ -1483,7 +1501,17 @@
                 const tok = this.token(), c = sb();
                 if (tok && c) { try { const { data } = await c.rpc('food_kitchen_me', { p_token: tok }); if (data && data.key) this.venue = data; } catch (e) { } }
             }
-            if (!this.venue) { this.renderSignIn(); return; }
+            if (!this.venue) {
+                try { localStorage.removeItem('food_kitchen_token_v1'); } catch (e) { }
+                // NOTHING over the login page (Pete's hard rule): signed-out → the staff PIN panel on the login screen
+                if (this.stationMode || this.loginShowing()) {
+                    ov.style.display = 'none'; document.documentElement.classList.remove('fgv-kq-open');
+                    if (this.stationMode) this.leaveStation();
+                    if (window.loginWithPin) window.loginWithPin('kitchen');
+                    return;
+                }
+                this.renderSignIn(); return;
+            }
             await this.boot();
         },
         async boot() {
@@ -1531,6 +1559,7 @@
             try { localStorage.removeItem('food_kitchen_token_v1'); } catch (e) { }
             this.venue = null; this.orders = []; this._landed = false;
             if (this.chan) { try { sb().removeChannel(this.chan); } catch (e) { } this.chan = null; }
+            if (this.stationMode) { this.close(); return; }
             this.renderSignIn();
         },
         async loadSample() {
@@ -1543,6 +1572,7 @@
             if (ov) ov.style.display = 'none';
             document.documentElement.classList.remove('fgv-kq-open');
             if (location.hash === '#kitchen') { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { } }
+            if (this.stationMode) this.leaveStation();
             // the golfer side of this device goes back to its own venue
             S.venueKey = null; S.menuLoaded = false; S.settings = null; S.dealsLoaded = false;
             if (root()) render();

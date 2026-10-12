@@ -38,5 +38,11 @@ if (!/onclick="FoodAdmin\.open\(\)"/.test(html)) fail.push('Admin › Courses ne
 if (/window\.addEventListener\('resize', \(\) => \{ clearTimeout\(rz\); rz = setTimeout\(\(\) => \{ if \(foodVisible\(\)\) render\(\); \}/.test(js)) fail.push('resize must not re-render the food page (it kills the phone keyboard)');
 if (!/if \(isDesk\(\) !== wasDesk && !typing\)/.test(js)) fail.push('resize re-renders only on a phone/desktop flip and never under a focused input');
 
+// v1532e: kitchen staff find it on the login screen; nothing ever overlays the login page
+if (!/onclick="loginWithPin\('kitchen'\)"/.test(html)) fail.push('the staff login needs its Kitchen chip');
+if (!/rpc\('food_kitchen_login', \{ p_pin: pin \}\)/.test(html)) fail.push('the Kitchen chip must check the PIN with food_kitchen_login');
+if (!/if \(!this\.stationMode && this\.loginShowing\(\)\)/.test(js)) fail.push('the kitchen must never open as an overlay on the login page');
+if (!/id="kitchenScreen" class="screen"/.test(html)) fail.push('the kitchen station needs its own screen');
+
 if (fail.length) { console.error('food-venues-check FAILED:\n - ' + fail.join('\n - ')); process.exit(1); }
 console.log('food-venues-check: ok');

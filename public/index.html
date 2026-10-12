@@ -458,7 +458,7 @@
     <!-- Defer heavy scripts until needed -->
     <!-- REMOVED: hole-by-hole-leaderboard-enhancement.js causes mobile stack overflow -->
     <script src="golf-buddies-v2.js?v=17" defer></script>
-    <script src="food-fgv1.js?v=1532d" defer></script>
+    <script src="food-fgv1.js?v=1532e" defer></script>
     <script src="promo-wall.js?v=1530" defer></script>
     <script src="tee-times.js?v=1530" defer></script>
     <script src="call-pin.js?v=1531" defer></script>
@@ -58132,8 +58132,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 'manager':     { name: 'Manager',     icon: 'manage_accounts', ic: 'lgv2-ic-mgr' },
                 'proshop':     { name: 'Pro Shop',    icon: 'storefront',      ic: 'lgv2-ic-shop' },
                 'maintenance': { name: 'Maintenance', icon: 'grass',           ic: 'lgv2-ic-mnt' },
-                'marketing':   { name: 'Marketing',   icon: 'campaign',        ic: 'lgv2-ic-mk' }
+                'marketing':   { name: 'Marketing',   icon: 'campaign',        ic: 'lgv2-ic-mk' },
+                'kitchen':     { name: 'Kitchen',     icon: 'restaurant',      ic: 'lgv2-ic-shop' }
             };
+            // v1532e: a device already signed in to its kitchen goes straight there (the token is checked server-side)
+            if (role === 'kitchen' && window.KitchenQueue && KitchenQueue.token()) { KitchenQueue.station(); return true; }
             const meta = roleMeta[role] || { name: role, icon: 'lock', ic: '' };
 
             const panel = document.getElementById('lgv2StaffPin');
@@ -58192,6 +58195,18 @@ document.addEventListener('DOMContentLoaded', function() {
         // the browser); it must NEVER be written into this file — the repo is public. The shared PIN keeps
         // working for every course that has no PIN of its own. Returns 'ok' | 'wrong' | 'offline'.
         window._staffPinGrant = async function (role, pin) {
+            if (role === 'kitchen') {   // v1532e: course pro shop PIN or golf-bar kitchen PIN → a kitchen token
+                if (!/^\d{6}$/.test(pin)) return 'wrong';
+                try {
+                    const sb = window.SupabaseDB && window.SupabaseDB.client;
+                    if (!sb) return 'offline';
+                    const { data, error } = await sb.rpc('food_kitchen_login', { p_pin: pin });
+                    if (error) return 'offline';
+                    if (!data || !data.token) return 'wrong';
+                    localStorage.setItem('food_kitchen_token_v1', data.token);
+                    return 'ok';
+                } catch (e) { return 'offline'; }
+            }
             if (role !== 'proshop') return pin === '000000' ? 'ok' : 'wrong';
             if (pin === '000000') {
                 try { localStorage.removeItem('ps_pin_lock_v1'); localStorage.removeItem('ps_desk_token_v1'); } catch (e) { }
@@ -58235,6 +58250,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (err) err.textContent = verdict === 'offline'
                 ? say('lgv2.pin.offline', 'Could not check the PIN. Check your connection and try again.')
                 : say('lgv2.pin.wrong', 'Incorrect PIN code. Access denied.');
+            if (verdict === 'ok' && role === 'kitchen') {   // the kitchen is its own station, not a dashboard role
+                window.cancelStaffPin();
+                if (window.LoginSheets) LoginSheets.close();
+                if (window.KitchenQueue) KitchenQueue.station();
+                return true;
+            }
             if (verdict === 'ok') {
                 console.log('[loginWithPin] PIN correct - granting access to:', role);
                 // Persist so a full page navigation (tee sheet "← Dashboard") restores this
@@ -59730,6 +59751,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     <button class="lgv2-schip" onclick="loginWithPin('manager')"><div class="ic lgv2-ic-mgr"><span class="material-symbols-outlined">manage_accounts</span></div><span class="lbl" data-i18n="lgv2.role.manager">Manager</span></button>
                     <button class="lgv2-schip" onclick="loginWithPin('marketing')"><div class="ic lgv2-ic-mk"><span class="material-symbols-outlined">campaign</span></div><span class="lbl" data-i18n="lgv2.role.marketing">Marketing</span></button>
                     <button class="lgv2-schip" onclick="loginWithPin('proshop')"><div class="ic lgv2-ic-shop"><span class="material-symbols-outlined">storefront</span></div><span class="lbl" data-i18n="lgv2.role.proshop">Pro Shop</span></button>
+                    <!-- v1532e Kitchen: a course's kitchen (its pro shop PIN) or a golf bar's kitchen (its kitchen PIN) — food-fgv1.js -->
+                    <button class="lgv2-schip" onclick="loginWithPin('kitchen')"><div class="ic lgv2-ic-shop"><span class="material-symbols-outlined">restaurant</span></div><span class="lbl">Kitchen</span></button>
                     <button class="lgv2-schip" onclick="loginWithPin('maintenance')"><div class="ic lgv2-ic-mnt"><span class="material-symbols-outlined">grass</span></div><span class="lbl" data-i18n="lgv2.role.maintenance">Maintenance</span></button>
                     <button class="lgv2-schip" onclick="loginWithPin('society')"><div class="ic lgv2-ic-socy"><span class="material-symbols-outlined">groups</span></div><span class="lbl" data-i18n="lgv2.role.society">Society Organizer</span></button>
                     <button class="lgv2-schip" onclick="showCourseAdminLogin()"><div class="ic lgv2-ic-adm"><span class="material-symbols-outlined">golf_course</span></div><span class="lbl" data-i18n="lgv2.role.courseadmin">Course Admin</span></button>
@@ -73088,6 +73111,9 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 
     <!-- Admin Dashboard -->
+    <!-- v1532e Kitchen station: the screen behind the kitchen (food-fgv1.js KitchenQueue.station) -->
+    <div id="kitchenScreen" class="screen" style="min-height:100vh;background:#F2F4F6"></div>
+
     <div id="adminDashboard" class="screen">
         <header style="background: linear-gradient(135deg, #dc2626, #991b1b); color: white; padding: 12px 16px; position: sticky; top: 0; z-index: 40;">
             <div style="max-width: 1280px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center;">

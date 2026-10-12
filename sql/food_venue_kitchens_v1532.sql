@@ -220,13 +220,20 @@ language sql security definer set search_path = public as $$
 $$;
 
 -- ---------- Admin: golf bars + their kitchen PIN ----------
+-- one gate for every Admin call: 10 wrong tries per 15 minutes, then nothing answers (v1532b, security review)
+create or replace function public._food_admin_ok(p_admin text) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  if (select count(*) from public.food_login_misses where kind = 'admin' and at > now() - interval '15 minutes') >= 10 then return false; end if;
+  if exists (select 1 from public.food_admin_pins ap where ap.pin = btrim(coalesce(p_admin, ''))) then return true; end if;
+  insert into public.food_login_misses (kind) values ('admin');
+  return false;
+end $$;
+revoke all on function public._food_admin_ok(text) from public, anon, authenticated;
 create or replace function public.food_admin_bars(p_admin text) returns jsonb
 language plpgsql security definer set search_path = public as $$
 begin
-  if not exists (select 1 from public.food_admin_pins where pin = btrim(coalesce(p_admin, ''))) then
-    insert into public.food_login_misses (kind) values ('admin');
-    return jsonb_build_object('error', 'wrong_pin');
-  end if;
+  if not public._food_admin_ok(p_admin) then return jsonb_build_object('error', 'wrong_pin'); end if;
   return jsonb_build_object('bars', coalesce((select jsonb_agg(jsonb_build_object('key', v.key, 'name', v.name, 'area', v.area, 'open', v.open,
             'pin', p.pin, 'items', (select count(*) from public.menu_items i where i.course_name = v.key and i.active)) order by v.name)
      from public.food_venues v left join public.food_venue_pins p on p.venue_key = v.key where v.kind = 'bar'), '[]'));
@@ -236,17 +243,13 @@ create or replace function public.food_admin_bar_create(p_admin text, p_name tex
 language plpgsql security definer set search_path = public as $$
 declare k text; base text; n int := 0; v_pin text;
 begin
-  if (select count(*) from public.food_login_misses where kind = 'admin' and at > now() - interval '15 minutes') >= 10
-     or not exists (select 1 from public.food_admin_pins ap where ap.pin = btrim(coalesce(p_admin, ''))) then
-    insert into public.food_login_misses (kind) values ('admin');
-    return jsonb_build_object('error', 'wrong_pin');
-  end if;
+  if not public._food_admin_ok(p_admin) then return jsonb_build_object('error', 'wrong_pin'); end if;
   if nullif(btrim(coalesce(p_name, '')), '') is null then return jsonb_build_object('error', 'name'); end if;
   base := 'bar-' || left(trim(both '-' from regexp_replace(lower(p_name), '[^a-z0-9]+', '-', 'g')), 40);
   k := base;
   while exists (select 1 from public.food_venues where key = k) loop n := n + 1; k := base || '-' || n; end loop;
   loop
-    v_pin := lpad((floor(random() * 1000000))::int::text, 6, '0');
+    v_pin := lpad(((('x' || encode(extensions.gen_random_bytes(4), 'hex'))::bit(32)::bigint % 1000000))::text, 6, '0');   -- CSPRNG
     exit when v_pin !~ '^(\d)\1{5}$' and v_pin not in ('123456', '654321')
       and not exists (select 1 from public.food_venue_pins x where x.pin = v_pin)
       and not exists (select 1 from public.proshop_pins x where x.pin = v_pin)
@@ -260,7 +263,7 @@ end $$;
 create or replace function public.food_admin_bar_delete(p_admin text, p_key text) returns jsonb
 language plpgsql security definer set search_path = public as $$
 begin
-  if not exists (select 1 from public.food_admin_pins where pin = btrim(coalesce(p_admin, ''))) then return jsonb_build_object('error', 'wrong_pin'); end if;
+  if not public._food_admin_ok(p_admin) then return jsonb_build_object('error', 'wrong_pin'); end if;
   delete from public.menu_items where course_name = p_key and exists (select 1 from public.food_venues where key = p_key and kind = 'bar');
   delete from public.food_venues where key = p_key and kind = 'bar';
   return jsonb_build_object('ok', true);

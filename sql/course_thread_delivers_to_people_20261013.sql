@@ -47,7 +47,9 @@ begin
         union all select r.player_id from public.event_registrations r where r.event_id = new.event_id
       ) q where coalesce(x, '') <> '');
   else
-    ids := array(select distinct x from unnest(coalesce(new.to_ids, '{}')) x where coalesce(x, '') <> '');
+    -- only people registered for THIS event: a group / player pick can never reach anyone outside it
+    ids := array(select distinct x from unnest(coalesce(new.to_ids, '{}')) x where coalesce(x, '') <> ''
+                   and x in (select r.player_id from public.event_registrations r where r.event_id = new.event_id));
   end if;
   new.delivered_to := ids;
   return new;

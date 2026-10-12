@@ -321,6 +321,7 @@
             '.fg2-fly{position:fixed;z-index:9500;width:56px;height:56px;border-radius:50%;overflow:hidden;border:3px solid #fff;box-shadow:0 8px 22px rgba(0,0,0,.28);pointer-events:none}.fg2-fly img{width:100%;height:100%;object-fit:cover}',
             /* overlays: item page + basket sheet */
             'html.fg2-lock #dashboardBackBtn,html.fg2-lock #globalScrollToTopBtn{display:none!important}',
+            'html.fgv-kq-open #dashboardBackBtn,html.fgv-kq-open #globalScrollToTopBtn,html.fgv-kq-open #fg2Bar{display:none!important}',
             '#fg2Ovl{position:fixed;inset:0;z-index:9000;font-family:Inter,-apple-system,"Segoe UI",sans-serif;color:var(--tx)}',
             '.fg2-dim{position:absolute;inset:0;background:rgba(15,20,25,.48);animation:fg2fade .2s}@keyframes fg2fade{from{opacity:0}}',
             '.fg2-ov.item .fg2-dim{display:none}',

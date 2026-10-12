@@ -103,6 +103,7 @@ if (!window.searchProfilesByName) window.searchProfilesByName = async function(s
   if (!sb || !term) return [];
   var words = term.split(/\s+/).filter(Boolean);
   var q = sb.from('user_profiles').select('line_user_id, name, handicap_index, profile_data');
+  q = q.not('line_user_id', 'like', 'COURSE-%');   // v1535: a course's message-sender profile is not a golfer
   words.forEach(function(w){ q = q.or(window.nameSearchOrClauses(w)); });
   var r = await q.limit(limit || 100);
   if (r.error) throw r.error;

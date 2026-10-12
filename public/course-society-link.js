@@ -88,7 +88,9 @@
       free: 'Free', outAt: 'Out {a}–{b}', dayOff: 'Day off', inGroup: 'In this group', noCaddyOpt: 'No caddy',
       notPaired: 'Registered — not paired yet', loading: 'Loading…', noRoster: 'No caddies on this course\'s roster yet.',
       cadSetMsg: '{c} set for {p} ({g})', cadOkMsg: '{c} confirmed for {p}', cadCancelMsg: '{c} cancelled for {p}',
-      cadRefuse: '{c} is not available: {r}', cadSaved: 'Saved', unpaired: 'Unpaired'
+      cadRefuse: '{c} is not available: {r}', cadSaved: 'Saved', unpaired: 'Unpaired',
+      // v1535 the message box goes to people: the whole event, one group, or one player (in-app + LINE)
+      to: 'To', toAll: 'Organizer + every player ({n})', toGroup: '{g} · {n} players', msgT: 'Message', everyone: 'Everyone', toTyping: 'Message {t}…'
     },
     th: {
       societies: 'สมาคม', golfCourse: 'สนามกอล์ฟ', upcoming: 'อีเวนต์สมาคมที่สนามนี้ — 3 สัปดาห์ข้างหน้า',
@@ -108,12 +110,13 @@
       free: 'ว่าง', outAt: 'ไม่ว่าง {a}–{b}', dayOff: 'วันหยุด', inGroup: 'อยู่ในกลุ่มนี้แล้ว', noCaddyOpt: 'ไม่ใช้แคดดี้',
       notPaired: 'ลงทะเบียนแล้ว — ยังไม่จับกลุ่ม', loading: 'กำลังโหลด…', noRoster: 'สนามนี้ยังไม่มีรายชื่อแคดดี้',
       cadSetMsg: 'กำหนด {c} ให้ {p} ({g})', cadOkMsg: 'ยืนยัน {c} ให้ {p}', cadCancelMsg: 'ยกเลิก {c} ของ {p}',
-      cadRefuse: '{c} ไม่ว่าง: {r}', cadSaved: 'บันทึกแล้ว', unpaired: 'ยังไม่จับกลุ่ม'
+      cadRefuse: '{c} ไม่ว่าง: {r}', cadSaved: 'บันทึกแล้ว', unpaired: 'ยังไม่จับกลุ่ม',
+      to: 'ถึง', toAll: 'ผู้จัด + ผู้เล่นทุกคน ({n})', toGroup: '{g} · {n} คน', msgT: 'ส่งข้อความ', everyone: 'ทุกคน', toTyping: 'ส่งข้อความถึง {t}…'
     }
   };
 
   var CL = window.CourseLink = {
-    _v: 1487,
+    _v: 1535,
     KEYS: KEYS,
     sb: null,
     lang: 'en',
@@ -613,7 +616,7 @@
       msgs.forEach(function (m) {
         var mine = m.side === st.side;
         var tm = ''; try { tm = new Date(m.created_at).toLocaleString(self.lang === 'th' ? 'th-TH' : 'en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { }
-        h += '<div class="cl-m ' + (mine ? 'me' : 'them') + ' k-' + E(m.kind) + '"><div class="cl-mh">' + E(mine ? self.t('you') : (m.sender_name || (m.side === 'course' ? self.t('courseSide') : ''))) + ' · ' + E(tm) + '</div>' +
+        h += '<div class="cl-m ' + (mine ? 'me' : 'them') + ' k-' + E(m.kind) + '"><div class="cl-mh">' + E(mine ? self.t('you') : (m.sender_name || (m.side === 'course' ? self.t('courseSide') : ''))) + (m.side === 'course' && m.kind === 'text' ? ' → ' + E(m.to_kind === 'event' || !m.to_kind ? self.t('everyone') : (m.to_label || '')) : '') + ' · ' + E(tm) + '</div>' +
           '<div class="cl-mb">' + E(self._msgText(m)) + '</div>';
         if (m.kind === 'request' && st.side === 'course' && !mine) {
           h += answered[m.id]
@@ -624,7 +627,10 @@
         }
         h += '</div>';
       });
-      h += '</div><div class="cl-send"><input class="cl-in" type="text" maxlength="2000" placeholder="' + E(this.t('typeMsg')) + '"><button class="cl-btn pri" data-a="send">' + E(this.t('send')) + '</button></div></div>';
+      h += '</div>';
+      var to = st.side === 'course' ? this._toOf(ev) : null;
+      if (to) h += '<div class="cl-to"><span>' + E(this.t('to')) + '</span><b>' + E(to.label) + '</b>' + (to.kind !== 'event' ? '<button class="cl-btn" data-a="toall">' + E(this.t('everyone')) + '</button>' : '') + '</div>';
+      h += '<div class="cl-send"><input class="cl-in" type="text" maxlength="2000" placeholder="' + E(to && to.kind !== 'event' ? this.t('toTyping', { t: to.label }) : this.t('typeMsg')) + '"><button class="cl-btn pri" data-a="send">' + E(this.t('send')) + '</button></div></div>';
       return h + '</div>';
     },
     _click: async function (e) {
@@ -676,6 +682,18 @@
           this.renderPanel(); return;
         }
         if (a === 'send') return this._sendFrom(card.querySelector('.cl-in'));
+        if (a === 'toall') { delete this._to[ev.id]; this.renderPanel(); this._focusIn(); return; }
+        if (a === 'msgto') {
+          var row = b.closest('[data-pk]'), f = row && this._player(ev, row.getAttribute('data-pk')); if (!f) return;
+          this._to[ev.id] = { kind: 'player', ids: f.p.id ? [f.p.id] : [], label: f.p.name };
+          this.renderPanel(); this._focusIn(); return;
+        }
+        if (a === 'msgtog') {
+          var gi2 = parseInt(b.getAttribute('data-gi'), 10) || 0, gs = ev.groups.filter(function (g) { return g.players.length; });
+          var pl = gi2 ? (gs[gi2 - 1] || {}).players || [] : (ev.unpaired || []);
+          this._to[ev.id] = { kind: 'group', ids: pl.map(function (x) { return x.id; }).filter(Boolean), label: this.t('toGroup', { g: gi2 ? this.t('group') + ' ' + gi2 : this.t('notPaired'), n: pl.length }) };
+          this.renderPanel(); this._focusIn(); return;
+        }
       } catch (err) {
         console.warn('[CourseLink]', err);
         this.toast('⚠ ' + (err && err.message ? err.message : 'Failed'));
@@ -695,7 +713,8 @@
       var E = this.esc.bind(this), self = this;
       var nc = players.filter(function (p) { return p.caddy; }).length;
       var h = '<div class="cl-g"><div class="cl-g-h"><b>' + E(title) + '</b>' + (teeTime ? '<span class="cl-g-t">' + E(teeTime) + '</span>' : '') +
-        '<span class="cl-g-n">' + players.length + ' ' + E(this.t('players')) + ' · ' + nc + ' ' + E(this.t(nc === 1 ? 'caddyOne' : 'caddyMany')) + '</span></div>';
+        '<span class="cl-g-n">' + players.length + ' ' + E(this.t('players')) + ' · ' + nc + ' ' + E(this.t(nc === 1 ? 'caddyOne' : 'caddyMany')) + '</span>' +
+        (canEdit ? '<button class="cl-ic msg" data-a="msgtog" data-gi="' + gi + '" title="' + E(this.t('msgT')) + '" aria-label="' + E(this.t('msgT')) + '">✉</button>' : '') + '</div>';
       players.forEach(function (p) { h += self._playerHtml(ev, p, gi, canEdit); });
       return h + '</div>';
     },
@@ -713,14 +732,15 @@
           '<span class="cl-cd">' + this._photo(c.num, c.photo, 22) + '<b>#' + E(c.num) + '</b><i class="cl-st ' + (c.status === 'confirmed' ? 'conf' : 'pend') + '">' + E(this.t(c.status === 'confirmed' ? 'confirmed' : 'pending')) + '</i></span>' +
           (canEdit ? '<span class="cl-acts">' + (c.status !== 'confirmed' ? '<button class="cl-ic ok" data-a="cadok" title="' + E(this.t('confirmT')) + '" aria-label="' + E(this.t('confirmT')) + '">✓</button>' : '') +
             '<button class="cl-ic" data-a="cadpick" title="' + E(this.t('changeT')) + '" aria-label="' + E(this.t('changeT')) + '">✎</button>' +
-            '<button class="cl-ic x" data-a="cadx" title="' + E(this.t('cancelT')) + '" aria-label="' + E(this.t('cancelT')) + '">✕</button></span>' : '') + '</div>';
+            '<button class="cl-ic x" data-a="cadx" title="' + E(this.t('cancelT')) + '" aria-label="' + E(this.t('cancelT')) + '">✕</button>' + this._msgBtn() + '</span>' : '') + '</div>';
       } else {
         h = '<div class="cl-p' + (open ? ' open' : '') + hlc + '" data-pk="' + E(key) + '">' + nmH +
-          (canEdit ? '<button class="cl-add' + (open ? ' on' : '') + '" data-a="cadpick">' + E(this.t('addCaddy')) + '</button>' : '<span class="cl-none">—</span>') + '</div>';
+          (canEdit ? '<button class="cl-add' + (open ? ' on' : '') + '" data-a="cadpick">' + E(this.t('addCaddy')) + '</button>' + this._msgBtn() : '<span class="cl-none">—</span>') + '</div>';
       }
       if (open) h += '<div class="cl-pick" data-pk="' + E(key) + '"><input class="cl-pick-in" type="text" autocomplete="off" placeholder="' + E(this.t('pickCaddy')) + '" value="' + E(pk.q || '') + '"><div class="cl-pick-list">' + this._pickListHtml(ev, p) + '</div></div>';
       return h;
     },
+    _msgBtn: function () { var T = this.esc(this.t('msgT')); return '<button class="cl-ic msg" data-a="msgto" title="' + T + '" aria-label="' + T + '">✉</button>'; },
     _pickListHtml: function (ev, p) {
       var E = this.esc.bind(this), pk = this._pick, self = this;
       if (!pk || !pk.list) return '<div class="cl-empty sm">' + E(this.t('loading')) + '</div>';
@@ -878,12 +898,20 @@
       } catch (err) { this._fail('cancelCaddy', err); }
     },
 
+    _to: {},             // v1535 evId → { kind:'group'|'player', ids, label }; none = the whole event
+    _toOf: function (ev) {
+      return this._to[ev.id] || { kind: 'event', label: this.t('toAll', { n: ev.regs || 0 }) };
+    },
+    _focusIn: function () { var i = document.querySelector('#clPanel .cl-in'); if (i) i.focus(); },
     _sendFrom: async function (inp) {
       if (!inp) return;
       var body = inp.value.trim(); if (!body) return;
       var card = inp.closest('.cl-card'), ev = card && this.state.byId[card.getAttribute('data-ev')]; if (!ev) return;
       inp.value = ''; inp.disabled = true;
-      try { await this.send(ev, { kind: 'text', body: body }); }
+      var to = this.state.side === 'course' ? this._toOf(ev) : null;
+      var f = { kind: 'text', body: body };
+      if (to) { f.to_kind = to.kind; f.to_label = to.label; if (to.kind !== 'event') f.to_ids = to.ids; }
+      try { await this.send(ev, f); }
       catch (err) { inp.value = body; this.toast('⚠ ' + (err.message || 'Failed')); }
       inp.disabled = false; this.renderPanel();
       var i2 = document.querySelector('#clPanel .cl-in'); if (i2) i2.focus();
@@ -988,6 +1016,10 @@
         '#clPanel .cl-m.k-system{align-self:center;background:var(--cl-card);border:1px solid var(--cl-line);max-width:100%;text-align:center}',
         '#clPanel .cl-m.k-request{border:1px solid #f59e0b}',
         '#clPanel .cl-mh{font-size:11px;color:var(--cl-muted)}',
+        '#clPanel .cl-to{display:flex;align-items:center;gap:8px;margin:0 0 6px;font-size:12.5px;color:var(--cl-muted)}',
+        '#clPanel .cl-to b{color:var(--cl-ink);font-weight:800;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+        '#clPanel .cl-to .cl-btn{padding:3px 10px;font-size:12px}',
+        '#clPanel .cl-ic.msg{margin-left:4px}',
         '#clPanel .cl-mb{font-size:14px;white-space:pre-wrap;word-break:break-word}',
         '#clPanel .cl-acts-req{display:flex;gap:6px;margin-top:6px}',
         '#clPanel .cl-ans{font-size:11px;font-weight:800;color:var(--cl-green-soft);margin-top:3px}',

@@ -920,7 +920,9 @@
             const q = C.norm(PS._custQ || ''), seg = PS._custSeg || '';
             const rows = PS._custRows || [], vip = PS._custVip || {};
             const isVip = (r) => !!(vip[r.key] || vip['n:' + C.norm(r.name)]);
-            const list = rows.filter(r => (!q || C.norm(r.name).includes(q)) && (!seg || (seg === 'next' ? !!r.next : seg === 'v90' ? r.v90 > 0 : r.seg === seg)));
+            // v1530: 6 digits = a golfer's Call PIN (resolved by the server, this course's desk token)
+            const pinQ = /^\d{6}$/.test(String(PS._custQ || '').replace(/\s/g, ''));
+            const list = rows.filter(r => (pinQ ? (PS._custPin && PS._custPin.q === String(PS._custQ).replace(/\s/g, '') && r.id === PS._custPin.id) : (!q || C.norm(r.name).includes(q))) && (!seg || (seg === 'next' ? !!r.next : seg === 'v90' ? r.v90 > 0 : r.seg === seg)));
             const SEG = { 'new': ['segNew', 'bg-sky-100 text-sky-800'], regular: ['segRegular', 'bg-green-100 text-green-800'], lapsing: ['segLapsing', 'bg-amber-100 text-amber-800'], occ: ['segOcc', 'bg-gray-100 text-gray-700'], up: ['segUp', 'bg-sky-100 text-sky-800'] };
             const tile = (k, n, label) => `<button type="button" data-seg="${k}" class="text-left rounded-xl border px-3 py-2 ${seg === k ? 'border-green-600 bg-green-50' : 'border-gray-200 bg-white'}">
                     <div class="text-xl font-bold text-gray-900">${fmtN(n)}</div><div class="text-xs font-medium text-gray-600">${label}</div></button>`;
@@ -950,7 +952,7 @@
                         const sg = SEG[r.seg] || SEG.occ, cd = r.cads[0];
                         return `
                       <tr class="border-b border-gray-100 cursor-pointer hover:bg-green-50" data-k="${esc(r.key)}" tabindex="0">
-                        <td class="px-3 py-2 font-semibold text-gray-900 whitespace-nowrap">${esc(r.name)}${isVip(r) ? ' <span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-400 text-gray-900">VIP</span>' : ''}</td>
+                        <td class="px-3 py-2 font-semibold text-gray-900 whitespace-nowrap">${esc(r.name)}${window.PhoneDesk ? PhoneDesk.slot(r.id) : ''}${isVip(r) ? ' <span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-400 text-gray-900">VIP</span>' : ''}</td>
                         <td class="px-3 py-2"><span class="text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${sg[1]}">${T(sg[0])}</span></td>
                         <td class="px-3 py-2 text-center text-gray-900 font-semibold">${r.visits}</td>
                         <td class="px-3 py-2 text-center text-gray-700">${r.v12}</td>
@@ -963,6 +965,12 @@
                 </table>
               </div>`;
             const qEl = document.getElementById('ps-cust-q');
+            if (qEl) qEl.addEventListener('input', (e) => {
+                const pq = String(e.target.value || '').replace(/\s/g, '');
+                if (/^\d{6}$/.test(pq) && window.PhoneDesk && !(PS._custPin && PS._custPin.q === pq)) {
+                    PhoneDesk.findPin(pq).then(l => { PS._custPin = { q: pq, id: (l[0] && l[0].id) || '-' }; PS.renderCustomers(); const x = document.getElementById('ps-cust-q'); if (x) { x.focus(); x.setSelectionRange(x.value.length, x.value.length); } });
+                }
+            });
             if (qEl) qEl.addEventListener('input', (e) => { PS._custQ = e.target.value; PS.renderCustomers(); setTimeout(() => { const x = document.getElementById('ps-cust-q'); if (x) { x.focus(); x.setSelectionRange(x.value.length, x.value.length); } }, 0); });
             if (!host._crmBound) {
                 host._crmBound = true;

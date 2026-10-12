@@ -571,7 +571,7 @@
           (p.transport && p.type !== 'transport' ? P('airport_shuttle') + '<b>' + esc(T('pw.inc.ride', 'Transport included')) + '</b>' : '') + P('location_on') + '<b>' + esc([p.area, p.region].filter(Boolean).join(', ') || p.course_name) + '</b></div>' +
       '</div></div><div class="pw-r pw-bd">' +
         caddiesHtml(p) +
-        (code ? '<div class="pw-code"><small>' + esc(T('pw.code', 'Your deal code')) + '</small><b>' + esc(code) + '</b><span>' + esc(T('pw.code.sub', 'Show it at the pro shop. You pay the course.')) + '</span></div>' : '') +
+        (code ? '<div class="pw-code"><small>' + esc(T('pw.code', 'Your deal code')) + '</small><b>' + esc(code) + '</b><span>' + esc(T('pw.code.sub', 'Show it at the pro shop. You pay the course.')) + '</span></div><div class="cp-slot"></div>' : '') +
         (pub ? '<div class="pw-note">' + esc(T('pw.free', 'Free to join. Pay the course directly, never MyCaddiPro.')) + ' <a href="/?promo=' + encodeURIComponent(p.id) + '&signin=1">' + esc(T('pw.signin', 'Sign in')) + '</a></div>'
              : code ? '' : '<div class="pw-note">' + esc(books || p.hot ? F('pw.note.app', 'Booked straight onto {c}\'s tee sheet. You pay the course.', { c: p.short || p.course_name }) : F('pw.note.claim', 'You get a code to show at {c}. You pay the course.', { c: p.short || p.course_name })) + '</div>') +
         '<div class="pw-acts">' +

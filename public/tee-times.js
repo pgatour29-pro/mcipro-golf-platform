@@ -1008,6 +1008,7 @@
     } else if (b.deal_price) {
       h += '<div class="ttx-money"><div class="r">' + esc(T('ttx.money.deal', 'Hot deal price, paid at the pro shop')) + '<b>' + esc(baht(b.deal_price)) + ' / ' + esc(T('ttx.player', 'player')) + '</b></div></div>';
     }
+    if (st !== 'gone') h += '<div class="cp-slot"></div>';   // v1530: the golfer's Call PIN (call-pin.js) — say it when calling the course
     if (st !== 'gone') h += '<div class="ttx-perf"><b></b></div><div class="ttx-ci"><div class="qimg" data-qr="checkin">…</div><div><b>' + esc(T('ttx.checkin', 'Check in with this code')) + '</b><span>' + esc(T('ttx.checkin.sub', 'Show it at the pro shop counter — they find your booking by this code.')) + '</span></div></div>';
     h += '</div>';
     if (st === 'due') h += '<button type="button" class="ttx-cta" data-act="open-pay" data-id="' + esc(b.id) + '" style="margin:0 0 12px">' + P('qr_code_2') + esc(T('ttx.paynow', 'Pay the course now')) + '</button>';

@@ -453,7 +453,7 @@
       var club = prof && (prof.home_club || prof.society_name); if (club) tags.push('<span>· ' + E(club) + '</span>');
       if (p && p.first) tags.push('<span>· ' + E(T('since', { d: C.dfmt(p.first, { month: 'short', year: 'numeric' }) })) + '</span>');
       if (p && p.phone) tags.push('<span>· ' + E(p.phone) + '</span>');
-      var h = '<div class="bb-hd"><span class="bb-av" data-golfer-av="' + E(id) + '" data-golfer-av-nm="' + E(name) + '" data-golfer-av-sz="52"></span><div class="bb-who"><div class="bb-nm">' + E(name) + '</div><div class="bb-tags">' + tags.join('') + '</div></div></div>';
+      var h = '<div class="bb-hd"><span class="bb-av" data-golfer-av="' + E(id) + '" data-golfer-av-nm="' + E(name) + '" data-golfer-av-sz="52"></span><div class="bb-who"><div class="bb-nm">' + E(name) + '</div><div class="bb-tags">' + tags.join('') + (window.PhoneDesk && id ? PhoneDesk.slot(id) : '') + '</div></div></div>';   // v1530: their Call PIN
 
       // what the desk must know before saving
       this.host.dayHits(who, row).forEach(function (x) { h += '<div class="bb-al bad">' + ICON.warn + '<div>' + E(T('onSheet', { t: x.time })) + (x.where ? '<small>' + E(x.where) + '</small>' : '') + '</div></div>'; });

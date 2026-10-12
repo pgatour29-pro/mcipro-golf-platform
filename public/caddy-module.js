@@ -255,7 +255,9 @@
       // the course assigns on the spot: a player with no caddy gets a picker; one with a caddy can change her (pencil)
       const canAssign = D && !r.isJob && (!j || !j.done) && !(j && (j.out || j.sent));
       const btn = canAssign ? '<button type="button" class="cm-cc ' + (chip ? 'edit' : 'need') + (open ? ' on' : '') + '" data-a="seat" data-id="' + E(r.b.id) + '" data-i="' + i + '" data-kind="' + kind + '">' + (chip ? '✎' : T('cmAssignCaddy')) + '</button>' : '';
-      return '<div class="cm-pl' + (open ? ' on' : '') + '"><span class="nm">' + this.mark(g.name || T('cmGuest')) + '</span>' + chip + btn + '</div>' + (open ? this.pickHtml(r, g) : '');
+      // v1530: the golfer's Call PIN beside their name (course only; caddies never see this board)
+      const gid = g.odoo_id || (j && j.row && (j.row.golfer_id || j.row.user_id)) || '';
+      return '<div class="cm-pl' + (open ? ' on' : '') + '"><span class="nm">' + this.mark(g.name || T('cmGuest')) + '</span>' + (window.PhoneDesk ? PhoneDesk.slot(gid) : '') + chip + btn + '</div>' + (open ? this.pickHtml(r, g) : '');
     },
     pickHtml(r, g) {
       const T = k => this.T(k), E = s => this.esc(s), D = this.api.CaddyDesk.data; if (!D) return '';

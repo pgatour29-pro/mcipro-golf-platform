@@ -3550,15 +3550,15 @@
   <script src="name-search.js?v=20260917a"></script>
   <script src="course-society-link.js?v=1487"></script>
   <script src="facility-sheet.js?v=1488"></script>
-  <script src="course-crm.js?v=1487"></script>
-  <script src="booking-brief.js?v=1487"></script>
+  <script src="course-crm.js?v=1530"></script>
+  <script src="booking-brief.js?v=1530"></script>
   <script src="course-open-times.js?v=1446"></script>
-  <script src="promo-wall.js?v=1526"></script>
+  <script src="promo-wall.js?v=1530"></script>
   <script src="course-promos.js?v=1522"></script>
   <script src="caddy-work-core.js?v=1473"></script>
   <script src="course-traffic.js?v=1459"></script>
-  <script src="caddy-module.js?v=1485"></script>
-  <script src="phone-desk.js?v=1528"></script>
+  <script src="caddy-module.js?v=1530"></script>
+  <script src="phone-desk.js?v=1530"></script>
   <script>
   (function() {
     'use strict';
@@ -5119,9 +5119,11 @@
             if (!supabaseClient || !window.searchProfilesByName) return;
             if (!st.list.length) dropdown.innerHTML = `<div class="gs-head">${this._esc(t('nameSearching'))}</div>`;
             dropdown.classList.add('show');
-            window.searchProfilesByName(supabaseClient, st.term, 100).then(list => {
+            // v1530: 6 digits in a golfer name box = that golfer's Call PIN (Thai staff type numbers, not foreign names)
+            const viaPin = /^\d{3}\s?\d{3}$/.test(st.term) && window.PhoneDesk;
+            (viaPin ? PhoneDesk.findPin(st.term) : window.searchProfilesByName(supabaseClient, st.term, 100)).then(list => {
               if (seq !== st.seq) return;
-              st.list = (window.BookingBrief && BookingBrief.host) ? BookingBrief.rank(list || [], st.term) : (list || []);   // known at this course first
+              st.list = (!viaPin && window.BookingBrief && BookingBrief.host) ? BookingBrief.rank(list || [], st.term) : (list || []);   // known at this course first
               st.active = st.list.length ? 0 : -1;
               render();
             }).catch(e => {
@@ -6013,7 +6015,7 @@
 
     function render() {
       if (DaySheet._open) setTimeout(() => DaySheet.refresh(), 0);   // v1223: the open day sheet follows the board
-      if (window.FacilitySheet && FacilitySheet.showingAll()) { FacilitySheet.render(); return; }   // v1487: all courses of the facility on one grid
+      if (window.FacilitySheet && FacilitySheet.showingAll()) { FacilitySheet.render(); if (window.PhoneDesk) PhoneDesk.onRender(el.gridBody); return; }   // v1487: all courses of the facility on one grid
       const layout = getLayout();
       const startM = minutes(el.startTime.value);
       const endM = minutes(el.endTime.value);
@@ -7834,7 +7836,7 @@
           if (!j.done && D.isToday) b.push('<button type="button" class="cd-btn' + (j.out || j.state === 'late' ? '' : ' o') + '" data-a="backin" data-j="' + this.esc(j.id) + '">' + t('cdBackIn') + '</button>');
           if (j.fee) b.push('<button type="button" class="cd-btn ' + (j.paid ? 'paid' : 'o') + '" data-a="paid" data-j="' + this.esc(j.id) + '">' + (j.paid ? '✓ ' + t('cdPaid') : t('cdMarkPaid')) + ' ' + this.baht(j.fee) + '</button>');
           if (j.linked) b.push('<button type="button" class="cd-btn o" data-a="openbk" data-j="' + this.esc(j.id) + '">' + t('cdOpenBk') + '</button>');
-          return '<div class="cd-jr"><div class="top"><div class="tm">' + j.t + '</div><div class="g"><button type="button" class="cd-crm" data-a="crm" data-j="' + this.esc(j.id) + '">' + this.esc(j.golfer) + '</button> <small>· ' + t('cdBack').replace('{t}', hhmmOf(j.e)) + '</small></div><span class="cd-st ' + k[1] + '">' + t(k[0]) + '</span></div>'
+          return '<div class="cd-jr"><div class="top"><div class="tm">' + j.t + '</div><div class="g"><button type="button" class="cd-crm" data-a="crm" data-j="' + this.esc(j.id) + '">' + this.esc(j.golfer) + '</button>' + (window.PhoneDesk && j.row ? PhoneDesk.slot(j.row.golfer_id || j.row.user_id) : '') + ' <small>· ' + t('cdBack').replace('{t}', hhmmOf(j.e)) + '</small></div><span class="cd-st ' + k[1] + '">' + t(k[0]) + '</span></div>'
             + (b.length ? '<div class="acts">' + b.join('') + '</div>' : '') + '</div>';
         };
         const qpos = D.queue.indexOf(r);
@@ -10834,7 +10836,7 @@
         const stTxt = { due: t('abStDue'), slip: t('abStSlip'), booked: t('abStBooked'), confirmed: t('abStOk'), expired: t('abStExpired'), released: t('abStReleased') }[st] || st;
         let h = `<div class="abh"><b>${E(t('abTitle'))}</b><button class="abx" data-ab="list" title="${E(t('appBookingsBtn'))}">☰</button><button class="abx" data-ab="close" aria-label="Close">✕</button></div><div class="abb">`;
         h += `<div class="abtm">${E(String(r.time || '').slice(0, 5))} · ${E(r.tee_sheet_course || '')}</div>`;
-        h += `<div class="absub">${E(day)} · ${E(r.golfer_name || '')}${r.players > 1 ? ' + ' + (r.players - 1) : ''} · ${E(a.ref || '')}</div>`;
+        h += `<div class="absub">${E(day)} · ${E(r.golfer_name || '')}${window.PhoneDesk ? PhoneDesk.slot(r.golfer_id) : ''}${r.players > 1 ? ' + ' + (r.players - 1) : ''} · ${E(a.ref || '')}</div>`;
         h += `<div class="abchip" style="--c:${this.color(st)}">● ${E(stTxt)}${st === 'due' ? ' · ' + this.minsLeft(a) + ' min' : ''}</div>`;
         h += `<h4>${E(t('abPlayers'))}</h4>` + gs.map((g, i) => `<div class="abk"><span>${E(g.name || (t('player') + ' ' + (i + 1)))}</span><b>${g.caddyNumber ? 'C' + E(g.caddyNumber) : g.caddyWanted === 'none' ? E(t('abNoCaddy')) : E(t('abCaddyAssign'))}</b></div>`).join('');
         h += `<h4>${E(t('abMoney'))}</h4>`;
@@ -10875,7 +10877,7 @@
         rows.forEach(r => {
           const a = (r.booking_data && r.booking_data.app) || {}, st = this.state(a);
           if (r.date !== lastDay) { lastDay = r.date; h += `<div class="abday">${E(new Date(r.date + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }))}</div>`; }
-          h += `<button class="abrow" style="--c:${this.color(st)}" data-ab="go" data-id="${E(r.id)}" data-date="${E(r.date)}"><b>${E(String(r.time || '').slice(0, 5))}</b><div class="w"><span>${E(r.golfer_name || '')}${r.players > 1 ? ' + ' + (r.players - 1) : ''} · ${E(r.tee_sheet_course || '')}</span><span>${E(a.ref || '')}${a.amount ? ' · ' + E(this.baht(a.amount)) : ''}</span></div><em>${E(this.pillBits(r).tag)}</em></button>`;
+          h += `<button class="abrow" style="--c:${this.color(st)}" data-ab="go" data-id="${E(r.id)}" data-date="${E(r.date)}"><b>${E(String(r.time || '').slice(0, 5))}</b><div class="w"><span>${E(r.golfer_name || '')}${window.PhoneDesk ? PhoneDesk.slot(r.golfer_id || (r.booking_data && r.booking_data.app && r.booking_data.app.booker) || (((r.booking_data && r.booking_data.golfers) || [])[0] || {}).odoo_id) : ''}${r.players > 1 ? ' + ' + (r.players - 1) : ''} · ${E(r.tee_sheet_course || '')}</span><span>${E(a.ref || '')}${a.amount ? ' · ' + E(this.baht(a.amount)) : ''}</span></div><em>${E(this.pillBits(r).tag)}</em></button>`;
         });
         h += '</div></div>';
         d.innerHTML = h;

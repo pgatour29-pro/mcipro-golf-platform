@@ -18,7 +18,8 @@
       fmt: 'Type 6 numbers.', fail: 'Could not save. Check your connection and try again.',
       card: 'Phoning a course? Say these 6 numbers. The pro shop sees them on every caddy booking you make.',
       cardSet: 'Set 6 numbers and a pro shop finds you in seconds when you phone. No spelling your name.',
-      change: 'Change', set: 'Set', courseSees: 'course sees this', close: 'Close'
+      change: 'Change', set: 'Set', courseSees: 'course sees this', close: 'Close',
+      slot: 'Your Call PIN {p} · say it when you call the course', slotSet: 'Set your Call PIN: the course finds you by it when you call'
     },
     th: {
       hdr: 'PIN โทร', hdrSet: 'ตั้ง PIN โทร', title: 'PIN โทรของคุณ', titleSet: 'ตั้ง PIN โทรของคุณ',
@@ -30,7 +31,8 @@
       fmt: 'พิมพ์ตัวเลข 6 หลัก', fail: 'บันทึกไม่สำเร็จ ตรวจสอบการเชื่อมต่อแล้วลองใหม่',
       card: 'จะโทรหาสนาม? บอกตัวเลข 6 หลักนี้ โปรช็อปเห็นตัวเลขนี้ในการจองแคดดี้ทุกครั้งของคุณ',
       cardSet: 'ตั้งตัวเลข 6 หลัก แล้วโปรช็อปจะหาคุณเจอในไม่กี่วินาทีเมื่อคุณโทร ไม่ต้องสะกดชื่อ',
-      change: 'เปลี่ยน', set: 'ตั้ง', courseSees: 'สนามเห็น', close: 'ปิด'
+      change: 'เปลี่ยน', set: 'ตั้ง', courseSees: 'สนามเห็น', close: 'ปิด',
+      slot: 'PIN โทรของคุณ {p} · บอกตัวเลขนี้เมื่อโทรหาสนาม', slotSet: 'ตั้ง PIN โทร: สนามหาคุณเจอจากตัวเลขนี้เมื่อคุณโทร'
     },
     ko: {
       hdr: '전화 PIN', hdrSet: '전화 PIN 설정', title: '내 전화 PIN', titleSet: '전화 PIN 설정',
@@ -42,7 +44,8 @@
       fmt: '숫자 6자리를 입력하세요.', fail: '저장하지 못했습니다. 연결을 확인하고 다시 시도하세요.',
       card: '골프장에 전화하시나요? 이 숫자 6자리를 말하세요. 프로샵은 모든 캐디 예약에서 이 번호를 봅니다.',
       cardSet: '숫자 6자리를 정하면 전화할 때 프로샵이 몇 초 만에 찾습니다. 이름을 불러 줄 필요가 없습니다.',
-      change: '변경', set: '설정', courseSees: '골프장에 표시', close: '닫기'
+      change: '변경', set: '설정', courseSees: '골프장에 표시', close: '닫기',
+      slot: '내 전화 PIN {p} · 골프장에 전화할 때 말하세요', slotSet: '전화 PIN 설정: 전화하면 골프장이 이 번호로 찾습니다'
     },
     ja: {
       hdr: '電話PIN', hdrSet: '電話PINを設定', title: 'あなたの電話PIN', titleSet: '電話PINを設定',
@@ -54,7 +57,8 @@
       fmt: '6桁の数字を入力してください。', fail: '保存できませんでした。接続を確認してもう一度お試しください。',
       card: 'ゴルフ場に電話しますか？この6桁を伝えてください。プロショップはあなたのすべてのキャディー予約でこの番号を見られます。',
       cardSet: '6桁を決めておけば、電話したときプロショップがすぐにあなたを見つけます。名前のつづりは不要です。',
-      change: '変更', set: '設定', courseSees: 'ゴルフ場に表示', close: '閉じる'
+      change: '変更', set: '設定', courseSees: 'ゴルフ場に表示', close: '閉じる',
+      slot: 'あなたの電話PIN {p} · ゴルフ場に電話するときに伝えてください', slotSet: '電話PINを設定: 電話したときゴルフ場がこの番号であなたを見つけます'
     }
   };
   var ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>';
@@ -85,6 +89,12 @@
     '.cp-tag{display:inline-flex;align-items:center;gap:4px;margin-top:3px;font:800 11px "JetBrains Mono","IBM Plex Mono",ui-monospace,monospace;color:#7dd3fc;letter-spacing:.03em;max-width:100%;overflow:hidden;white-space:nowrap}' +
     '.cp-tag svg{flex:none;width:11px;height:11px}' +
     '.cp-tag i{font-style:normal;color:#94a3b8;font-weight:700;letter-spacing:0;font-family:system-ui,sans-serif;font-size:10.5px;overflow:hidden;text-overflow:ellipsis}' +
+    /* v1530 slots: <div class="cp-slot"></div> on the golfer's tee time ticket, deal code, dashboard tee time card */
+    '.cp-slot:empty{display:none}' +
+    '.cp-line{display:flex;align-items:center;gap:7px;width:100%;box-sizing:border-box;margin:8px 0;padding:8px 11px;border:0;border-radius:11px;background:#e0f2fe;color:#075985;font:700 12.5px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif;text-align:left;cursor:pointer}' +
+    '.cp-line svg{flex:none;width:15px;height:15px}' +
+    '.cp-line b{font-family:"JetBrains Mono","IBM Plex Mono",ui-monospace,monospace;font-weight:800;letter-spacing:.06em;white-space:nowrap}' +
+    '.cp-line.set{background:#dcfce7;color:#166534}' +
     /* the sheet */
     '#cpSheet{position:fixed;inset:0;z-index:2147483000;background:rgba(2,6,15,.6);display:flex;align-items:flex-end;justify-content:center}' +
     '#cpSheet .sh{width:100%;max-width:520px;max-height:92vh;overflow-y:auto;background:#0f1623;border:1px solid rgba(148,163,184,.25);border-bottom:0;border-radius:20px 20px 0 0;padding:10px 18px calc(18px + env(safe-area-inset-bottom));color:#e2e8f0;font-family:inherit;box-sizing:border-box}' +
@@ -162,6 +172,7 @@
       if (!boxes.length) return;
       if (this._for && this._for !== this.me()) { this.pin = null; this._noAcct = false; this._for = null; }   // another golfer signed in on this phone
       if (this.pin === null && !this._noAcct) { this.load().then(function () { if (self.pin !== null) self.paint(); }); }
+      else this.fillSlots(false);
       boxes.forEach(function (box) {
         var el = box.querySelector(':scope > .cp-hdr');
         if (!el) { el = document.createElement('div'); el.className = 'cp-hdr'; el.hidden = true; box.appendChild(el); }
@@ -170,6 +181,18 @@
         el.innerHTML = self.pin
           ? '<button type="button" class="cp-hb" data-cp="open">' + ICON + '<span>' + esc(self.t('hdr')) + '</span><b>' + esc(fmt(self.pin)) + '</b></button>'
           : '<button type="button" class="cp-hb set" data-cp="open">' + ICON + '<span>' + esc(self.t('hdrSet')) + '</span></button>';
+      });
+    },
+
+    fillSlots: function (all) {
+      var self = this, els = document.querySelectorAll(all ? '.cp-slot' : '.cp-slot:not([data-cp-done])');
+      if (!els.length || this.pin === null) return;
+      els.forEach(function (x) {
+        x.setAttribute('data-cp-done', '1');
+        if (self.pin) {
+          var parts = self.t('slot', { p: '\u0001' }).split('\u0001');
+          x.innerHTML = '<button type="button" class="cp-line" data-cp="open">' + ICON + '<span>' + esc(parts[0]) + '<b>' + esc(fmt(self.pin)) + '</b>' + esc(parts[1] || '') + '</span></button>';
+        } else x.innerHTML = '<button type="button" class="cp-line set" data-cp="open">' + ICON + '<span>' + esc(self.t('slotSet')) + '</span></button>';
       });
     },
 
@@ -240,7 +263,7 @@
         this.pin = d.pin; this._for = me;
         var inp = document.getElementById('cpIn'); if (inp) { inp.value = d.pin; inp.dispatchEvent(new Event('input')); }
         this._msg('ok', this.t('saved', { p: fmt(d.pin) }));
-        this.paint(); this.decorate();
+        this.paint(); this.decorate(); this.fillSlots(true);
         if (close && sh) {
           try { if (document.activeElement) document.activeElement.blur(); } catch (e) { }   // drop the keypad
           setTimeout(function () { if (sh.isConnected) sh.remove(); }, 700);
@@ -272,6 +295,9 @@
         W.changeLanguage._cp = true;
       }
       this.paint();
+      // tee time tickets / deal codes / dashboard cards render later: fill their slots as they appear
+      var pend = 0;
+      try { new MutationObserver(function () { if (!pend) pend = setTimeout(function () { pend = 0; if (document.querySelector('.cp-slot:not([data-cp-done])')) { if (self.pin === null && !self._noAcct) self.load().then(function () { self.fillSlots(false); }); else self.fillSlots(false); } }, 80); }).observe(document.body, { childList: true, subtree: true }); } catch (e) { }
     }
   };
 

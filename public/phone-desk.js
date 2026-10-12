@@ -185,6 +185,9 @@
     '.crm-sub .pd-pin{margin-left:2px}' +
     '@media (max-width:600px){#pd-dialog{margin:auto 0 0 0;width:100vw;max-width:100vw;max-height:92vh;border-radius:18px 18px 0 0}#pd-dialog .modal-body{padding:12px}.pd-box input{font-size:20px}#pd-dialog .pd-go{padding:11px 14px}}';
 
+  var SLOT_CSS = '.pd-pinslot{display:inline-flex;vertical-align:middle;margin-left:6px}.pd-pinslot:empty{display:none}' +
+    '.pd-pinslot .pd-pin{display:inline-flex;align-items:center;gap:4px;font:800 11px/1.3 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.04em;padding:1px 7px;border-radius:999px;background:#e0f2fe;color:#075985;white-space:nowrap}' +
+    '.pd-pinslot .pd-pin svg{width:10px;height:10px}';
   function E(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function fmtPin(p) { p = String(p || ''); return p.length === 6 ? p.slice(0, 3) + ' ' + p.slice(3) : p; }
   function digits(s) { return String(s || '').replace(/\D/g, ''); }
@@ -200,12 +203,14 @@
 
     // ---------- plumbing ----------
     t: function (k, v) {
-      var l = (this.api && this.api.lang && this.api.lang()) || 'en';
+      var l = (this.api && this.api.lang && this.api.lang()) || '';
+      if (!l) { try { l = localStorage.getItem('mci-pro-language') || 'en'; } catch (e) { l = 'en'; } }
       var s = (STR[l] || STR.en)[k]; if (s == null) s = STR.en[k] != null ? STR.en[k] : k;
       if (v) Object.keys(v).forEach(function (x) { s = s.split('{' + x + '}').join(v[x]); });
       return s;
     },
-    sb: function () { return this.api && this.api.sb && this.api.sb(); },
+    // the tee sheet hands its client over; inside the app (pro shop dashboard: Customers) the app's own client
+    sb: function () { return (this.api && this.api.sb && this.api.sb()) || (W.SupabaseDB && W.SupabaseDB.client) || W.supabaseClient || null; },
     token: function () { try { return localStorage.getItem('ps_desk_token_v1') || ''; } catch (e) { return ''; } },
     crm: function () { var C = this.api && this.api.crm && this.api.crm(); return (C && C.ready && C.ready()) ? C : null; },
     date: function () { return this.api.el.dateInput.value; },
@@ -244,6 +249,18 @@
           self.open(pin);
         }, 0);
       }, true);
+      this.boot();
+    },
+    /* v1530 (Pete): the Call PIN is THE identifier on every booking a course sees — tee times, deals, caddy jobs,
+       the app bookings list, Customers. A list drops <span class="pd-pinslot" data-cp-gid="ID"></span> next to the
+       golfer (PhoneDesk.slot(id)); this fills it once the course's PINs are known. Runs on the tee sheet AND in the app. */
+    boot: function () {
+      if (this._booted) return; this._booted = true;
+      var self = this;
+      if (!document.getElementById('pdSlotCss')) { var st = document.createElement('style'); st.id = 'pdSlotCss'; st.textContent = SLOT_CSS; document.head.appendChild(st); }
+      var pend = 0, run = function () { pend = 0; self.fillSlots(document); };
+      try { new MutationObserver(function () { if (!pend) pend = setTimeout(run, 60); }).observe(document.body, { childList: true, subtree: true }); } catch (e) { }
+      run();
       // the player profile shows the PIN to the course
       var C = W.CourseCRM;
       if (C && C._paint && !C._pdWrapped) {
@@ -255,6 +272,31 @@
         };
         C._pdWrapped = true;
       }
+    },
+    slot: function (id) { return id ? '<span class="pd-pinslot" data-cp-gid="' + E(id) + '"></span>' : ''; },
+    fillSlots: function (root) {
+      if (!this.token()) return;
+      var self = this, els = Array.prototype.slice.call((root || document).querySelectorAll('.pd-pinslot[data-cp-gid]:not([data-cp-done])'));
+      if (!els.length) return;
+      var ids = {}; els.forEach(function (x) { ids[x.getAttribute('data-cp-gid')] = 1; });
+      this.pinsFor(Object.keys(ids)).then(function () {
+        els.forEach(function (x) {
+          var pin = self.pins[x.getAttribute('data-cp-gid')];
+          x.setAttribute('data-cp-done', '1');
+          if (pin) x.innerHTML = '<span class="pd-pin" title="' + E(self.t('box')) + '">' + IC.ph + E(fmtPin(pin)) + '</span>';
+        });
+      });
+    },
+    // 6 digits typed where a golfer NAME is searched -> that golfer, in the shape name-search.js returns
+    findPin: async function (term) {
+      var pin = digits(term), sb = this.sb(), tok = this.token();
+      if (pin.length !== 6 || !sb || !tok) return [];
+      try {
+        var r = await sb.rpc('desk_call_lookup', { p_token: tok, p_pin: pin });
+        var g = r && r.data && r.data.ok && r.data.golfer; if (!g) return [];
+        this.pins[g.id] = g.pin;
+        return [{ id: g.id, name: g.name, handicap: g.hcp, _v: { text: this.t('box') + ' ' + fmtPin(g.pin) } }];
+      } catch (e) { return []; }
     },
     _crmPin: function (id) {
       var ov = document.getElementById('crmOv'), C = W.CourseCRM, cur = C && C._cur;
@@ -716,4 +758,6 @@
       }
     }
   };
+  // inside the app (pro shop dashboard) there is no tee sheet to call init — fill PIN slots anyway
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { PD.boot(); }); else PD.boot();
 })(window);

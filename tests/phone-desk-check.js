@@ -61,5 +61,21 @@ const dict = src => { const a = src.indexOf('var STR = {'), b = src.indexOf('\n 
     if (lost.length) fail.push(f + ' uses strings nobody defines: ' + lost.join(', '));
 });
 
+// v1530 (Pete): the Call PIN is THE identifier on every booking a course sees, and the golfer sees it on each of theirs
+const has = (f, re, msg) => { if (!re.test(read(f))) fail.push(f + ': ' + msg); };
+has('proshop-teesheet.html', /PhoneDesk\.slot\(r\.golfer_id \|\| \(r\.booking_data/, 'App bookings list must carry the golfer\'s PIN slot');
+has('proshop-teesheet.html', /PhoneDesk\.slot\(r\.golfer_id\)/, 'App booking detail must carry the PIN slot');
+has('proshop-teesheet.html', /PhoneDesk\.slot\(j\.row\.golfer_id \|\| j\.row\.user_id\)/, 'Caddy Desk job cards must carry the PIN slot');
+has('proshop-teesheet.html', /FacilitySheet\.render\(\); if \(window\.PhoneDesk\) PhoneDesk\.onRender/, 'the facility ALL grid must get PINs on its pills');
+has('proshop-teesheet.html', /viaPin \? PhoneDesk\.findPin\(st\.term\)/, 'golfer name boxes must resolve a 6-digit Call PIN');
+has('caddy-module.js', /PhoneDesk\.slot\(gid\)/, 'the Caddies board must show the PIN beside each golfer');
+has('booking-brief.js', /PhoneDesk\.slot\(id\)/, 'the Book Slot brief must show the golfer\'s PIN');
+has('proshop-dashboard.js', /PhoneDesk\.slot\(r\.id\)/, 'Customers must show the PIN');
+has('proshop-dashboard.js', /PhoneDesk\.findPin\(pq\)/, 'Customers search must resolve a 6-digit Call PIN');
+if (!/<script defer src="phone-desk\.js\?v=\w+"><\/script>/.test(html) || html.indexOf('phone-desk.js?v') < html.indexOf('course-crm.js?v')) fail.push('index.html must load phone-desk.js after course-crm.js (Customers + CRM profile PINs)');
+has('tee-times.js', /<div class="cp-slot"><\/div>/, 'the golfer\'s tee time ticket must carry the Call PIN slot');
+has('promo-wall.js', /<div class="cp-slot"><\/div>/, 'the golfer\'s deal code must carry the Call PIN slot');
+if (!/'<div class="cp-slot"><\/div>'/.test(html)) fail.push('index.html: the dashboard tee time card must carry the Call PIN slot');
+
 if (fail.length) { console.error('phone-desk-check FAILED:\n - ' + fail.join('\n - ')); process.exit(1); }
 console.log('phone-desk-check: ok');

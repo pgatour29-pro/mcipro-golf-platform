@@ -439,6 +439,20 @@
             '.kmenu1{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;font:13.5px Inter,sans-serif;color:var(--kt)}',
             '.kopen{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-top:16px;padding:14px;border-radius:14px;background:var(--ki)}.kopen b{font:800 14px Inter,sans-serif;color:var(--kt)}.kopen span{flex:1 1 100%;font:500 12.5px Inter,sans-serif;color:var(--ksub)}.kopen .ksave{width:100%}',
             '@media (max-width:760px){.k3{grid-template-columns:1fr}.k3 .kphotos{grid-template-columns:repeat(6,1fr)}}',
+            /* kitchen on a phone (Pete 2026-10-12: "I dont want this to be wider than the phone screen") — tablet/desktop untouched */
+            '.krow .ktags{display:contents}.kchips .kc{cursor:pointer;font-family:"JetBrains Mono",monospace}',
+            '@media (max-width:600px){',
+            ' #kitchenQueueOverlay{overflow-x:hidden}.fgv-ksheet{padding:14px 14px 40px}',
+            ' .fgv-ksheet .khead{gap:8px 6px;flex-wrap:wrap}.fgv-ksheet .khead>div:first-child{flex:1 1 0;min-width:0}',
+            ' .fgv-ksheet .kovl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.12em}.fgv-ksheet .khead h3{font-size:21px;line-height:1.2}',
+            ' .fgv-ksheet .kx{width:40px;height:40px;flex:none}',
+            ' .fgv-ksheet .ktabs{order:9;flex:1 1 100%;margin:4px 0 0;gap:5px}.fgv-ksheet .kt{flex:1 1 0;min-width:0;padding:12px 0;text-align:center;letter-spacing:.04em}',
+            ' .kmm-top{flex-direction:column;align-items:stretch;gap:10px}.kchips .kc{padding:8px 10px;font-size:10px}.knew{height:44px;font-size:11px}',
+            ' .krow{display:grid;grid-template-columns:56px minmax(0,1fr) auto auto;grid-template-areas:"ph mid mid mid" "ph tags pin tgl";column-gap:10px;row-gap:7px;align-items:center;padding:10px 11px}',
+            ' .krow .fgv-art{grid-area:ph;width:56px;height:56px;border-radius:12px}.krow .mid{grid-area:mid}.krow .ktgl{grid-area:tgl}',
+            ' .krow .ktags{grid-area:tags;display:flex;flex-wrap:wrap;align-items:center;gap:5px 7px;min-width:0}.krow .kpin{grid-area:pin}.krow .kpin input{width:58px}',
+            ' .krow .knm{font-size:14px}.krow .kds{font-size:11.5px}.krow .kmeta{font-size:10px}.krow .ksm{overflow:hidden;text-overflow:ellipsis}',
+            '}',
             /* admin: golf bars */
             '#foodAdminOv{position:fixed;inset:0;z-index:11300;background:rgba(15,20,25,.5);display:grid;place-items:center;font-family:Inter,sans-serif}',
             '#foodAdminOv .bx{width:min(560px,94vw);max-height:90vh;overflow:auto;background:#fff;border-radius:18px;padding:20px;color:#0F1419}',
@@ -1629,6 +1643,7 @@
             this.renderBody();
         },
         setTab(t) { this.tab = t; this.editing = null; this.renderShell(); },
+        setCat(c) { this.menuCat = c; this.renderBody(); },
         renderBody() {
             const b = document.getElementById('kqBody');
             if (!b) return;
@@ -1701,20 +1716,22 @@
         vMenu() {
             const all = S.items;
             const cats = [...new Set(all.map(i => i.category))];
+            const cat = cats.includes(this.menuCat) ? this.menuCat : null;
             const ed = this.editing;
             return '<div class="kmm">'
                 + '<div class="kmm-top"><div class="kchips">'
-                + '<span class="kc on">ALL ' + all.length + '</span>'
-                + cats.map(c => '<span class="kc">' + esc(catMeta(c).label).toUpperCase() + ' ' + all.filter(i => i.category === c).length + '</span>').join('')
+                + '<button class="kc' + (!cat ? ' on' : '') + '" onclick="KitchenQueue.setCat(null)">ALL ' + all.length + '</button>'
+                + cats.map(c => '<button class="kc' + (cat === c ? ' on' : '') + '" onclick="KitchenQueue.setCat(\'' + esc(c) + '\')">' + esc(catMeta(c).label).toUpperCase() + ' ' + all.filter(i => i.category === c).length + '</button>').join('')
                 + '</div><button class="knew" onclick="KitchenQueue.edit(null)">+ NEW ITEM</button></div>'
                 + '<div class="kadmin"><div class="klist">'
-                + all.map(it => '<div class="krow' + (ed && ed.id === it.id ? ' sel' : '') + (!it.available ? ' off' : '') + '" onclick="KitchenQueue.edit(\'' + it.id + '\')">'
+                + all.filter(it => !cat || it.category === cat).map(it => '<div class="krow' + (ed && ed.id === it.id ? ' sel' : '') + (!it.available ? ' off' : '') + '" onclick="KitchenQueue.edit(\'' + it.id + '\')">'
                     + '<div class="fgv-art kph fg2t" style="--w1:' + W(it.wash1) + ';--w2:' + W(it.wash2) + '">' + (photoOf(it) ? '<span class="ph">' + pic(it) + '</span>' : artSvg(it.art)) + '</div>'
                     + '<div class="mid"><div class="knm">' + esc(it.name) + '</div><div class="kds">' + esc(!it.available && it.eightysix_at ? '86’d ' + hhmm(it.eightysix_at) + (it.eightysix_reason ? ' — ' + it.eightysix_reason : '') : (it.description || '')) + '</div></div>'
-                    + '<span class="kst ' + (it.station === 'bar' ? 'bar' : it.station === 'dessert' ? 'des' : 'kit') + '">' + esc((it.station || 'kitchen').toUpperCase()) + '</span>'
-                    + (() => { const sm = S.sample.find(x => x.name === it.name); return sm && Number(sm.price) !== Number(it.price) ? '<span class="ksm">sample ' + baht(sm.price) + '</span>' : ''; })()
-                    + '<label class="kpin" onclick="event.stopPropagation()">฿<input type="number" inputmode="numeric" min="0" step="10" value="' + Number(it.price) + '" aria-label="Price of ' + esc(it.name) + '" onchange="KitchenQueue.setPrice(\'' + it.id + '\',this.value)"></label>'
+                    + '<span class="ktags"><span class="kst ' + (it.station === 'bar' ? 'bar' : it.station === 'dessert' ? 'des' : 'kit') + '">' + esc((it.station || 'kitchen').toUpperCase()) + '</span>'
                     + '<span class="kmeta">' + it.prep_min + ' MIN</span>'
+                    + (() => { const sm = S.sample.find(x => x.name === it.name); return sm && Number(sm.price) !== Number(it.price) ? '<span class="ksm">sample ' + baht(sm.price) + '</span>' : ''; })()
+                    + '</span>'
+                    + '<label class="kpin" onclick="event.stopPropagation()">฿<input type="number" inputmode="numeric" min="0" step="10" value="' + Number(it.price) + '" aria-label="Price of ' + esc(it.name) + '" onchange="KitchenQueue.setPrice(\'' + it.id + '\',this.value)"></label>'
                     + '<button class="ktgl' + (it.available ? ' on' : '') + '" onclick="event.stopPropagation();KitchenQueue.toggle86(\'' + it.id + '\')" aria-label="Available"></button>'
                     + '</div>').join('')
                 + '</div>'

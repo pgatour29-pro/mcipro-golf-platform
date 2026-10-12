@@ -44,5 +44,10 @@ if (!/rpc\('food_kitchen_login', \{ p_pin: pin \}\)/.test(html)) fail.push('the 
 if (!/if \(!this\.stationMode && this\.loginShowing\(\)\)/.test(js)) fail.push('the kitchen must never open as an overlay on the login page');
 if (!/id="kitchenScreen" class="screen"/.test(html)) fail.push('the kitchen station needs its own screen');
 
+// v1534: the kitchen on a phone is never wider than the screen (Pete 2026-10-12) — rows stack, tabs share the width, chips filter
+if (!/@media \(max-width:600px\)\{/.test(js) || !/grid-template-areas:"ph mid mid mid" "ph tags pin tgl"/.test(js)) fail.push('kitchen menu rows must stack on a phone (photo / name / station+price+switch)');
+if (!/\.fgv-ksheet \.ktabs\{order:9;flex:1 1 100%/.test(js)) fail.push('kitchen tabs must share the phone width, not run off the edge');
+if (!/onclick="KitchenQueue\.setCat\(/.test(js)) fail.push('kitchen menu category chips must filter the list');
+
 if (fail.length) { console.error('food-venues-check FAILED:\n - ' + fail.join('\n - ')); process.exit(1); }
 console.log('food-venues-check: ok');

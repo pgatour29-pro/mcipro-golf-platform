@@ -1439,7 +1439,20 @@
             syncChrome();
         }).observe(f, { attributes: true, attributeFilter: ['class', 'style'] });
         document.addEventListener('scroll', onScroll, { passive: true, capture: true });
-        let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (foodVisible()) render(); }, 150); });
+        // A phone keyboard opening is a resize (height only). Re-drawing then destroys the box being typed in and the
+        // keyboard drops (Pete 2026-10-12, hole number). Re-draw ONLY when the layout flips phone ↔ desktop, and never
+        // under a focused food input; anything else just re-places the pinned bars.
+        let rz, wasDesk = isDesk();
+        window.addEventListener('resize', () => {
+            clearTimeout(rz);
+            rz = setTimeout(() => {
+                if (!foodVisible()) return;
+                const a = document.activeElement;
+                const typing = a && /^(INPUT|TEXTAREA)$/.test(a.tagName) && a.closest('#golfer-food, #fg2Ovl');
+                if (isDesk() !== wasDesk && !typing) { wasDesk = isDesk(); render(); }
+                else onScroll();
+            }, 150);
+        });
     }
 
     /* ================================================================

@@ -34,5 +34,9 @@ if (/type=\\?"password\\?"|type='password'/.test(js)) fail.push('PIN boxes are n
 if (!/id="proshop-kitchen-tab"/.test(html)) fail.push('the pro shop needs its Kitchen button');
 if (!/onclick="FoodAdmin\.open\(\)"/.test(html)) fail.push('Admin › Courses needs the Golf bars card');
 
+// v1532d: the keyboard opening (a height-only resize) must never re-draw the food page under the thumb
+if (/window\.addEventListener\('resize', \(\) => \{ clearTimeout\(rz\); rz = setTimeout\(\(\) => \{ if \(foodVisible\(\)\) render\(\); \}/.test(js)) fail.push('resize must not re-render the food page (it kills the phone keyboard)');
+if (!/if \(isDesk\(\) !== wasDesk && !typing\)/.test(js)) fail.push('resize re-renders only on a phone/desktop flip and never under a focused input');
+
 if (fail.length) { console.error('food-venues-check FAILED:\n - ' + fail.join('\n - ')); process.exit(1); }
 console.log('food-venues-check: ok');

@@ -20,24 +20,7 @@
     const baht = n => '฿' + Math.round(Number(n || 0)).toLocaleString();
     const liveMgr = () => window.liveScorecardInstance || window.LiveScorecardManager || null;
     const courseCtx = () => { const m = liveMgr(); return (m && (m.courseName || (m.courseData && m.courseData.name))) || null; };
-    // ---- kitchen course scoping: food_orders streams from EVERY course; a kitchen serves ONE ----
-    const kitchenCourse = () => { const s = S.settings; return (s && s.course_name && s.course_name !== 'default' && String(s.course_name).trim()) || courseCtx() || null; };
-    const courseStem = (name) => {
-        const stop = new Set(['golf', 'club', 'country', 'course', 'resort', 'international', 'the', 'and', 'cc', 'gc', 'spa', 'clubhouse']);
-        const toks = String(name || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w && !stop.has(w)).slice(0, 2);
-        return toks.length ? toks : [String(name || '').toLowerCase().trim()].filter(Boolean);
-    };
-    // no kitchen course context → keep current behaviour (every order); else match course_name by stem
-    const orderMatchesKitchen = (o) => {
-        const kc = kitchenCourse();
-        if (!kc) return true;
-        const stem = courseStem(kc);
-        if (!stem.length) return true;
-        const n = String((o && o.course_name) || '').toLowerCase().trim();
-        // an order placed off-course is stamped 'Clubhouse' (or nothing) — never hide it from a kitchen
-        if (!n || n === 'clubhouse') return true;
-        return stem.every(t => n.includes(t));
-    };
+    // v1532: a kitchen serves ONE venue — orders carry venue_key (the old course-name stem matching is gone)
     const holeCtx = () => { const m = liveMgr(); return (m && m.groupId && m.currentHole) ? Number(m.currentHole) : null; };
     const ago = iso => {
         const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
@@ -86,6 +69,8 @@
     /* ---------------- state ---------------- */
     const S = {
         items: [], media: {}, favs: new Set(), orders: [], deals: [], dealsLoaded: false,
+        basketVenue: (function () { try { return localStorage.getItem('fgv2_basket_venue'); } catch (e) { return null; } })(),
+        venues: [], venuesLoaded: false, venueKey: null, fromRound: false, stay: null, stayKey: null, here: null, vtab: null, sample: [],
         basket: JSON.parse(localStorage.getItem('fgv1_basket') || '[]'),
         prefs: JSON.parse(localStorage.getItem('fgv1_prefs') || '{}'),   // {deliver, pay, hole}
         view: 'home', stack: [], cat: null, search: '', itemOpen: null, galIdx: 0,
@@ -93,26 +78,39 @@
         settings: null, menuLoaded: false, ordersLoaded: false,
         trackOpen: null, _menuChan: null, _ordChan: null
     };
-    const saveBasket = () => { localStorage.setItem('fgv1_basket', JSON.stringify(S.basket)); updatePill(); };
+    const saveBasket = () => { localStorage.setItem('fgv1_basket', JSON.stringify(S.basket)); if (S.basket.length && S.venueKey) { S.basketVenue = S.venueKey; try { localStorage.setItem('fgv2_basket_venue', S.venueKey); } catch (e) { } } updatePill(); };
     const savePrefs = () => localStorage.setItem('fgv1_prefs', JSON.stringify(S.prefs));
     const item = id => S.items.find(i => i.id === id);
     const basketCount = () => S.basket.reduce((n, b) => n + b.qty, 0);
     const lineTotal = b => (Number(b.price) + Number(b.addonTotal || 0)) * b.qty;
     const basketSubtotal = () => S.basket.reduce((n, b) => n + lineTotal(b), 0);
-    const deliverFee = () => (S.prefs.deliver || 'hole') === 'hole' ? 50 : 0;
+    /* v1532 — every course and golf bar runs its own kitchen (food_venues). */
+    const MODES = ['room', 'hole', 'turn', 'pickup', 'table'];
+    const venue = () => S.venues.find(v => v.key === S.venueKey) || null;
+    const modeOn = (v, m) => !!(v && v.modes && v.modes[m] && v.modes[m].on) && !(v.kind === 'bar' && (m === 'hole' || m === 'turn'));
+    const modesOf = v => MODES.filter(m => modeOn(v, m));
+    const curMode = () => { const v = venue(), ms = modesOf(v); const d = S.prefs.deliver; return ms.includes(d) ? d : (ms.includes('room') && S.stay ? 'room' : ms.find(m => m !== 'room') || ms[0] || 'pickup'); };
+    const deliverFee = () => { const v = venue(), d = curMode(); return Number((v && v.modes && v.modes[d] && v.modes[d].fee) || 0); };
+    const kPhone = () => { const v = venue(); return (v && v.phone) || (S.settings && S.settings.phone) || null; };
+    const curPay = () => {
+        const v = venue(), roomOk = curMode() === 'room' && !!S.stay && !!(v && v.charge_to_room);
+        const p = S.prefs.pay || (roomOk ? 'room' : 'counter');   // a room guest at a charge-to-room venue: that is the default
+        return p === 'room' && !roomOk ? 'counter' : p;
+    };
+    const testMode = () => { try { return localStorage.getItem('mcipro_promo_test') === '1' || /[?&]test=1\b/.test(location.search); } catch (e) { return false; } };
+    const listed = v => v.open && (!v.test || testMode());   // tester venues (Chee Chan, TESTQA bars) only in test mode
 
     /* ---------------- data loading ---------------- */
     async function loadMenu(force) {
         const c = sb();
         if (!c || (S.menuLoaded && !force)) return;
         try {
-            const ctx = courseCtx();
-            let q = c.from('menu_items').select('*').eq('active', true).order('sort', { ascending: true });
-            const { data, error } = await q;
+            const key = S.venueKey;
+            if (!key) { S.items = []; S.menuLoaded = true; return; }
+            // a venue's own menu and prices — the shared sample (course_name null) is never shown as anyone's prices
+            const { data, error } = await c.from('menu_items').select('*').eq('active', true).eq('course_name', key).order('sort', { ascending: true });
             if (error) throw error;
-            let rows = data || [];
-            const specific = ctx ? rows.filter(r => r.course_name === ctx) : [];
-            S.items = specific.length ? specific : rows.filter(r => !r.course_name);
+            S.items = data || [];
             S.menuLoaded = true;
             const ids = S.items.map(i => i.id);
             if (ids.length) {
@@ -125,11 +123,55 @@
                 const { data: fav } = await c.from('food_favorites').select('item_id').eq('line_user_id', me);
                 S.favs = new Set((fav || []).map(f => f.item_id));
             }
-            if (!S.settings) {
-                const { data: st } = await c.from('kitchen_settings').select('*').in('course_name', [ctx || 'default', 'default']).limit(2);
-                S.settings = (st || []).find(r => r.course_name === ctx) || (st || [])[0] || null;
+            if (!S.settings || S.settings.course_name !== key) {
+                const { data: st } = await c.from('kitchen_settings').select('*').eq('course_name', key).maybeSingle();
+                S.settings = st || null;
             }
         } catch (e) { console.warn('[FGV1] menu load failed', e); }
+    }
+
+    async function loadVenues() {
+        const c = sb();
+        if (!c) return;
+        try {
+            const { data } = await c.from('food_venues').select('*').order('name');
+            S.venues = data || []; S.venuesLoaded = true;
+        } catch (e) { S.venuesLoaded = true; }
+    }
+    // which kitchen this golfer is ordering from: the course of their live round, else the one they picked
+    async function resolveVenue() {
+        const c = sb();
+        const cn = courseCtx();
+        if (cn && S._roundName !== cn) {
+            S._roundName = cn; S.roundKey = null;
+            try { const { data } = await c.rpc('food_venue_for_course', { p_name: cn }); S.roundKey = data || null; } catch (e) { }
+        }
+        if (!cn) S.roundKey = null;
+        const byKey = k => S.venues.find(v => v.key === k);
+        let k = null; S.fromRound = false;
+        const rv = S.roundKey && byKey(S.roundKey);
+        if (rv && rv.open && (!rv.test || testMode())) { k = S.roundKey; S.fromRound = true; }
+        else if (S.prefs.venue && byKey(S.prefs.venue) && listed(byKey(S.prefs.venue))) k = S.prefs.venue;
+        if (k !== S.venueKey) { S.venueKey = k; S.menuLoaded = false; S.stay = null; S.stayKey = null; }
+        if (k && S.basket.length && S.basketVenue && S.basketVenue !== k) { S.basket = []; localStorage.setItem('fgv1_basket', '[]'); }
+    }
+    async function loadStay() {
+        const v = venue(), c = sb(), me = uid();
+        if (!v || !c || !me || !modeOn(v, 'room')) { S.stay = null; S.stayKey = v ? v.key : null; return; }
+        if (S.stayKey === v.key) return;
+        try { const { data } = await c.rpc('food_stay_get', { p_golfer: me, p_venue: v.key }); S.stay = data || null; } catch (e) { S.stay = null; }
+        S.stayKey = v.key;
+    }
+
+    function subscribeVenues() {
+        const c = sb();
+        if (!c || S._venChan) return;
+        try {
+            S._venChan = c.channel('fgv2_venues').on('postgres_changes', { event: '*', schema: 'public', table: 'food_venues' }, () => {
+                clearTimeout(S._venT);
+                S._venT = setTimeout(async () => { await loadVenues(); await resolveVenue(); if (!S.menuLoaded) await loadMenu(); if (root()) render(); }, 500);
+            }).subscribe();
+        } catch (e) { }
     }
 
     function subscribeMenu() {
@@ -347,6 +389,64 @@
             '#golfer-status.fg2st .fgv-track .eta{font:800 24px/1.2 Inter,sans-serif;letter-spacing:-.025em}',
             '#golfer-status.fg2st .fgv-cta{height:54px;border-radius:27px;background:#16a34a;box-shadow:0 8px 22px rgba(22,163,74,.3);font:800 15px Inter,sans-serif;color:#fff}',
             '#golfer-status.fg2st .money{font-family:Inter,sans-serif;font-weight:800}',
+            /* v1532 venues + rooms */
+            '.fg2-store .cs .chg,.fg2-dest .chg{border:0;background:transparent;color:#16a34a;font:700 12.5px Inter,sans-serif;padding:0 0 0 8px;cursor:pointer}',
+            '.fg2-dest .chg{flex:none;font-size:13px}.fg2-dest.room{background:rgba(15,118,110,.08);border-color:rgba(15,118,110,.35)}.fg2-dest.room .ic{background:#0f766e}',
+            '.fg2-roomc{display:flex;align-items:center;gap:10px;margin:12px 14px 0;padding:12px;border-radius:16px;background:var(--card);border:1px solid var(--hr)}',
+            '.fg2-roomc .ic{flex:none;width:42px;height:42px;border-radius:12px;background:#0f766e;color:#fff;display:grid;place-items:center}.fg2-roomc .w{flex:1;min-width:0}',
+            '.fg2-roomc b{display:block;font-size:15px}.fg2-roomc small{display:block;font-size:12.5px;color:var(--sub);margin-top:1px}.fg2-roomc button{flex:none;border:0;background:transparent;font:700 13px Inter,sans-serif;color:#16a34a}',
+            '.fg3{padding:18px 14px 120px}.fg3 h1{margin:6px 0 0;font-size:26px;font-weight:800;letter-spacing:-.03em}.fg3 .sb{font-size:13.5px;color:var(--sub);margin-top:4px;line-height:1.4}',
+            '.fg3-back{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;font:700 13px Inter,sans-serif;color:var(--sub);padding:4px 0}.fg3-back .material-symbols-outlined{font-size:18px}',
+            '.fg3-near{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:48px;margin-top:14px;border-radius:24px;border:1px solid var(--hr);background:var(--card);font:700 14px Inter,sans-serif;color:var(--tx)}',
+            '.fg3-near .material-symbols-outlined{font-size:20px;color:var(--g)}',
+            '.fg3-seg{display:flex;gap:4px;margin-top:14px;padding:4px;border-radius:16px;background:var(--chip)}',
+            '.fg3-seg button{flex:1;border:0;padding:10px 4px;border-radius:12px;background:transparent;font:700 13.5px Inter,sans-serif;color:var(--sub)}.fg3-seg button.on{background:var(--card);color:var(--tx);box-shadow:0 1px 3px rgba(15,23,42,.1)}',
+            '.fg3-v{display:flex;width:100%;gap:12px;align-items:center;margin-top:10px;padding:10px;border-radius:18px;border:2px solid transparent;background:var(--card);box-shadow:var(--sh);text-align:left;color:var(--tx)}',
+            '.fg3-v.now,.fg3-v.cur{border-color:#16a34a}.fg3-v .ph{flex:none;width:76px;height:76px;border-radius:14px;overflow:hidden;background:var(--chip)}.fg3-v .ph img{width:100%;height:100%;object-fit:cover;display:block}',
+            '.fg3-v .w{flex:1;min-width:0;display:block}.fg3-v b{display:block;font-size:16px;font-weight:800;letter-spacing:-.01em}',
+            '.fg3-v .vn{display:block;font-size:12.5px;color:var(--sub);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+            '.fg3-v .mt{display:flex;flex-wrap:wrap;gap:4px 8px;margin-top:6px;font:600 11.5px Inter,sans-serif;color:var(--sub)}.fg3-v .mt .op{color:var(--gtx)}.fg3-v .mt .cl{color:#dc2626}',
+            '.fg3-v .mt .tg{padding:2px 7px;border-radius:7px;background:var(--gl);color:var(--gtx);font-weight:800}',
+            '.fg3-v .nw{display:inline-block;font:800 10.5px Inter,sans-serif;color:#fff;background:#16a34a;padding:3px 8px;border-radius:8px;margin-bottom:4px}.fg3-v>.material-symbols-outlined{color:var(--fa)}',
+            '.fg3-empty{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:26px;padding:34px 18px;border-radius:20px;background:var(--card);text-align:center;color:var(--sub);font-size:14px;line-height:1.45}',
+            '.fg3-empty .material-symbols-outlined{font-size:44px;color:var(--fa)}.fg3-empty b{font-size:17px;color:var(--tx)}',
+            '.fg3-rs h2{margin:4px 0 0;font-size:22px;font-weight:800;letter-spacing:-.02em}.fg3-rs .sb{font-size:13.5px;color:var(--sub);margin-top:4px;line-height:1.4}',
+            '.fg3-rs .lb{margin-top:16px;font:800 12.5px Inter,sans-serif;color:var(--tx)}',
+            '.fg3-rs .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.fg3-rs .chips button{min-width:46px;padding:10px 14px;border-radius:14px;border:1px solid var(--hr);background:var(--card);font:700 14px Inter,sans-serif;color:var(--tx)}',
+            '.fg3-rs .chips button.on{background:var(--ink);color:var(--inktx);border-color:var(--ink)}',
+            '.fg3-rs .in{display:block;width:100%;height:54px;margin-top:8px;border-radius:14px;border:2px solid var(--hr);background:var(--card);padding:0 14px;font:800 20px Inter,sans-serif;color:var(--tx)}.fg3-rs .in:focus{outline:0;border-color:#16a34a}',
+            '.fg3-rs .nt{display:flex;gap:8px;align-items:flex-start;margin-top:14px;padding:12px;border-radius:14px;background:var(--gl);font-size:13px;color:var(--gtx);line-height:1.4}.fg3-rs .nt .material-symbols-outlined{font-size:18px}',
+            '.fg3-out{display:block;width:100%;margin-top:12px;height:44px;border-radius:22px;border:1px solid var(--hr);background:transparent;font:700 13.5px Inter,sans-serif;color:var(--sub)}',
+            /* kitchen v1532: sign-in, setup, inline prices */
+            '.kq-card .where.room{color:#0f766e;font-size:13px;font-weight:800}body:not(.theme-light) .kq-card .where.room{color:#5eead4}',
+            '.ksign{max-width:380px;margin:40px auto 0;text-align:center}.ksign p{font:500 14px/1.45 Inter,sans-serif;color:var(--ksub)}',
+            '.ksign input{display:block;width:100%;height:58px;margin:16px 0 10px;border-radius:14px;border:2px solid var(--kh2);background:var(--ki);text-align:center;font:800 26px "JetBrains Mono",monospace;letter-spacing:.3em;color:var(--kt)}',
+            '.ksign .kerr{margin-bottom:10px;font:700 13px Inter,sans-serif;color:var(--kred)}',
+            '.kclosed{margin-top:12px;padding:10px 14px;border-radius:12px;background:var(--kamberdim);color:var(--kamber);font:700 13px Inter,sans-serif}',
+            '.k3{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin-top:13px;align-items:start}',
+            '.k3 .bx{border-radius:16px;background:var(--kc);border:1px solid var(--kh2);padding:15px}',
+            '.k3 .lock{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;background:var(--ki);font:600 13px Inter,sans-serif;color:var(--kt)}.k3 .lock .material-symbols-outlined{font-size:18px;color:var(--kgreen)}',
+            '.k3 .kphotos{grid-template-columns:repeat(8,1fr)}',
+            '.k3 .dl{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--kh)}.k3 .dl .t{flex:1;font:600 13.5px Inter,sans-serif;color:var(--kt)}.k3 .dl .t small{display:block;font-weight:500;color:var(--ksub);font-size:12px}',
+            '.kfee,.kpin{display:inline-flex;align-items:center;gap:3px;height:34px;padding:0 8px;border-radius:9px;border:1px solid var(--kh2);background:var(--ki);font:700 13px Inter,sans-serif;color:var(--ksub)}',
+            '.kfee input{width:54px;border:0;background:transparent;font:800 14px Inter,sans-serif;color:var(--kt);text-align:right}.kpin input{width:70px;border:0;background:transparent;font:800 14px Inter,sans-serif;color:var(--kt);text-align:right}',
+            '.ksm{font:500 11px Inter,sans-serif;color:var(--kfaint);white-space:nowrap}',
+            '.kghost{height:36px;padding:0 14px;border-radius:10px;border:1px solid var(--kh2);background:var(--ki);font:700 12.5px Inter,sans-serif;color:var(--kt);cursor:pointer}',
+            '.k3 .st{display:flex;gap:10px;margin-top:6px}.k3 .st div{flex:1;border-radius:14px;border:1px solid var(--kh2);padding:14px;cursor:pointer}.k3 .st div:hover{border-color:var(--kgreen)}',
+            '.k3 .st b{display:block;font:800 14.5px Inter,sans-serif;color:var(--kt)}.k3 .st small{display:block;margin-top:4px;font:500 12.5px/1.4 Inter,sans-serif;color:var(--ksub)}',
+            '.kmenu1{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;font:13.5px Inter,sans-serif;color:var(--kt)}',
+            '.kopen{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-top:16px;padding:14px;border-radius:14px;background:var(--ki)}.kopen b{font:800 14px Inter,sans-serif;color:var(--kt)}.kopen span{flex:1 1 100%;font:500 12.5px Inter,sans-serif;color:var(--ksub)}.kopen .ksave{width:100%}',
+            '@media (max-width:760px){.k3{grid-template-columns:1fr}.k3 .kphotos{grid-template-columns:repeat(6,1fr)}}',
+            /* admin: golf bars */
+            '#foodAdminOv{position:fixed;inset:0;z-index:11300;background:rgba(15,20,25,.5);display:grid;place-items:center;font-family:Inter,sans-serif}',
+            '#foodAdminOv .bx{width:min(560px,94vw);max-height:90vh;overflow:auto;background:#fff;border-radius:18px;padding:20px;color:#0F1419}',
+            '#foodAdminOv h3{margin:0;font-size:20px;font-weight:800}#foodAdminOv p{margin:4px 0 0;color:#5B6672;font-size:13.5px}',
+            '#foodAdminOv input{width:100%;height:44px;margin-top:10px;border-radius:12px;border:1px solid #d5dbe1;padding:0 12px;font:600 15px Inter,sans-serif}',
+            '#foodAdminOv .row2{display:flex;gap:8px}#foodAdminOv .go{width:100%;height:46px;margin-top:12px;border-radius:23px;border:0;background:#16a34a;color:#fff;font:800 15px Inter,sans-serif;cursor:pointer}',
+            '#foodAdminOv .bar{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid #eef1f4}#foodAdminOv .bar .w{flex:1;min-width:0}#foodAdminOv .bar b{display:block}#foodAdminOv .bar small{color:#5B6672}',
+            '#foodAdminOv .pin{font:800 16px "JetBrains Mono",monospace;letter-spacing:.12em;background:#f1f3f5;padding:6px 10px;border-radius:9px}',
+            '#foodAdminOv .x{float:right;border:0;background:transparent;font-size:20px;cursor:pointer;color:#5B6672}#foodAdminOv .del{border:0;background:transparent;color:#dc2626;font:700 12px Inter,sans-serif;cursor:pointer}',
+            '#foodAdminOv .new{margin-top:12px;padding:12px;border-radius:12px;background:#f0fdf4;border:1px solid #bbf7d0;font-size:14px}',
             /* kitchen: photo thumbs, photo picker, add-on editor, deals tab */
             '.krow .fgv-art.kph{overflow:hidden;padding:0}.krow .kph .ph{display:block;width:100%;height:100%}.krow .kph img{width:100%;height:100%;object-fit:cover;display:block}.krow .kph img.pk{object-fit:contain;background:#fff}',
             '.kphotos{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}.kphotos span{aspect-ratio:1;border-radius:9px;overflow:hidden;border:2px solid transparent;cursor:pointer;background:#fff}',
@@ -399,7 +499,10 @@
     const reduceMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
 
     async function ensureData() {
+        if (!S.venuesLoaded) { await loadVenues(); subscribeVenues(); }
+        await resolveVenue();
         if (!S.menuLoaded) { await loadMenu(); subscribeMenu(); }
+        await loadStay();
         if (!S.ordersLoaded) { await loadOrders(); subscribeFoodOrders(); }
         if (!S.dealsLoaded) { await loadDeals(); }
     }
@@ -420,7 +523,7 @@
         } catch (e) { S.deals = []; S.dealsLoaded = true; }
     }
     const dealLive = d => d && d.active && (!d.ends_at || new Date(d.ends_at).getTime() > Date.now())
-        && (!d.course_name || d.course_name === courseCtx());   // a course's deal reaches golfers playing there
+        && !!S.venueKey && d.course_name === S.venueKey;   // a kitchen's deal shows only on its own menu
     const liveDeals = () => (S.deals || []).filter(dealLive);
     const claimedDeal = () => { const code = S.prefs.deal; return code ? liveDeals().find(d => d.code === code) || null : null; };
     const dealEnds = d => {
@@ -456,24 +559,37 @@
         const sub = basketSubtotal();
         const d = claimedDeal();
         const disc = d && d.kind === 'percent' ? Math.round(sub * Math.min(90, Number(d.value) || 0) / 100) : 0;
-        const svc = Math.round((sub - disc) * 0.1);
-        const fee = (d && d.kind === 'free_delivery') ? 0 : deliverFee();
+        const v = venue();
+        const svc = Math.round((sub - disc) * (v ? Number(v.service_pct) : 10) / 100);
+        const fee = (d && d.kind === 'free_delivery') ? 0 : deliverFee();   // free delivery covers whichever paid mode
         return { sub, disc, svc, fee, tot: sub - disc + svc + fee, deal: d };
     }
     const etaTxt = () => { const p = kitchenPrep(); return p + '–' + (p + 6) + ' min'; };
-    const kitchenOpen = () => {
-        const st = S.settings;
-        if (!st || !st.auto_close || !st.close_time) return true;
-        const [h, m] = String(st.close_time).split(':').map(Number);
-        const n = new Date();
-        return n.getHours() * 60 + n.getMinutes() < (h || 0) * 60 + (m || 0);
+    const hm = t => { const [h, m] = String(t || '').split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+    const kitchenOpen = (v) => {
+        v = v || venue();
+        if (!v) return true;
+        const n = new Date(), now = n.getHours() * 60 + n.getMinutes(), a = hm(v.open_time), b = hm(v.close_time);
+        return a <= b ? now >= a && now < b : now >= a || now < b;   // a bar can close after midnight
     };
-    const courseLabel = () => courseCtx() || (S.settings && S.settings.course_name && S.settings.course_name !== 'default' ? S.settings.course_name : 'Clubhouse');
+    const courseLabel = () => { const v = venue(); return v ? v.name : (courseCtx() || 'Clubhouse'); };
+    const kitchenName = v => (v && v.kitchen_name) || (v && v.kind === 'bar' ? v.name : 'The Kitchen');
+    const roomLine = st => st ? 'Room ' + st.room + (st.floor ? ' · Floor ' + st.floor : '') + (st.wing ? ' · ' + st.wing : '') : '';
+    const checkoutTxt = st => { try { return new Date(st.checkout_on + 'T12:00:00').toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }); } catch (e) { return st.checkout_on; } };
+    const floorsOf = v => {   // "G, 1-4" → G 1 2 3 4
+        const out = [];
+        String((v && v.floors) || '').split(/[,\s]+/).filter(Boolean).forEach(t => {
+            const m = /^(\d+)\s*[-–]\s*(\d+)$/.exec(t);
+            if (m) { for (let i = +m[1]; i <= +m[2] && out.length < 40; i++) out.push(String(i)); } else out.push(t.slice(0, 6));
+        });
+        return out;
+    };
     const qtyOf = id => S.basket.filter(b => b.mid === id).reduce((n, b) => n + b.qty, 0);
     const orderedCount = id => S.orders.reduce((n, o) => n + ((o.items || []).some(li => li.mid === id) ? 1 : 0), 0);
     const holeLabel = () => { const h = holeCtx() || Number(S.prefs.hole) || null; return h ? 'To hole ' + h : 'To my hole'; };
     const destLine = () => {
-        const d = S.prefs.deliver || 'hole';
+        const d = curMode();
+        if (d === 'room') return (S.stay ? 'Room ' + S.stay.room : 'To my room') + ' · ~' + (kitchenPrep() + 5) + ' min';
         if (d === 'hole') return holeLabel() + ' · ~' + (kitchenPrep() + 3) + ' min';
         return dLabel(d) + ' · ~' + kitchenPrep() + ' min';
     };
@@ -548,32 +664,102 @@
             }).join('');
     }
 
+    function modeMeta(m, v) {
+        const fee = Number((v.modes[m] || {}).fee || 0);
+        if (m === 'room') return ['bed', S.stay ? 'Room ' + esc(S.stay.room) : 'To my room', S.stay ? 'SAVED' : ''];
+        if (m === 'hole') return ['golf_course', esc(holeLabel()), holeCtx() ? 'AUTO' : ''];
+        if (m === 'turn') return ['sync_alt', 'At the turn', fee ? '' : 'FREE'];
+        if (m === 'pickup') return ['storefront', v.kind === 'bar' ? 'Pickup at the bar' : 'Pickup', ''];
+        return ['table_restaurant', v.kind === 'bar' ? 'Bay / table' : 'Table', ''];
+    }
     function vStore() {
-        const open = kitchenOpen();
+        const v = venue();
+        if (!v || S.view === 'venues') return vVenues();
+        const open = kitchenOpen(v);
         const top = S.items.find(i => i.popular && photoOf(i)) || S.items.find(i => photoOf(i));
-        const d = S.prefs.deliver || 'hole';
+        const d = curMode();
         const activeOrders = S.orders.filter(o => ['confirmed', 'preparing', 'cooking', 'ready', 'out_for_delivery'].includes(o.status)).length;
         const deals = liveDeals();
         const claimed = S.prefs.deal;
+        const cover = PHOTO_RE.test(String(v.cover_photo || '')) ? v.cover_photo : 'images/food/hero.jpg';
+        const serves = modeOn(v, 'hole') ? ['golf_course', 'Delivers to your hole'] : modeOn(v, 'room') ? ['bed', 'Room service'] : ['table_restaurant', v.kind === 'bar' ? 'Brought to your bay' : 'Table service'];
         return '<div class="fg2 fg2t" id="fg2">'
-            + '<div class="fg2-hero"><img src="images/food/hero.jpg" alt="" class="bg"><div class="fg2-hbar">'
+            + '<div class="fg2-hero"><img src="' + esc(cover) + '" alt="" class="bg"><div class="fg2-hbar">'
             + '<button class="gl" aria-label="Your orders" onclick="showGolferTab(\'status\', event)">' + ms('receipt_long') + (activeOrders ? '<span class="bd">' + activeOrders + '</span>' : '') + '</button>'
             + '<button class="gl" id="fg2HBkt" aria-label="Basket" onclick="FoodFGV1.openBasket()">' + ms('shopping_bag') + '<span class="bd" id="fgvBktCount" style="display:none">0</span></button></div></div>'
             + '<div class="fg2-store"><div class="lg">' + (top ? pic(top) : ms('restaurant')) + '</div><div class="w">'
-            + '<h1>The Kitchen</h1><div class="cs">' + esc(courseLabel()) + '</div>'
-            + '<div class="mt"><span class="' + (open ? 'op' : 'cl') + '">' + (open ? 'Open now' : 'Closed') + '</span>'
-            + '<span>' + ms('schedule') + etaTxt() + '</span><span>' + ms('golf_course') + 'Delivers to your hole</span></div></div></div>'
+            + '<h1>' + esc(kitchenName(v)) + '</h1><div class="cs">' + (v.kind === 'bar' ? 'Golf bar · ' : '') + esc(v.kind === 'bar' ? (v.area || v.name) : v.name)
+            + '<button class="chg" onclick="FoodFGV1.venues()">Change</button></div>'
+            + '<div class="mt"><span class="' + (open ? 'op' : 'cl') + '">' + (open ? 'Open now' : 'Closed · opens ' + esc(v.open_time)) + '</span>'
+            + '<span>' + ms('schedule') + etaTxt() + '</span><span>' + ms(serves[0]) + serves[1] + '</span></div></div></div>'
             + '<div class="fg2-modes">'
-            + [['hole', 'golf_course', esc(holeLabel()), holeCtx() ? 'AUTO' : ''], ['turn', 'sync_alt', 'At the turn', 'FREE'], ['pickup', 'storefront', 'Pickup', ''], ['table', 'table_restaurant', 'Table', '']]
-                .map(m => '<button class="fg2-mode' + (d === m[0] ? ' on' : '') + '" onclick="FoodFGV1.setDeliver(\'' + m[0] + '\')">' + ms(m[1]) + m[2] + (m[3] ? ' <span class="tg">' + m[3] + '</span>' : '') + '</button>').join('')
+            + modesOf(v).map(m => { const mm = modeMeta(m, v); return '<button class="fg2-mode' + (d === m ? ' on' : '') + '" onclick="FoodFGV1.setDeliver(\'' + m + '\')">' + ms(mm[0]) + mm[1] + (mm[2] ? ' <span class="tg">' + mm[2] + '</span>' : '') + '</button>'; }).join('')
             + '</div>'
+            + (d === 'room' && S.stay ? '<div class="fg2-roomc"><span class="ic">' + ms('bed') + '</span><div class="w"><b>' + esc(roomLine(S.stay)) + '</b><small>Saved until you check out ' + esc(checkoutTxt(S.stay)) + '</small></div><button onclick="FoodFGV1.roomSheet()">Change</button></div>' : '')
             + (deals.length ? '<div class="fg2-deals">' + deals.map(dl =>
                 '<div class="fg2-deal"><div class="w"><b>' + esc(dl.title) + '</b><div class="cd">' + (dl.detail ? esc(dl.detail) + ' · ' : '') + 'Code <code>' + esc(dl.code) + '</code></div><div class="en">' + dealEnds(dl) + '</div></div>'
                 + (claimed === dl.code ? '<button class="cl" onclick="FoodFGV1.claim(null)">Claimed</button>' : '<button onclick="FoodFGV1.claim(\'' + dl.id + '\')">Claim</button>') + '</div>').join('') + '</div>' : '')
-            + '<label class="fg2-srch"><input id="fgvSearch" type="search" placeholder="Search pad thai, singha, wings…" autocomplete="off" enterkeyhint="search"></label>'
-            + '<div class="fg2-wrap"><div class="fg2-main" id="fg2Main">' + vMain() + '</div>'
+            + '<label class="fg2-srch"><input id="fgvSearch" type="search" placeholder="Search the menu" autocomplete="off" enterkeyhint="search"></label>'
+            + '<div class="fg2-wrap"><div class="fg2-main" id="fg2Main">' + (S.items.length ? vMain() : '<div class="fg2-none">This kitchen is putting its menu together. Check back soon.</div>') + '</div>'
             + '<aside class="fg2-side" id="fg2Side">' + vSide() + '</aside></div>'
             + '</div>';
+    }
+
+    /* ---- where are you eating? (venue picker) ---- */
+    const kmTo = (a, b) => {
+        const R = 6371, t = x => x * Math.PI / 180, dLat = t(b.lat - a.lat), dLng = t(b.lng - a.lng);
+        const h = Math.sin(dLat / 2) ** 2 + Math.cos(t(a.lat)) * Math.cos(t(b.lat)) * Math.sin(dLng / 2) ** 2;
+        return 2 * R * Math.asin(Math.sqrt(h));
+    };
+    function vVenues() {
+        const all = S.venues.filter(listed);
+        const courses = all.filter(v => v.kind === 'course'), bars = all.filter(v => v.kind === 'bar');
+        const tab = S.vtab || (courses.length || !bars.length ? 'course' : 'bar');
+        let L = tab === 'bar' ? bars : courses;
+        const dist = v => (S.here && v.lat != null && v.lng != null) ? kmTo(S.here, { lat: v.lat, lng: v.lng }) : null;
+        L = L.slice().sort((a, b) => {
+            if (a.key === S.roundKey) return -1; if (b.key === S.roundKey) return 1;
+            const da = dist(a), db = dist(b);
+            if (da != null && db != null) return da - db;
+            if (da != null) return -1; if (db != null) return 1;
+            return a.name.localeCompare(b.name);
+        });
+        const card = v => {
+            const dd = dist(v), open = kitchenOpen(v), now = v.key === S.roundKey;
+            const tag = modeOn(v, 'hole') ? 'Delivers to your hole' : modeOn(v, 'room') ? 'Room service' : v.kind === 'bar' ? 'Table service' : 'Pickup + table';
+            const ph = PHOTO_RE.test(String(v.cover_photo || '')) ? v.cover_photo : 'images/food/hero.jpg';
+            return '<button class="fg3-v' + (now ? ' now' : '') + (v.key === S.venueKey ? ' cur' : '') + '" onclick="FoodFGV1.pickVenue(\'' + esc(v.key) + '\')"><span class="ph"><img src="' + esc(ph) + '" alt="" loading="lazy"></span><span class="w">'
+                + (now ? '<span class="nw">FROM YOUR ROUND</span>' : '') + '<b>' + esc(kitchenName(v)) + '</b><span class="vn">' + esc(v.kind === 'bar' ? 'Golf bar' + (v.area ? ' · ' + v.area : '') : v.name) + '</span>'
+                + '<span class="mt">' + (dd != null ? '<span>' + (dd < 10 ? dd.toFixed(1) : Math.round(dd)) + ' km</span>' : '') + '<span class="' + (open ? 'op' : 'cl') + '">● ' + (open ? 'Open' : 'Closed') + '</span>'
+                + '<span class="tg">' + tag + '</span></span></span>' + ms('chevron_right') + '</button>';
+        };
+        return '<div class="fg2 fg2t fg3" id="fg2">'
+            + (S.venueKey ? '<button class="fg3-back" onclick="FoodFGV1.back()">' + ms('arrow_back') + 'Back to ' + esc(kitchenName(venue())) + '</button>' : '')
+            + '<h1>Where are you eating?</h1><div class="sb">Every course and golf bar runs its own kitchen, menu and prices.</div>'
+            + (all.length ? '<button class="fg3-near" onclick="FoodFGV1.nearMe()">' + ms('near_me') + (S.here ? 'Sorted by distance from you' : 'Sort by near me') + '</button>'
+                + '<div class="fg3-seg"><button class="' + (tab === 'course' ? 'on' : '') + '" onclick="FoodFGV1.vtab(\'course\')">Golf courses · ' + courses.length + '</button>'
+                + '<button class="' + (tab === 'bar' ? 'on' : '') + '" onclick="FoodFGV1.vtab(\'bar\')">Golf bars · ' + bars.length + '</button></div>'
+                + (L.length ? L.map(card).join('') : '<div class="fg2-none">No ' + (tab === 'bar' ? 'golf bar' : 'course') + ' kitchens on MyCaddiPro yet.</div>')
+                : '<div class="fg3-empty">' + ms('restaurant') + '<b>No kitchens open yet</b><span>Courses and golf bars are setting up their kitchens. When yours opens, its menu shows here.</span></div>')
+            + '</div>';
+    }
+
+    /* ---- room sheet: tell us once, until checkout ---- */
+    function vRoomSheet() {
+        const v = venue(); if (!v) return '';
+        const st = S.roomDraft || (S.roomDraft = Object.assign({ wing: '', floor: '', room: '', checkout_on: '' }, S.stay || {}));
+        if (!st.checkout_on) { const t = new Date(Date.now() + 86400000); st.checkout_on = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); }
+        const today = new Date(); const min = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+        const wings = Array.isArray(v.wings) ? v.wings : [], floors = floorsOf(v);
+        return '<div class="fg2-dim" onclick="FoodFGV1.back()"></div><div class="fg2-sheet fg3-rs" id="fg2SheetBody"><div class="hn"></div>'
+            + '<h2>Where are you staying?</h2><div class="sb">Tell us once. We keep it for every order at ' + esc(v.name) + ' until you check out.</div>'
+            + (wings.length ? '<div class="lb">Wing</div><div class="chips">' + wings.map((w, i) => '<button class="' + (st.wing === w ? 'on' : '') + '" onclick="FoodFGV1.roomPick(\'wing\',' + i + ')">' + esc(w) + '</button>').join('') + '</div>' : '')
+            + (floors.length ? '<div class="lb">Floor</div><div class="chips">' + floors.map((f, i) => '<button class="' + (st.floor === f ? 'on' : '') + '" onclick="FoodFGV1.roomPick(\'floor\',' + i + ')">' + esc(f) + '</button>').join('') + '</div>' : '')
+            + '<div class="lb">Room number</div><input class="in" id="fg3Room" inputmode="text" autocomplete="off" maxlength="12" placeholder="e.g. 214" value="' + esc(st.room) + '" oninput="FoodFGV1.roomPick(\'room\',this.value)">'
+            + '<div class="lb">Checking out</div><input class="in" id="fg3Out" type="date" min="' + min + '" value="' + esc(st.checkout_on) + '" oninput="FoodFGV1.roomPick(\'checkout_on\',this.value)">'
+            + '<div class="nt">' + ms('lock') + '<span>Only this kitchen sees your room. It clears itself after checkout.</span></div>'
+            + (S.stay ? '<button class="fg3-out" onclick="FoodFGV1.roomClear()">I’ve checked out</button>' : '')
+            + '</div><div class="fg2-cta sh"><button class="go" id="fg3Save" onclick="FoodFGV1.roomSave()">Save my room</button></div>';
     }
 
     /* ---- item page ---- */
@@ -625,15 +811,20 @@
         const n = basketCount();
         let h = '<div class="fg2-bh"><b>Your basket</b>' + (n ? '<span>' + n + ' item' + (n > 1 ? 's' : '') + '</span><button class="clr" onclick="FoodFGV1.clearBasket()">Clear</button>' : '') + '</div>';
         if (!n) return h + '<div class="fg2-bempty">' + ms('shopping_bag') + '<div>Tap + on anything and it lands here.</div></div>';
-        const d = S.prefs.deliver || 'hole';
+        const v = venue() || { modes: {}, kind: 'course' };
+        const d = curMode();
         const hole = holeCtx();
         const t = totals();
-        h += '<div class="fg2-dest"><span class="ic">' + ms(d === 'hole' ? 'golf_course' : d === 'turn' ? 'sync_alt' : d === 'pickup' ? 'storefront' : 'table_restaurant') + '</span><div class="w"><b>' + esc(destLine()) + '</b><small>'
-            + (d === 'hole' ? (hole ? 'Follows your live round, the runner finds your group' : 'No live round, so tell us your hole') : d === 'turn' ? 'Ready as you make the turn, hole 9 to 10' : d === 'pickup' ? 'Collect at the counter, we ping you' : 'Brought to your clubhouse table')
-            + '</small></div></div>'
-            + '<div class="fg2-dmodes">' + [['hole', 'Hole'], ['turn', 'Turn'], ['pickup', 'Pickup'], ['table', 'Table']].map(m =>
-                '<button class="' + (d === m[0] ? 'on' : '') + '" onclick="FoodFGV1.setDeliver(\'' + m[0] + '\')">' + m[1] + '</button>').join('') + '</div>'
+        const bar = v.kind === 'bar';
+        h += '<div class="fg2-dest' + (d === 'room' ? ' room' : '') + '"><span class="ic">' + ms(d === 'room' ? 'bed' : d === 'hole' ? 'golf_course' : d === 'turn' ? 'sync_alt' : d === 'pickup' ? 'storefront' : 'table_restaurant') + '</span><div class="w"><b>' + esc(destLine()) + '</b><small>'
+            + (d === 'room' ? (S.stay ? esc([S.stay.floor ? 'Floor ' + S.stay.floor : '', S.stay.wing].filter(Boolean).join(' · ')) + (S.stay.floor || S.stay.wing ? ' · ' : '') + 'until checkout ' + esc(checkoutTxt(S.stay)) : 'Tell us your room once')
+                : d === 'hole' ? (hole ? 'Follows your live round, the runner finds your group' : 'No live round, so tell us your hole') : d === 'turn' ? 'Ready as you make the turn, hole 9 to 10'
+                : d === 'pickup' ? (bar ? 'Collect at the bar, we ping you' : 'Collect at the counter, we ping you') : (bar ? 'Brought to your bay or table' : 'Brought to your clubhouse table'))
+            + '</small></div>' + (d === 'room' ? '<button class="chg" onclick="FoodFGV1.roomSheet()">' + (S.stay ? 'Change' : 'Set room') + '</button>' : '') + '</div>'
+            + (modesOf(v).length > 1 ? '<div class="fg2-dmodes">' + modesOf(v).map(m =>
+                '<button class="' + (d === m ? 'on' : '') + '" onclick="FoodFGV1.setDeliver(\'' + m + '\')">' + ({ room: 'Room', hole: 'Hole', turn: 'Turn', pickup: 'Pickup', table: bar ? 'Bay' : 'Table' }[m]) + '</button>').join('') + '</div>' : '')
             + (d === 'hole' && !hole ? '<label class="fg2-hole">Hole <input id="fgvHole" type="number" inputmode="numeric" min="1" max="18" placeholder="#" value="' + esc(S.prefs.hole || '') + '" oninput="FoodFGV1.setHole(this.value)"></label>' : '')
+            + (d === 'table' ? '<label class="fg2-hole">' + (bar ? 'Bay / table' : 'Table') + ' <input id="fgvTable" inputmode="text" maxlength="8" placeholder="#" value="' + esc(S.prefs.table || '') + '" oninput="FoodFGV1.setTable(this.value)"></label>' : '')
             + S.basket.map((b, i) => {
                 const it = item(b.mid) || { name: b.name, art: b.art };
                 return '<div class="fg2-li"><div class="ph">' + pic(it) + '</div><div class="w"><b>' + esc(b.name) + '</b>'
@@ -648,12 +839,14 @@
             .sort((a, b) => b.popular - a.popular).slice(0, side ? 3 : 6);
         if (xs.length) h += '<div class="fg2-x"><div class="t">Goes well with</div><div class="r">' + xs.map(x =>
             '<div class="fg2-xc" onclick="FoodFGV1.openItem(\'' + x.id + '\')"><div class="ph">' + pic(x) + '<span onclick="event.stopPropagation()">' + addCtl(x) + '</span></div><b>' + esc(x.name) + '</b><span>' + baht(x.price) + '</span></div>').join('') + '</div></div>';
-        h += '<div class="fg2-x"><div class="t">Pay with</div><div class="fg2-pay">' + [['counter', 'At the counter'], ['promptpay', 'PromptPay QR']].map(p =>
-            '<button class="' + ((S.prefs.pay || 'counter') === p[0] ? 'on' : '') + '" onclick="FoodFGV1.setPay(\'' + p[0] + '\')">' + p[1] + '</button>').join('') + '</div></div>'
+        const pays = (d === 'room' && S.stay && v.charge_to_room ? [['room', 'Charge to room ' + esc(S.stay.room)]] : []).concat([['counter', bar ? 'At the bar' : 'At the counter'], ['promptpay', 'PromptPay QR']]);
+        const pay = curPay();
+        h += '<div class="fg2-x"><div class="t">Pay with</div><div class="fg2-pay">' + pays.map(p =>
+            '<button class="' + (pay === p[0] ? 'on' : '') + '" onclick="FoodFGV1.setPay(\'' + p[0] + '\')">' + p[1] + '</button>').join('') + '</div></div>'
             + '<div class="fg2-tot"><div><span>Subtotal</span><b>' + baht(t.sub) + '</b></div>'
             + (t.disc ? '<div class="dl"><span>' + esc(t.deal.code) + ' · ' + Number(t.deal.value) + '% off</span><b>−' + baht(t.disc) + '</b></div>' : '')
-            + '<div><span>Service 10%</span><b>' + baht(t.svc) + '</b></div>'
-            + (d === 'hole' ? '<div' + (t.deal && t.deal.kind === 'free_delivery' ? ' class="dl"' : '') + '><span>Hole delivery' + (t.deal && t.deal.kind === 'free_delivery' ? ' · ' + esc(t.deal.code) : '') + '</span><b>' + (t.fee ? baht(t.fee) : 'Free') + '</b></div>' : '')
+            + (Number(v.service_pct) > 0 ? '<div><span>Service ' + Number(v.service_pct) + '%</span><b>' + baht(t.svc) + '</b></div>' : '')
+            + (Number((v.modes[d] || {}).fee) > 0 ? '<div' + (t.deal && t.deal.kind === 'free_delivery' ? ' class="dl"' : '') + '><span>' + (d === 'room' ? 'Room delivery' : d === 'hole' ? 'Hole delivery' : dLabel(d)) + (t.deal && t.deal.kind === 'free_delivery' ? ' · ' + esc(t.deal.code) : '') + '</span><b>' + (t.fee ? baht(t.fee) : 'Free') + '</b></div>' : '')
             + '<div class="big"><span>Total</span><span>' + baht(t.tot) + '</span></div></div>';
         return h;
     }
@@ -674,7 +867,7 @@
         return o;
     }
     function syncOverlay() {
-        const want = foodVisible() && (S.view === 'item' || S.view === 'basket') ? S.view : null;
+        const want = foodVisible() && (S.view === 'item' || S.view === 'basket' || S.view === 'room') ? S.view : null;
         const o = document.getElementById('fg2Ovl');
         if (!want) { if (o) o.remove(); document.documentElement.classList.remove('fg2-lock'); return; }
         const el = ovl();
@@ -683,7 +876,7 @@
         const sh = document.getElementById('fg2SheetBody'); const shs = sh ? sh.scrollTop : 0;
         el.className = 'fg2t fg2-ov ' + want;
         el.setAttribute('data-v', want); el.setAttribute('data-id', S.itemOpen || '');
-        el.innerHTML = want === 'item' ? '<div class="fg2-dim d" onclick="FoodFGV1.back()"></div>' + vItemPage() : vSheet();
+        el.innerHTML = want === 'item' ? '<div class="fg2-dim d" onclick="FoodFGV1.back()"></div>' + vItemPage() : want === 'room' ? vRoomSheet() : vSheet();
         const ip = document.getElementById('fg2IPage'); if (ip && sc) ip.scrollTop = sc;
         const sb2 = document.getElementById('fg2SheetBody'); if (sb2 && shs) sb2.scrollTop = shs;
         document.documentElement.classList.add('fg2-lock');
@@ -777,11 +970,14 @@
         injectCss();
         const tab = foodTab(); if (tab) tab.classList.add('fg2on');
         if (!S.menuLoaded) {
-            r.innerHTML = '<div class="fg2 fg2t"><div class="fg2-hero sk"></div><div class="fg2-store sk"><div class="w"><h1>The Kitchen</h1><div class="cs">Loading the menu…</div></div></div></div>';
-            ensureData().then(() => { render(); renderStatus(); updateCubeBadges(); });
+            if (S._loading) return;
+            S._loading = true;
+            r.innerHTML = '<div class="fg2 fg2t"><div class="fg2-hero sk"></div><div class="fg2-store sk"><div class="w"><h1>Kitchen</h1><div class="cs">Loading the menu…</div></div></div></div>';
+            ensureData().then(() => { S._loading = false; render(); renderStatus(); updateCubeBadges(); });
             return;
         }
         if (S.view === 'menu') S.view = 'home';
+        if ((courseCtx() || null) !== (S._roundName || null)) { S.menuLoaded = false; S._roundName = undefined; return render(); }
         r.innerHTML = vStore();
         const se = document.getElementById('fgvSearch');
         if (se) {
@@ -859,7 +1055,7 @@
             h += hist.map(o => orderRow(o, false)).join('');
         }
         h += '<div class="fgv-actions"><button class="fgv-cta" onclick="showGolferTab(\'food\', event)"><span class="material-symbols-outlined">restaurant</span> Order food &amp; drinks</button>'
-            + (S.settings && S.settings.phone ? '<button class="fgv-ghost" onclick="FoodFGV1.callKitchen()"><span class="material-symbols-outlined">call</span> Kitchen</button>' : '')
+            + (kPhone() ? '<button class="fgv-ghost" onclick="FoodFGV1.callKitchen()"><span class="material-symbols-outlined">call</span> Kitchen</button>' : '')
             + '</div>';
         r.innerHTML = h;
         updateCubeBadges();
@@ -882,7 +1078,7 @@
         const st = o.status_times || {};
         const ofd = o.status === 'out_for_delivery';
         const holeM = /hole (\d+)/i.exec(o.delivery_note || '');
-        const dest = holeM ? 'HOLE ' + holeM[1] : (o.delivery_type === 'pickup' ? 'PICKUP' : o.delivery_type === 'table' ? 'TABLE' : o.delivery_type === 'turn' ? 'THE TURN' : 'ON COURSE');
+        const dest = o.room && o.room.room ? 'ROOM ' + String(o.room.room).slice(0, 8).toUpperCase() : holeM ? 'HOLE ' + holeM[1] : (o.delivery_type === 'pickup' ? 'PICKUP' : o.delivery_type === 'table' ? 'TABLE' : o.delivery_type === 'turn' ? 'THE TURN' : 'ON COURSE');
         let etaTxt = m.label;
         if (o.status === 'confirmed') etaTxt = 'Waiting for the kitchen';
         if (o.status === 'preparing' || o.status === 'cooking') etaTxt = 'Kitchen is on it';
@@ -910,7 +1106,7 @@
             + (nextKey && o.status !== 'delivered' ? '<div class="tstep todo"><span class="d"></span><div class="tx"><div class="tt">' + TIMELINE_LABEL[nextKey] + '</div><div class="ts">We’ll update you right here</div></div></div>' : '')
             + '</div>'
             + '<div class="fgv-tbtns">'
-            + (S.settings && S.settings.phone ? '<button class="tbtn" onclick="FoodFGV1.callKitchen()"><span class="material-symbols-outlined">call</span>Call kitchen</button>' : '')
+            + (kPhone() ? '<button class="tbtn" onclick="FoodFGV1.callKitchen()"><span class="material-symbols-outlined">call</span>Call kitchen</button>' : '')
             + (o.status === 'confirmed' ? '<button class="tbtn bad" onclick="FoodFGV1.cancelOrder(\'' + o.order_number + '\')"><span class="material-symbols-outlined">close</span>Cancel order</button>' : '')
             + '</div>'
             + '<div class="fgv-osum">' + thumbs(o) + '<span class="w"><b>' + (o.items || []).reduce((n, i) => n + (i.quantity || 1), 0) + ' items</b> · '
@@ -940,10 +1136,72 @@
         canBack() { return S.view !== 'home'; },
         back() {
             if (S.view === 'home') return false;
-            S.view = 'home'; S.stack = []; S.itemOpen = null;
+            if (S.view === 'venues') { S.view = 'home'; render(); return true; }
+            if (S.view === 'room' && S.roomReturn === 'basket') { S.view = 'basket'; S.roomDraft = null; syncChrome(); return true; }
+            S.view = 'home'; S.stack = []; S.itemOpen = null; S.roomDraft = null;
             syncChrome(); updatePill();
+            if (S._rerender) { S._rerender = false; render(); }
             return true;
         },
+        /* ---- venues ---- */
+        venues() { S.view = venue() ? 'venues' : 'home'; render(); window.scrollTo({ top: 0 }); },
+        vtab(t) { S.vtab = t === 'bar' ? 'bar' : 'course'; render(); },
+        async pickVenue(key) {
+            const v = S.venues.find(x => x.key === key);
+            if (!v) return;
+            if (S.basket.length && S.basketVenue && S.basketVenue !== key) {
+                if (!confirm('Your basket is from ' + kitchenName(venue()) + '. Empty it and order from ' + kitchenName(v) + '?')) return;
+                S.basket = []; saveBasket();
+            }
+            S.prefs.venue = key; S.prefs.deal = null; savePrefs();
+            S.basketVenue = key; try { localStorage.setItem('fgv2_basket_venue', key); } catch (e) { }
+            S.view = 'home'; S.venueKey = null; S.menuLoaded = false; S.dealsLoaded = false;
+            render(); window.scrollTo({ top: 0 });
+        },
+        nearMe() {
+            try { window.GEO_FEATURES && (window.GEO_FEATURES.food = true); } catch (e) { }
+            if (!navigator.geolocation || !(window._geoOn ? window._geoOn('food') : true)) { notify('Location is not available on this device', 'info'); return; }
+            navigator.geolocation.getCurrentPosition(p => { S.here = { lat: p.coords.latitude, lng: p.coords.longitude }; render(); },
+                () => notify('Location is off, so the list stays A to Z', 'info'), { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 });
+        },
+        /* ---- rooms ---- */
+        roomSheet() { S.roomReturn = S.view === 'basket' ? 'basket' : 'home'; S.roomDraft = null; S.view = 'room'; syncChrome(); },
+        roomPick(k, v) {
+            const st = S.roomDraft || (S.roomDraft = {});
+            const ven = venue();
+            if (k === 'wing') { st.wing = ((ven && ven.wings) || [])[v] || ''; syncOverlay(); }
+            else if (k === 'floor') { st.floor = floorsOf(ven)[v] || ''; syncOverlay(); }
+            else st[k] = String(v || '');   // typing: no redraw, the keyboard stays up
+        },
+        async roomSave() {
+            const v = venue(), c = sb(), me = uid(), st = S.roomDraft || {};
+            if (!v || !c) return;
+            if (!me) { notify('Sign in to save your room', 'info'); return; }
+            const room = String(st.room || '').trim();
+            if (!room) { notify('Type your room number', 'error'); const el = document.getElementById('fg3Room'); if (el) el.focus(); return; }
+            if ((v.wings || []).length && !st.wing) { notify('Pick your wing', 'error'); return; }
+            const btn = document.getElementById('fg3Save'); if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+            try {
+                const { data, error } = await c.rpc('food_stay_set', { p_golfer: me, p_venue: v.key, p_wing: st.wing || null, p_floor: st.floor || null, p_room: room, p_checkout: st.checkout_on || null });
+                if (error || !data || data.error) throw new Error((data && data.error) || (error && error.message) || 'failed');
+                S.stay = data; S.stayKey = v.key; S.prefs.deliver = 'room'; savePrefs();
+                notify('Room ' + data.room + ' saved until you check out', 'success');
+                const back = S.roomReturn === 'basket'; S.roomDraft = null;
+                S.view = back ? 'basket' : 'home'; render(); syncChrome();
+            } catch (e) {
+                notify(/checkout/.test(e.message) ? 'Pick a checkout date from today on' : 'Could not save your room — try again', 'error');
+                if (btn) { btn.disabled = false; btn.textContent = 'Save my room'; }
+            }
+        },
+        async roomClear() {
+            const v = venue(), c = sb(), me = uid();
+            if (!v || !c || !me) return;
+            try { await c.rpc('food_stay_clear', { p_golfer: me, p_venue: v.key }); } catch (e) { }
+            S.stay = null; if (S.prefs.deliver === 'room') S.prefs.deliver = null; if (S.prefs.pay === 'room') S.prefs.pay = null; savePrefs();
+            S.view = 'home'; S.roomDraft = null; render(); syncChrome();
+            notify('Room cleared. Safe travels!', 'info');
+        },
+        setTable(v) { S.prefs.table = String(v || '').slice(0, 8); savePrefs(); },
         go(view, cat, search) {
             if (search !== undefined && search !== null) S.search = search;
             if (view === 'item' || view === 'basket') { setView(view); syncChrome(); return; }
@@ -1049,7 +1307,11 @@
             if (code) notify('Deal ' + code + ' claimed. It comes off at checkout.', 'success');
             render();
         },
-        setDeliver(d) { S.prefs.deliver = d; savePrefs(); if (S.view === 'home') render(); else { syncChrome(); refreshBasketUi(); } },
+        setDeliver(d) {
+            S.prefs.deliver = d; savePrefs();
+            if (d === 'room' && !S.stay) { API.roomSheet(); return; }
+            if (S.view === 'home') render(); else { syncChrome(); refreshBasketUi(); }
+        },
         setPay(p) { S.prefs.pay = p; savePrefs(); refreshBasketUi(); },
         setHole(v) { S.prefs.hole = v; savePrefs(); },
         async toggleFav(id, ev) {
@@ -1068,8 +1330,11 @@
             if (!S.basket.length) { notify('Basket is empty', 'error'); return; }
             const c = sb();
             if (!c) { notify('No connection — try again in a moment', 'error'); return; }
-            const d = S.prefs.deliver || 'hole';
+            const v = venue();
+            if (!v) { notify('Pick where you are eating first', 'error'); API.venues(); return; }
+            const d = curMode();
             const hole = holeCtx() || Number(S.prefs.hole) || null;
+            if (d === 'room' && !S.stay) { API.roomSheet(); return; }
             if (d === 'hole' && !hole) {
                 notify('Which hole are you on? Set it in the basket', 'error');
                 if (isDesk()) { const el = document.getElementById('fgvHole'); if (el) el.focus(); }
@@ -1080,6 +1345,8 @@
             const t = totals();
             let note = dLabel(d);
             if (d === 'hole' && hole) note += ' · On course — hole ' + hole;
+            if (d === 'room') note = roomLine(S.stay);
+            if (d === 'table' && S.prefs.table) note += ' ' + S.prefs.table;
             const now = new Date().toISOString();
             const payload = {
                 order_number: 'FO' + Date.now().toString().slice(-6),
@@ -1093,9 +1360,10 @@
                 subtotal: t.sub, service_charge: t.svc, delivery_fee: t.fee, total: t.tot,
                 discount: t.disc, deal_code: t.deal ? t.deal.code : null,
                 status: 'confirmed', delivery_type: d, delivery_note: note,
-                course_name: courseCtx() || 'Clubhouse',
+                course_name: v.name, venue_key: v.key,
+                room: d === 'room' ? { room: S.stay.room, floor: S.stay.floor || null, wing: S.stay.wing || null } : null,
                 status_times: { confirmed: now },
-                payment_method: S.prefs.pay || 'counter'
+                payment_method: curPay()
             };
             try {
                 const { data, error } = await c.from('food_orders').insert(payload).select().single();
@@ -1147,7 +1415,8 @@
             } catch (e) { notify('Could not cancel — call the kitchen', 'error'); }
         },
         callKitchen() {
-            const ph = S.settings && S.settings.phone;
+            const v = venue();
+            const ph = (v && v.phone) || (S.settings && S.settings.phone);
             if (ph) location.href = 'tel:' + ph.replace(/[^+\d]/g, '');
             else notify('Kitchen phone not set yet', 'info');
         },
@@ -1181,6 +1450,10 @@
         NEXT: { confirmed: 'preparing', preparing: 'ready', cooking: 'ready', ready: 'out_for_delivery', out_for_delivery: 'delivered' },
         ADV: { confirmed: 'START →', preparing: 'READY →', cooking: 'READY →', ready: 'OUT FOR DELIVERY →', out_for_delivery: 'DELIVERED ✓' },
 
+        /* v1532: a kitchen is ONE venue. Identity = a token: the golf bar's kitchen token, or the course's own
+           pro shop desk token (proshop_pin_login). No token → sign in with the venue / course PIN. */
+        venue: null,
+        token() { try { return localStorage.getItem('food_kitchen_token_v1') || localStorage.getItem('ps_desk_token_v1') || null; } catch (e) { return null; } },
         async open() {
             let ov = document.getElementById('kitchenQueueOverlay');
             if (!ov) {
@@ -1192,8 +1465,19 @@
             injectCss();
             document.documentElement.classList.add('fgv-kq-open');
             try { if (window.ThemeMode && ThemeMode.apply) ThemeMode.apply(); } catch (e) { }
-            await Promise.all([this.load(), loadMenu(), loadSettings(), loadDeals()]);
+            if (!this.venue) {
+                const tok = this.token(), c = sb();
+                if (tok && c) { try { const { data } = await c.rpc('food_kitchen_me', { p_token: tok }); if (data && data.key) this.venue = data; } catch (e) { } }
+            }
+            if (!this.venue) { this.renderSignIn(); return; }
+            await this.boot();
+        },
+        async boot() {
+            S.venueKey = this.venue.key; S.menuLoaded = false; S.settings = null;
+            if (!S.venues.find(v => v.key === this.venue.key)) S.venues.push(this.venue);
+            await Promise.all([this.load(), loadMenu(true), loadSettings(), loadDeals(), this.loadSample()]);
             this.subscribe(); subscribeMenu();
+            if (!this._landed) { this._landed = true; if (!S.items.length) this.tab = 'setup'; }
             this.renderShell();
             if (!this.tick) this.tick = setInterval(() => { if (this.tab === 'queue') this.renderBody(); }, 30000);
             // a backgrounded tablet misses realtime — pull the queue fresh the moment it returns
@@ -1202,38 +1486,68 @@
                 document.addEventListener('visibilitychange', async () => {
                     if (document.visibilityState !== 'visible') return;
                     const ov = document.getElementById('kitchenQueueOverlay');
-                    if (ov && ov.style.display === 'block') { await this.load(); this.renderBody(); }
+                    if (ov && ov.style.display === 'block' && this.venue) { await this.load(); this.renderBody(); }
                 });
             }
+        },
+        renderSignIn(msg) {
+            const ov = document.getElementById('kitchenQueueOverlay');
+            if (!ov) return;
+            ov.innerHTML = '<div class="fgv-ksheet"><div class="khead"><div><div class="kovl">KITCHEN</div><h3>Sign in to your kitchen</h3></div>'
+                + '<button class="kx" onclick="KitchenQueue.close()" aria-label="Close">✕</button></div>'
+                + '<div class="ksign"><p>Golf courses: your pro shop course PIN. Golf bars: the kitchen PIN from MyCaddiPro.</p>'
+                + '<input id="kqPin" class="v pin-mask" inputmode="numeric" autocomplete="one-time-code" enterkeyhint="go" maxlength="10" placeholder="PIN" onkeydown="if(event.key===\'Enter\')KitchenQueue.signIn()">'
+                + (msg ? '<div class="kerr">' + esc(msg) + '</div>' : '')
+                + '<button class="ksave" onclick="KitchenQueue.signIn()">Open my kitchen</button></div></div>';
+            setTimeout(() => { const el = document.getElementById('kqPin'); if (el) el.focus(); }, 50);
+        },
+        async signIn() {
+            const el = document.getElementById('kqPin'), c = sb();
+            const pin = el ? el.value.replace(/\D/g, '') : '';
+            if (!pin || !c) return;
+            try {
+                const { data } = await c.rpc('food_kitchen_login', { p_pin: pin });
+                if (!data || data.error || !data.token) { this.renderSignIn(data && data.error === 'too_many' ? 'Too many tries. Wait 15 minutes.' : 'That PIN did not open a kitchen.'); return; }
+                localStorage.setItem('food_kitchen_token_v1', data.token);
+                this.venue = data.venue; this._landed = false;
+                await this.boot();
+            } catch (e) { this.renderSignIn('No connection. Try again.'); }
+        },
+        signOut() {
+            try { localStorage.removeItem('food_kitchen_token_v1'); } catch (e) { }
+            this.venue = null; this.orders = []; this._landed = false;
+            if (this.chan) { try { sb().removeChannel(this.chan); } catch (e) { } this.chan = null; }
+            this.renderSignIn();
+        },
+        async loadSample() {
+            const c = sb();
+            if (!c || S.sample.length) return;
+            try { const { data } = await c.from('menu_items').select('name,price').is('course_name', null).eq('active', true); S.sample = data || []; } catch (e) { }
         },
         close() {
             const ov = document.getElementById('kitchenQueueOverlay');
             if (ov) ov.style.display = 'none';
             document.documentElement.classList.remove('fgv-kq-open');
             if (location.hash === '#kitchen') { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { } }
+            // the golfer side of this device goes back to its own venue
+            S.venueKey = null; S.menuLoaded = false; S.settings = null; S.dealsLoaded = false;
+            if (root()) render();
         },
         async load() {
             const c = sb();
-            if (!c) return;
+            if (!c || !this.venue) return;
             try {
                 const since = new Date(Date.now() - 12 * 3600 * 1000).toISOString();
-                let q = c.from('food_orders').select('*').gte('created_at', since);
-                const kc = kitchenCourse();
-                // pre-filter on the broad first stem token server-side (this course only), then refine client-side
-                if (kc) { const st = courseStem(kc); if (st[0]) q = q.or('course_name.is.null,course_name.ilike.clubhouse,course_name.ilike.*' + st[0].replace(/[,()*]/g, '') + '*'); }
-                const { data } = await q.order('created_at', { ascending: true });
-                this.orders = (data || []).filter(orderMatchesKitchen);
-            } catch (e) { console.warn('[FGV1:KQ] load failed', e); }
+                const { data } = await c.from('food_orders').select('*').eq('venue_key', this.venue.key).gte('created_at', since).order('created_at', { ascending: true });
+                this.orders = data || [];
+            } catch (e) { console.warn('[FGV2:KQ] load failed', e); }
         },
         subscribe() {
             const c = sb();
-            if (!c || this.chan) return;
+            if (!c || this.chan || !this.venue) return;
             try {
-                this.chan = c.channel('kitchen_queue')
-                    .on('postgres_changes', { event: '*', schema: 'public', table: 'food_orders' }, async payload => {
-                        // food_orders is unfiltered — scope to THIS kitchen's course
-                        if (payload.eventType === 'DELETE') { await this.load(); this.renderBody(); return; }  // RLS delete = only id → reconcile
-                        if (!orderMatchesKitchen(payload.new)) return;   // another course's order — ignore, no reload, no chime
+                this.chan = c.channel('kitchen_queue_' + this.venue.key)
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'food_orders', filter: 'venue_key=eq.' + this.venue.key }, async payload => {
                         await this.load();
                         this.renderBody();
                         if (payload.eventType === 'INSERT' && S.settings && S.settings.chime !== false) this.chime();
@@ -1256,14 +1570,16 @@
             const ov = document.getElementById('kitchenQueueOverlay');
             if (!ov) return;
             ov.innerHTML = '<div class="fgv-ksheet">'
-                + '<div class="khead"><div><div class="kovl">KITCHEN · ' + esc((S.settings && S.settings.course_name !== 'default' && S.settings.course_name) || courseCtx() || 'MCIPRO') + '</div>'
+                + '<div class="khead"><div><div class="kovl">KITCHEN · ' + esc(this.venue.name) + (this.venue.kitchen_name ? ' · ' + esc(this.venue.kitchen_name) : '') + '</div>'
                 + '<h3 id="kqTitle">Kitchen</h3></div>'
                 + '<div class="ktabs">'
-                + ['queue', 'menu', 'deals', 'alerts'].map(t => '<button class="kt' + (this.tab === t ? ' on' : '') + '" onclick="KitchenQueue.setTab(\'' + t + '\')">' + t.toUpperCase() + '</button>').join('')
+                + ['queue', 'menu', 'deals', 'setup', 'alerts'].map(t => '<button class="kt' + (this.tab === t ? ' on' : '') + '" onclick="KitchenQueue.setTab(\'' + t + '\')">' + t.toUpperCase() + '</button>').join('')
                 + '</div>'
                 + '<button class="kx" data-theme-toggle onclick="ThemeMode.toggle()" title="Toggle Light / Dark theme" aria-label="Theme">'
                 + '<span class="material-symbols-outlined theme-toggle-icon" style="font-size:17px;vertical-align:middle;">light_mode</span></button>'
+                + '<button class="kx" onclick="KitchenQueue.signOut()" title="Sign out of this kitchen" aria-label="Sign out"><span class="material-symbols-outlined" style="font-size:17px;vertical-align:middle;">logout</span></button>'
                 + '<button class="kx" onclick="KitchenQueue.close()" aria-label="Close">✕</button></div>'
+                + (!this.venue.open ? '<div class="kclosed">' + (S.items.length ? 'Golfers can’t see your kitchen yet. Open it in SETUP when your menu and prices are ready.' : 'Your kitchen has no menu yet. Start in SETUP.') + '</div>' : '')
                 + '<div id="kqBody"></div></div>';
             this.renderBody();
         },
@@ -1272,7 +1588,8 @@
             const b = document.getElementById('kqBody');
             if (!b) return;
             const title = document.getElementById('kqTitle');
-            if (this.tab === 'menu') { if (title) title.textContent = 'Menu Manager'; b.innerHTML = this.vMenu(); }
+            if (this.tab === 'menu') { if (title) title.textContent = 'Your menu and prices'; b.innerHTML = this.vMenu(); }
+            else if (this.tab === 'setup') { if (title) title.textContent = 'Set up your kitchen'; b.innerHTML = this.vSetup(); }
             else if (this.tab === 'deals') { if (title) title.textContent = 'Deals'; b.innerHTML = this.vDeals(); }
             else if (this.tab === 'alerts') { if (title) title.textContent = 'Tracking & Alerts'; b.innerHTML = this.vAlerts(); }
             else { if (title) title.textContent = this.openOrders().length + ' open orders'; b.innerHTML = this.vQueue(); }
@@ -1288,10 +1605,11 @@
                 + '<div class="r1"><span class="no">#' + esc(o.order_number) + '</span>'
                 + stn.map(s => '<span class="kst ' + (s === 'bar' ? 'bar' : s === 'dessert' ? 'des' : 'kit') + '">' + s.toUpperCase() + '</span>').join('')
                 + '<span class="age' + (warn ? ' warn' : '') + '">' + ago(o.created_at) + (warn ? ' ⚠' : '') + '</span></div>'
-                + '<div class="where">→ ' + esc(o.delivery_note || dLabel(o.delivery_type) || '') + ' · ' + esc(o.customer_name || 'Guest') + '</div>'
+                + (o.room && o.room.room ? '<div class="where room">🛏 ROOM ' + esc(o.room.room) + (o.room.floor ? ' · FLOOR ' + esc(o.room.floor) : '') + (o.room.wing ? ' · ' + esc(String(o.room.wing).toUpperCase()) : '') + ' · ' + esc(o.customer_name || 'Guest') + '</div>'
+                    : '<div class="where">→ ' + esc(o.delivery_note || dLabel(o.delivery_type) || '') + ' · ' + esc(o.customer_name || 'Guest') + '</div>')
                 + '<div class="its">' + (o.items || []).map(li => '<b>' + (li.quantity || 1) + '×</b> ' + esc(li.name)
                     + (li.spice || (li.addons || []).length || li.note ? ' <span class="md">(' + esc([li.spice, ...(li.addons || []), li.note].filter(Boolean).join(' · ')) + ')</span>' : '')).join(' · ') + '</div>'
-                + '<div class="kq-total">' + baht(o.total) + (o.payment_method ? ' · ' + payLabel(o.payment_method).toUpperCase() : '') + (o.deal_code ? ' · DEAL ' + esc(o.deal_code) + (Number(o.discount) ? ' −' + baht(o.discount) : '') : '') + '</div>'
+                + '<div class="kq-total">' + baht(o.total) + (o.payment_method ? ' · ' + (o.payment_method === 'room' && o.room && o.room.room ? 'CHARGE TO ROOM ' + esc(o.room.room) : payLabel(o.payment_method).toUpperCase()) : '') + (o.deal_code ? ' · DEAL ' + esc(o.deal_code) + (Number(o.discount) ? ' −' + baht(o.discount) : '') : '') + '</div>'
                 + (o.status === 'ready' ? '<div class="krun"><input id="krn_' + o.id + '" placeholder="Runner" value="' + esc(o.runner_name || '') + '"><input id="krc_' + o.id + '" placeholder="Cart #" value="' + esc(o.runner_cart || '') + '"></div>' : '')
                 + (o.runner_name && o.status === 'out_for_delivery' ? '<span class="krchip">🛺 ' + esc(o.runner_name) + (o.runner_cart ? ' · CART ' + esc(o.runner_cart) : '') + '</span>' : '')
                 + (showAdv ? '<button class="kadv s-' + esc(o.status) + '" onclick="KitchenQueue.advance(\'' + o.id + '\')">' + (this.ADV[o.status] || '→') + '</button>' : '')
@@ -1349,13 +1667,23 @@
                     + '<div class="fgv-art kph fg2t" style="--w1:' + W(it.wash1) + ';--w2:' + W(it.wash2) + '">' + (photoOf(it) ? '<span class="ph">' + pic(it) + '</span>' : artSvg(it.art)) + '</div>'
                     + '<div class="mid"><div class="knm">' + esc(it.name) + '</div><div class="kds">' + esc(!it.available && it.eightysix_at ? '86’d ' + hhmm(it.eightysix_at) + (it.eightysix_reason ? ' — ' + it.eightysix_reason : '') : (it.description || '')) + '</div></div>'
                     + '<span class="kst ' + (it.station === 'bar' ? 'bar' : it.station === 'dessert' ? 'des' : 'kit') + '">' + esc((it.station || 'kitchen').toUpperCase()) + '</span>'
-                    + '<span class="kpr">' + baht(it.price) + '</span>'
+                    + (() => { const sm = S.sample.find(x => x.name === it.name); return sm && Number(sm.price) !== Number(it.price) ? '<span class="ksm">sample ' + baht(sm.price) + '</span>' : ''; })()
+                    + '<label class="kpin" onclick="event.stopPropagation()">฿<input type="number" inputmode="numeric" min="0" step="10" value="' + Number(it.price) + '" aria-label="Price of ' + esc(it.name) + '" onchange="KitchenQueue.setPrice(\'' + it.id + '\',this.value)"></label>'
                     + '<span class="kmeta">' + it.prep_min + ' MIN</span>'
                     + '<button class="ktgl' + (it.available ? ' on' : '') + '" onclick="event.stopPropagation();KitchenQueue.toggle86(\'' + it.id + '\')" aria-label="Available"></button>'
                     + '</div>').join('')
                 + '</div>'
                 + (ed !== null ? this.vDrawer() : '')
                 + '</div></div>';
+        },
+        async setPrice(id, v) {
+            const it = item(id), c = sb(), n = Math.max(0, Math.round(Number(v) || 0));
+            if (!it || !c || n === Number(it.price)) return;
+            try {
+                const { error } = await c.from('menu_items').update({ price: n, updated_at: new Date().toISOString() }).eq('id', id).eq('course_name', this.venue.key);
+                if (error) throw error;
+                it.price = n; notify(it.name + ' is now ' + baht(n), 'success'); this.renderBody();
+            } catch (e) { notify('Price not saved — retry', 'error'); }
         },
         edit(id) {
             this.editing = id ? Object.assign({}, item(id), { addons: (item(id).addons || []).map(a => ({ name: a.name, price: Number(a.price) || 0 })) }) : {
@@ -1439,10 +1767,10 @@
             };
             try {
                 if (e.id) {
-                    const { error } = await c.from('menu_items').update(row).eq('id', e.id);
+                    const { error } = await c.from('menu_items').update(row).eq('id', e.id).eq('course_name', this.venue.key);
                     if (error) throw error;
                 } else {
-                    row.available = true; row.active = true;
+                    row.available = true; row.active = true; row.course_name = this.venue.key;
                     const { error } = await c.from('menu_items').insert(row);
                     if (error) throw error;
                 }
@@ -1478,9 +1806,97 @@
             } catch (e) { notify('Update failed', 'error'); }
         },
 
+        /* ----- SETUP (food_venues via food_venue_save) ----- */
+        vSetup() {
+            const v = this.venue, f = this.form || (this.form = JSON.parse(JSON.stringify({ kitchen_name: v.kitchen_name || '', cover_photo: v.cover_photo || 'images/food/hero.jpg',
+                open_time: v.open_time, close_time: v.close_time, phone: v.phone || '', service_pct: Number(v.service_pct), modes: v.modes || {}, wings: v.wings || [],
+                floors: v.floors || '', charge_to_room: !!v.charge_to_room })));
+            const bar = v.kind === 'bar';
+            const ML = bar ? [['table', 'Bay / table service', 'Brought to the guest’s bay or table'], ['pickup', 'Pickup at the bar', ''], ['room', 'Room service', 'Guests order to their room']]
+                : [['hole', 'To the golfer’s hole', 'Runner brings it out on the course'], ['turn', 'At the turn', 'Ready as they make the turn'], ['pickup', 'Pickup at the counter', ''], ['table', 'Table service', 'Clubhouse tables'], ['room', 'Room service', 'Guests order to their room']];
+            const roomOn = !!(f.modes.room && f.modes.room.on);
+            return '<div class="k3">'
+                + '<div class="bx"><div class="kd-t">YOUR KITCHEN</div>'
+                + '<div class="kf"><div class="l">Venue (from your PIN)</div><div class="lock"><span class="material-symbols-outlined">verified</span>' + esc(v.name) + ' · ' + (bar ? 'golf bar' : 'golf course') + '</div></div>'
+                + '<div class="kf"><div class="l">Kitchen name golfers see</div><input class="v" id="ksName" maxlength="40" placeholder="' + (bar ? esc(v.name) : 'Clubhouse Kitchen') + '" value="' + esc(f.kitchen_name) + '"></div>'
+                + '<div class="kf"><div class="l">Cover photo</div><div class="kphotos fg2t">' + ['hero'].concat(FOOD_PHOTOS).map(p => { const u = 'images/food/' + p + '.jpg';
+                    return '<span class="' + (f.cover_photo === u ? 'on' : '') + '" onclick="KitchenQueue.fset(\'cover_photo\',\'' + p + '\')"><img src="' + u + '" alt="" loading="lazy"></span>'; }).join('') + '</div></div>'
+                + '<div class="kf2"><div class="kf"><div class="l">Opens</div><input class="v" id="ksOpen" type="time" value="' + esc(f.open_time) + '"></div>'
+                + '<div class="kf"><div class="l">Closes</div><input class="v" id="ksClose" type="time" value="' + esc(f.close_time) + '"></div></div>'
+                + '<div class="kf2"><div class="kf"><div class="l">Kitchen phone</div><input class="v" id="ksPhone" inputmode="tel" placeholder="+66…" value="' + esc(f.phone) + '"></div>'
+                + '<div class="kf"><div class="l">Service charge %</div><input class="v" id="ksSvc" type="number" min="0" max="30" value="' + Number(f.service_pct) + '"></div></div>'
+                + '<div class="kf"><div class="l">Where you are (for “near me”)</div><button class="kghost" onclick="KitchenQueue.setHere()">' + (v.lat != null ? 'Location set · update from this device' : 'Use this device’s location') + '</button></div>'
+                + '</div>'
+                + '<div class="bx"><div class="kd-t">HOW YOU SERVE</div>'
+                + ML.map(m => { const on = !!(f.modes[m[0]] && f.modes[m[0]].on), fee = Number((f.modes[m[0]] || {}).fee || 0);
+                    return '<div class="dl"><div class="t">' + m[1] + (m[2] ? '<small>' + m[2] + '</small>' : '') + '</div><label class="kfee">฿<input type="number" min="0" id="ksFee_' + m[0] + '" value="' + fee + '"></label>'
+                        + '<button class="ktgl' + (on ? ' on' : '') + '" aria-label="' + m[1] + '" onclick="KitchenQueue.fmode(\'' + m[0] + '\')"></button></div>'; }).join('')
+                + (roomOn ? '<div class="kd-t" style="margin-top:14px">ROOMS ON SITE</div>'
+                    + '<div class="kf"><div class="l">Wings / buildings (comma between)</div><input class="v" id="ksWings" placeholder="East Wing, West Wing, Garden Villas" value="' + esc((f.wings || []).join(', ')) + '"></div>'
+                    + '<div class="kf2"><div class="kf"><div class="l">Floors</div><input class="v" id="ksFloors" placeholder="G, 1-4" value="' + esc(f.floors) + '"></div>'
+                    + '<div class="kf"><div class="l">Charge to room</div><button class="ktgl' + (f.charge_to_room ? ' on' : '') + '" onclick="KitchenQueue.fset(\'charge_to_room\')"></button></div></div>' : '')
+                + '<button class="ksave" onclick="KitchenQueue.saveSetup()">Save</button>'
+                + '<div class="kd-t" style="margin-top:18px">YOUR MENU</div>'
+                + (S.items.length ? '<div class="kmenu1"><b>' + S.items.length + ' items on your menu</b><button class="kghost" onclick="KitchenQueue.setTab(\'menu\')">Edit menu and prices →</button></div>'
+                    : '<div class="st"><div onclick="KitchenQueue.fromSample()"><b>Start from the sample menu</b><small>33 dishes and drinks with photos. Change any price, remove what you don’t serve.</small></div>'
+                    + '<div onclick="KitchenQueue.setTab(\'menu\');KitchenQueue.edit(null)"><b>Start empty</b><small>Add your own dishes one by one: name, price, photo, add-ons.</small></div></div>')
+                + '<div class="kopen">' + (v.open ? '<b>Open to golfers</b><span>Golfers at ' + esc(v.name) + ' order from your menu.</span><button class="kghost" onclick="KitchenQueue.setOpen(false)">Close to golfers</button>'
+                    : '<b>Not open to golfers yet</b><span>' + (S.items.length ? 'Check your prices, then open.' : 'Add a menu first.') + '</span>' + (S.items.length ? '<button class="ksave" onclick="KitchenQueue.setOpen(true)">Open my kitchen to golfers</button>' : '')) + '</div>'
+                + '</div></div>';
+        },
+        readSetup() {
+            const f = this.form; if (!f) return;
+            const g = id => document.getElementById(id);
+            if (g('ksName')) f.kitchen_name = g('ksName').value;
+            if (g('ksOpen')) f.open_time = g('ksOpen').value || f.open_time;
+            if (g('ksClose')) f.close_time = g('ksClose').value || f.close_time;
+            if (g('ksPhone')) f.phone = g('ksPhone').value;
+            if (g('ksSvc')) f.service_pct = Number(g('ksSvc').value) || 0;
+            ['hole', 'turn', 'pickup', 'table', 'room'].forEach(m => { const el = g('ksFee_' + m); if (el) { f.modes[m] = f.modes[m] || { on: false, fee: 0 }; f.modes[m].fee = Math.max(0, Number(el.value) || 0); } });
+            if (g('ksWings')) f.wings = g('ksWings').value.split(',').map(x => x.trim()).filter(Boolean).slice(0, 12);
+            if (g('ksFloors')) f.floors = g('ksFloors').value;
+        },
+        fset(k, v) { this.readSetup(); if (k === 'cover_photo') this.form.cover_photo = 'images/food/' + v + '.jpg'; else this.form[k] = !this.form[k]; this.renderBody(); },
+        fmode(m) { this.readSetup(); const f = this.form; f.modes[m] = f.modes[m] || { on: false, fee: 0 }; f.modes[m].on = !f.modes[m].on; this.renderBody(); },
+        async rpcSave(patch) {
+            const c = sb();
+            const { data, error } = await c.rpc('food_venue_save', { p_token: this.token(), p: patch });
+            if (error || !data || data.error) throw new Error((data && data.error) || (error && error.message) || 'failed');
+            this.venue = data;
+            const i = S.venues.findIndex(x => x.key === data.key); if (i >= 0) S.venues[i] = data; else S.venues.push(data);
+            return data;
+        },
+        async saveSetup() {
+            this.readSetup();
+            try { await this.rpcSave(this.form); this.form = null; notify('Kitchen saved — live on golfer phones', 'success'); this.renderShell(); }
+            catch (e) { notify(/signed_out/.test(e.message) ? 'Signed out — sign in again' : 'Save failed — retry', 'error'); if (/signed_out/.test(e.message)) this.signOut(); }
+        },
+        async setOpen(on) {
+            if (this.form) this.readSetup();
+            try { await this.rpcSave(Object.assign({}, this.form || {}, { open: on })); this.form = null; notify(on ? 'Your kitchen is open to golfers' : 'Closed to golfers', on ? 'success' : 'info'); this.renderShell(); }
+            catch (e) { notify('Could not change that — retry', 'error'); }
+        },
+        setHere() {
+            if (!navigator.geolocation) { notify('This device has no location', 'info'); return; }
+            try { window.GEO_FEATURES && (window.GEO_FEATURES.food = true); } catch (e) { }
+            navigator.geolocation.getCurrentPosition(async p => {
+                try { await this.rpcSave({ lat: p.coords.latitude, lng: p.coords.longitude }); notify('Location set — golfers nearby see you first', 'success'); this.renderBody(); } catch (e) { notify('Location not saved', 'error'); }
+            }, () => notify('Location is off on this device', 'info'), { enableHighAccuracy: true, timeout: 15000 });
+        },
+        async fromSample() {
+            const c = sb();
+            try {
+                const { data } = await c.rpc('food_menu_from_sample', { p_token: this.token() });
+                if (data < 0) { this.signOut(); return; }
+                await loadMenu(true); this.venue.items = S.items.length;
+                notify(S.items.length + ' items added — now set your prices', 'success');
+                this.setTab('menu');
+            } catch (e) { notify('Could not copy the sample menu — retry', 'error'); }
+        },
+
         /* ----- DEALS (food_deals) — coupons golfers Claim on the food page ----- */
         vDeals() {
-            const all = (S.deals || []).filter(d => !d.course_name || !kitchenCourse() || d.course_name === kitchenCourse());
+            const all = (S.deals || []).filter(d => d.course_name === this.venue.key);
             const f = this.dealForm || (this.dealForm = { kind: 'percent' });
             return '<div class="kdeals fg2t">'
                 + '<div class="kdl-form"><div class="kd-t">NEW DEAL</div>'
@@ -1512,7 +1928,7 @@
             if (kind === 'percent' && (val < 1 || val > 90)) { notify('Percent off must be 1 to 90', 'error'); return; }
             const ends = v('kdlEnds');
             const row = { title: title.slice(0, 40), code: code.slice(0, 16), kind, value: val, detail: v('kdlDetail').slice(0, 40) || null,
-                ends_at: ends ? new Date(ends + 'T23:59:00').toISOString() : null, course_name: kitchenCourse() || null, active: true };
+                ends_at: ends ? new Date(ends + 'T23:59:00').toISOString() : null, course_name: this.venue.key, active: true };
             try {
                 const { error } = await c.from('food_deals').insert(row);
                 if (error) throw error;
@@ -1599,14 +2015,16 @@
         const c = sb();
         if (!c) return;
         try {
-            const { data } = await c.from('kitchen_settings').select('*').eq('course_name', 'default').maybeSingle();
-            if (data) S.settings = data;
+            const key = K.venue ? K.venue.key : S.venueKey;
+            if (!key) return;
+            const { data } = await c.from('kitchen_settings').select('*').eq('course_name', key).maybeSingle();
+            S.settings = data || null;
         } catch (e) { }
     }
     async function ensureSettingsRow() {
         const c = sb();
         if (!S.settings) {
-            S.settings = { course_name: 'default', chime: true, push_staff: true, push_runner: true, push_golfer: true, aging_min: 12, auto_close: false, close_time: '17:30', phone: '' };
+            S.settings = { course_name: (K.venue && K.venue.key) || 'default', chime: true, push_staff: true, push_runner: true, push_golfer: true, aging_min: 12, auto_close: false, close_time: '17:30', phone: '' };
             try { await c.from('kitchen_settings').insert(S.settings); } catch (e) { }
         }
     }
@@ -1614,6 +2032,54 @@
         const c = sb();
         try { await c.from('kitchen_settings').update(Object.assign({ updated_at: new Date().toISOString() }, patch)).eq('course_name', S.settings.course_name || 'default'); } catch (e) { }
     }
+
+    /* ---------------- Admin: golf bars (each gets its own kitchen PIN) ---------------- */
+    const FoodAdmin = {
+        pin() { try { return sessionStorage.getItem('food_admin_pin') || ''; } catch (e) { return ''; } },
+        shell(inner) {
+            injectCss();
+            let o = document.getElementById('foodAdminOv');
+            if (!o) { o = document.createElement('div'); o.id = 'foodAdminOv'; o.onclick = e => { if (e.target === o) FoodAdmin.close(); }; document.body.appendChild(o); }
+            o.innerHTML = '<div class="bx"><button class="x" onclick="FoodAdmin.close()" aria-label="Close">✕</button>' + inner + '</div>';
+        },
+        close() { const o = document.getElementById('foodAdminOv'); if (o) o.remove(); },
+        async open(msg) {
+            if (!this.pin()) {
+                this.shell('<h3>Golf bars</h3><p>Enter the Admin food PIN.</p>'
+                    + '<input id="faPin" class="pin-mask" inputmode="numeric" autocomplete="one-time-code" enterkeyhint="go" maxlength="10" onkeydown="if(event.key===\'Enter\')FoodAdmin.unlock()">'
+                    + (msg ? '<p style="color:#dc2626;font-weight:700">' + esc(msg) + '</p>' : '') + '<button class="go" onclick="FoodAdmin.unlock()">Open</button>');
+                setTimeout(() => { const el = document.getElementById('faPin'); if (el) el.focus(); }, 50);
+                return;
+            }
+            const c = sb();
+            const { data } = await c.rpc('food_admin_bars', { p_admin: this.pin() });
+            if (!data || data.error) { try { sessionStorage.removeItem('food_admin_pin'); } catch (e) { } return this.open('Wrong PIN'); }
+            this.shell('<h3>Golf bars</h3><p>Each bar runs its own kitchen. Give the bar its PIN; they sign in at mycaddipro.com/#kitchen.</p>'
+                + (this.made ? '<div class="new"><b>' + esc(this.made.name) + '</b> is ready. Kitchen PIN <span class="pin">' + esc(this.made.pin) + '</span></div>' : '')
+                + ((data.bars || []).length ? data.bars.map(b => '<div class="bar"><div class="w"><b>' + esc(b.name) + '</b><small>' + esc(b.area || '') + (b.area ? ' · ' : '') + b.items + ' menu items · ' + (b.open ? 'open to golfers' : 'not open yet') + '</small></div>'
+                    + '<span class="pin">' + esc(b.pin || '—') + '</span><button class="del" onclick="FoodAdmin.remove(\'' + esc(b.key) + '\')">Remove</button></div>').join('') : '<p style="margin-top:12px">No golf bars yet.</p>')
+                + '<div style="margin-top:16px;font-weight:800">Add a golf bar</div>'
+                + '<div class="row2"><input id="faName" maxlength="60" placeholder="Bar name"><input id="faArea" maxlength="40" placeholder="Area, e.g. Jomtien"></div>'
+                + '<button class="go" onclick="FoodAdmin.create()">Add bar and make its PIN</button>');
+            this.made = null; this.bars = data.bars || [];
+        },
+        async unlock() { const el = document.getElementById('faPin'); const v = el ? el.value.replace(/\D/g, '') : ''; if (!v) return; try { sessionStorage.setItem('food_admin_pin', v); } catch (e) { } this.open(); },
+        async create() {
+            const name = (document.getElementById('faName') || {}).value || '', area = (document.getElementById('faArea') || {}).value || '';
+            if (!name.trim()) { notify('Name the bar', 'error'); return; }
+            const { data } = await sb().rpc('food_admin_bar_create', { p_admin: this.pin(), p_name: name, p_area: area });
+            if (!data || data.error) { notify(data && data.error === 'wrong_pin' ? 'Admin PIN refused' : 'Could not add the bar', 'error'); return; }
+            this.made = { name: name.trim(), pin: data.pin };
+            this.open();
+        },
+        async remove(key) {
+            const b = (this.bars || []).find(x => x.key === key);
+            if (!b || !confirm('Remove ' + b.name + ' and its menu?')) return;
+            await sb().rpc('food_admin_bar_delete', { p_admin: this.pin(), p_key: key });
+            this.open();
+        }
+    };
+    window.FoodAdmin = FoodAdmin;
 
     /* ---------------- exports + boot ---------------- */
     window.FoodFGV1 = API;

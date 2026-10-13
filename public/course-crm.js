@@ -15,7 +15,12 @@
   'use strict';
 
   // names a course writes that CourseLink's matcher does not carry (scorecard spellings)
-  var ALIAS = { 'pattaya-golf': [['pattaya', 'county'], ['pattaya', 'c', 'c']] };
+  var ALIAS = {
+    'pattaya-golf': [['pattaya', 'county'], ['pattaya', 'c', 'c']],
+    // v1548: organizer spellings found in prod 2026-10-13 that matched no course, so their players read "first time"
+    'bangpakong': [['brc']], 'pattavia': [['patavia']], 'mountain-shadow': [['mt', 's']],
+    'pleasant-valley': [['present', 'valley']], 'plutaluang': [['putaluang']], 'hermes': [['thermes']]
+  };
   var GENERIC = { golfer: 1, guest: 1, player: 1, tbc: 1, tba: 1, unknown: 1, walkin: 1, 'walk in': 1 };
 
   var STR = {

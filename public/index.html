@@ -123535,7 +123535,16 @@ class SocietyOrganizerManager {
         }
     }
 
+    // The in-flight load is kept on _evLoadP so a page opened straight after login (Tee Sheet) can WAIT
+    // for the list instead of painting "No events found" off the still-empty array. _evLoadedOnce flips
+    // only after a real list landed.
     async loadEvents() {
+        const p = this._loadEventsNow();
+        this._evLoadP = p;
+        try { return await p; } finally { if (this._evLoadP === p) this._evLoadP = null; }
+    }
+
+    async _loadEventsNow() {
         try {
             const userId = AppState.currentUser?.lineUserId || AppState.currentUser?.userId || AppState.currentUser?.id || window.currentUserId || localStorage.getItem('line_user_id');
 
@@ -123659,6 +123668,7 @@ class SocietyOrganizerManager {
             );
 
             this.events = enrichedEvents;
+            this._evLoadedOnce = true;
 
             // Sort events by date to maintain proper order after editing
             this.events.sort((a, b) => {
@@ -166758,7 +166768,7 @@ window.TeeSheet = {
         if (this._golferMode) return (window.GolferEventsBridge && GolferEventsBridge.events) || [];
         return (window.SocietyOrganizerSystem && SocietyOrganizerSystem.events) || [];
     },
-    open: function(){ this._golferMode=false; this._preferId=null; this.eventId=null; this._mount(); this._loadEvents(); },
+    open: function(){ this._golferMode=false; this._preferId=null; this.eventId=null; this._evWaited=false; this._mount(); this._loadEvents(); },
     openForGolfer: async function(eventId){
         this._golferMode = true; this._preferId = eventId || null; this.eventId = null;
         try { await window.GolferEventsBridge.load(); } catch(e){ console.warn('[TeeSheet] golfer events', e); }
@@ -167052,6 +167062,20 @@ window.TeeSheet = {
         var sel=document.getElementById('teeSheetEventSel'); if(!sel) return;
         var evs=this._evSource();
         var self=this, nowMs=Date.now();
+        // FIRST OPEN AFTER LOGIN: the organizer's event list is still loading (or never started), so the
+        // array is empty and the sheet used to paint "No events found" and stay blank. Wait for the load
+        // (or start it) once, then run again on the real list.
+        var SOS=window.SocietyOrganizerSystem;
+        if (!evs.length && !this._golferMode && SOS && !this._evWaited && (SOS._evLoadP || !SOS._evLoadedOnce)) {
+            this._evWaited = true;
+            var b0=document.getElementById('teeSheetBody'); if(b0) b0.innerHTML='<div style="text-align:center;padding:40px;color:var(--t-dim);">'+_lvT('ts2.loadingev','Loading events…')+'</div>';
+            var ov=document.getElementById('teeSheetOverlay');
+            Promise.resolve(SOS._evLoadP || SOS.loadEvents()).catch(function(e){ console.warn('[TeeSheet] events load', e); }).then(function(){
+                if (document.getElementById('teeSheetOverlay') !== ov || self._golferMode) return;   // closed / reopened meanwhile
+                self._loadEvents();
+            });
+            return;
+        }
         // Strict fall-off (matches the schedule cards): an event drops the moment its TEE TIME passes,
         // even if it's still today — so a Burapha round already teed off this morning won't keep getting
         // auto-selected; the picker advances to the next upcoming event.

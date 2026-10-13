@@ -92,7 +92,7 @@
       // v1535 the message box goes to people: the whole event, one group, or one player (in-app + LINE)
       to: 'To', toAll: 'Organizer + every player ({n})', toGroup: '{g} · {n} players', msgT: 'Message', everyone: 'Everyone', toTyping: 'Message {t}…',
       // v1537 To / Cc / Bcc
-      cc: 'Cc', bcc: 'Bcc', ccBcc: 'Cc / Bcc', rcAdd: '+ Add', organizer: 'Organizer', rcSearch: 'Search a player or group…', noRcpt: 'Add a recipient first', rcNone: 'Nobody else to add'
+      cc: 'Cc', bcc: 'Bcc', ccBcc: 'Cc / Bcc', rcAdd: '+ Add', organizer: 'Organizer', rcSearch: 'Search a player or group…', noRcpt: 'Add a recipient first', rcNone: 'Nobody else to add', rmLine: 'Remove this line'
     },
     th: {
       societies: 'สมาคม', golfCourse: 'สนามกอล์ฟ', upcoming: 'อีเวนต์สมาคมที่สนามนี้ — 3 สัปดาห์ข้างหน้า',
@@ -114,7 +114,7 @@
       cadSetMsg: 'กำหนด {c} ให้ {p} ({g})', cadOkMsg: 'ยืนยัน {c} ให้ {p}', cadCancelMsg: 'ยกเลิก {c} ของ {p}',
       cadRefuse: '{c} ไม่ว่าง: {r}', cadSaved: 'บันทึกแล้ว', unpaired: 'ยังไม่จับกลุ่ม',
       to: 'ถึง', toAll: 'ผู้จัด + ผู้เล่นทุกคน ({n})', toGroup: '{g} · {n} คน', msgT: 'ส่งข้อความ', everyone: 'ทุกคน', toTyping: 'ส่งข้อความถึง {t}…',
-      cc: 'สำเนา', bcc: 'สำเนาลับ', ccBcc: 'สำเนา / สำเนาลับ', rcAdd: '+ เพิ่ม', organizer: 'ผู้จัด', rcSearch: 'ค้นหาผู้เล่นหรือกลุ่ม…', noRcpt: 'เพิ่มผู้รับก่อน', rcNone: 'ไม่มีผู้รับอื่นให้เพิ่ม'
+      cc: 'สำเนา', bcc: 'สำเนาลับ', ccBcc: 'สำเนา / สำเนาลับ', rcAdd: '+ เพิ่ม', organizer: 'ผู้จัด', rcSearch: 'ค้นหาผู้เล่นหรือกลุ่ม…', noRcpt: 'เพิ่มผู้รับก่อน', rcNone: 'ไม่มีผู้รับอื่นให้เพิ่ม', rmLine: 'ลบบรรทัดนี้'
     },
     ko: {
       societies: '소사이어티', golfCourse: '골프장', upcoming: '이 골프장의 소사이어티 일정 — 앞으로 3주',
@@ -136,7 +136,7 @@
       cadSetMsg: '{p}에게 {c} 배정 ({g})', cadOkMsg: '{p}의 {c} 확정', cadCancelMsg: '{p}의 {c} 취소',
       cadRefuse: '{c} 불가: {r}', cadSaved: '저장됨', unpaired: '미편성',
       to: '받는 사람', toAll: '주최자 + 모든 선수 ({n})', toGroup: '{g} · {n}명', msgT: '메시지', everyone: '모두', toTyping: '{t}에게 메시지…',
-      cc: '참조', bcc: '숨은 참조', ccBcc: '참조 / 숨은 참조', rcAdd: '+ 추가', organizer: '주최자', rcSearch: '선수 또는 조 검색…', noRcpt: '받는 사람을 먼저 추가하세요', rcNone: '더 추가할 사람이 없습니다'
+      cc: '참조', bcc: '숨은 참조', ccBcc: '참조 / 숨은 참조', rcAdd: '+ 추가', organizer: '주최자', rcSearch: '선수 또는 조 검색…', noRcpt: '받는 사람을 먼저 추가하세요', rcNone: '더 추가할 사람이 없습니다', rmLine: '이 줄 삭제'
     },
     ja: {
       societies: 'ソサエティ', golfCourse: 'ゴルフ場', upcoming: 'このゴルフ場のソサエティ予定 — 今後3週間',
@@ -158,12 +158,12 @@
       cadSetMsg: '{p}に{c}を割り当て ({g})', cadOkMsg: '{p}の{c}を確定', cadCancelMsg: '{p}の{c}をキャンセル',
       cadRefuse: '{c}は利用できません: {r}', cadSaved: '保存しました', unpaired: '組未定',
       to: '宛先', toAll: '主催者 + 全プレーヤー ({n})', toGroup: '{g} · {n}名', msgT: 'メッセージ', everyone: '全員', toTyping: '{t}へのメッセージ…',
-      cc: 'CC', bcc: 'BCC', ccBcc: 'CC / BCC', rcAdd: '+ 追加', organizer: '主催者', rcSearch: 'プレーヤーまたはグループを検索…', noRcpt: '先に宛先を追加してください', rcNone: '追加できる人はいません'
+      cc: 'CC', bcc: 'BCC', ccBcc: 'CC / BCC', rcAdd: '+ 追加', organizer: '主催者', rcSearch: 'プレーヤーまたはグループを検索…', noRcpt: '先に宛先を追加してください', rcNone: '追加できる人はいません', rmLine: 'この行を削除'
     }
   };
 
   var CL = window.CourseLink = {
-    _v: 1539,
+    _v: 1541,
     KEYS: KEYS,
     sb: null,
     lang: 'en',
@@ -751,10 +751,10 @@
         if (a === 'msgto' || a === 'msgtog') {   // ✉ on a player / group row = a 1-to-1 (or group-only) message
           var row = b.closest('[data-pk]'), k0 = a === 'msgtog' ? 'g:' + (parseInt(b.getAttribute('data-gi'), 10) || 0) : row && 'p:' + row.getAttribute('data-pk');
           if (!k0) return;
-          var R0 = this._rcOf(ev); R0.to = [k0]; R0.cc = []; R0.bcc = []; R0.pick = null;
+          var R0 = this._rcOf(ev); R0.to = [k0]; R0.cc = []; R0.bcc = []; R0.showCc = R0.showBcc = false; R0.pick = null;
           this.renderPanel(); this._focusIn(); return;
         }
-        if (a === 'rcadd' || a === 'rcmore' || a === 'rcpick' || a === 'rcx') return this._rcAction(a, b, ev);
+        if (a === 'rcadd' || a === 'rcmore' || a === 'rcclose' || a === 'rcpick' || a === 'rcx') return this._rcAction(a, b, ev);
       } catch (err) {
         console.warn('[CourseLink]', err);
         this.toast('⚠ ' + (err && err.message ? err.message : 'Failed'));
@@ -961,7 +961,7 @@
 
     // ---------- v1537 recipients: To / Cc / Bcc, picked from THIS event's people ----------
     _rc: {},             // evId → { to:[key], cc:[key], bcc:[key], more, pick:'to'|'cc'|'bcc'|null, q }
-    _rcOf: function (ev) { return this._rc[ev.id] || (this._rc[ev.id] = { to: ['all'], cc: [], bcc: [], more: false, pick: null, q: '' }); },
+    _rcOf: function (ev) { return this._rc[ev.id] || (this._rc[ev.id] = { to: ['all'], cc: [], bcc: [], showCc: false, showBcc: false, pick: null, q: '' }); },
     /* key → { k, label, sub, ids } — 'all', 'org', 'g:<n>' (0 = not paired), 'p:<player key>' */
     _rcMap: function (ev) {
       var self = this, out = {}, gi = 0;
@@ -978,7 +978,8 @@
     },
     _rcHtml: function (ev) {
       var E = this.esc.bind(this), self = this, R = this._rcOf(ev), M = this._rcMap(ev);
-      var fields = (R.more || R.cc.length || R.bcc.length) ? ['to', 'cc', 'bcc'] : ['to'];
+      // v1541: Cc and Bcc open one at a time and each line has its own ✕ (an accidental open never clutters the box)
+      var fields = ['to'].concat(R.showCc || R.cc.length ? ['cc'] : [], R.showBcc || R.bcc.length ? ['bcc'] : []);
       var h = '<div class="cl-rc">';
       fields.forEach(function (f) {
         h += '<div class="cl-rr"><span class="cl-rl">' + E(self.t(f)) + '</span><div class="cl-chips">';
@@ -988,9 +989,12 @@
             '<button type="button" data-a="rcx" data-f="' + f + '" data-k="' + E(k) + '" aria-label="×">×</button></span>';
         });
         h += '<button type="button" class="cl-rc-add' + (R.pick === f ? ' on' : '') + '" data-a="rcadd" data-f="' + f + '">' + E(self.t('rcAdd')) + '</button></div>';
-        if (f === 'to' && fields.length === 1) h += '<button type="button" class="cl-rc-more" data-a="rcmore">' + E(self.t('ccBcc')) + '</button>';
+        if (f === 'to') {
+          if (fields.indexOf('cc') === -1) h += '<button type="button" class="cl-rc-more" data-a="rcmore" data-f="cc">' + E(self.t('cc')) + '</button>';
+          if (fields.indexOf('bcc') === -1) h += '<button type="button" class="cl-rc-more" data-a="rcmore" data-f="bcc">' + E(self.t('bcc')) + '</button>';
+        } else h += '<button type="button" class="cl-rc-close" data-a="rcclose" data-f="' + f + '" title="' + E(self.t('rmLine')) + '" aria-label="' + E(self.t('rmLine')) + '">×</button>';
         h += '</div>';
-        if (R.pick === f) h += '<div class="cl-rpick"><input class="cl-rq" type="text" autocomplete="off" placeholder="' + E(self.t('rcSearch')) + '" value="' + E(R.q || '') + '"><div class="cl-rlist">' + self._rcListHtml(ev) + '</div></div>';
+        if (R.pick === f) h += '<div class="cl-rpick"><div class="cl-rq-row"><input class="cl-rq" type="text" autocomplete="off" placeholder="' + E(self.t('rcSearch')) + '" value="' + E(R.q || '') + '"><button type="button" class="cl-rc-close" data-a="rcadd" data-f="' + f + '" aria-label="' + E(self.t('close')) + '">×</button></div><div class="cl-rlist">' + self._rcListHtml(ev) + '</div></div>';
       });
       return h + '</div>';
     },
@@ -1009,7 +1013,8 @@
     },
     _rcAction: function (a, b, ev) {
       var R = this._rcOf(ev), f = b.getAttribute('data-f') || R.pick, k = b.getAttribute('data-k');
-      if (a === 'rcmore') { R.more = true; R.pick = 'cc'; R.q = ''; }
+      if (a === 'rcmore') { if (f === 'bcc') R.showBcc = true; else R.showCc = true; R.pick = f; R.q = ''; }
+      else if (a === 'rcclose') { R[f] = []; if (f === 'bcc') R.showBcc = false; else R.showCc = false; if (R.pick === f) R.pick = null; }
       else if (a === 'rcadd') { R.pick = R.pick === f ? null : f; R.q = ''; }
       else if (a === 'rcx') { R[f] = R[f].filter(function (x) { return x !== k; }); }
       else if (a === 'rcpick' && f) {
@@ -1170,6 +1175,10 @@
         '#clPanel .cl-rc-add,#clPanel .cl-rc-more{border:1px dashed var(--cl-line2);background:transparent;color:var(--cl-green-soft);border-radius:14px;padding:3px 10px;font-size:12px;font-weight:800;cursor:pointer}',
         '#clPanel .cl-rc-add.on{border-style:solid;background:var(--cl-hi)}',
         '#clPanel .cl-rc-more{flex:none;border-style:solid;color:var(--cl-muted)}',
+        '#clPanel .cl-rc-close{flex:none;width:28px;height:28px;border-radius:50%;border:1px solid var(--cl-line2);background:transparent;color:var(--cl-muted);font-size:17px;line-height:1;cursor:pointer;padding:0}',
+        '#clPanel .cl-rq-row{display:flex;gap:6px;align-items:flex-start}',
+        '#clPanel .cl-rq-row .cl-rq{flex:1;min-width:0}',
+        '#clPanel .cl-rq-row .cl-rc-close{width:36px;height:36px}',
         '#clPanel .cl-rpick{margin:2px 0 4px 42px;background:var(--cl-card);border:1px solid var(--cl-line2);border-radius:10px;padding:6px}',
         '#clPanel .cl-rq{width:100%;height:36px;border-radius:8px;border:1px solid var(--cl-line2);background:var(--cl-bg);color:var(--cl-ink);font-size:16px;padding:0 10px;margin-bottom:4px;box-sizing:border-box}',
         '#clPanel .cl-rlist{max-height:200px;overflow:auto;display:flex;flex-direction:column;gap:2px}',

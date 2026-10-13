@@ -1328,6 +1328,11 @@
     try {
       const players = sh.players.map((p, i) => ({ name: (i === 0 ? myName() : (p.name || '')).trim(), id: i === 0 ? me() : (p.id || null), caddy: p.caddy || 'any' }));
       const q = sheetQuote(sh);
+      // v1544: 4 h 30 between a golfer's tee times the same day (the course's caddy rule; the DB refuses it too)
+      try {
+        const busy = await rpc('golfer_busy', { p_ids: players.map(p => p.id).filter(Boolean), p_date: S.date, p_time: sh.t });
+        if (Array.isArray(busy) && busy.length) { toast(F('ttx.err.busy', 'You already play at {t} ({w}) — tee times need 4 h 30 between them', { t: busy[0].time, w: busy[0].what }), 'error', 7000); return; }
+      } catch (e) { }
       const r = await rpc('teetime_book', { p_slug: sh.slug, p_date: S.date, p_time: sh.t, p_col: sh.col, p_golfer_id: me(), p_golfer_name: myName(),
         p_players: players, p_carts: sh.carts, p_pay: q.rule === 'full' && sh.cfg.rule === 'deposit' ? 'full' : null, p_notes: sh.notes || null,
         p_promo: sh.promo ? sh.promo.id : null });

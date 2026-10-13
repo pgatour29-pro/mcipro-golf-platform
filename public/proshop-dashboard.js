@@ -100,6 +100,7 @@
         // is showing, until read, assigned and done (course-inbox.js). The embedded tee sheet leaves it to us.
         startInbox() {
             if (!window.CourseInbox) return;
+            try { PS.crm(); } catch (e) { }   // v1544: a golfer's direct message opens their player card (Messages)
             CourseInbox.start({
                 sb: () => db(), who: (PS.course && PS.course.name) || 'Pro shop',
                 lang: () => (typeof currentLanguage !== 'undefined' && currentLanguage) || 'en',

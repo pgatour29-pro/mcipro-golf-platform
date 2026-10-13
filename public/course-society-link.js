@@ -92,7 +92,9 @@
       // v1535 the message box goes to people: the whole event, one group, or one player (in-app + LINE)
       to: 'To', toAll: 'Organizer + every player ({n})', toGroup: '{g} · {n} players', msgT: 'Message', everyone: 'Everyone', toTyping: 'Message {t}…',
       // v1537 To / Cc / Bcc
-      cc: 'Cc', bcc: 'Bcc', ccBcc: 'Cc / Bcc', rcAdd: '+ Add', organizer: 'Organizer', rcSearch: 'Search a player or group…', noRcpt: 'Add a recipient first', rcNone: 'Nobody else to add', rmLine: 'Remove this line'
+      cc: 'Cc', bcc: 'Bcc', ccBcc: 'Cc / Bcc', rcAdd: '+ Add', organizer: 'Organizer', rcSearch: 'Search a player or group…', noRcpt: 'Add a recipient first', rcNone: 'Nobody else to add', rmLine: 'Remove this line',
+      // v1544 guest caddies under a player
+      gstAdd: '+ Guest caddy for {p}', gstN: 'Guest {n}', gstPh: 'Name or Call PIN (optional)', gstOf: 'Guest of {p}', gstMaster: 'Caddy master assigns', gstSave: 'Save', gstFound: '✓ {n}', gstNoPin: 'No golfer with that Call PIN', gstSetMsg: '{c} set for {g} (guest of {p})', gstCancelMsg: 'Guest caddy cancelled ({g}, guest of {p})', guests: 'guests'
     },
     th: {
       societies: 'สมาคม', golfCourse: 'สนามกอล์ฟ', upcoming: 'อีเวนต์สมาคมที่สนามนี้ — 3 สัปดาห์ข้างหน้า',
@@ -114,7 +116,8 @@
       cadSetMsg: 'กำหนด {c} ให้ {p} ({g})', cadOkMsg: 'ยืนยัน {c} ให้ {p}', cadCancelMsg: 'ยกเลิก {c} ของ {p}',
       cadRefuse: '{c} ไม่ว่าง: {r}', cadSaved: 'บันทึกแล้ว', unpaired: 'ยังไม่จับกลุ่ม',
       to: 'ถึง', toAll: 'ผู้จัด + ผู้เล่นทุกคน ({n})', toGroup: '{g} · {n} คน', msgT: 'ส่งข้อความ', everyone: 'ทุกคน', toTyping: 'ส่งข้อความถึง {t}…',
-      cc: 'สำเนา', bcc: 'สำเนาลับ', ccBcc: 'สำเนา / สำเนาลับ', rcAdd: '+ เพิ่ม', organizer: 'ผู้จัด', rcSearch: 'ค้นหาผู้เล่นหรือกลุ่ม…', noRcpt: 'เพิ่มผู้รับก่อน', rcNone: 'ไม่มีผู้รับอื่นให้เพิ่ม', rmLine: 'ลบบรรทัดนี้'
+      cc: 'สำเนา', bcc: 'สำเนาลับ', ccBcc: 'สำเนา / สำเนาลับ', rcAdd: '+ เพิ่ม', organizer: 'ผู้จัด', rcSearch: 'ค้นหาผู้เล่นหรือกลุ่ม…', noRcpt: 'เพิ่มผู้รับก่อน', rcNone: 'ไม่มีผู้รับอื่นให้เพิ่ม', rmLine: 'ลบบรรทัดนี้',
+      gstAdd: '+ แคดดี้ของแขกของ {p}', gstN: 'แขก {n}', gstPh: 'ชื่อหรือ Call PIN (ไม่บังคับ)', gstOf: 'แขกของ {p}', gstMaster: 'หัวหน้าแคดดี้จัดให้', gstSave: 'บันทึก', gstFound: '✓ {n}', gstNoPin: 'ไม่พบนักกอล์ฟที่มี Call PIN นี้', gstSetMsg: 'กำหนด {c} ให้ {g} (แขกของ {p})', gstCancelMsg: 'ยกเลิกแคดดี้ของแขก ({g} แขกของ {p})', guests: 'แขก'
     },
     ko: {
       societies: '소사이어티', golfCourse: '골프장', upcoming: '이 골프장의 소사이어티 일정 — 앞으로 3주',
@@ -136,7 +139,8 @@
       cadSetMsg: '{p}에게 {c} 배정 ({g})', cadOkMsg: '{p}의 {c} 확정', cadCancelMsg: '{p}의 {c} 취소',
       cadRefuse: '{c} 불가: {r}', cadSaved: '저장됨', unpaired: '미편성',
       to: '받는 사람', toAll: '주최자 + 모든 선수 ({n})', toGroup: '{g} · {n}명', msgT: '메시지', everyone: '모두', toTyping: '{t}에게 메시지…',
-      cc: '참조', bcc: '숨은 참조', ccBcc: '참조 / 숨은 참조', rcAdd: '+ 추가', organizer: '주최자', rcSearch: '선수 또는 조 검색…', noRcpt: '받는 사람을 먼저 추가하세요', rcNone: '더 추가할 사람이 없습니다', rmLine: '이 줄 삭제'
+      cc: '참조', bcc: '숨은 참조', ccBcc: '참조 / 숨은 참조', rcAdd: '+ 추가', organizer: '주최자', rcSearch: '선수 또는 조 검색…', noRcpt: '받는 사람을 먼저 추가하세요', rcNone: '더 추가할 사람이 없습니다', rmLine: '이 줄 삭제',
+      gstAdd: '+ {p}님 게스트 캐디', gstN: '게스트 {n}', gstPh: '이름 또는 Call PIN (선택)', gstOf: '{p}님의 게스트', gstMaster: '캐디 마스터 배정', gstSave: '저장', gstFound: '✓ {n}', gstNoPin: '해당 Call PIN의 골퍼가 없습니다', gstSetMsg: '{g}에게 {c} 배정 ({p}님의 게스트)', gstCancelMsg: '게스트 캐디 취소 ({g}, {p}님의 게스트)', guests: '게스트'
     },
     ja: {
       societies: 'ソサエティ', golfCourse: 'ゴルフ場', upcoming: 'このゴルフ場のソサエティ予定 — 今後3週間',
@@ -158,12 +162,13 @@
       cadSetMsg: '{p}に{c}を割り当て ({g})', cadOkMsg: '{p}の{c}を確定', cadCancelMsg: '{p}の{c}をキャンセル',
       cadRefuse: '{c}は利用できません: {r}', cadSaved: '保存しました', unpaired: '組未定',
       to: '宛先', toAll: '主催者 + 全プレーヤー ({n})', toGroup: '{g} · {n}名', msgT: 'メッセージ', everyone: '全員', toTyping: '{t}へのメッセージ…',
-      cc: 'CC', bcc: 'BCC', ccBcc: 'CC / BCC', rcAdd: '+ 追加', organizer: '主催者', rcSearch: 'プレーヤーまたはグループを検索…', noRcpt: '先に宛先を追加してください', rcNone: '追加できる人はいません', rmLine: 'この行を削除'
+      cc: 'CC', bcc: 'BCC', ccBcc: 'CC / BCC', rcAdd: '+ 追加', organizer: '主催者', rcSearch: 'プレーヤーまたはグループを検索…', noRcpt: '先に宛先を追加してください', rcNone: '追加できる人はいません', rmLine: 'この行を削除',
+      gstAdd: '+ {p}さんのゲスト用キャディ', gstN: 'ゲスト{n}', gstPh: '名前または Call PIN（任意）', gstOf: '{p}さんのゲスト', gstMaster: 'キャディマスターが割当', gstSave: '保存', gstFound: '✓ {n}', gstNoPin: 'この Call PIN のゴルファーはいません', gstSetMsg: '{g}に{c}を割り当て（{p}さんのゲスト）', gstCancelMsg: 'ゲストのキャディを取消（{g}、{p}さんのゲスト）', guests: 'ゲスト'
     }
   };
 
   var CL = window.CourseLink = {
-    _v: 1541,
+    _v: 1544,
     KEYS: KEYS,
     sb: null,
     lang: 'en',
@@ -285,7 +290,7 @@
         sb.from('course_event_slots').select('*').in('event_id', ids),
         socIds.length ? sb.from('society_profiles').select('id,society_name').in('id', socIds) : Promise.resolve({ data: [] }),
         sb.rpc('ecm_list', { p_event_ids: ids, p_token: self._tok(), p_light: true }),   // v1538: the server decides what this side may see
-        dates.length ? sb.from('caddy_bookings').select('id,golfer_id,user_id,golfer_name,caddie_name,caddy_id,status,tee_time,start_time,booking_date,course_id,course_name,booking_source,special_requests,teesheet_booking_id,created_at,caddy_profiles(caddy_number,name,photo_url)')
+        dates.length ? sb.from('caddy_bookings').select('id,golfer_id,user_id,golfer_name,caddie_name,caddy_id,status,tee_time,start_time,booking_date,course_id,course_name,booking_source,special_requests,teesheet_booking_id,created_at,guest_of,caddy_profiles(caddy_number,name,photo_url)')
           .in('booking_date', dates).neq('status', 'cancelled').limit(1000) : Promise.resolve({ data: [] }),
         slugs.length ? sb.from('caddy_profiles').select('id,caddy_number,name,photo_url,course_id,course_name').eq('is_active', true).eq('is_mock', false).or(rosterOr).limit(600) : Promise.resolve({ data: [] })
       ]);
@@ -316,8 +321,9 @@
           if (r.player_name) regByName[String(r.player_name).trim().toLowerCase()] = rec;
         });
         // this event's caddy jobs, best row per golfer (confirmed beats pending, then newest)
-        var jobByPid = {}, jobByName = {};
+        var jobByPid = {}, jobByName = {}, guestJobs = {};
         jobs.filter(function (j) { return self._jobAtEvent(j, ev); }).forEach(function (j) {
+          if (j.guest_of) { (guestJobs[j.guest_of] = guestJobs[j.guest_of] || []).push(j); return; }   // v1544: a guest's caddy, not the player's
           var keys = [j.golfer_id, j.user_id].filter(Boolean);
           var better = function (cur) { return !cur || (j.status === 'confirmed' && cur.status !== 'confirmed') || (j.status === cur.status && String(j.created_at) > String(cur.created_at)); };
           keys.forEach(function (k) { if (better(jobByPid[k])) jobByPid[k] = j; });
@@ -339,7 +345,13 @@
         var mkPlayer = function (pid, name) {
           var nm = String(name || '').trim().toLowerCase();
           var r = (pid && regByPid[pid]) || regByName[nm] || null;
-          return { id: pid || (r && r.id) || '', name: name || (r && r.name) || '', regId: r ? r.regId : null, regNums: r ? r.nums : [], caddy: caddyOf(pid, name) };
+          var gl = (pid && guestJobs[pid]) || guestJobs['n:' + nm] || [];
+          var guests = gl.slice().sort(function (a, b) { return String(a.created_at) < String(b.created_at) ? -1 : 1; }).map(function (j) {
+            var num = self.numOfJob(j), ro = num ? (roster[num] || {}) : {};
+            return { jobId: j.id, name: j.golfer_name || '', gid: j.golfer_id || '', num: num || '', cname: num ? (ro.name || (j.caddy_profiles && j.caddy_profiles.name) || j.caddie_name || ('Caddy #' + num)) : '',
+              photo: ro.photo || (j.caddy_profiles && j.caddy_profiles.photo_url) || null, id: ro.id || j.caddy_id || null, status: j.status };
+          });
+          return { id: pid || (r && r.id) || '', name: name || (r && r.name) || '', regId: r ? r.regId : null, regNums: r ? r.nums : [], caddy: caddyOf(pid, name), guests: guests };
         };
         var p = pair.find(function (x) { return String(x.event_id) === String(e.id); });
         var seen = {};
@@ -568,6 +580,11 @@
         // v1347: the caddy picker filters as you type (list repaint only — the input keeps focus)
         p.addEventListener('input', function (e) {
           if (e.target.classList.contains('cl-pick-in') && self._pick) { self._pick.q = e.target.value; self._paintPick(); }
+          if (e.target.classList.contains('cl-gst-in')) {   // v1544: a guest's name / Call PIN (kept while typing; 6 digits = look up)
+            clearTimeout(self._gT); var gin = e.target; self._gT = setTimeout(function () { self._guestLookup(gin); }, 350);
+            var gc = gin.closest('.cl-card'), gev = gc && self.state.byId[gc.getAttribute('data-ev')], grow = gin.closest('[data-pk]');
+            if (gev && grow) { var gf = (self._gNew[gev.id + '|' + grow.getAttribute('data-pk')] || [])[+gin.getAttribute('data-fresh')]; if (gf) gf.q = gin.value; }
+          }
           if (e.target.classList.contains('cl-rq')) {   // v1537 recipient search: list repaint only, the input keeps focus
             var card = e.target.closest('.cl-card'), ev = card && self.state.byId[card.getAttribute('data-ev')]; if (!ev) return;
             self._rcOf(ev).q = e.target.value; var l = card.querySelector('.cl-rlist'); if (l) l.innerHTML = self._rcListHtml(ev);
@@ -713,6 +730,7 @@
         }
         if (!ev) return;
         if (a === 'cadpick' || a === 'cadok' || a === 'cadx' || a === 'cadset' || a === 'cadnone') return this._cadAction(a, b, ev);
+        if (a === 'gadd' || a === 'gdrop' || a === 'gx' || a === 'gpick') return this._guestAction(a, b, ev);
         if (a === 'inc' || a === 'dec') { var n = card.querySelector('.cl-num'); n.value = Math.max(0, Math.min(60, (+n.value || 0) + (a === 'inc' ? 1 : -1))); return; }
         if (a === 'jump') { if (this.onJump) this.onJump(ev.date, ev); return; }
         if (a === 'save') {
@@ -772,16 +790,16 @@
     },
     _groupHtml: function (ev, players, title, teeTime, gi, canEdit) {
       var E = this.esc.bind(this), self = this;
-      var nc = players.filter(function (p) { return p.caddy; }).length;
+      var ng = 0, nc = 0; players.forEach(function (p) { if (p.caddy) nc++; (p.guests || []).forEach(function (g) { ng++; if (g.num) nc++; }); });
       var h = '<div class="cl-g"><div class="cl-g-h"><b>' + E(title) + '</b>' + (teeTime ? '<span class="cl-g-t">' + E(teeTime) + '</span>' : '') +
-        '<span class="cl-g-n">' + players.length + ' ' + E(this.t('players')) + ' · ' + nc + ' ' + E(this.t(nc === 1 ? 'caddyOne' : 'caddyMany')) + '</span>' +
+        '<span class="cl-g-n">' + players.length + ' ' + E(this.t('players')) + (ng ? ' · ' + ng + ' ' + E(this.t('guests')) : '') + ' · ' + nc + ' ' + E(this.t(nc === 1 ? 'caddyOne' : 'caddyMany')) + '</span>' +
         (canEdit ? '<button class="cl-ic msg" data-a="msgtog" data-gi="' + gi + '" title="' + E(this.t('msgT')) + '" aria-label="' + E(this.t('msgT')) + '">✉</button>' : '') + '</div>';
       players.forEach(function (p) { h += self._playerHtml(ev, p, gi, canEdit); });
       return h + '</div>';
     },
     _playerHtml: function (ev, p, gi, canEdit) {
       var E = this.esc.bind(this), c = p.caddy, key = this._pkey(p), pk = this._pick;
-      var open = !!(pk && pk.ev === ev.id && pk.key === key), h;
+      var open = !!(pk && pk.ev === ev.id && pk.key === key && !pk.guest), h;
       var hlc = (this._hl && this._hl.ev === ev.id && this._hl.key === key) ? ' cl-hl' : '';
       // QR guest (no-app venue page q.html) — amber pill so the counter knows why there is no app profile
       var qrp = /^QR-GUEST-/.test(String(p.id || '')) ? '<span class="cl-qr">QR</span>' : '';
@@ -798,15 +816,122 @@
         h = '<div class="cl-p' + (open ? ' open' : '') + hlc + '" data-pk="' + E(key) + '">' + nmH +
           (canEdit ? '<button class="cl-add' + (open ? ' on' : '') + '" data-a="cadpick">' + E(this.t('addCaddy')) + '</button>' + this._msgBtn() : '<span class="cl-none">—</span>') + '</div>';
       }
-      if (open) h += '<div class="cl-pick" data-pk="' + E(key) + '"><input class="cl-pick-in" type="text" autocomplete="off" placeholder="' + E(this.t('pickCaddy')) + '" value="' + E(pk.q || '') + '"><div class="cl-pick-list">' + this._pickListHtml(ev, p) + '</div></div>';
+      if (open) h += this._pickHtml(ev, p, key);
+      return h + this._guestsHtml(ev, p, key, canEdit);
+    },
+    _pickHtml: function (ev, p, key) {
+      var E = this.esc.bind(this), pk = this._pick;
+      return '<div class="cl-pick" data-pk="' + E(key) + '"><input class="cl-pick-in" type="text" autocomplete="off" placeholder="' + E(this.t('pickCaddy')) + '" value="' + E(pk.q || '') + '"><div class="cl-pick-list">' + this._pickListHtml(ev, p) + '</div></div>';
+    },
+    /* v1544 guest caddies: saved ones (caddy jobs with guest_of = this player) + new rows being typed */
+    _gNew: {},
+    _guestsHtml: function (ev, p, key, canEdit) {
+      var E = this.esc.bind(this), self = this, pk = this._pick, gs = p.guests || [], nk = ev.id + '|' + key, fresh = this._gNew[nk] || [];
+      if (!gs.length && !fresh.length && !canEdit) return '';
+      var h = '', n = 0;
+      gs.forEach(function (g) {
+        n++;
+        var nm = g.name && g.name !== self.t('gstOf', { p: p.name }) ? g.name : self.t('gstOf', { p: p.name });
+        var open = !!(pk && pk.ev === ev.id && pk.key === key && pk.guest && pk.guest.jobId === g.jobId);
+        h += '<div class="cl-gst" data-pk="' + E(key) + '" data-job="' + E(g.jobId) + '"><span class="cl-gst-l">' + E(self.t('gstN', { n: n })) + '</span><span class="cl-gst-n">' + E(nm) + '</span>' +
+          (g.num ? '<span class="cl-cd">' + self._photo(g.num, g.photo, 20) + '<b>#' + E(g.num) + '</b></span>' : '<span class="cl-gst-m">' + E(self.t('gstMaster')) + '</span>') +
+          (canEdit ? '<span class="cl-acts"><button class="cl-ic" data-a="gpick" title="' + E(self.t('changeT')) + '">✎</button><button class="cl-ic x" data-a="gx">✕</button></span>' : '') + '</div>';
+        if (open) h += self._pickHtml(ev, p, key);
+      });
+      fresh.forEach(function (f, i) {
+        n++;
+        var open = !!(pk && pk.ev === ev.id && pk.key === key && pk.guest && pk.guest.fresh === i);
+        h += '<div class="cl-gst new" data-pk="' + E(key) + '" data-fresh="' + i + '"><span class="cl-gst-l">' + E(self.t('gstN', { n: n })) + '</span>' +
+          '<input class="cl-gst-in" data-fresh="' + i + '" type="text" autocomplete="off" placeholder="' + E(self.t('gstPh')) + '" value="' + E(f.q || '') + '">' +
+          (f.found ? '<span class="cl-gst-ok">' + E(self.t('gstFound', { n: f.found.name })) + '</span>' : '') +
+          '<button class="cl-add' + (open ? ' on' : '') + '" data-a="gpick">' + E(self.t('addCaddy')) + '</button><button class="cl-ic x" data-a="gdrop">✕</button></div>';
+        if (open) h += self._pickHtml(ev, p, key);
+      });
+      if (canEdit) h += '<button class="cl-gst-add" data-pk="' + E(key) + '" data-a="gadd">' + E(this.t('gstAdd', { p: p.name })) + '</button>';
       return h;
+    },
+    _guestAction: async function (a, b, ev) {
+      var row = b.closest('[data-pk]'), key = row && row.getAttribute('data-pk');
+      var found = key && this._player(ev, key); if (!found) return;
+      var nk = ev.id + '|' + key, fresh = this._gNew[nk] = this._gNew[nk] || [], self = this;
+      if (a === 'gadd') { fresh.push({ q: '' }); this.renderPanel(); var ins = document.querySelectorAll('#clPanel .cl-gst-in'); if (ins.length) ins[ins.length - 1].focus(); return; }
+      var job = row.getAttribute('data-job'), fi = row.getAttribute('data-fresh');
+      if (a === 'gdrop') { fresh.splice(+fi, 1); this._pick = null; this.renderPanel(); return; }
+      if (a === 'gx') {
+        if (!b.getAttribute('data-arm')) { b.setAttribute('data-arm', '1'); b.textContent = this.t('sure'); b.classList.add('arm'); setTimeout(function () { if (b.isConnected) { b.removeAttribute('data-arm'); b.textContent = '✕'; b.classList.remove('arm'); } }, 3500); return; }
+        b.disabled = true; return this.cancelGuest(ev, found, job);
+      }
+      if (a === 'gpick') {
+        var g = job ? { jobId: job } : { fresh: +fi };
+        if (this._pick && this._pick.ev === ev.id && this._pick.key === key && this._pick.guest && this._pick.guest.jobId === g.jobId && this._pick.guest.fresh === g.fresh) { this._pick = null; this.renderPanel(); return; }
+        this._pick = { ev: ev.id, key: key, q: '', list: null, group: found.group, guest: g };
+        this.renderPanel();
+        var list = await this._rosterList(ev, found.teeTime || this.firstTee(ev));
+        if (!this._pick || this._pick.key !== key || this._pick.ev !== ev.id) return;
+        this._pick.list = list; this._paintPick();
+      }
+    },
+    /* a typed 6-digit Call PIN becomes the golfer (desk token); anything else stays a name */
+    _guestLookup: async function (inp) {
+      var row = inp.closest('[data-pk]'), card = inp.closest('.cl-card'), ev = card && this.state.byId[card.getAttribute('data-ev')]; if (!row || !ev) return;
+      var nk = ev.id + '|' + row.getAttribute('data-pk'), f = (this._gNew[nk] || [])[+inp.getAttribute('data-fresh')]; if (!f) return;
+      f.q = inp.value; f.found = null;
+      var pin = String(inp.value || '').replace(/\D/g, ''), tok = this._tok();
+      if (pin.length === 6 && tok) {
+        try {
+          var r = await this.sb.rpc('desk_call_lookup', { p_token: tok, p_pin: pin });
+          var g = r && r.data && r.data.ok && r.data.golfer;
+          if (g) f.found = { id: g.id, name: g.name }; else this.toast('⚠ ' + this.t('gstNoPin'));
+        } catch (e) { }
+        this.renderPanel();
+      }
+    },
+    setGuestCaddy: async function (ev, found, guest, num, rosterRow) {
+      var sb = this.sb, st = this.state, p = found.p, key = this._pkey(p), nk = ev.id + '|' + key;
+      var roster = this._rosterFor(ev), cad = num ? (roster[num] || rosterRow || {}) : {};
+      var tee = found.teeTime || this.firstTee(ev), now = this._now();
+      var row = num ? { caddie_name: 'Caddy #' + num, caddy_id: cad.id || null, status: 'confirmed', confirmed_by: this._who(), confirmed_at: now }
+                    : { caddie_name: 'Unassigned', caddy_id: null, status: 'pending' };
+      Object.assign(row, { tee_time: tee, start_time: tee, course_id: st.slug || ev.slug || null, course_name: st.courseName || ev.courseName || null, updated_at: now });
+      var gName;
+      try {
+        var r;
+        if (guest.jobId) {
+          var cur = (p.guests || []).find(function (x) { return x.jobId === guest.jobId; }) || {};
+          gName = cur.name || this.t('gstOf', { p: p.name });
+          r = await sb.from('caddy_bookings').update(row).eq('id', guest.jobId).select('id');
+        } else {
+          var f = guest.fresh != null ? ((this._gNew[nk] || [])[guest.fresh] || {}) : { q: guest.name || '', found: guest.gid ? { id: guest.gid, name: guest.name } : null };   // v1544: the player card hands a guest in directly
+          var typed = String(f.q || '').trim();
+          gName = f.found ? f.found.name : (typed && !/^\d{3}\s?\d{3}$/.test(typed) ? typed : this.t('gstOf', { p: p.name }));
+          var gid = f.found ? f.found.id : (p.id || null);   // no name / PIN → booked under the player
+          r = await sb.from('caddy_bookings').insert(Object.assign(row, { golfer_id: gid, user_id: gid, golfer_name: gName, guest_of: key,
+            booking_date: ev.date, end_time: this._plusMins(tee, 255), holes: 18, booking_source: 'proshop_event', special_requests: ev.title || '', payment_status: 'pending' })).select('id');
+          if (!r.error && r.data && r.data.length && guest.fresh != null) (this._gNew[nk] || []).splice(guest.fresh, 1);
+        }
+        if (r.error) throw r.error;
+        if (!r.data || !r.data.length) throw new Error('No row written');
+        await this._after(ev, 'gstSetMsg', { c: num ? 'Caddy #' + num : this.t('gstMaster'), g: gName, p: p.name });
+      } catch (err) { this._fail('setGuestCaddy', err); }
+    },
+    cancelGuest: async function (ev, found, jobId) {
+      var p = found.p, g = (p.guests || []).find(function (x) { return x.jobId === jobId; }) || {}, now = this._now();
+      try {
+        var r = await this.sb.from('caddy_bookings').update({ status: 'cancelled', cancelled_at: now, cancellation_reason: 'Guest caddy cancelled by the pro shop', updated_at: now }).eq('id', jobId).select('id');
+        if (r.error) throw r.error;
+        if (!r.data || !r.data.length) throw new Error('No row written');
+        await this._after(ev, 'gstCancelMsg', { g: g.name || this.t('gstOf', { p: p.name }), p: p.name });
+      } catch (err) { this._fail('cancelGuest', err); }
     },
     _msgBtn: function () { var T = this.esc(this.t('msgT')); return '<button class="cl-ic msg" data-a="msgto" title="' + T + '" aria-label="' + T + '">✉</button>'; },
     _pickListHtml: function (ev, p) {
       var E = this.esc.bind(this), pk = this._pick, self = this;
       if (!pk || !pk.list) return '<div class="cl-empty sm">' + E(this.t('loading')) + '</div>';
       var q = String(pk.q || '').toLowerCase().trim();
-      var used = {}; (pk.group || []).forEach(function (x) { if (x !== p && x.caddy) used[String(x.caddy.num)] = 1; });
+      var used = {}; (pk.group || []).forEach(function (x) {
+        if ((x !== p || pk.guest) && x.caddy) used[String(x.caddy.num)] = 1;
+        (x.guests || []).forEach(function (g) { if (g.num && !(pk.guest && pk.guest.jobId === g.jobId)) used[String(g.num)] = 1; });
+      });
       var rows = pk.list.filter(function (r) { return !q || (('#' + r.num + ' ' + r.num + ' ' + (r.name || '')).toLowerCase().indexOf(q) !== -1); }).slice(0, 80);
       var h = '';
       if (!pk.list.length) h += '<div class="cl-empty sm">' + E(this.t('noRoster')) + '</div>';
@@ -816,7 +941,7 @@
           : state === 'out' ? self.t('outAt', { a: r.at || '', b: r.until || '' }) + (r.golfer ? ' · ' + r.golfer : '') : self.t('free');
         h += '<div class="cl-pk ' + state + '" data-a="cadset" data-num="' + E(r.num) + '">' + self._photo(r.num, r.photo, 26) + '<b>#' + E(r.num) + '</b><span class="cl-nm">' + E(r.name || '') + '</span><em>' + E(note) + '</em></div>';
       });
-      h += '<div class="cl-pk none" data-a="cadnone">' + E(this.t('noCaddyOpt')) + '</div>';
+      h += '<div class="cl-pk none" data-a="cadnone">' + E(pk.guest ? this.t('gstMaster') : this.t('noCaddyOpt')) + '</div>';
       return h;
     },
     /* find a player by key across the paired groups (numbered like the panel) and the unpaired list */
@@ -866,6 +991,18 @@
         var list = await this._rosterList(ev, found.teeTime || this.firstTee(ev));
         if (!this._pick || this._pick.key !== key || this._pick.ev !== ev.id) return;
         this._pick.list = list; this._paintPick(); return;
+      }
+      if (this._pick && this._pick.guest && (a === 'cadset' || a === 'cadnone')) {   // v1544: the pick is for a guest of this player
+        var gpk = this._pick, gnum = a === 'cadset' ? String(b.getAttribute('data-num') || '').trim() : '';
+        if (gnum) {
+          var gr = gpk.list ? gpk.list.find(function (x) { return String(x.num) === gnum; }) : null;
+          var gUsed = (found.group || []).some(function (x) { return (x.caddy && String(x.caddy.num) === gnum) || (x.guests || []).some(function (g) { return g.num && String(g.num) === gnum && g.jobId !== gpk.guest.jobId; }); });
+          var gWhy = gUsed ? this.t('inGroup') : (gr && gr.state === 'off') ? this.t('dayOff') : (gr && gr.state === 'out') ? this.t('outAt', { a: gr.at || '', b: gr.until || '' }) + (gr.golfer ? ' · ' + gr.golfer : '') : '';
+          if (gWhy) { this.toast('⚠ ' + this.t('cadRefuse', { c: '#' + gnum, r: gWhy })); return; }
+          b.classList.add('busy');
+          return this.setGuestCaddy(ev, found, gpk.guest, gnum, gr);
+        }
+        return this.setGuestCaddy(ev, found, gpk.guest, '', null);
       }
       if (a === 'cadset') {
         var num = String(b.getAttribute('data-num') || '').trim(), pk = this._pick;
@@ -1142,6 +1279,14 @@
         '#clPanel .cl-ic.x{color:var(--cl-red-soft);border-color:rgba(239,68,68,.5)}',
         '#clPanel .cl-ic.x.arm{width:auto;padding:0 8px;background:#ef4444;color:#fff;border-color:#ef4444;font-size:11px}',
         '#clPanel .cl-ic:disabled{opacity:.5}',
+        '#clPanel .cl-gst{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:4px 0 4px 18px;padding:5px 8px;border:1px dashed var(--cl-line2);border-radius:10px;position:relative}',
+        '#clPanel .cl-gst::before{content:"";position:absolute;left:-12px;top:-8px;width:10px;height:24px;border-left:2px solid var(--cl-line2);border-bottom:2px solid var(--cl-line2);border-bottom-left-radius:6px}',
+        '#clPanel .cl-gst-l{font-size:10.5px;font-weight:800;color:var(--cl-muted);white-space:nowrap}',
+        '#clPanel .cl-gst-n{flex:1;min-width:0;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+        '#clPanel .cl-gst-m{font-size:11.5px;font-weight:700;color:var(--cl-amber-soft)}',
+        '#clPanel .cl-gst-in{flex:1;min-width:120px;height:32px;border-radius:8px;border:1px solid var(--cl-line2);background:var(--cl-bg);color:var(--cl-ink);padding:0 8px;font-size:16px}',
+        '#clPanel .cl-gst-ok{font-size:11.5px;font-weight:800;color:var(--cl-green-soft);white-space:nowrap}',
+        '#clPanel .cl-gst-add{display:block;margin:2px 0 8px 18px;border:1px dashed var(--cl-line2);background:transparent;color:var(--cl-green-soft);border-radius:14px;padding:4px 10px;font-size:12px;font-weight:800;cursor:pointer}',
         '#clPanel .cl-pick{margin:2px 0 6px 8px;background:var(--cl-card);border:1px solid #f59e0b;border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:2px}',
         '#clPanel .cl-pick-in{height:36px;border-radius:8px;border:1px solid var(--cl-line2);background:var(--cl-bg);color:var(--cl-ink);font-size:16px;padding:0 10px;margin-bottom:4px}',
         '#clPanel .cl-pick-list{max-height:46vh;overflow:auto;display:flex;flex-direction:column;gap:2px}',

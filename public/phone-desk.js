@@ -673,6 +673,8 @@
         b.name = players[0].name;
         var rf = await api.caddyRefusals(b.golfers.filter(function (g) { return g.caddyId; }), S.date, S.time, null);
         if (rf.length) { S.busy = false; S.err = this.t('refused') + '\n' + rf.join('\n'); await this.refreshCaddies(); this.paint(); return; }
+        var gc = api.golferClashes ? await api.golferClashes(b.golfers, S.date, S.time, null, 'regular') : [];   // v1544: 4 h 30 between a golfer's tee times
+        if (gc.length) { S.busy = false; S.err = gc.join('\n'); this.paint(); return; }
         var fails = await M.commit([b], S.date);
         S.busy = false;
         if (fails.length) { S.err = this.t('fail', { m: fails.join('; ') }); this.paint(); return; }

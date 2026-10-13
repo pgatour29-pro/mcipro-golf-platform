@@ -1044,6 +1044,24 @@
     @media (max-width: 520px) { .roster-row input.rphone { flex-basis: 96px; } .roster-add input { flex: 1 1 96px; } }
     /* phone: name and caddy stack instead of squeezing into one line (v1218) */
     @media (max-width: 520px) { .golfer-fields { flex-wrap: wrap; } .golfer-fields .golfer-field { flex: 1 1 100%; } }
+    /* v1544 guest caddies: a player's guests' caddies sit UNDER the player (name or Call PIN optional) */
+    .golfer-row { flex-wrap: wrap; }
+    .gst-wrap { flex: 1 1 100%; margin-left: 44px; display: flex; flex-direction: column; gap: 8px; }
+    .gst-wrap:empty { display: none; }
+    .gst-row { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) 32px; gap: 8px; align-items: center; padding: 8px 10px; border: 1px dashed var(--line-2, #cbd5e1); border-radius: 10px; position: relative; }
+    .gst-row::before { content: ""; position: absolute; left: -14px; top: -10px; width: 12px; height: 28px; border-left: 2px solid var(--line-2, #cbd5e1); border-bottom: 2px solid var(--line-2, #cbd5e1); border-bottom-left-radius: 6px; }
+    .gst-row .gst-l { font-size: 11px; font-weight: 800; opacity: .8; white-space: nowrap; }
+    .gst-row .gst-name-w { min-width: 0; position: relative; }
+    .gst-row .gst-caddy-w { min-width: 0; position: relative; display: flex; gap: 4px; }
+    .gst-row .gst-caddy-w > div:first-child { flex: 1; min-width: 0; }
+    .gst-row input { width: 100%; height: 40px; border: 1px solid var(--line-2, #cbd5e1); border-radius: 10px; background: var(--card, #fff); color: var(--ink, #0f172a); padding: 0 12px; font-size: 14px; box-sizing: border-box; }
+    .gst-row .gst-ok { display: block; font-size: 11.5px; font-weight: 800; color: #16a34a; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .gst-row .gst-ok:empty { display: none; }
+    .gst-row .gst-x { width: 30px; height: 30px; }
+    .gst-foot { flex: 1 1 100%; margin-left: 44px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+    .gst-add { border: 1px dashed var(--line-2, #cbd5e1); background: transparent; color: #16a34a; border-radius: 14px; padding: 5px 12px; font-size: 12.5px; font-weight: 800; cursor: pointer; }
+    .gst-hint { font-size: 11.5px; opacity: .75; }
+    @media (max-width: 520px) { .gst-wrap, .gst-foot { margin-left: 18px; } .gst-row { grid-template-columns: auto minmax(0, 1fr) 32px; } .gst-row .gst-caddy-w { grid-column: 2 / 3; } }
     /* v1471: Block Time Range on a phone — its five fields sat on one line, 617px wide inside a 325px sheet */
     @media (max-width: 640px) { .range-time-row { flex-wrap: wrap; } .range-time-row .form-group { flex: 1 1 calc(50% - 6px); min-width: 0; } .range-time-row .form-group select { width: 100%; min-width: 0; } .range-time-row .range-info { flex: 1 1 100%; } }
     .caddy-picker-header {
@@ -3548,10 +3566,11 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="golfer-avatar.js?v=20260830a"></script>
   <script src="name-search.js?v=20261013a"></script>
-  <script src="course-society-link.js?v=1541"></script>
-  <script src="course-inbox.js?v=1539"></script>
+  <script src="course-society-link.js?v=1544"></script>
+  <script src="course-inbox.js?v=1544"></script>
   <script src="facility-sheet.js?v=1536"></script>
   <script src="course-crm.js?v=1530"></script>
+  <script src="player-card.js?v=1544"></script>
   <script src="booking-brief.js?v=1530"></script>
   <script src="course-open-times.js?v=1446"></script>
   <script src="promo-wall.js?v=1530"></script>
@@ -3559,7 +3578,7 @@
   <script src="caddy-work-core.js?v=1473"></script>
   <script src="course-traffic.js?v=1459"></script>
   <script src="caddy-module.js?v=1530"></script>
-  <script src="phone-desk.js?v=1530"></script>
+  <script src="phone-desk.js?v=1544"></script>
   <script>
   (function() {
     'use strict';
@@ -4052,7 +4071,7 @@
         bookSlot: "Book Slot", bookingType: "Booking Type", course: "Course", tee: "Tee", time: "Time",
         golfers: "Golfers", addGolfer: "+ Add Golfer",
         golferName: "Golfer Name", caddy: "Caddy", searchCaddy: "Search caddy...", noCaddy: "No Caddy",
-        nameMatches: "{n} matches", nameHint: "click a name, or ↑ ↓ then Enter", nameNoMatch: "No directory match for \"{q}\" — will be saved as a guest", nameSearching: "Searching…",
+        nameMatches: "{n} matches", nameHint: "click a name, or ↑ ↓ then Enter", nameNoMatch: "No directory match for \"{q}\" — will be saved as a guest", nameSearching: "Searching…", gstAdd: "+ Guest caddy for {p}", gstN: "Guest {n}", gstPh: "Name or Call PIN (optional)", gstOf: "Guest of {p}", gstFound: "✓ {n}", gstNoName: "No name or PIN? The caddy is booked under {p}.",
         notes: "Notes", delete: "Delete", cancel: "Cancel", save: "Save",
         searchPlaceholder: "Golfer or caddy...", confirmClear: "Clear all bookings for this day?",
         noMatches: "No matches found.", player: "Player",
@@ -4077,7 +4096,7 @@
         rosterSaveFail: "Could not save the roster:", rosterEmpty: "No caddies for this course yet. Add them above.", rosterActive: "Active",
         rosterInactive: "Off roster", rosterInApp: "in app", rosterCount: "{n} caddies", rosterAdded: "{n} added",
         caddiesNeeded: "Caddies needed (no number)", caddiesNeededHint: "Jobs without a caddy number — the caddy master assigns from the rotation.",
-        caddyRefused: "Caddy not available — booking not saved", caddyDayOff: "day off", caddyOutAt: "out at {a}, free after {b}",
+        golferBusy: "{n} already plays at {t} ({w}) — tee times need 4 h 30 between them. Not saved.", caddyRefused: "Caddy not available — booking not saved", caddyDayOff: "day off", caddyOutAt: "out at {a}, free after {b}",
         dayOff: "DAY OFF", outUntil: "Out until {b}", openJobs: "open",
         caddySyncFail: "The tee time is saved but a caddy job could not be written:", recurringCaddySkipped: "Repeat bookings saved without caddies on these days:",
         caddyInGroup: "This caddy is already assigned to another golfer in this group",
@@ -4118,7 +4137,7 @@
         bookSlot: "จองช่วงเวลา", bookingType: "ประเภทการจอง", course: "คอร์ส", tee: "ทีออฟ", time: "เวลา",
         golfers: "นักกอล์ฟ", addGolfer: "+ เพิ่มนักกอล์ฟ",
         golferName: "ชื่อนักกอล์ฟ", caddy: "แคดดี้", searchCaddy: "ค้นหาแคดดี้...", noCaddy: "ไม่มีแคดดี้",
-        nameMatches: "พบ {n} รายชื่อ", nameHint: "คลิกชื่อ หรือกด ↑ ↓ แล้ว Enter", nameNoMatch: "ไม่พบ \"{q}\" ในสารบบ — จะบันทึกเป็นแขก", nameSearching: "กำลังค้นหา…",
+        nameMatches: "พบ {n} รายชื่อ", nameHint: "คลิกชื่อ หรือกด ↑ ↓ แล้ว Enter", nameNoMatch: "ไม่พบ \"{q}\" ในสารบบ — จะบันทึกเป็นแขก", nameSearching: "กำลังค้นหา…", gstAdd: "+ แคดดี้ของแขกของ {p}", gstN: "แขก {n}", gstPh: "ชื่อหรือ Call PIN (ไม่บังคับ)", gstOf: "แขกของ {p}", gstFound: "✓ {n}", gstNoName: "ไม่มีชื่อหรือ PIN? จองแคดดี้ในชื่อ {p}",
         notes: "หมายเหตุ", delete: "ลบ", cancel: "ยกเลิก", save: "บันทึก",
         searchPlaceholder: "นักกอล์ฟหรือแคดดี้...", confirmClear: "ล้างการจองทั้งหมดสำหรับวันนี้?",
         noMatches: "ไม่พบผลลัพธ์", player: "ผู้เล่น",
@@ -4143,7 +4162,7 @@
         rosterSaveFail: "บันทึกรายชื่อไม่สำเร็จ:", rosterEmpty: "ยังไม่มีแคดดี้ของสนามนี้ เพิ่มได้ด้านบน", rosterActive: "ใช้งาน",
         rosterInactive: "พักงาน", rosterInApp: "ใช้แอป", rosterCount: "แคดดี้ {n} คน", rosterAdded: "เพิ่มแล้ว {n}",
         caddiesNeeded: "ต้องการแคดดี้ (ไม่ระบุหมายเลข)", caddiesNeededHint: "งานที่ยังไม่ระบุแคดดี้ — แคดดี้มาสเตอร์จะจัดตามคิว",
-        caddyRefused: "แคดดี้ไม่ว่าง — ยังไม่บันทึกการจอง", caddyDayOff: "วันหยุด", caddyOutAt: "ออกรอบ {a} ว่างหลัง {b}",
+        golferBusy: "{n} มีเวลาออกรอบแล้วเวลา {t} ({w}) — ต้องห่างกัน 4 ชม. 30 นาที ยังไม่บันทึก", caddyRefused: "แคดดี้ไม่ว่าง — ยังไม่บันทึกการจอง", caddyDayOff: "วันหยุด", caddyOutAt: "ออกรอบ {a} ว่างหลัง {b}",
         dayOff: "วันหยุด", outUntil: "ไม่ว่างถึง {b}", openJobs: "รอจัด",
         caddySyncFail: "บันทึกทีไทม์แล้ว แต่บันทึกงานแคดดี้ไม่สำเร็จ:", recurringCaddySkipped: "บันทึกการจองซ้ำโดยไม่มีแคดดี้ในวันเหล่านี้:",
         caddyInGroup: "แคดดี้นี้ถูกกำหนดให้นักกอล์ฟคนอื่นในกลุ่มแล้ว",
@@ -4184,7 +4203,7 @@
         bookSlot: "슬롯 예약", bookingType: "예약 유형", course: "코스", tee: "티", time: "시간",
         golfers: "골퍼", addGolfer: "+ 골퍼 추가",
         golferName: "골퍼 이름", caddy: "캐디", searchCaddy: "캐디 검색...", noCaddy: "캐디 없음",
-        nameMatches: "{n}명 일치", nameHint: "이름을 클릭하거나 ↑ ↓ 후 Enter", nameNoMatch: "\"{q}\" 검색 결과 없음 — 게스트로 저장됩니다", nameSearching: "검색 중…",
+        nameMatches: "{n}명 일치", nameHint: "이름을 클릭하거나 ↑ ↓ 후 Enter", nameNoMatch: "\"{q}\" 검색 결과 없음 — 게스트로 저장됩니다", nameSearching: "검색 중…", gstAdd: "+ {p}님 게스트 캐디", gstN: "게스트 {n}", gstPh: "이름 또는 Call PIN (선택)", gstOf: "{p}님의 게스트", gstFound: "✓ {n}", gstNoName: "이름이나 PIN이 없으면 {p}님 이름으로 예약됩니다.",
         notes: "메모", delete: "삭제", cancel: "취소", save: "저장",
         searchPlaceholder: "골퍼 또는 캐디...", confirmClear: "오늘 예약을 모두 삭제하시겠습니까?",
         noMatches: "결과를 찾을 수 없습니다.", player: "플레이어",
@@ -4209,7 +4228,7 @@
         rosterSaveFail: "명단을 저장할 수 없습니다:", rosterEmpty: "이 코스에 등록된 캐디가 없습니다. 위에서 추가하세요.", rosterActive: "활동",
         rosterInactive: "명단 제외", rosterInApp: "앱 사용", rosterCount: "캐디 {n}명", rosterAdded: "{n}명 추가됨",
         caddiesNeeded: "필요한 캐디 수 (번호 미지정)", caddiesNeededHint: "번호 없이 요청된 캐디 — 캐디 마스터가 순번에 따라 배정합니다.",
-        caddyRefused: "캐디를 배정할 수 없어 예약이 저장되지 않았습니다", caddyDayOff: "휴무", caddyOutAt: "{a} 라운드 중, {b} 이후 가능",
+        golferBusy: "{n}님은 이미 {t}에 라운드가 있습니다 ({w}) — 티타임 간격은 4시간 30분이어야 합니다. 저장되지 않았습니다.", caddyRefused: "캐디를 배정할 수 없어 예약이 저장되지 않았습니다", caddyDayOff: "휴무", caddyOutAt: "{a} 라운드 중, {b} 이후 가능",
         dayOff: "휴무", outUntil: "{b}까지 라운드 중", openJobs: "미배정",
         caddySyncFail: "티타임은 저장됐지만 캐디 배정을 저장하지 못했습니다:", recurringCaddySkipped: "다음 날짜의 반복 예약은 캐디 없이 저장되었습니다:",
         caddyInGroup: "이 캐디는 이미 그룹 내 다른 골퍼에게 배정되었습니다",
@@ -4250,7 +4269,7 @@
         bookSlot: "スロット予約", bookingType: "予約タイプ", course: "コース", tee: "ティー", time: "時間",
         golfers: "ゴルファー", addGolfer: "+ ゴルファー追加",
         golferName: "ゴルファー名", caddy: "キャディー", searchCaddy: "キャディー検索...", noCaddy: "キャディーなし",
-        nameMatches: "{n}件一致", nameHint: "名前をクリック、または ↑ ↓ で選んで Enter", nameNoMatch: "\"{q}\" に一致するプロフィールなし — ゲストとして保存", nameSearching: "検索中…",
+        nameMatches: "{n}件一致", nameHint: "名前をクリック、または ↑ ↓ で選んで Enter", nameNoMatch: "\"{q}\" に一致するプロフィールなし — ゲストとして保存", nameSearching: "検索中…", gstAdd: "+ {p}さんのゲスト用キャディ", gstN: "ゲスト{n}", gstPh: "名前または Call PIN（任意）", gstOf: "{p}さんのゲスト", gstFound: "✓ {n}", gstNoName: "名前やPINがなければ {p}さんの名前で予約します。",
         notes: "メモ", delete: "削除", cancel: "キャンセル", save: "保存",
         searchPlaceholder: "ゴルファーまたはキャディー...", confirmClear: "本日の予約をすべて削除しますか?",
         noMatches: "結果が見つかりません。", player: "プレイヤー",
@@ -4275,7 +4294,7 @@
         rosterSaveFail: "名簿を保存できません:", rosterEmpty: "このコースのキャディーはまだいません。上で追加してください。", rosterActive: "有効",
         rosterInactive: "名簿外", rosterInApp: "アプリ利用", rosterCount: "キャディー{n}人", rosterAdded: "{n}人追加",
         caddiesNeeded: "必要なキャディー数（番号なし）", caddiesNeededHint: "番号なしの依頼 — キャディーマスターが順番で割り当てます。",
-        caddyRefused: "キャディーが空いていないため予約は保存されていません", caddyDayOff: "休み", caddyOutAt: "{a}にラウンド中、{b}以降に空き",
+        golferBusy: "{n}さんは{t}にすでにプレー予定です（{w}）— ティータイムは4時間30分空ける必要があります。保存されていません。", caddyRefused: "キャディーが空いていないため予約は保存されていません", caddyDayOff: "休み", caddyOutAt: "{a}にラウンド中、{b}以降に空き",
         dayOff: "休み", outUntil: "{b}までラウンド中", openJobs: "未割当",
         caddySyncFail: "ティータイムは保存されましたが、キャディーの予約を保存できませんでした:", recurringCaddySkipped: "次の日の繰り返し予約はキャディーなしで保存されました:",
         caddyInGroup: "このキャディーは既にグループ内の別のゴルファーに割り当てられています",
@@ -4925,7 +4944,7 @@
     async function caddyRefusals(golfers, date, time, ignoreBookingId) {
       const st = await loadCaddyDayState(date, time, ignoreBookingId);
       const out = [];
-      (golfers || []).forEach(g => {
+      withGuests(golfers).forEach(g => {
         if (!g.caddyNumber && !g.caddyId) return;
         const num = String(g.caddyNumber || '').trim();
         if (st.sus && st.sus[num]) out.push(caddyLabelOf(g) + ': ' + t('caddySuspended').replace('{t}', st.sus[num].untilTxt));
@@ -4933,6 +4952,21 @@
         else if (st.out[num]) out.push(caddyLabelOf(g) + ': ' + t('caddyOutAt').replace('{a}', st.out[num].at).replace('{b}', st.out[num].until));
       });
       return out;
+    }
+
+    // v1544: a booking's golfers + their guests (each guest a caddy job under the player who brought them)
+    function withGuests(golfers) { return (golfers || []).flatMap(g => [g].concat((g && g.guests) || [])); }
+    // v1544: a golfer can't hold two tee times within 4 h 30 the same day (the caddy block's protocol; the DB enforces it too)
+    async function golferClashes(golfers, date, time, ignoreBookingId, bookingType) {
+      const ids = withGuests(golfers).map(g => g && g.odoo_id).filter(Boolean);
+      if (!supabaseClient || !ids.length || !date || !time) return [];
+      try {
+        const { data, error } = await supabaseClient.rpc('golfer_busy', { p_ids: ids, p_date: date, p_time: time, p_ignore: ignoreBookingId || null,
+          p_events: !/^(society|tournament)$/.test(bookingType || '') });
+        if (error || !Array.isArray(data)) return [];
+        const nameOf = id => { const g = withGuests(golfers).find(x => x && x.odoo_id === id); return (g && g.name) || ''; };
+        return data.map(c => t('golferBusy').replace('{n}', c.name || nameOf(c.id) || t('player')).replace('{t}', c.time || '').replace('{w}', c.what || ''));
+      } catch (e) { return []; }
     }
 
     // The golfer's LINE id, when the name matches exactly ONE profile. A partial match used to
@@ -4963,9 +4997,16 @@
       const endT = tm == null ? null : hhmmOf(Math.min(tm + roundMinutes(), 23 * 60 + 59)) + ':00';
       const holes = 18;
       const golfers = booking.golfers || [];
-      const wantAssigned = golfers.filter(g => g.caddyId);
-      const wantOpen = Math.max(0, parseInt(booking.caddiesNeeded) || 0);
       const leadName = (golfers[0] && golfers[0].name) || booking.name || 'Guest';
+      // v1544 guest caddies: a job per guest under the player who brought them (no name/PIN = booked under that player)
+      const guestJobs = [];
+      golfers.forEach(g => (g.guests || []).forEach(x => guestJobs.push({
+        name: x.name || t('gstOf').replace('{p}', g.name || leadName), odoo_id: x.odoo_id || g.odoo_id || null,
+        caddyId: x.caddyId || null, caddyNumber: x.caddyNumber || '', caddyName: x.caddyName || '',
+        _of: g.odoo_id || ('n:' + String(g.name || '').trim().toLowerCase())
+      })));
+      const wantAssigned = golfers.filter(g => g.caddyId).concat(guestJobs.filter(g => g.caddyId));
+      const wantOpen = Math.max(0, parseInt(booking.caddiesNeeded) || 0) + guestJobs.filter(g => !g.caddyId).length;
       const base = {
         booking_date: date, tee_time: tee, start_time: tee, end_time: endT,
         course_id: c.id, course_name: c.name, holes, payment_amount: caddyFee(holes),
@@ -4983,7 +5024,8 @@
         const uid = await golferUserId(g);
         const fields = Object.assign({}, base, {
           caddy_id: g.caddyId, caddie_name: caddyJobName(g), golfer_name: g.name || 'Guest',
-          user_id: uid, golfer_id: uid, status: 'confirmed', confirmed_at: now, confirmed_by: 'Pro shop', payment_status: 'pending'
+          user_id: uid, golfer_id: uid, status: 'confirmed', confirmed_at: now, confirmed_by: 'Pro shop', payment_status: 'pending',
+          guest_of: g._of || null
         });
         if (row) {
           // v1408: an edit to the tee time never rewinds the job — sent out, back in and paid stay as they are
@@ -6436,7 +6478,12 @@
     function crmSync() {
       const C = window.CourseCRM, slug = el.courseSelect && el.courseSelect.value;
       if (!C || !supabaseClient || !slug) return null;
-      return C.init({ sb: supabaseClient, lang: currentLang, course: { slug, name: (courseDisplayNames && courseDisplayNames[slug]) || slug } });
+      return C.init({ sb: supabaseClient, lang: currentLang, course: { slug, name: (courseDisplayNames && courseDisplayNames[slug]) || slug },
+        // v1544 player card actions: the SAME write path as the booking dialog, for any date
+        api: { getDayAsync, setDay, syncCaddyJobs, caddyRefusals, golferClashes, loadCaddyDayState, render, openDialog,
+          shown: () => el.dateInput.value, caddies: () => allCaddies, refreshCaddies,
+          goDate: async (d) => { el.dateInput.value = d; updateHeaderDate(); await fetchAndRender(); },
+          lead: () => (document.querySelector('.course-name-display') || {}).textContent || 'Pro shop' } });
     }
 
     // v1469 BookingBrief (booking-brief.js): the Book Slot dialog shows WHO the booking is for — standing, course
@@ -6638,8 +6685,47 @@
         });
       }
 
+      // v1544 guest caddies UNDER this player: each guest = name or Call PIN (optional) + a caddy (or the caddy master assigns)
+      if (!createGolferRow._guest) {
+        const wrap = document.createElement('div'); wrap.className = 'gst-wrap';
+        const add = document.createElement('button'); add.type = 'button'; add.className = 'gst-add';
+        const hint = document.createElement('div'); hint.className = 'gst-hint'; hint.style.display = 'none';
+        const foot = document.createElement('div'); foot.className = 'gst-foot'; foot.append(add, hint);
+        const who = () => golferNameInput.value.trim() || t('player');
+        const paintAdd = () => { add.textContent = t('gstAdd').replace('{p}', who()); hint.textContent = t('gstNoName').replace('{p}', who()); hint.style.display = wrap.children.length ? '' : 'none'; };
+        row.appendChild(wrap); row.appendChild(foot);
+        add.addEventListener('click', () => { wrap.appendChild(createGuestRow(wrap, {})); paintAdd(); const i = wrap.lastChild && wrap.lastChild.querySelector('.gst-name'); if (i) i.focus(); });
+        golferNameInput.addEventListener('input', paintAdd);
+        row._paintGuests = paintAdd;
+        (golfer.guests || []).forEach(gu => wrap.appendChild(createGuestRow(wrap, gu)));
+        paintAdd();
+      }
+
       return row;
     }
+    // one guest under a player: the golfer row's own name search (directory + Call PIN) and caddy search, relabelled
+    function createGuestRow(wrap, gu) {
+      createGolferRow._guest = true;
+      let r;
+      try { r = createGolferRow(1, { name: gu.name || '', odoo_id: gu.odoo_id || '', caddyId: gu.caddyId || '', caddyNumber: gu.caddyNumber || '', caddyName: gu.caddyName || '' }); }
+      finally { createGolferRow._guest = false; }
+      const g = document.createElement('div'); g.className = 'gst-row';
+      const nameIn = r.querySelector('.golfer-name'), nameW = nameIn.closest('.caddy-select-wrapper');
+      const cadW = r.querySelector('.caddy-input').closest('.caddy-select-wrapper');
+      nameIn.classList.remove('golfer-name'); nameIn.classList.add('gst-name'); nameIn.placeholder = t('gstPh');
+      nameW.className = 'gst-name-w'; cadW.classList.add('gst-caddy-w');
+      const lab = document.createElement('span'); lab.className = 'gst-l';
+      const ok = document.createElement('span'); ok.className = 'gst-ok';
+      const paintOk = () => { ok.textContent = nameIn.dataset.userId && nameIn.value.trim() ? t('gstFound').replace('{n}', nameIn.value.trim()) : ''; };
+      nameIn.addEventListener('change', paintOk); nameIn.addEventListener('blur', () => setTimeout(paintOk, 250)); paintOk();
+      const x = document.createElement('button'); x.type = 'button'; x.className = 'remove-golfer gst-x'; x.innerHTML = '&times;';
+      x.addEventListener('click', () => { g.remove(); renumberGuests(wrap); const pr = wrap.closest('.golfer-row'); if (pr && pr._paintGuests) pr._paintGuests(); });
+      nameW.appendChild(ok);
+      g.append(lab, nameW, cadW, x);
+      setTimeout(() => renumberGuests(wrap), 0);
+      return g;
+    }
+    function renumberGuests(wrap) { Array.from(wrap.children).forEach((g, i) => { const l = g.querySelector('.gst-l'); if (l) l.textContent = t('gstN').replace('{n}', i + 1); }); }
 
     // ONE caddy list for every caddy search box (v1229): the booking dialog, the range slots and
     // the day sheet show the same roster with the same DAY OFF / Out until / booked / in-group
@@ -6718,9 +6804,8 @@
     // Booking dialog: the other rows of this dialog are the "others"
     function renderCaddyDropdown(dropdown, input, query) {
       const others = new Set();
-      Array.from(el.golfersList.children).forEach(row => {
-        const ci = row.querySelector('.caddy-input');
-        if (ci && ci !== input && ci.dataset.caddyNumber) others.add(ci.dataset.caddyNumber);
+      el.golfersList.querySelectorAll('.caddy-input').forEach(ci => {   // v1544: guests' caddies are in this group too
+        if (ci !== input && ci.dataset.caddyNumber) others.add(ci.dataset.caddyNumber);
       });
       renderCaddyList(dropdown, input, query, { time: el.bookingTime.value, ignoreBookingId: currentEditingBookingId, others });
     }
@@ -8347,7 +8432,12 @@
         const nameInput = row.querySelector('input.golfer-name');
         const caddyInput = row.querySelector('input.caddy-input');
         if (!nameInput) return null;
-        return {
+        const guests = Array.from(row.querySelectorAll('.gst-wrap > .gst-row')).map(gr => {
+          const gi = gr.querySelector('.gst-name'), gc = gr.querySelector('.caddy-input');
+          return { name: gi.value.trim(), odoo_id: gi.dataset.userId || null, caddyId: gc.dataset.caddyId || null,
+            caddyNumber: gc.dataset.caddyNumber || '', caddyName: gc.dataset.caddyName || '' };
+        });
+        const out = {
           name: nameInput.value.trim(),
           odoo_id: nameInput.dataset.userId || null, // User ID from autocomplete selection
           caddyId: caddyInput?.dataset.caddyId || null,
@@ -8355,6 +8445,8 @@
           caddyName: caddyInput?.dataset.caddyName || '',
           caddyLocalName: caddyInput?.dataset.caddyLocalName || ''
         };
+        if (guests.length) out.guests = guests;   // v1544
+        return out;
       }).filter(g => g && g.name);
     }
 
@@ -8885,6 +8977,8 @@
         for (const slot of rangeSlots) {
           const rf = await caddyRefusals(slot.golfers || [], date, slot.time, slot.id || null);
           if (rf.length) { alert(t('caddyRefused') + '\n\n' + slot.time + ': ' + rf.join('\n')); return; }
+          const gc = await golferClashes(slot.golfers || [], date, slot.time, slot.id || null, bookingType);
+          if (gc.length) { alert(slot.time + ': ' + gc.join('\n')); return; }
         }
 
         // Create bookings for each slot
@@ -8923,7 +9017,7 @@
         if (!golfers.length) golfers.push({ name: t('player'), caddyNumber: '' });
 
         // Validate no double-booked caddies
-        const golfersWithCaddies = golfers.filter(g => g.caddyNumber);
+        const golfersWithCaddies = withGuests(golfers).filter(g => g.caddyNumber);   // v1544 guests' caddies too
         const conflicts = validateNoDuplicateCaddies(golfersWithCaddies, bookingTime, el.bookingId.value);
         if (conflicts.length > 0) {
           alert(`${t('caddyAlreadyBooked')}:\n\n${conflicts.join('\n')}`);
@@ -8932,6 +9026,8 @@
         // v1218: the caddies' other jobs (any source) and day-offs, before anything is saved
         const refusals = await caddyRefusals(golfersWithCaddies, date, bookingTime, el.bookingId.value || null);
         if (refusals.length) { alert(t('caddyRefused') + '\n\n' + refusals.join('\n')); return; }
+        const clashes = await golferClashes(golfers, date, bookingTime, el.bookingId.value || null, el.bookingType.value);
+        if (clashes.length) { alert(clashes.join('\n')); return; }
 
         const booking = {
           id: el.bookingId.value || genId(),
@@ -10581,7 +10677,7 @@
     // Book goes through CaddyModule.makeBooking + commit (setDay + syncCaddyJobs) — the same write path, both modes.
     try {
       if (window.PhoneDesk) window.PhoneDesk.init({
-        el, t, getDay, getLayout, minutes, hhmm, render, openDialog, caddyRefusals,
+        el, t, getDay, getLayout, minutes, hhmm, render, openDialog, caddyRefusals, golferClashes,
         caddies: () => allCaddies, lang: () => currentLang, sb: () => supabaseClient, crm: () => crmSync(),
         dayState: (d, tm) => loadCaddyDayState(d, tm, null),
         bookedAt: (d, tm) => getBookedCaddiesForSlot(d, tm, null),

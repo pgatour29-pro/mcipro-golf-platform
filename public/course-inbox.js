@@ -20,19 +20,19 @@
     en: { title: 'New message', titleN: '{n} new messages', needs: '{n} messages need action', needs1: '1 message needs action', from: 'From', organizer: 'Organizer', golfer: 'Golfer',
       open: 'Open & reply', assign: 'Assign to', done: 'Done', assigned: 'Assigned to {d}', by: 'by {w}', seen: 'Seen', show: 'Show', hide: 'Hide',
       d_proshop: 'Pro shop', d_caddy: 'Caddy master', d_reception: 'Reception', d_management: 'Manager', d_fnb: 'F&B',
-      req: 'Asks for {n} more slot(s)', give: 'Gives back {n} slot(s)', fail: 'Not saved — try again', ago: '{m} min ago', now: 'just now' },
+      direct: 'Direct message', req: 'Asks for {n} more slot(s)', give: 'Gives back {n} slot(s)', fail: 'Not saved — try again', ago: '{m} min ago', now: 'just now' },
     th: { title: 'ข้อความใหม่', titleN: 'ข้อความใหม่ {n} ข้อความ', needs: 'มี {n} ข้อความรอดำเนินการ', from: 'จาก', organizer: 'ผู้จัด', golfer: 'นักกอล์ฟ',
       open: 'เปิดและตอบ', assign: 'มอบหมายให้', done: 'เสร็จแล้ว', assigned: 'มอบหมายให้ {d} แล้ว', by: 'โดย {w}', seen: 'อ่านแล้ว', show: 'แสดง', hide: 'ซ่อน',
       d_proshop: 'โปรช็อป', d_caddy: 'หัวหน้าแคดดี้', d_reception: 'เคาน์เตอร์ต้อนรับ', d_management: 'ผู้จัดการ', d_fnb: 'อาหารและเครื่องดื่ม',
-      req: 'ขอเพิ่ม {n} สล็อต', give: 'คืน {n} สล็อต', fail: 'บันทึกไม่สำเร็จ ลองอีกครั้ง', ago: '{m} นาทีที่แล้ว', now: 'เมื่อสักครู่' },
+      direct: 'ข้อความส่วนตัว', req: 'ขอเพิ่ม {n} สล็อต', give: 'คืน {n} สล็อต', fail: 'บันทึกไม่สำเร็จ ลองอีกครั้ง', ago: '{m} นาทีที่แล้ว', now: 'เมื่อสักครู่' },
     ko: { title: '새 메시지', titleN: '새 메시지 {n}개', needs: '처리할 메시지 {n}개', from: '보낸 사람', organizer: '주최자', golfer: '골퍼',
       open: '열고 답장', assign: '담당 지정', done: '완료', assigned: '{d}에게 지정됨', by: '{w}', seen: '읽음', show: '보기', hide: '숨기기',
       d_proshop: '프로샵', d_caddy: '캐디 마스터', d_reception: '리셉션', d_management: '매니저', d_fnb: '식음료',
-      req: '슬롯 {n}개 추가 요청', give: '슬롯 {n}개 반납', fail: '저장 실패 — 다시 시도하세요', ago: '{m}분 전', now: '방금' },
+      direct: '개인 메시지', req: '슬롯 {n}개 추가 요청', give: '슬롯 {n}개 반납', fail: '저장 실패 — 다시 시도하세요', ago: '{m}분 전', now: '방금' },
     ja: { title: '新しいメッセージ', titleN: '新しいメッセージ {n}件', needs: '対応が必要なメッセージ {n}件', from: '差出人', organizer: '主催者', golfer: 'ゴルファー',
       open: '開いて返信', assign: '担当', done: '完了', assigned: '{d}に割り当て済み', by: '{w}', seen: '既読', show: '表示', hide: '隠す',
       d_proshop: 'プロショップ', d_caddy: 'キャディマスター', d_reception: '受付', d_management: 'マネージャー', d_fnb: '飲食',
-      req: '{n}枠の追加を依頼', give: '{n}枠を返却', fail: '保存できませんでした — もう一度', ago: '{m}分前', now: 'たった今' }
+      direct: 'ダイレクトメッセージ', req: '{n}枠の追加を依頼', give: '{n}枠を返却', fail: '保存できませんでした — もう一度', ago: '{m}分前', now: 'たった今' }
   };
   var DEPTS = ['proshop', 'caddy', 'reception', 'management', 'fnb'];
   var LOCAL_KEY = 'ci.localDone.v1';
@@ -40,7 +40,7 @@
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
   var CI = window.CourseInbox = {
-    _v: 1539,
+    _v: 1544,
     opts: null, items: [], _loc: [], expanded: false, _chan: null, _timer: 0, _chime: 0, _title: '', _flash: 0, _ac: null, _busy: {},
 
     t: function (k, vars) {
@@ -127,7 +127,11 @@
       var it = this.all().filter(function (x) { return x.id === id; })[0]; if (!it) return;
       this.act(id, 'seen');
       this.expanded = false;
-      try { if (this.opts.open) this.opts.open(it.event_id); } catch (e) { console.warn('[CourseInbox] open', e); }
+      try {
+        // v1544: a direct message (no event) opens that golfer's player card on Messages
+        if (!it.event_id && it.sender_id && window.CourseCRM && CourseCRM.ready && CourseCRM.ready()) CourseCRM.open({ id: it.sender_id, name: it.sender_name, tab: 'msg' });
+        else if (this.opts.open) this.opts.open(it.event_id);
+      } catch (e) { console.warn('[CourseInbox] open', e); }
     },
 
     // ---------- sound / title / vibration while anything is unseen ----------
@@ -169,7 +173,7 @@
     card: function (it, big) {
       var self = this, local = !!it._local;
       var h = '<div class="ci-card' + (big ? ' big' : '') + (it.seen_at ? ' seen' : '') + '" data-id="' + esc(it.id) + '">';
-      h += '<div class="ci-ev">' + esc(it.title || '') + (it.event_date ? ' · ' + esc(this.when(it.event_date)) : '') + '<span>' + esc(this.ago(it.created_at)) + '</span></div>';
+      h += '<div class="ci-ev">' + esc(it.event_id ? (it.title || '') : this.t('direct')) + (it.event_date ? ' · ' + esc(this.when(it.event_date)) : '') + '<span>' + esc(this.ago(it.created_at)) + '</span></div>';
       h += '<div class="ci-from">' + esc(this.t('from')) + ' <b>' + esc(it.sender_name || '') + '</b> <i>' + esc(it.side === 'golfer' ? this.t('golfer') : this.t('organizer')) + '</i></div>';
       h += '<div class="ci-body">' + esc(this.text(it)) + '</div>';
       if (it.assigned_to) h += '<div class="ci-as">→ ' + esc(this.t('assigned', { d: this.t('d_' + it.assigned_to) })) + (it.assigned_by ? ' · ' + esc(this.t('by', { w: it.assigned_by })) : '') + '</div>';

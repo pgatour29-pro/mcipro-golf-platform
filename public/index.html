@@ -86011,13 +86011,27 @@ document.addEventListener('DOMContentLoaded', function() {
                     const profile = await this.resolveProfile();
                     if (!profile) return;
 
+                    // v1555: the live table writes status 'active' + preferred_date (the old 'waiting'/requested_date read
+                    // found nothing, so a caddy never saw who was waiting for her)
+                    const _wlToday = window._caddyToday ? window._caddyToday() : new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
                     const { data: waitlist } = await window.SupabaseDB.client
                         .from('caddy_waitlist')
                         .select('*')
                         .eq('caddy_id', profile.id)
-                        .eq('status', 'waiting')
-                        .order('requested_date', { ascending: true })
+                        .eq('status', 'active')
+                        .gte('preferred_date', _wlToday)
+                        .order('preferred_date', { ascending: true })
+                        .order('created_at', { ascending: true })
                         .limit(10);
+                    try {
+                        const ids = [...new Set((waitlist || []).map(w => w.user_id).filter(Boolean))];
+                        if (ids.length) {
+                            const { data: ppl } = await window.SupabaseDB.client.from('user_profiles').select('line_user_id,name').in('line_user_id', ids);
+                            const nm = {}; (ppl || []).forEach(p => { nm[p.line_user_id] = p.name; });
+                            (waitlist || []).forEach(w => { w.golfer_name = nm[w.user_id] || w.golfer_name || ''; });
+                        }
+                    } catch (e) { }
+                    const _wle = (x) => String(x == null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
                     const count = (waitlist || []).length;
                     const countEl = document.getElementById('caddie-waitlist-count');
@@ -86027,8 +86041,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (listEl) {
                         listEl.innerHTML = count > 0 ? (waitlist || []).map(w => `
                             <div class="scv3c-wrow">
-                                <span class="n" data-golfer-av="${w.user_id || ''}" data-golfer-av-nm="${String(w.golfer_name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${w.golfer_name || w.user_id || 'Golfer'}</span>
-                                <span class="d">${w.requested_date || ''}</span>
+                                <span class="n" data-golfer-av="${_wle(w.user_id || '')}" data-golfer-av-nm="${_wle(w.golfer_name || '')}" data-golfer-av-sz="18">${_wle(w.golfer_name || 'Golfer')}</span>
+                                <span class="d">${_wle(w.preferred_date || w.requested_date || '')}${w.time_preference && w.time_preference !== 'any' ? ' · ' + _wle(w.time_preference) : ''}</span>
                             </div>
                         `).join('') : `<div class="scv3c-empty sm">New requests will appear here</div>`;
                         // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
@@ -90242,6 +90256,7 @@ window.AdminSystem = AdminSystem;
     <script defer src="course-inbox.js?v=1544"></script>
     <script defer src="proshop-dashboard.js?v=1551"></script>
     <script defer src="proshop-glass.js?v=1553"></script>
+    <script defer src="caddy-dm.js?v=1555"></script>
     <script defer src="facility-insights.js?v=1487"></script>
 
     <!-- Course Data & Handicap Calculations -->
@@ -134438,7 +134453,7 @@ const GolferCaddyBooking = {
         if (wl) { wl.className = 'cbk-whenline ' + cls; wl.innerHTML = `<b>${e(evTxt + line)}</b>${sub ? `<small>${e(sub)}</small>` : ''}`; }
         const bd = this._availBadge(st.state === 'available' ? 'available' : st.state === 'mine' ? 'mine' : st.state === 'unavailable' ? 'unavailable' : st.state === 'dayoff' ? 'dayoff' : st.state === 'away' ? 'away' : 'booked');
         const badge = m.querySelector('.cbk-badge-lg'); if (badge) { badge.className = 'cbk-badge-lg ' + bd.cls; badge.textContent = bd.txt; badge.setAttribute('data-avail', st.state); }
-        const act = document.getElementById('cbkAction'); if (act) act.innerHTML = this._sheetActionHTML(caddy, st, date);
+        const act = document.getElementById('cbkAction'); if (act) act.innerHTML = this._sheetActionHTML(caddy, st, date) + this._msgBtnHTML(caddy);
         // the time picker greys out every start she cannot take on this day
         if (tsel && !tsel.disabled) {
             const h = this._hours(caddy, date), today = window.CaddyAvailability.bkkToday(), now = this._bkkNowMins();
@@ -134636,7 +134651,8 @@ const GolferCaddyBooking = {
                     caddy_profiles:caddy_id (
                         name,
                         caddy_number,
-                        photo_url
+                        photo_url,
+                        user_id
                     )
                 `)
                 .eq('user_id', userId)
@@ -134647,6 +134663,14 @@ const GolferCaddyBooking = {
 
             this.myBookings = data || [];
             console.log(`[GolferCaddyBooking] Loaded ${this.myBookings.length} active bookings`);
+            // v1555: the golfer's own waiting-list spots (a cancellation hands the caddy to the first in line)
+            try {
+                const tdy = window.CaddyAvailability ? window.CaddyAvailability.bkkToday() : new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+                const { data: wl } = await window.SupabaseDB.client.from('caddy_waitlist')
+                    .select('id, caddy_id, course_name, preferred_date, time_preference, status, created_at, caddy_profiles:caddy_id (name, caddy_number, photo_url, user_id)')
+                    .eq('user_id', userId).eq('status', 'active').gte('preferred_date', tdy).order('preferred_date', { ascending: true }).limit(50);
+                this.myWaitlist = wl || [];
+            } catch (e) { this.myWaitlist = []; }
 
             // Same My-Caddies fallback as the roster: booked caddies keep their notebook photo.
             // Own try: a merge failure must never wipe the loaded bookings.
@@ -135627,6 +135651,41 @@ const GolferCaddyBooking = {
         }
     },
 
+    // v1555 (Pete: "let me communicate with her and as well her communicating back to me"): a caddy with an account
+    // can be messaged from her profile sheet and from every booking / waiting-list row — the same DMs she now reads
+    // and answers on her caddie dashboard (caddy-dm.js)
+    _msgBtnHTML(caddy) {
+        if (!caddy || !caddy.user_id) return '';
+        const e = this._esc;
+        return `<button type="button" class="cbk-primary cbk-msg" style="margin-top:8px;background:transparent;border:1px solid rgba(34,197,94,.55);color:#16a34a" onclick="GolferCaddyBooking.messageCaddy('${e(caddy.user_id)}')"><span class="material-symbols-outlined">chat</span><span>${e(this._tt('cbk.msg', 'Message your caddy'))}</span></button>`;
+    },
+    messageCaddy(uid) {
+        if (!uid) return;
+        try { this._closeSheet && this._closeSheet(); } catch (e) { }
+        try { const mc = document.getElementById('mainContent'); if (mc) mc.style.display = 'none'; this._view = null; } catch (e) { }
+        try { window.showGolferTab('messages'); } catch (e) { }
+        let n = 0;
+        const go = () => {
+            if (window.MessagesSystem && MessagesSystem.userLineId && document.getElementById('conversation-view')) { MessagesSystem.openDirectConversation(uid); return; }
+            if (++n < 40) setTimeout(go, 150);
+        };
+        setTimeout(go, 120);
+    },
+    async leaveWaitlist(id) {
+        if (!id) return;
+        try {
+            const uid = AppState.currentUser?.lineUserId || window.currentUserId;
+            const { error } = await window.SupabaseDB.client.from('caddy_waitlist').update({ status: 'cancelled' }).eq('id', id).eq('user_id', uid);
+            if (error) throw error;
+            this.myWaitlist = (this.myWaitlist || []).filter(w => w.id !== id);
+            this.renderBookingsList();
+            window.NotificationManager.show(this._tt('cbk.wl.left', 'You left the waiting list'), 'success');
+        } catch (e) {
+            console.warn('[GolferCaddyBooking] leave waitlist', e);
+            window.NotificationManager.show(this._tt('cbk.wl.leavefail', 'Could not leave the waiting list. Try again.'), 'error');
+        }
+    },
+
     showMyBookings() {
         const container = document.getElementById('mainContent');
         if (!container) return;
@@ -135657,7 +135716,7 @@ const GolferCaddyBooking = {
         const container = document.getElementById('bookingsList');
         if (!container) return;
         const e = this._esc;
-        if (this.myBookings.length === 0) {
+        if (this.myBookings.length === 0 && !(this.myWaitlist || []).length) {
             container.innerHTML = `
                 <div class="cbk-empty"><span class="material-symbols-outlined">event_busy</span><p>${e(this._tt('cbk.nobookings', 'No caddy bookings yet'))}</p>
                     <button type="button" class="cbk-primary cbk-inline" onclick="GolferCaddyBooking.showCaddyBookingPage()"><span>${e(this._tt('cbk.title', 'Book a Caddy'))}</span></button></div>`;
@@ -135678,16 +135737,38 @@ const GolferCaddyBooking = {
                     <div class="cbk-bk-meta">${e(this._fmtDate(b.booking_date))}${b.tee_time ? ' · ' + e(String(b.tee_time).slice(0, 5)) : ''} · ${e(b.course_name || '')}</div>
                     ${b.tier_label ? `<div class="cbk-bk-tier">${window.CaddyTiers.pill({ label: b.tier_label, icon: (b.tier_terms && b.tier_terms.plays_golf) ? 'sports_golf' : 'workspace_premium', accent: (b.tier_terms && b.tier_terms.plays_golf) ? 'sky' : 'amber' }, { size: '10px', pad: '2px 8px', icon: '12px' })} <span>${e(b.tier_fee != null ? window.CaddyTiers.baht(b.tier_fee) : this._tt('ctr.atrate', 'At course rate'))}</span></div>` : ''}
                 </div>
+                ${(b.caddy_profiles && b.caddy_profiles.user_id && st !== 'cancelled') ? `<button type="button" class="cbk-bk-x cbk-bk-msg" data-msg="${e(b.caddy_profiles.user_id)}" aria-label="${e(this._tt('cbk.msg', 'Message your caddy'))}" title="${e(this._tt('cbk.msg', 'Message your caddy'))}"><span class="material-symbols-outlined">chat</span></button>` : ''}
                 ${canCancel ? `<button type="button" class="cbk-bk-x" data-cancel="${e(b.id)}" aria-label="${e(this._tt('cbk.cancel', 'Cancel'))}"><span class="material-symbols-outlined">close</span></button>` : ''}
+            </div>`;
+        };
+        // v1555: waiting-list spots — first in line becomes the caddy's customer when her booking is cancelled
+        const wlRow = w => {
+            const p = w.caddy_profiles || {}, n = (p.caddy_number != null && String(parseInt(p.caddy_number)) !== 'NaN') ? String(parseInt(p.caddy_number)) : '';
+            return `<div class="cbk-bk wl" data-wl="${e(w.id)}">
+                <div class="cbk-bk-av"><span class="cbk-numtile"><span class="material-symbols-outlined">hourglass_top</span><b>${e(n)}</b></span>${p.photo_url ? `<img src="${e(p.photo_url)}" alt="" onerror="this.remove()">` : ''}</div>
+                <div class="cbk-bk-body">
+                    <div class="cbk-bk-name">${n ? `<span class="cbk-num">#${e(n)}</span>` : ''}<b>${e(p.name || '')}</b><span class="cbk-st pending">${e(this._tt('cbk.wl.st', 'Waiting list'))}</span></div>
+                    <div class="cbk-bk-meta">${e(this._fmtDate(w.preferred_date))} · ${e(w.course_name || '')}</div>
+                    <div class="cbk-bk-meta">${e(this._tt('cbk.wl.hint', 'If her booking is cancelled, she is yours automatically.'))}</div>
+                </div>
+                ${p.user_id ? `<button type="button" class="cbk-bk-x cbk-bk-msg" data-msg="${e(p.user_id)}" aria-label="${e(this._tt('cbk.msg', 'Message your caddy'))}"><span class="material-symbols-outlined">chat</span></button>` : ''}
+                <button type="button" class="cbk-bk-x" data-wlx="${e(w.id)}" aria-label="${e(this._tt('cbk.wl.leave', 'Leave the waiting list'))}" title="${e(this._tt('cbk.wl.leave', 'Leave the waiting list'))}"><span class="material-symbols-outlined">close</span></button>
             </div>`;
         };
         const up = this.myBookings.filter(b => String(b.booking_date).slice(0, 10) >= today).sort((a, b) => String(a.booking_date).localeCompare(String(b.booking_date)) || String(a.tee_time || '').localeCompare(String(b.tee_time || '')));
         const past = this.myBookings.filter(b => String(b.booking_date).slice(0, 10) < today);
+        const wl = this.myWaitlist || [];
         container.innerHTML = (up.length ? `<div class="cbk-sec">${e(this._tt('cbk.upcoming', 'Upcoming'))}</div>${up.map(row).join('')}` : '')
+            + (wl.length ? `<div class="cbk-sec">${e(this._tt('cbk.wl.sec', 'Waiting list'))}</div>${wl.map(wlRow).join('')}` : '')
             + (past.length ? `<div class="cbk-sec">${e(this._tt('cbk.past', 'Past'))}</div>${past.map(row).join('')}` : '');
         if (!container._cbkBound) {
             container._cbkBound = true;
             container.addEventListener('click', ev => {
+                const mb = ev.target.closest('[data-msg]');
+                if (mb) { ev.stopPropagation(); this.messageCaddy(mb.getAttribute('data-msg')); return; }
+                const wx = ev.target.closest('[data-wlx]');
+                if (wx) { ev.stopPropagation(); this.leaveWaitlist(wx.getAttribute('data-wlx')); return; }
+                if (ev.target.closest('[data-wl]')) return;
                 const x = ev.target.closest('[data-cancel]');
                 if (x) { const b = this.myBookings.find(k => k.id === x.getAttribute('data-cancel')); const L = b ? this._bookingLabel(b) : { num: '' }; this.showCancelConfirmation(x.getAttribute('data-cancel'), '#' + (L.num || ''), (b && b.course_name) || ''); return; }
                 const r = ev.target.closest('[data-booking]');

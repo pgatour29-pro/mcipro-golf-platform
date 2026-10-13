@@ -11169,15 +11169,45 @@
             },
 
             // Initialize back-button guard
+            // v1547: Chrome's back button SKIPS every entry of a page that adds a history entry after a back press
+            // without a NEW tap (history manipulation intervention: a back/forward stops the old activation counting,
+            // and all same-document entries share one skippable flag). The old popstate re-push did exactly that, so
+            // two backs in a row with no tap between (Tap-In: post → wall → OUT) closed the app. Now: a buffer of
+            // BACK_DEPTH entries, each stamped with its depth, topped up only inside a real tap/key (fresh activation);
+            // popstate never pushes.
+            BACK_DEPTH: 12,
+            _depth: 1,
+            _refill() {
+                try {
+                    if (navigator.userActivation && !navigator.userActivation.isActive) return;
+                    const st = history.state || {};
+                    let d = typeof st.d === 'number' ? st.d : this._depth;
+                    // an OAuth / link clean-up replaced the entry with null: stamp it back into the buffer
+                    if (!st._appNav || typeof st.d !== 'number') history.replaceState({ ...st, _appNav: true, d }, '', location.href);
+                    while (d < this.BACK_DEPTH) { d++; history.pushState({ _appNav: true, d }, '', location.href); }
+                    this._depth = d;
+                } catch (e) {}
+            },
             init() {
                 // Prime baseline history entries — two entries so back always has somewhere to go
-                history.replaceState({ _appNav: true, page: location.pathname }, "", location.pathname);
-                history.pushState({ _appNav: true }, '', location.href);
+                history.replaceState({ _appNav: true, page: location.pathname, d: 0 }, "", location.pathname);
+                history.pushState({ _appNav: true, d: 1 }, '', location.href);
+                this._depth = 1;
+                const refill = () => this._refill();
+                ['click', 'touchend', 'keydown'].forEach(t => window.addEventListener(t, refill, { capture: true, passive: true }));
 
                 // Handle popstate (back button) — integrated with NavHistory
                 window.addEventListener("popstate", (e) => {
-                    // Always re-push state to prevent leaving the app
-                    history.pushState({ _appNav: true }, '', location.href);
+                    const st = e.state || {};
+                    const d = typeof st.d === 'number' ? st.d : this._depth - 1;
+                    const forward = d > this._depth;
+                    this._depth = d;
+                    if (forward) return;   // the browser's forward button: nothing to undo
+                    if (d <= 0) {
+                        // buffer used up with no tap between (or a fresh load): one more entry is all we can add — it is
+                        // skippable without an activation, but it keeps this press inside the app
+                        try { history.pushState({ _appNav: true, d: 1 }, '', location.href); this._depth = 1; } catch (err) {}
+                    }
 
                     if (this.isDirty) {
                         this.showUnsavedModal(() => {

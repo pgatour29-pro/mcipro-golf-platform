@@ -12,5 +12,14 @@ if (!/if \(dashboardId === 'golferDashboard' && typeof NavHistory !== 'undefined
 // v1442: a PIN organizer (no line_user_id) never leaves the organizer home for the organizer's PERSONAL golfer dashboard
 if (!/org-on-home'\)\) \{ try \{ showOrganizerTab\('home'\); \} catch \(e\) \{\} return; \}[\s\S]{0,900}_ownGolfer = localStorage\.getItem\('line_user_id'\)[\s\S]{0,120}if \(!_ownGolfer\) return;[\s\S]{0,120}ScreenManager\.showScreen\('golferDashboard'\)/.test(s)) fail.push('organizer-home back must check line_user_id before leaving to the golfer dashboard (v1442: PIN entrants have no golfer account)');
 if (/window\.LiveGamesSystem\?\.cleanupOldPools\)\s*\{\s*window\.LiveGamesSystem\.cleanupOldPools\(\);/.test(s)) fail.push('LiveScorecardManager.init must not run the global side_game_pools delete from the browser (v1442)');
+// v1547: the phone's back must never close the app after two backs in a row. Chrome skips EVERY entry of a page that
+// pushes history after a back press without a fresh tap — so popstate may only push at d<=0, and the buffer is refilled
+// from a real tap/key (Tap-In post → wall → OUT, Pete 2026-10-13).
+{
+  const g = (s.match(/window\.addEventListener\("popstate", \(e\) => \{[\s\S]*?\n                \}\);/) || [''])[0];
+  if (!g) fail.push('PWAGuard popstate handler not found');
+  else if (g.split('history.pushState').length - 1 !== 1 || !/if \(d <= 0\) \{[\s\S]{0,400}history\.pushState/.test(g)) fail.push('PWAGuard popstate must push ONLY when the buffer is used up (d <= 0) — an unconditional re-push makes Chrome skip the whole app on the next back (v1547)');
+  if (!/BACK_DEPTH: \d+/.test(s) || !/\['click', 'touchend', 'keydown'\]\.forEach\(t => window\.addEventListener\(t, refill/.test(s)) fail.push('PWAGuard must refill its back buffer from click/touchend/keydown (v1547)');
+}
 if (fail.length) { console.error('✗ back button guard:\n  ' + fail.join('\n  ')); process.exit(1); }
 console.log('✓ back button: top layer + catch-all in place');

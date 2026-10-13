@@ -11694,6 +11694,10 @@
                 'ts2.autofill': 'AUTO-FILL GROUPS',
                 'ts2.pool': 'UNASSIGNED POOL',
                 'ts2.searchname': 'Search or type a name…',
+                'ts2.astyped': 'ADD AS TYPED',
+                'ts2.nameonly': 'NAME ONLY',
+                'ts2.newname': 'NEW NAME',
+                'ts2.nomatch_enter': 'No directory match. Press Enter to add it as typed.',
                 'ts2.add': 'ADD',
                 'ts2.unassigned': 'UNASSIGNED',
                 'ts2.unteams': 'UNASSIGNED TEAMS',
@@ -15494,6 +15498,10 @@
                 'ts2.autofill': 'เติมกลุ่มอัตโนมัติ',
                 'ts2.pool': 'ยังไม่จัดกลุ่ม',
                 'ts2.searchname': 'ค้นหาหรือพิมพ์ชื่อ…',
+                'ts2.astyped': 'เพิ่มตามที่พิมพ์',
+                'ts2.nameonly': 'ชื่ออย่างเดียว',
+                'ts2.newname': 'ชื่อใหม่',
+                'ts2.nomatch_enter': 'ไม่พบในรายชื่อ กด Enter เพื่อเพิ่มตามที่พิมพ์',
                 'ts2.add': 'เพิ่ม',
                 'ts2.unassigned': 'ยังไม่จัด',
                 'ts2.unteams': 'ทีมที่ยังไม่จัด',
@@ -19279,6 +19287,10 @@
                 'ts2.autofill': '자동 채우기',
                 'ts2.pool': '미배정 풀',
                 'ts2.searchname': '이름 검색 또는 입력…',
+                'ts2.astyped': '입력한 대로 추가',
+                'ts2.nameonly': '이름만',
+                'ts2.newname': '새 이름',
+                'ts2.nomatch_enter': '명단에 없습니다. Enter를 눌러 입력한 대로 추가하세요.',
                 'ts2.add': '추가',
                 'ts2.unassigned': '미배정',
                 'ts2.unteams': '미배정 팀',
@@ -23115,6 +23127,10 @@
                 'ts2.autofill': '自動振り分け',
                 'ts2.pool': '未配置プール',
                 'ts2.searchname': '名前を検索または入力…',
+                'ts2.astyped': '入力どおり追加',
+                'ts2.nameonly': '名前のみ',
+                'ts2.newname': '新しい名前',
+                'ts2.nomatch_enter': '名簿にありません。Enter で入力どおり追加します。',
                 'ts2.add': '追加',
                 'ts2.unassigned': '未配置',
                 'ts2.unteams': '未配置チーム',
@@ -166805,6 +166821,7 @@ window.TeeSheet = {
             '#teeSheetOverlay .ts2-sp-row .rt{font:600 11px/1 \'JetBrains Mono\',monospace;color:var(--t-mut);display:flex;align-items:center;gap:7px;}'+
             '#teeSheetOverlay .ts2-sp-row .mtag{font-weight:700;letter-spacing:.04em;padding:2px 6px;border-radius:6px;border:1px solid var(--t-hair);color:var(--t-dim);}'+
             '#teeSheetOverlay .ts2-sp-row .mtag.mem{color:var(--t-grn);border-color:rgba(34,197,94,.4);background:rgba(34,197,94,.08);}'+
+            '#teeSheetOverlay .ts2-sp-typed{flex:none;margin:8px 10px 2px;border:1px dashed rgba(34,197,94,.45);}'+
             '#teeSheetOverlay .ts2-sp-empty{padding:28px 20px;color:var(--t-dim);font:500 13px/1.6 \'Instrument Sans\',sans-serif;text-align:center;}'+
             '@media (max-width:760px){#teeSheetOverlay #ts2SearchPanel{top:auto;bottom:0;left:0;right:0;width:100vw;height:72vh;border-left:none;border-top:1px solid var(--t-hair);box-shadow:0 -16px 48px rgba(0,0,0,.5);}}'+
             '#teeSheetOverlay .ts2-sugnote{padding:9px 11px;color:var(--t-dim);font:500 11px/1.4 \'Instrument Sans\',sans-serif;}'+
@@ -168106,9 +168123,18 @@ window.TeeSheet = {
         var nameEl=document.getElementById('teeSheetNewName'), hcpEl=document.getElementById('teeSheetNewHcp');
         var name=((nameEl && nameEl.value) || '').trim(); if(!name){ if(nameEl) nameEl.focus(); return; }
         var hcpTyped=((hcpEl && hcpEl.value) || '').trim();
-        var match=null;
+        var match=null, pObj;
+        if(this._nameOnly(name)){
+            // No last name → take it exactly as typed (Pete 2026-10-13). A first name alone isn't an identity,
+            // so no directory resolve and no global placeholder profile; event-local manual_ id like paper walk-ons.
+            var hv=(hcpTyped===''||isNaN(parseFloat(hcpTyped)))?null:parseFloat(hcpTyped);
+            this._routePlayer({ playerId:'manual_'+Date.now()+'_'+(++this._manualSeq), playerName:name, handicap:hv, _manual:true });
+            if(nameEl) nameEl.value=''; if(hcpEl) hcpEl.value='';
+            this._closeSearch(); this.render();
+            var f0=document.getElementById('teeSheetNewName'); if(f0) f0.focus();
+            return;
+        }
         try { var players=await SocietyGolfDB.searchPlayers(name, this.societyName||null); match=this._bestMatch(players, name); } catch(e){ console.warn('[TeeSheet] addManual lookup', e); }
-        var pObj;
         if(match && match.id){
             pObj={ playerId:match.id, playerName:match.name||name, handicap:(hcpTyped!==''?parseFloat(hcpTyped):(match.handicap==null?null:match.handicap)), _added:true };
             // Typed hcp on a known name → persist it so future rounds/tee sheets remember it
@@ -168127,6 +168153,8 @@ window.TeeSheet = {
         this.render();
         var f=document.getElementById('teeSheetNewName'); if(f) f.focus();
     },
+    // One word, no surname ("Tom") → the organizer means exactly what they typed.
+    _nameOnly: function(s){ return String(s==null?'':s).trim().split(/[\s,]+/).filter(Boolean).length===1; },
     // order-independent name key for matching ("Last, First" == "First Last")
     _nameKey: function(s){ return String(s==null?'':s).toLowerCase().replace(/[^a-z ]/g,' ').split(/\s+/).filter(Boolean).sort().join(' '); },
     // a single unambiguous directory match for a typed name (prefers the one carrying a handicap)
@@ -168315,7 +168343,8 @@ window.TeeSheet = {
                 players=players||[];
                 var taken={}; self.regs.forEach(function(r){ taken[String(r.playerId)]=1; }); self.manualPool.forEach(function(m){ taken[String(m.playerId)]=1; }); self.groups.forEach(function(g){ (g.players||[]).forEach(function(p){ taken[String(p.playerId)]=1; }); });
                 self._srch.list=self._dedupSug(players.filter(function(p){ return p.id && !taken[String(p.id)]; }));
-                self._srch.active=self._srch.list.length?0:-1;
+                // One word (no surname) → the "add as typed" row is the Enter target; a full name still defaults to the top match.
+                self._srch.active=(self._nameOnly(q) || !self._srch.list.length) ? -1 : 0;
                 self._renderSearchPanel();   // member roster already loaded on event select → badges correct
             }).catch(function(e){ if(seq!==self._srch.seq) return; console.warn('[TeeSheet] search', e); panel.innerHTML='<div class="ts2-sp-head"><span class="c" style="color:var(--t-red);">Search failed</span><button class="x" onclick="TeeSheet._closeSearch()">✕</button></div>'; });
         }, 130);
@@ -168326,7 +168355,8 @@ window.TeeSheet = {
         var into=this._srch.mode==='slot' ? ('Group '+((this._srch.groupIdx||0)+1)) : this._addTargetLabel();
         var head='<div class="ts2-sp-head"><span class="c">'+list.length+(list.length===1?' MATCH':' MATCHES')+'</span><span class="into">→ '+self._esc(into)+'</span><button class="x" onclick="TeeSheet._closeSearch()" title="Close (Esc)">✕</button></div>'
             +'<div class="ts2-sp-hint">Click a name — or ↑ ↓ then Enter</div>';
-        var body = list.length
+        var typedRow='<div data-i="-1" onmouseenter="TeeSheet._srchHover(-1)" onclick="TeeSheet._srchTyped()" class="ts2-sp-row ts2-sp-typed'+(self._srch.active===-1?' active':'')+'"><span class="nm">＋ '+self._esc(q)+'</span><span class="rt">'+t('ts2.astyped')+' · '+(self._nameOnly(q)?t('ts2.nameonly'):t('ts2.newname'))+' → '+self._esc(into)+'</span></div>';
+        var body = typedRow + (list.length
             ? '<div class="ts2-sp-list">'+list.map(function(p,i){
                 var nm=self._esc(p.name||'Unknown'); var hc=self._hcp(p.handicap==null?36:p.handicap);
                 // Membership via the SAME resolver as the group cubes (TRGGMembership) so search agrees with the sheet.
@@ -168335,7 +168365,7 @@ window.TeeSheet = {
                 var tag = mr ? (mr.isCurrent?'<span class="mtag mem">MEMBER</span>':(mr.found?'<span class="mtag">EXPIRED</span>':'<span class="mtag">GUEST</span>')) : '';
                 return '<div data-i="'+i+'" onmouseenter="TeeSheet._srchHover('+i+')" onclick="TeeSheet._srchPick('+i+')" class="ts2-sp-row'+(i===self._srch.active?' active':'')+'"><span class="nm">'+nm+' '+self._memBadge(p.id, p.name)+'</span><span class="rt">HCP '+hc+(tag?' '+tag:'')+' <span onclick="event.stopPropagation();TeeSheet._srchEdit('+i+')" title="'+self._esc(_lvT('pce.hcp.edit','Edit name / handicap'))+'" style="margin-left:6px;cursor:pointer;opacity:.85;border-bottom:1px dashed currentColor;">✎</span></span></div>';
               }).join('')+'</div>'
-            : '<div class="ts2-sp-empty">No directory match for <b>"'+self._esc(q)+'"</b>.<br>Type the full name + a handicap in the box, then press <b>ADD</b> to enter a guest.</div>';
+            : '<div class="ts2-sp-empty">'+self._esc(t('ts2.nomatch_enter'))+'</div>');
         panel.innerHTML=head+body;
     },
     // v1344: ✎ on a search hit → the ONE global player editor (name + society MANUAL handicap, cascades
@@ -168346,13 +168376,15 @@ window.TeeSheet = {
         O.openHcpEditor(p.id, function(v, nm){ p.handicap=v; if(nm) p.name=nm; self._renderSearchPanel(); }, { name:p.name, handicap:p.handicap });
     },
     _srchHover: function(i){ this._srch.active=i; this._srchHi(); },
-    _srchHi: function(){ var panel=document.getElementById('ts2SearchPanel'); if(!panel) return; var rows=panel.querySelectorAll('.ts2-sp-row'); for(var k=0;k<rows.length;k++) rows[k].classList.toggle('active', k===this._srch.active); var a=rows[this._srch.active]; if(a&&a.scrollIntoView){ try{ a.scrollIntoView({block:'nearest'}); }catch(e){} } },
+    _srchHi: function(){ var panel=document.getElementById('ts2SearchPanel'); if(!panel) return; var rows=panel.querySelectorAll('.ts2-sp-row'), a=null; for(var k=0;k<rows.length;k++){ var on=parseInt(rows[k].getAttribute('data-i'),10)===this._srch.active; rows[k].classList.toggle('active', on); if(on) a=rows[k]; } if(a&&a.scrollIntoView){ try{ a.scrollIntoView({block:'nearest'}); }catch(e){} } },
+    // "＋ <typed>" row / Enter on it → add the name exactly as typed and move on to the next slot.
+    _srchTyped: function(){ if(this._srch.mode==='slot'){ this._slotEnter(this._srch.groupIdx, true); } else { this.addManual(); } },
     _srchKey: function(e){
         var list=this._srch.list||[]; var panel=document.getElementById('ts2SearchPanel');
         var open=!!(panel && panel.style.display!=='none' && list.length);
         if(e.key==='ArrowDown'){ if(!open) return; e.preventDefault(); this._srch.active=Math.min((this._srch.active<0?-1:this._srch.active)+1, list.length-1); this._srchHi(); }
-        else if(e.key==='ArrowUp'){ if(!open) return; e.preventDefault(); this._srch.active=Math.max((this._srch.active<0?list.length:this._srch.active)-1, 0); this._srchHi(); }
-        else if(e.key==='Enter'){ e.preventDefault(); if(open && this._srch.active>=0){ this._srchPick(this._srch.active); } else if(this._srch.mode==='slot'){ this._slotEnter(this._srch.groupIdx); } else { this.addManual(); } }
+        else if(e.key==='ArrowUp'){ if(!open) return; e.preventDefault(); this._srch.active=Math.max(this._srch.active-1, -1); this._srchHi(); }
+        else if(e.key==='Enter'){ e.preventDefault(); if(open && this._srch.active>=0){ this._srchPick(this._srch.active); } else if(open){ this._srchTyped(); } else if(this._srch.mode==='slot'){ this._slotEnter(this._srch.groupIdx); } else { this.addManual(); } }
         else if(e.key==='Escape'){ e.preventDefault(); if(this._srch.mode==='slot') this.slotCancel(); this._closeSearch(); }
     },
     _srchPick: function(i){
@@ -168419,15 +168451,19 @@ window.TeeSheet = {
         this.render();
         setTimeout(function(){ var el=document.getElementById('ts2SlotInput'); if(el) el.focus(); }, 0);
     },
-    _slotEnter: async function(groupIdx){
+    _slotEnter: async function(groupIdx, typed){
         groupIdx=parseInt(groupIdx);
-        if((this._slotSuggest||[]).length){ this._slotPick(groupIdx, 0); return; }   // Enter picks the top suggestion
         var el=document.getElementById('ts2SlotInput'); var name=((el&&el.value)||'').trim(); if(!name) return;
-        this._targetGroup=groupIdx;
-        // No directory suggestion → resolve the typed name (best match) else add as a manual walk-on.
-        var match=null; try { var players=await SocietyGolfDB.searchPlayers(name, this.societyName||null); match=this._bestMatch(players, name); } catch(e){}
+        var asTyped = typed || this._nameOnly(name);
+        if(!asTyped && (this._slotSuggest||[]).length){ this._slotPick(groupIdx, 0); return; }   // Enter picks the top suggestion
+        this._targetGroup=groupIdx; this._closeSearch();
+        // No last name → exactly as typed, event-local id (no directory swap, no global profile). Otherwise
+        // resolve the typed name (best match) else add as a manual walk-on.
+        var match=null;
+        if(!asTyped){ try { var players=await SocietyGolfDB.searchPlayers(name, this.societyName||null); match=this._bestMatch(players, name); } catch(e){} }
         var pObj;
-        if(match && match.id){ pObj={ playerId:match.id, playerName:match.name||name, handicap:(match.handicap==null?null:match.handicap), _added:true }; }
+        if(asTyped && this._nameOnly(name)){ pObj={ playerId:'manual_'+Date.now()+'_'+(++this._manualSeq), playerName:name, handicap:null, _manual:true }; }
+        else if(match && match.id){ pObj={ playerId:match.id, playerName:match.name||name, handicap:(match.handicap==null?null:match.handicap), _added:true }; }
         else {
             // NEW walk-on name → persist a reusable profile so future events find them (NM, all societies).
             var pidNew=null;

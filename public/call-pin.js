@@ -74,6 +74,10 @@
     '.g3-me .cp-hdr{margin-top:3px}.g3-me .cp-hb{font-size:11px;color:#7dd3fc}.g3-me .cp-hb b{font-size:12px;color:#e0f2fe}.g3-me .cp-hb.set{color:#4ade80}' +
     '#g3Rail .g3-sb .cp-hdr{display:inline-block;margin:0 0 0 8px;vertical-align:middle}#g3Rail .g3-sb .cp-hb:not(.set) span{display:none}' +
     '#g3Rail .g3-sb .cp-hdr[hidden]{display:none}' +
+    // v1546: the digits ran ~19px past the card edge at 232px rail; tighter gaps + 11px digits keep them on the HCP line, NEW = dot on the icon corner
+    '#g3Rail .g3-me:has(.cp-hdr:not([hidden])){gap:8px;padding:10px 8px}#g3Rail .g3-sb:has(> .cp-hdr:not([hidden])){gap:4px}' +
+    '#g3Rail .g3-sb .cp-hdr{margin-left:3px}#g3Rail .g3-sb .cp-hb{gap:3px;position:relative}#g3Rail .g3-sb .cp-hb svg{width:10px;height:10px}#g3Rail .g3-sb .cp-hb b{font-size:11px;letter-spacing:.01em}' +
+    '#g3Rail .g3-sb .cp-new{position:absolute;top:-2px;left:6px;width:6px;height:6px;padding:0;margin:0;border-radius:50%;font-size:0;box-shadow:0 0 0 1.5px #0B3B2A}' +
     // v1531: with the PIN on the HCP line there is no room for the decorative unfold icon (it sat on the digits)
     '#g3Rail .g3-me:has(.cp-hdr:not([hidden])) > .material-symbols-outlined{display:none}' +
     /* phone: the v1142 one-line header becomes name · HCP on line 1, the PIN under it */

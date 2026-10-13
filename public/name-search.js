@@ -99,6 +99,14 @@ if (!window.nameSearchOrClauses) window.nameSearchOrClauses = function(word, col
 // over a synthetic id, so a pick links the account that can actually see its dashboard.
 // Returns [{id, name, handicap}] in name order.
 if (!window.searchProfilesByName) window.searchProfilesByName = async function(sb, term, limit){
+  // v1545: 6 digits = a golfer's Call PIN (every course, every society)
+  if (sb && /^\s*\d{3}\s?\d{3}\s*$/.test(String(term || ''))) {
+    try {
+      var pr = await sb.rpc('pin_lookup', { p_pin: String(term).replace(/\D/g, '') });
+      var pg = pr && pr.data && pr.data.ok && pr.data.golfer;
+      return pg ? [{ id: pg.id, name: pg.name, handicap: pg.hcp }] : [];
+    } catch (e) { return []; }
+  }
   term = window.sanitizeSearch(term);
   if (!sb || !term) return [];
   var words = term.split(/\s+/).filter(Boolean);

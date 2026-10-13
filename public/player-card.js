@@ -640,8 +640,8 @@
     lookupGuest: async function (fi) {
       var s = this.s, f = s.edit && s.edit.fresh && s.edit.fresh[fi], tok = this.tok(); if (!f) return;
       var pin = String(f.q || '').replace(/\D/g, ''); f.found = null;
-      if (pin.length === 6 && tok) {
-        try { var r = await C.sb.rpc('desk_call_lookup', { p_token: tok, p_pin: pin }); var g = r.data && r.data.ok && r.data.golfer; if (g) f.found = { id: g.id, name: g.name }; else this.toast(this.t('gNoPin')); } catch (e) { }
+      if (pin.length === 6) {
+        try { var r = tok ? await C.sb.rpc('desk_call_lookup', { p_token: tok, p_pin: pin }) : await C.sb.rpc('pin_lookup', { p_pin: pin }); var g = r.data && r.data.ok && r.data.golfer; if (g) f.found = { id: g.id, name: g.name }; else this.toast(this.t('gNoPin')); } catch (e) { }
         s._focus = '[data-pc-in="g"][data-fi="' + fi + '"]'; C._paint();
       }
     },
@@ -769,8 +769,8 @@
     searchGolfers: async function (q) {
       var s = this.s, self = this; q = String(q || '').trim(); if (!s) return;
       var out = [], pin = q.replace(/\D/g, '');
-      if (pin.length === 6 && this.tok()) {
-        try { var r = await C.sb.rpc('desk_call_lookup', { p_token: this.tok(), p_pin: pin }); var g = r.data && r.data.ok && r.data.golfer; if (g) out.push({ id: g.id, name: g.name, sub: 'Call PIN' }); } catch (e) { }
+      if (pin.length === 6) {
+        try { var r = this.tok() ? await C.sb.rpc('desk_call_lookup', { p_token: this.tok(), p_pin: pin }) : await C.sb.rpc('pin_lookup', { p_pin: pin }); var g = r.data && r.data.ok && r.data.golfer; if (g) out.push({ id: g.id, name: g.name, sub: 'Call PIN' }); } catch (e) { }
       } else if (q.length >= 2) {
         var data = C.peek(), n = C.norm(q);
         ((data && data.list) || []).forEach(function (p) { if (out.length < 12 && p.id && C.norm(p.name).indexOf(n) !== -1) out.push({ id: p.id, name: p.name, sub: self.t('kVisits') + ' ' + p.visits }); });

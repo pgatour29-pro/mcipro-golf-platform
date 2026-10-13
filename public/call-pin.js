@@ -19,7 +19,7 @@
       card: 'Phoning a course? Say these 6 numbers. The pro shop sees them on every caddy booking you make.',
       cardSet: 'Set 6 numbers and a pro shop finds you in seconds when you phone. No spelling your name.',
       change: 'Change', set: 'Set', courseSees: 'course sees this', close: 'Close',
-      slot: 'Your Call PIN {p} · say it when you call the course', slotSet: 'Set your Call PIN: the course finds you by it when you call'
+      asg: 'We gave you this Call PIN so courses and societies can book you right away. Keep it, or change it to any 6 numbers nobody else has.', isNew: 'NEW', avail: '✓ {p} is free. Tap Save PIN to make it yours.', yours: 'That is your Call PIN.', more: '{n} more number(s)', checking: 'Checking…', slot: 'Your Call PIN {p} · say it when you call the course', slotSet: 'Set your Call PIN: the course finds you by it when you call'
     },
     th: {
       hdr: 'PIN โทร', hdrSet: 'ตั้ง PIN โทร', title: 'PIN โทรของคุณ', titleSet: 'ตั้ง PIN โทรของคุณ',
@@ -32,7 +32,7 @@
       card: 'จะโทรหาสนาม? บอกตัวเลข 6 หลักนี้ โปรช็อปเห็นตัวเลขนี้ในการจองแคดดี้ทุกครั้งของคุณ',
       cardSet: 'ตั้งตัวเลข 6 หลัก แล้วโปรช็อปจะหาคุณเจอในไม่กี่วินาทีเมื่อคุณโทร ไม่ต้องสะกดชื่อ',
       change: 'เปลี่ยน', set: 'ตั้ง', courseSees: 'สนามเห็น', close: 'ปิด',
-      slot: 'PIN โทรของคุณ {p} · บอกตัวเลขนี้เมื่อโทรหาสนาม', slotSet: 'ตั้ง PIN โทร: สนามหาคุณเจอจากตัวเลขนี้เมื่อคุณโทร'
+      asg: 'เราตั้ง PIN โทรนี้ให้คุณแล้ว สนามและสมาคมจึงจองให้คุณได้ทันที ใช้ต่อได้เลย หรือเปลี่ยนเป็นตัวเลข 6 หลักที่ยังไม่มีใครใช้', isNew: 'ใหม่', avail: '✓ {p} ว่างอยู่ กด บันทึก PIN เพื่อใช้เป็นของคุณ', yours: 'นี่คือ PIN โทรของคุณ', more: 'อีก {n} หลัก', checking: 'กำลังตรวจสอบ…', slot: 'PIN โทรของคุณ {p} · บอกตัวเลขนี้เมื่อโทรหาสนาม', slotSet: 'ตั้ง PIN โทร: สนามหาคุณเจอจากตัวเลขนี้เมื่อคุณโทร'
     },
     ko: {
       hdr: '전화 PIN', hdrSet: '전화 PIN 설정', title: '내 전화 PIN', titleSet: '전화 PIN 설정',
@@ -45,7 +45,7 @@
       card: '골프장에 전화하시나요? 이 숫자 6자리를 말하세요. 프로샵은 모든 캐디 예약에서 이 번호를 봅니다.',
       cardSet: '숫자 6자리를 정하면 전화할 때 프로샵이 몇 초 만에 찾습니다. 이름을 불러 줄 필요가 없습니다.',
       change: '변경', set: '설정', courseSees: '골프장에 표시', close: '닫기',
-      slot: '내 전화 PIN {p} · 골프장에 전화할 때 말하세요', slotSet: '전화 PIN 설정: 전화하면 골프장이 이 번호로 찾습니다'
+      asg: '골프장과 소사이어티가 바로 예약할 수 있도록 전화 PIN을 드렸습니다. 그대로 쓰시거나 아무도 쓰지 않는 숫자 6자리로 바꾸세요.', isNew: 'NEW', avail: '✓ {p} 사용 가능합니다. PIN 저장을 누르세요.', yours: '현재 내 전화 PIN입니다.', more: '{n}자리 더', checking: '확인 중…', slot: '내 전화 PIN {p} · 골프장에 전화할 때 말하세요', slotSet: '전화 PIN 설정: 전화하면 골프장이 이 번호로 찾습니다'
     },
     ja: {
       hdr: '電話PIN', hdrSet: '電話PINを設定', title: 'あなたの電話PIN', titleSet: '電話PINを設定',
@@ -58,7 +58,7 @@
       card: 'ゴルフ場に電話しますか？この6桁を伝えてください。プロショップはあなたのすべてのキャディー予約でこの番号を見られます。',
       cardSet: '6桁を決めておけば、電話したときプロショップがすぐにあなたを見つけます。名前のつづりは不要です。',
       change: '変更', set: '設定', courseSees: 'ゴルフ場に表示', close: '閉じる',
-      slot: 'あなたの電話PIN {p} · ゴルフ場に電話するときに伝えてください', slotSet: '電話PINを設定: 電話したときゴルフ場がこの番号であなたを見つけます'
+      asg: 'ゴルフ場やソサエティがすぐ予約できるよう、電話PINを用意しました。そのまま使うか、誰も使っていない6桁に変更できます。', isNew: 'NEW', avail: '✓ {p} は使えます。「PINを保存」を押してください。', yours: '現在のあなたの電話PINです。', more: 'あと{n}桁', checking: '確認中…', slot: 'あなたの電話PIN {p} · ゴルフ場に電話するときに伝えてください', slotSet: '電話PINを設定: 電話したときゴルフ場がこの番号であなたを見つけます'
     }
   };
   var ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>';
@@ -113,7 +113,9 @@
     '#cpSheet .bxw.foc .bx span.cur{border-color:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.25)}' +
     '#cpSheet .bxw input{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;font-size:16px;color:transparent;background:transparent;caret-color:transparent}' +
     '#cpSheet .msg{min-height:20px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;margin:0 0 10px}' +
-    '#cpSheet .msg.ok{color:#86efac}#cpSheet .msg.bad{color:#fca5a5}' +
+    '#cpSheet .msg.ok{color:#86efac}#cpSheet .msg.bad{color:#fca5a5}#cpSheet .msg.mut{color:#94a3b8}' +
+    '#cpSheet .as{border:1px solid rgba(245,158,11,.6);background:rgba(245,158,11,.12);color:#fde68a;border-radius:12px;padding:10px 12px;margin:0 0 12px;font-size:13px;font-weight:700;line-height:1.4}' +
+    '.cp-new{font-style:normal;display:inline-block;background:#f59e0b;color:#1c1300;border-radius:6px;padding:1px 5px;margin-left:5px;font:800 9.5px/1.4 system-ui,sans-serif;letter-spacing:.04em}' +
     '#cpSheet .rules{font-size:12px;color:#94a3b8;margin:0 0 12px;line-height:1.5}' +
     '#cpSheet .pv{display:flex;align-items:center;gap:10px;border:1px dashed rgba(148,163,184,.3);border-radius:12px;padding:10px 12px;margin:0 0 14px;font-size:12.5px;color:#cbd5e1;line-height:1.4}' +
     '#cpSheet .pv svg{flex:none;width:18px;height:18px;color:#7dd3fc}' +
@@ -126,7 +128,7 @@
   function fmt(p) { p = String(p || ''); return p.length === 6 ? p.slice(0, 3) + ' ' + p.slice(3) : p; }
 
   var CP = W.CallPin = {
-    _v: 1528,
+    _v: 1545,
     pin: null,       // null = not loaded, '' = none set, '123456' = set
     _busy: false,
     lang: function () { var l = 'en'; try { l = localStorage.getItem('mci-pro-language') || 'en'; } catch (e) { } return STR[l] ? l : 'en'; },
@@ -156,7 +158,7 @@
       this._loading = (async function () {
         try {
           var r = await sb.rpc('call_pin_get', { p_golfer: me });
-          if (!r.error && r.data && r.data.ok) { self.pin = r.data.pin || ''; self._for = me; }
+          if (!r.error && r.data && r.data.ok) { self.pin = r.data.pin || ''; self.assigned = !!r.data.assigned; self._for = me; }
           else if (r.data && r.data.reason === 'no_account') { self.pin = null; self._for = me; self._noAcct = true; }
         } catch (e) { }
         self._loading = null;
@@ -181,11 +183,13 @@
         if (self.pin === null || !self.me()) { el.hidden = true; return; }
         el.hidden = false;
         el.innerHTML = self.pin
-          ? '<button type="button" class="cp-hb" data-cp="open">' + ICON + '<span>' + esc(self.t('hdr')) + '</span><b>' + esc(fmt(self.pin)) + '</b></button>'
+          ? '<button type="button" class="cp-hb" data-cp="open">' + ICON + '<span>' + esc(self.t('hdr')) + '</span><b>' + esc(fmt(self.pin)) + '</b>' + (self.isNew() ? '<i class="cp-new">' + esc(self.t('isNew')) + '</i>' : '') + '</button>'
           : '<button type="button" class="cp-hb set" data-cp="open">' + ICON + '<span>' + esc(self.t('hdrSet')) + '</span></button>';
       });
     },
 
+    // v1545: an assigned PIN wears NEW until the golfer has opened it once
+    isNew: function () { if (!this.pin || !this.assigned) return false; try { return !localStorage.getItem('cp.seen.' + this.pin); } catch (e) { return false; } },
     fillSlots: function (all) {
       var self = this, els = document.querySelectorAll(all ? '.cp-slot' : '.cp-slot:not([data-cp-done])');
       if (!els.length || this.pin === null) return;
@@ -217,11 +221,13 @@
     /* set / change sheet */
     open: function () {
       this.css();
-      var self = this, cur = this.pin || '';
+      var self = this, cur = this.pin || '', asg = !!(cur && this.assigned);
       var old = document.getElementById('cpSheet'); if (old) old.remove();
+      if (cur) { try { localStorage.setItem('cp.seen.' + cur, '1'); } catch (e) { } setTimeout(function () { self.paint(); }, 0); }
       var boxes = ''; for (var i = 0; i < 6; i++) boxes += '<span></span>';
       document.body.insertAdjacentHTML('beforeend', '<div id="cpSheet" role="dialog" aria-modal="true"><div class="sh"><div class="gr"></div>' +
         '<div class="hd"><h3>' + esc(this.t(cur ? 'title' : 'titleSet')) + '</h3><button type="button" class="x" data-cpx aria-label="' + esc(this.t('close')) + '">&times;</button></div>' +
+        (asg ? '<div class="as">' + esc(this.t('asg')) + '</div>' : '') +
         '<p>' + esc(this.t('lead')) + '</p>' +
         '<div class="bxw"><div class="bx">' + boxes + '</div><input id="cpIn" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" enterkeyhint="go" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore aria-label="' + esc(this.t('hdr')) + '"></div>' +
         '<div class="msg" id="cpMsg"></div>' +
@@ -236,7 +242,27 @@
         sh.querySelectorAll('.bx span').forEach(function (s, i) { s.textContent = v[i] || ''; s.className = (v[i] ? 'f' : '') + (i === Math.min(v.length, 5) ? ' cur' : ''); });
       };
       draw();
-      inp.addEventListener('input', function () { draw(); self._msg('', ''); });
+      // v1545 the live checker: every keystroke says how many numbers are left; at 6 the server says free / taken
+      var seq = 0, chk = 0, saveBtn = sh.querySelector('[data-cps]');
+      var check = function () {
+        var v = inp.value, my = ++seq; clearTimeout(chk);
+        if (saveBtn) saveBtn.disabled = false;
+        if (!v) { self._msg('', ''); return; }
+        if (v.length < 6) { self._msg('mut', self.t('more', { n: 6 - v.length })); return; }
+        if (v === cur) { self._msg('ok', self.t('yours')); return; }
+        self._msg('mut', self.t('checking'));
+        chk = setTimeout(async function () {
+          var r = null; try { r = await self.sb().rpc('call_pin_check', { p_pin: v, p_golfer: self.me() }); } catch (e) { }
+          if (my !== seq) return;
+          var st = r && r.data && r.data.state;
+          if (st === 'available') self._msg('ok', self.t('avail', { p: fmt(v) }));
+          else if (st === 'yours') self._msg('ok', self.t('yours'));
+          else if (st === 'taken') { self._msg('bad', self.t('taken', { p: fmt(v) })); if (saveBtn) saveBtn.disabled = true; }
+          else if (st === 'weak') { self._msg('bad', self.t('weak')); if (saveBtn) saveBtn.disabled = true; }
+          else self._msg('', '');
+        }, 220);
+      };
+      inp.addEventListener('input', function () { draw(); check(); });
       inp.addEventListener('focus', function () { wrap.classList.add('foc'); });
       inp.addEventListener('blur', function () { wrap.classList.remove('foc'); });
       inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); self._save(inp.value, true); } });
@@ -262,7 +288,7 @@
       this._busy = false; btns.forEach(function (b) { b.disabled = false; }); if (go) go.textContent = this.t('save');
       var d = r && !r.error && r.data;
       if (d && d.ok) {
-        this.pin = d.pin; this._for = me;
+        this.pin = d.pin; this._for = me; this.assigned = false;
         var inp = document.getElementById('cpIn'); if (inp) { inp.value = d.pin; inp.dispatchEvent(new Event('input')); }
         this._msg('ok', this.t('saved', { p: fmt(d.pin) }));
         this.paint(); this.decorate(); this.fillSlots(true);

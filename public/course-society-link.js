@@ -877,9 +877,9 @@
       var nk = ev.id + '|' + row.getAttribute('data-pk'), f = (this._gNew[nk] || [])[+inp.getAttribute('data-fresh')]; if (!f) return;
       f.q = inp.value; f.found = null;
       var pin = String(inp.value || '').replace(/\D/g, ''), tok = this._tok();
-      if (pin.length === 6 && tok) {
+      if (pin.length === 6) {
         try {
-          var r = await this.sb.rpc('desk_call_lookup', { p_token: tok, p_pin: pin });
+          var r = tok ? await this.sb.rpc('desk_call_lookup', { p_token: tok, p_pin: pin }) : await this.sb.rpc('pin_lookup', { p_pin: pin });   // v1545 every course
           var g = r && r.data && r.data.ok && r.data.golfer;
           if (g) f.found = { id: g.id, name: g.name }; else this.toast('⚠ ' + this.t('gstNoPin'));
         } catch (e) { }

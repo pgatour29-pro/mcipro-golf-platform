@@ -288,15 +288,25 @@
       });
     },
     // 6 digits typed where a golfer NAME is searched -> that golfer, in the shape name-search.js returns
-    findPin: async function (term) {
-      var pin = digits(term), sb = this.sb(), tok = this.token();
-      if (pin.length !== 6 || !sb || !tok) return [];
+    /* v1545: PIN → golfer at EVERY course: the course's own-PIN desk token when it has one, else pin_lookup (name + hcp, rate-limited) */
+    lookupAny: async function (pin) {
+      var sb = this.sb(), tok = this.token(); if (!sb) return null;
       try {
-        var r = await sb.rpc('desk_call_lookup', { p_token: tok, p_pin: pin });
-        var g = r && r.data && r.data.ok && r.data.golfer; if (!g) return [];
-        this.pins[g.id] = g.pin;
-        return [{ id: g.id, name: g.name, handicap: g.hcp, _v: { text: this.t('box') + ' ' + fmtPin(g.pin) } }];
-      } catch (e) { return []; }
+        if (tok) {
+          var r = await sb.rpc('desk_call_lookup', { p_token: tok, p_pin: pin });
+          if (r && !r.error && r.data && !(r.data.ok === false && r.data.reason === 'token')) return r.data;
+          if (r && r.data && r.data.reason === 'token') { try { localStorage.removeItem('ps_desk_token_v1'); } catch (e) { } }
+        }
+        var q = await sb.rpc('pin_lookup', { p_pin: pin });
+        return q && !q.error ? q.data : null;
+      } catch (e) { return null; }
+    },
+    findPin: async function (term) {
+      var pin = digits(term);
+      if (pin.length !== 6) return [];
+      var d = await this.lookupAny(pin), g = d && d.ok && d.golfer; if (!g) return [];
+      this.pins[g.id] = g.pin || pin;
+      return [{ id: g.id, name: g.name, handicap: g.hcp, _v: { text: this.t('box') + ' ' + fmtPin(g.pin || pin) } }];
     },
     _crmPin: function (id) {
       var ov = document.getElementById('crmOv'), C = W.CourseCRM, cur = C && C._cur;
@@ -372,8 +382,7 @@
       if (!this.api) return;
       this.css();
       this.S = { view: 'find', pin: digits(pin), msg: null, fbCad: '', fbDay: '', fbOpen: false, focus: 'pin' };
-      if (!this.token()) { this.S.view = 'token'; this.S.focus = 'tok'; this.paint(); return; }
-      this.paint();
+      this.paint();   // v1545: every course looks golfers up by Call PIN (no own-PIN token needed for the lookup)
       if (this.S.pin.length === 6) this.lookup(this.S.pin);
     },
 
@@ -447,14 +456,12 @@
       var S = this.S, sb = this.sb(); if (!S || !sb) return;
       S.pin = pin; S.msg = null;
       try {
-        var r = await sb.rpc('desk_call_lookup', { p_token: this.token(), p_pin: pin });
+        var d = await this.lookupAny(pin);
         if (!this.S || this.S !== S) return;
-        var d = r && r.data;
-        if (r.error || !d) { S.msg = { kind: 'err', text: this.t('offline') }; this.paint(); return; }
-        if (!d.ok && d.reason === 'token') { try { localStorage.removeItem('ps_desk_token_v1'); } catch (e) { } S.view = 'token'; S.focus = 'tok'; this.paint(); return; }
+        if (!d) { S.msg = { kind: 'err', text: this.t('offline') }; this.paint(); return; }
         if (!d.ok && d.reason === 'locked') { S.msg = { kind: 'locked' }; this.paint(); return; }
         if (!d.golfer) { S.msg = { kind: 'miss', pin: pin }; S.focus = 'pin'; this.paint(); return; }
-        this.pins[d.golfer.id] = d.golfer.pin;
+        this.pins[d.golfer.id] = d.golfer.pin || pin;
         this.startGolfer({ id: d.golfer.id, name: d.golfer.name, hcp: d.golfer.hcp, pin: d.golfer.pin, by: 'pin' });
       } catch (e) { S.msg = { kind: 'err', text: this.t('offline') }; this.paint(); }
     },

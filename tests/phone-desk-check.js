@@ -76,6 +76,10 @@ if (!/<script defer src="phone-desk\.js\?v=\w+"><\/script>/.test(html) || html.i
 has('tee-times.js', /<div class="cp-slot"><\/div>/, 'the golfer\'s tee time ticket must carry the Call PIN slot');
 has('promo-wall.js', /<div class="cp-slot"><\/div>/, 'the golfer\'s deal code must carry the Call PIN slot');
 if (!/'<div class="cp-slot"><\/div>'/.test(html)) fail.push('index.html: the dashboard tee time card must carry the Call PIN slot');
+// v1557 (Pete 2026-10-13): from the Caller panel the desk reaches the golfer's whole Player card, and the card opens ON
+// TOP of a modal dialog (inside it) — on <body> it sat under the top layer, dead, which also broke Book Slot's button.
+has('phone-desk.js', /data-a="prof"/, 'the Caller panel must open the golfer\'s full Player card');
+has('course-crm.js', /dialog\[open\]/, 'CourseCRM.open must mount inside an open modal dialog, or the card opens behind it');
 
 if (fail.length) { console.error('phone-desk-check FAILED:\n - ' + fail.join('\n - ')); process.exit(1); }
 console.log('phone-desk-check: ok');

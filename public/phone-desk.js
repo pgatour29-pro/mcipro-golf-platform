@@ -37,7 +37,7 @@
       stFree: 'Free {t}', stOff: 'Day off', stOut: 'Out until {t}', stSus: 'Not available', stGone: 'Not on the roster', stRnds: '{n} rounds', stRnd1: '1 round',
       pickTime: 'Pick a time', sumCad: 'Caddies {c}', sumNoCad: 'No caddy', book: 'Book', booking: 'Booking…',
       done: 'Booked: {d} · {t}', doneSub: '{n} players · caddies {c}', doneNoCad: '{n} players', next: 'Next caller',
-      refused: 'These caddies cannot take that time:', fail: 'Not saved: {m}', full: 'Full', today: 'Today', usual: 'usual'
+      prof: 'Full profile', profSub: 'History here, caddies, deals, messages', refused: 'These caddies cannot take that time:', fail: 'Not saved: {m}', full: 'Full', today: 'Today', usual: 'usual'
     },
     th: {
       btn: 'ผู้โทร', title: 'ผู้โทร', box: 'PIN โทร', ph: 'PIN โทร 6 หลัก',
@@ -61,7 +61,7 @@
       stFree: 'ว่าง {t}', stOff: 'วันหยุด', stOut: 'ออกรอบถึง {t}', stSus: 'ไม่พร้อม', stGone: 'ไม่อยู่ในรายชื่อ', stRnds: '{n} รอบ', stRnd1: '1 รอบ',
       pickTime: 'เลือกเวลา', sumCad: 'แคดดี้ {c}', sumNoCad: 'ไม่มีแคดดี้', book: 'จอง', booking: 'กำลังจอง…',
       done: 'จองแล้ว: {d} · {t}', doneSub: '{n} คน · แคดดี้ {c}', doneNoCad: '{n} คน', next: 'ผู้โทรคนถัดไป',
-      refused: 'แคดดี้เหล่านี้รับเวลานั้นไม่ได้:', fail: 'บันทึกไม่สำเร็จ: {m}', full: 'เต็ม', today: 'วันนี้', usual: 'ประจำ'
+      prof: 'โปรไฟล์ทั้งหมด', profSub: 'ประวัติที่นี่ แคดดี้ ดีล ข้อความ', refused: 'แคดดี้เหล่านี้รับเวลานั้นไม่ได้:', fail: 'บันทึกไม่สำเร็จ: {m}', full: 'เต็ม', today: 'วันนี้', usual: 'ประจำ'
     },
     ko: {
       btn: '발신자', title: '발신자', box: '전화 PIN', ph: '전화 PIN 6자리',
@@ -85,7 +85,7 @@
       stFree: '{t} 가능', stOff: '휴무', stOut: '{t}까지 라운드', stSus: '불가', stGone: '명단에 없음', stRnds: '{n}라운드', stRnd1: '1라운드',
       pickTime: '시간 선택', sumCad: '캐디 {c}', sumNoCad: '캐디 없음', book: '예약', booking: '예약 중…',
       done: '예약 완료: {d} · {t}', doneSub: '{n}명 · 캐디 {c}', doneNoCad: '{n}명', next: '다음 발신자',
-      refused: '이 캐디들은 그 시간에 안 됩니다:', fail: '저장 안 됨: {m}', full: '마감', today: '오늘', usual: '평소'
+      prof: '전체 프로필', profSub: '이곳 기록, 캐디, 딜, 메시지', refused: '이 캐디들은 그 시간에 안 됩니다:', fail: '저장 안 됨: {m}', full: '마감', today: '오늘', usual: '평소'
     },
     ja: {
       btn: '発信者', title: '発信者', box: '電話PIN', ph: '6桁の電話PIN',
@@ -109,7 +109,7 @@
       stFree: '{t} 空き', stOff: '休み', stOut: '{t}までラウンド中', stSus: '対応不可', stGone: '名簿にいません', stRnds: '{n}ラウンド', stRnd1: '1ラウンド',
       pickTime: '時間を選ぶ', sumCad: 'キャディー {c}', sumNoCad: 'キャディーなし', book: '予約', booking: '予約中…',
       done: '予約しました: {d} · {t}', doneSub: '{n}名 · キャディー {c}', doneNoCad: '{n}名', next: '次の発信者',
-      refused: 'このキャディーはその時間に入れません:', fail: '保存できません: {m}', full: '満員', today: '今日', usual: 'いつも'
+      prof: 'プロフィール全体', profSub: 'ここでの履歴・キャディー・特典・メッセージ', refused: 'このキャディーはその時間に入れません:', fail: '保存できません: {m}', full: '満員', today: '今日', usual: 'いつも'
     }
   };
   var IC = {
@@ -142,6 +142,11 @@
     '.pd-again{display:flex;gap:10px;align-items:center;width:100%;text-align:left;border:2px solid var(--brand);background:color-mix(in srgb,#22c55e 9%,var(--card));color:var(--ink);border-radius:12px;padding:10px 12px;cursor:pointer;font-family:inherit;margin-bottom:8px}' +
     '.pd-again .w{flex:1;min-width:0}.pd-again b{display:block;font-size:14.5px;font-weight:800}' +
     '.pd-again small{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-top:2px}' +
+    /* v1557 the caller's whole Player card (history, caddies, deals, messages) opens on top; closing it comes back here */
+    '.pd-prof{display:flex;gap:10px;align-items:center;width:100%;text-align:left;border:1px solid var(--line-2);background:var(--card);color:var(--ink);border-radius:12px;padding:9px 12px;cursor:pointer;font-family:inherit;margin:2px 0 10px}' +
+    '.pd-prof:hover{border-color:var(--brand)}.pd-prof .w{flex:1;min-width:0}.pd-prof b{display:block;font-size:14px;font-weight:800}' +
+    '.pd-prof small{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-top:1px}.pd-prof .chev{flex:none;font-size:20px;line-height:1;color:var(--muted)}' +
+    '#pd-rail .bb-hd[data-a]{cursor:pointer}' +
     '.pd-again .go{flex:none;background:#16a34a;color:#fff;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:800}' +
     '.pd-days,.pd-times,.pd-cads,.pd-pp{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}' +
     '.pd-c{border:1px solid var(--line-2);background:var(--card);color:var(--ink);border-radius:9px;padding:6px 10px;font-weight:700;font-size:12.5px;font-family:inherit;cursor:pointer;white-space:nowrap;line-height:1.15;text-align:center}' +
@@ -577,7 +582,8 @@
         if (dtxt || p.medTime != null) tags.push('<span>' + E(dtxt + (p.medTime != null ? ' ≈ ' + this.api.hhmm(p.medTime) : '')) + '</span>');
       }
       if (g.pin) tags.push('<span class="pd-pin">' + IC.ph + E(fmtPin(g.pin)) + '</span>');
-      h += '<div class="bb-hd"><div class="bb-av"' + (g.id ? ' data-golfer-face="' + E(g.id) + '"' : '') + '>' + E(C ? C.initials(name) : '?') + '</div><div class="bb-who"><div class="bb-nm">' + E(name) + '</div><div class="bb-tags">' + tags.join('') + '</div></div></div>';
+      var prof = !!(C && (g.id || name));
+      h += '<div class="bb-hd"' + (prof ? ' data-a="prof"' : '') + '><div class="bb-av"' + (g.id ? ' data-golfer-face="' + E(g.id) + '"' : '') + '>' + E(C ? C.initials(name) : '?') + '</div><div class="bb-who"><div class="bb-nm">' + E(name) + '</div><div class="bb-tags">' + tags.join('') + '</div></div></div>';
       if (!p && S.players == null) return h + '<div class="bb-skel"></div><div class="bb-skel" style="width:70%"></div>';
       if (p) {
         var usualCad = p.cads && p.cads[0], size = this.usualSize();
@@ -590,6 +596,7 @@
           h += '<div class="bb-al info">' + IC.info + '<div>' + E(this.t('already', { d: this.dfmt(p.next), t: C.hm(nv.time) || '' })) + '<small>' + E(nc.length ? this.t('alreadySub', { n: np, c: nc.map(function (n) { return '#' + n; }).join(' ') }) : this.t('alreadyNoCad', { n: np })) + '</small></div></div>';
         }
       } else h += '<div class="bb-al info">' + IC.info + '<div>' + E(this.t('firstTime')) + '</div></div>';
+      if (prof) h += '<button type="button" class="pd-prof" data-a="prof"><span class="w"><b>' + E(this.t('prof')) + '</b><small>' + E(this.t('profSub')) + '</small></span><span class="chev" aria-hidden="true">›</span></button>';
       if (!g.pin) h += '<div class="bb-al warn">' + IC.warn + '<div>' + E(this.t('fbNoPin')) + '<small>' + E(this.t('fbNoPinSub')) + '</small></div></div>';
       // 1 when
       h += '<h4><span class="s">1</span>' + E(this.t('when')) + '</h4>';
@@ -733,6 +740,11 @@
         return;
       }
       if (k === 'book') { this.book(); return; }
+      if (k === 'prof') {   // v1557: the card mounts inside this dialog (CourseCRM.open), so the booking in progress stays as it was
+        var CR = this.crm(), pp = S.p; if (!CR || !S.g) return;
+        CR.open(pp && pp.key ? { key: pp.key, id: S.g.id || pp.id || null, name: CR.nice(pp.name) } : { id: S.g.id || null, name: S.g.name });
+        return;
+      }
     },
     onChange: function (e) {
       var x = e.target, S = this.S; if (!S) return;

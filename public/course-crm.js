@@ -542,7 +542,7 @@
       } catch (e) { return false; }
     },
     close: function () { var o = document.getElementById('crmOv'); if (o) o.remove(); this._cur = null; document.removeEventListener('keydown', this._esc, true); },
-    _esc: function (e) { if (e.key === 'Escape' && document.getElementById('crmOv')) { e.stopPropagation(); CRM.close(); } },
+    _esc: function (e) { if (e.key === 'Escape' && document.getElementById('crmOv')) { e.stopPropagation(); e.preventDefault(); CRM.close(); } },   // preventDefault: Escape closes the card, not the dialog under it
 
     open: async function (who) {
       if (!this.ready()) return;
@@ -553,7 +553,12 @@
       var ov = document.createElement('div'); ov.id = 'crmOv'; if (this._dark()) ov.className = 'dk';
       ov.innerHTML = '<div class="crm" role="dialog" aria-modal="true" aria-label="' + E(this.t('title')) + '"><div class="crm-hd"><div class="crm-av">' + E(this.initials(who.name || '?')) + '</div><div class="crm-who"><div class="crm-nm">' + E(this.nice(who.name || '')) + '</div><div class="crm-sub">' + E(this.course.name) + '</div></div><button class="crm-x" data-a="x" aria-label="' + E(this.t('close')) + '">×</button></div><div class="crm-bd"><div class="center">' + E(this.t('loading')) + '</div></div></div>';
       ov.addEventListener('click', function (e) { if (e.target === ov) return self.close(); self._click(e); });
-      document.body.appendChild(ov);
+      // v1557: opened from a modal dialog (Caller panel, Book Slot) the card goes INSIDE it. A modal dialog sits in the
+      // top layer above every z-index and makes the rest of the page inert, so a card on <body> opened behind it, dead.
+      // Its events stop at the card so the dialog's own click/key handlers never see them.
+      var host = [].slice.call(document.querySelectorAll('dialog[open]')).filter(function (d) { try { return d.matches(':modal'); } catch (x) { return false; } }).pop();
+      if (host) ['click', 'input', 'change', 'keydown', 'submit'].forEach(function (t) { ov.addEventListener(t, function (e) { e.stopPropagation(); }); });
+      (host || document.body).appendChild(ov);
       document.addEventListener('keydown', this._esc, true);
       try {
         var data = await this.load();

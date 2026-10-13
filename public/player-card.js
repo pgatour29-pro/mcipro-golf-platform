@@ -654,6 +654,9 @@
       if (a === 'tab') { s.tab = b.getAttribute('data-tab'); s.edit = null; C._paint(); if (s.tab === 'msg') this.loadThread(); return true; }
       if (a === 'book') {
         var PD = window.PhoneDesk; if (!PD) return true;
+        var pdd = document.getElementById('pd-dialog');
+        // v1557: opened from the Caller panel for this golfer = back to that booking, as it was left
+        if (pdd && pdd.open && PD.S && PD.S.g && ((who.id && PD.S.g.id === who.id) || (!who.id && !PD.S.g.id))) { C.close(); return true; }
         C.close(); PD.open('');
         setTimeout(function () { PD.startGolfer({ id: who.id, name: who.name, hcp: null, pin: (who.id && PD.pins && PD.pins[who.id]) || '', by: 'pin' }); }, 60);
         return true;

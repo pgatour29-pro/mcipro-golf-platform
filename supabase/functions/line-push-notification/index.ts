@@ -1479,11 +1479,11 @@ async function handleSystemAlert(supabase: any, payload: any) {
 }
 
 // ============================================================================
-// TEE SHEET → THE EVENT'S PLAYERS (organizer tee sheet "Send LINE", v1562)
-// Recipients are resolved HERE from event_registrations for that one event — the caller can't
+// TEE SHEET → THE PLAYERS ON IT (organizer tee sheet "Send LINE", v1562/v1563)
+// Recipients are resolved HERE from that event's saved tee sheet (event_pairings) — the caller can't
 // name recipients, so the button can only ever reach that event's own players. Header (title +
 // date) comes from the DB. Each player gets their own group / tee / van line on top ("mine" is
-// keyed by player_id and only read for ids that ARE registered). Played events are refused.
+// keyed by player_id and only read for ids that ARE on the sheet). Played events are refused.
 // ============================================================================
 async function handleTeeSheet(supabase: any, payload: any) {
   const eventId = String(payload.event_id || "");
@@ -1496,10 +1496,25 @@ async function handleTeeSheet(supabase: any, payload: any) {
   if (!ev) return { success: false, error: "event_not_found" };
   const today = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);   // Asia/Bangkok date
   if (ev.event_date && String(ev.event_date).slice(0, 10) < today) return { success: false, error: "event_past" };
+  // Per-EVENT cap, whoever calls (this function is verify_jwt=false and PIN organizers carry no verified
+  // token yet — Phase-2 LINE->JWT closes that). 4 sends per event per 30 min: enough for a resend after a
+  // late change, not a spam channel to that event's players. Fails open like rateLimit() if rl_hit errors.
+  try {
+    const { data: rl } = await supabase.rpc("rl_hit", { p_key: `tee_sheet:${eventId}`, p_limit: 4, p_window_secs: 1800 });
+    if (rl && rl.allowed === false) return { success: false, error: "too_many_sends", retry_after: rl.retry_after ?? 1800 };
+  } catch (e) { console.warn("[LINE Push] tee_sheet limiter failing open:", String(e).slice(0, 120)); }
 
-  const { data: regs } = await supabase
-    .from("event_registrations").select("player_id").eq("event_id", eventId);
-  const playerIds = [...new Set((regs || []).map((r: any) => r.player_id).filter((id: any) => typeof id === "string" && id.startsWith("U")))] as string[];
+  // ONLY the players placed on the saved tee sheet (Pete: "it goes to the people on the list and not any
+  // others"), never the whole registration list. event_pairings.groups has two shapes (see the dual
+  // pairing UIs): {players:[{playerId}]} objects or plain [{id|playerId}] arrays — read both.
+  const { data: pr } = await supabase
+    .from("event_pairings").select("groups").eq("event_id", eventId).maybeSingle();
+  const onSheet: string[] = [];
+  for (const g of (Array.isArray(pr?.groups) ? pr.groups : [])) {
+    const pls = Array.isArray(g) ? g : (Array.isArray(g?.players) ? g.players : []);
+    for (const p of pls) { const id = p && (p.playerId ?? p.id); if (typeof id === "string") onSheet.push(id); }
+  }
+  const playerIds = [...new Set(onSheet.filter((id) => id.startsWith("U")))] as string[];
   if (!playerIds.length) return { success: true, notified: 0, recipients: 0 };
 
   const { data: profs } = await supabase

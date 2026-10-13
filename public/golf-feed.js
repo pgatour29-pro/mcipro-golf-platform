@@ -445,6 +445,30 @@
     .gdm-k.course{background:rgba(180,83,9,.15);color:#b45309}
     .gdm-k.society{background:rgba(3,105,161,.15);color:#0369a1}
     .gdm-k.vendor{background:rgba(219,39,119,.14);color:#be185d}
+    .gdm-k.own{background:rgba(234,179,8,.16);color:#a16207;text-transform:none;letter-spacing:0;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .gdm-sec{display:flex;align-items:center;gap:5px;font:800 10.5px/1 'Instrument Sans',sans-serif;letter-spacing:.09em;text-transform:uppercase;color:var(--mkp-sub);margin:12px 4px 8px}
+    .gdm-sec .material-symbols-outlined{font-size:14px}
+    .gdm-pinc{box-shadow:inset 0 0 0 1.5px rgba(34,197,94,.45)}
+    .gdm-row .gdm-ic{display:flex;align-items:center;gap:6px}
+    .gdm-pn{display:inline-flex;color:var(--mkp-green)}.gdm-pn .material-symbols-outlined{font-size:15px}
+    .gdm-more{border:none;background:none;padding:0;color:var(--mkp-sub);display:inline-flex;cursor:pointer}.gdm-more .material-symbols-outlined{font-size:20px}
+    .gfd-chips .gdm-addf{background:none;box-shadow:inset 0 0 0 1.5px var(--mkp-green);color:var(--mkp-greenhi)}
+    .gdm-nf{flex:none;display:flex;gap:6px}
+    .gdm-nf input{width:140px;border:none;border-radius:999px;padding:7px 12px;background:var(--mkp-glass2);box-shadow:inset 0 0 0 1.5px var(--mkp-green);color:var(--mkp-text);font:600 12px/1 'Instrument Sans',sans-serif;outline:none}
+    .gfd-chips .gdm-nf button{background:var(--mkp-green);color:#fff;box-shadow:none}
+    .gdm-delf{display:flex;align-items:center;gap:6px;margin:10px auto 0;border:1px dashed var(--mkp-slo);background:none;color:var(--mkp-sub);border-radius:10px;padding:8px 12px;font:700 12px/1 'Instrument Sans',sans-serif;cursor:pointer}
+    .gdm-delf .material-symbols-outlined{font-size:16px}
+    .gfd-sheet .gdm-pinit{background:var(--mkp-greendim);color:var(--mkp-greenhi)}.gfd-sheet .gdm-pinit .material-symbols-outlined{color:var(--mkp-greenhi)}
+    .gdm-mhd{font:800 10.5px/1 'Instrument Sans',sans-serif;letter-spacing:.09em;text-transform:uppercase;color:var(--mkp-sub);padding:12px 6px 8px;border-top:1px solid var(--mkp-slo);margin-top:6px}
+    .gdm-fg{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
+    .gdm-fg > button{display:flex;align-items:center;gap:8px;min-width:0;border:none;box-shadow:inset 0 0 0 1px var(--mkp-slo);background:none;color:var(--mkp-text);border-radius:12px;padding:12px 10px;font:700 13.5px/1 'Instrument Sans',sans-serif;cursor:pointer}
+    .gdm-fg > button span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .gdm-fg > button .material-symbols-outlined{font-size:18px;color:var(--mkp-sub)}
+    .gdm-fg > button.cur{box-shadow:inset 0 0 0 1.5px var(--mkp-green);color:var(--mkp-greenhi)}.gdm-fg > button.cur .material-symbols-outlined{color:var(--mkp-greenhi)}
+    .gdm-fg > button.new{box-shadow:none;border:1.5px dashed var(--mkp-green);color:var(--mkp-greenhi)}
+    .gdm-nfm{grid-column:1/-1;display:flex;gap:6px}
+    .gdm-nfm input{flex:1;min-width:0;border:none;box-shadow:inset 0 0 0 1.5px var(--mkp-green);border-radius:12px;background:none;color:var(--mkp-text);padding:11px 12px;font:600 14px/1 'Instrument Sans',sans-serif;outline:none}
+    .gdm-nfm button{border:none;background:var(--mkp-green);color:#fff;border-radius:12px;padding:0 16px;font:800 13.5px/1 'Instrument Sans',sans-serif;cursor:pointer}
     body.theme-dark .gdm-k.player,.mkp-scope:not(.theme-light) .gdm-k.player{color:#4ade80}
     .gdm-hd{display:flex;align-items:center;gap:9px;margin:0 0 10px}
     .gdm-hd .who{flex:1;min-width:0}
@@ -1633,7 +1657,7 @@
             return { player: tr('gfd.dm.k.player', 'Player'), caddy: tr('gfd.dm.k.caddy', 'Caddy'), course: tr('gfd.dm.k.course', 'Course'), society: tr('gfd.dm.k.society', 'Society'), vendor: tr('gfd.dm.k.vendor', 'Vendor') }[f] || '';
         },
         sdm() { return window.SecureDM || null; },
-        _dm: { convs: null, folder: 'all', q: '', who: null },
+        _dm: { convs: null, folder: 'all', q: '', who: null, prefs: null, nf: false },
         _dmN: 0,
         dmOpen(id) { if (!uid()) { GF.needLogin(); return; } GF.go(id ? { s: 'dmthread', id } : { s: 'dm' }); },
 
@@ -1641,8 +1665,10 @@
         async dmLoad() {
             const me = uid(), S = GF.sdm();
             if (!me || !S) return [];
-            const r = await S.readAll(me, 200);
+            // v1558: my pins + folders (msg_thread_prefs, shared with the Messages tab: keys u:<id>)
+            const [r, prefs] = await Promise.all([S.readAll(me, 200), rpc('msg_prefs', { p_user: me }).catch(() => null)]);
             if (r && r.error) throw new Error(r.error);
+            if (prefs && prefs.ok) GF._dm.prefs = prefs;
             const msgs = (r && r.data) || [], by = {};
             msgs.forEach(m => {
                 const pid = m.sender_line_id === me ? m.recipient_line_id : m.sender_line_id;
@@ -1679,29 +1705,106 @@
             GF.dmPaint();
             GF.paintBadges();
         },
+        // v1558 (Pete: "put them in those folders and the ability to Pin those chat threads"): a chat can be pinned
+        // (PINNED on top) and moved — into another built-in folder or one of the golfer's own (f:<id>). Same prefs as
+        // the Messages tab (msg_pref / msg_folder RPCs), so a pin made in either place shows in both.
+        dmPref(c) { return ((GF._dm.prefs && GF._dm.prefs.prefs) || {})['u:' + c.id] || {}; },
+        dmOwn() { return (GF._dm.prefs && GF._dm.prefs.folders) || []; },
+        dmFolderOf(c) {
+            const f = GF.dmPref(c).folder;
+            if (f && (GF.DMF.some(([k]) => k === f && k !== 'all') || GF.dmOwn().some(x => 'f:' + x.id === f))) return f;
+            return (c.who && c.who.folder) || 'player';
+        },
         dmPaint() {
             const box = document.getElementById('gdmList'), chips = document.getElementById('gdmChips');
             if (!box || !chips) return;
-            const all = GF._dm.convs || [], f = GF._dm.folder || 'all';
+            const all = GF._dm.convs || [], own = GF.dmOwn();
+            let f = GF._dm.folder || 'all';
+            if (f.indexOf('f:') === 0 && !own.some(x => 'f:' + x.id === f)) f = GF._dm.folder = 'all';
             const qq = (GF._dm.q || '').trim().toLowerCase();
-            const nUn = (k) => all.filter(c => (k === 'all' || (c.who && c.who.folder) === k)).reduce((t, c) => t + (c.unread || 0), 0);
+            const nUn = (k) => all.filter(c => (k === 'all' || GF.dmFolderOf(c) === k)).reduce((t, c) => t + (c.unread || 0), 0);
+            const chip = (k, label) => { const n = nUn(k); return `<button class="${f === k ? 'on' : ''}" data-act="dmfolder" data-v="${esc(k)}">${esc(label)}${n ? `<span class="gfd-tabn">${n > 99 ? '99+' : n}</span>` : ''}</button>`; };
             chips.className = 'gfd-chips';
-            chips.innerHTML = GF.DMF.map(([k, key, fb]) => { const n = nUn(k); return `<button class="${f === k ? 'on' : ''}" data-act="dmfolder" data-v="${k}">${esc(tr(key, fb))}${n ? `<span class="gfd-tabn">${n > 99 ? '99+' : n}</span>` : ''}</button>`; }).join('');
-            const shown = all.filter(c => (f === 'all' || (c.who && c.who.folder) === f)
+            chips.innerHTML = GF.DMF.map(([k, key, fb]) => chip(k, tr(key, fb))).join('')
+                + own.map(x => chip('f:' + x.id, x.name)).join('')
+                + (GF._dm.nf ? `<span class="gdm-nf"><input id="gdmNf" maxlength="40" placeholder="${esc(tr('gfd.dm.fname', 'Folder name'))}"><button data-act="dmnfok">${esc(tr('common.save', 'Save'))}</button></span>`
+                    : `<button class="gdm-addf" data-act="dmnf">+ ${esc(tr('gfd.dm.folder', 'Folder'))}</button>`);
+            const nf = document.getElementById('gdmNf');
+            if (nf) { nf.focus(); nf.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); GF.dmNewFolder(nf.value); } else if (e.key === 'Escape') { GF._dm.nf = false; GF.dmPaint(); } }); }
+            const shown = all.filter(c => (f === 'all' || GF.dmFolderOf(c) === f)
                 && (!qq || ((c.who && c.who.name) || '').toLowerCase().includes(qq) || String(c.last.message_text || '').toLowerCase().includes(qq)));
-            box.innerHTML = shown.length ? `<div class="mkp-card" style="padding:4px 12px">${shown.map(GF.dmRow).join('')}</div>`
+            const pinned = shown.filter(c => GF.dmPref(c).pin), rest = shown.filter(c => !GF.dmPref(c).pin);
+            box.innerHTML = shown.length
+                ? (pinned.length ? `<div class="gdm-sec">${mi('push_pin')}${esc(tr('gfd.dm.pinned', 'Pinned'))}</div><div class="mkp-card gdm-pinc" style="padding:4px 12px">${pinned.map(GF.dmRow).join('')}</div>` : '')
+                  + (rest.length ? (pinned.length ? `<div class="gdm-sec">${esc(tr('gfd.dm.recent', 'Recent'))}</div>` : '') + `<div class="mkp-card" style="padding:4px 12px">${rest.map(GF.dmRow).join('')}</div>` : '')
                 : `<div class="mkp-card gfd-empty">${mi('forum')}${esc(all.length ? tr('gfd.dm.nonehere', 'Nothing in this folder yet.')
                     : tr('gfd.dm.none', 'No messages yet. Tap the pencil to find any golfer, caddy, course or society on MyCaddiPro.'))}</div>`;
+            if (f.indexOf('f:') === 0) box.innerHTML += `<button class="gdm-delf" data-act="dmdelf" data-v="${esc(f)}">${mi('delete')}${esc(tr('gfd.dm.delfolder', 'Delete this folder'))}</button>`;
         },
         dmRow(c) {
             const w = c.who || {}, me = uid();
             const mine = c.last.sender_line_id === me;
             const prev = `${mine ? `<b>${esc(tr('gfd.dm.you', 'You:'))}</b> ` : ''}${esc(String(c.last.message_text || ''))}`;
             const k = w.folder && w.folder !== 'player' ? w.folder : 'player';
+            const own = GF.dmFolderOf(c), ownName = own.indexOf('f:') === 0 ? (GF.dmOwn().find(x => 'f:' + x.id === own) || {}).name : '';
+            const pin = GF.dmPref(c).pin;
             return `<div class="gdm-row ${c.unread ? 'un' : ''}" data-act="dmthread" data-id="${esc(c.id)}">${av(w, 44)}
-                <div class="tx"><div class="nm"><span class="n">${esc(w.name || '')}</span>${tick(w)}<span class="gdm-k ${k}">${esc(GF.dmKindLbl(k))}</span></div>
+                <div class="tx"><div class="nm"><span class="n">${esc(w.name || '')}</span>${tick(w)}<span class="gdm-k ${k}">${esc(GF.dmKindLbl(k))}</span>${ownName ? `<span class="gdm-k own">${esc(ownName)}</span>` : ''}</div>
                   <div class="pv">${prev}</div></div>
-                <div class="sd"><div class="tm">${esc(agoShort(c.last.created_at))}</div>${c.unread ? `<div class="bd">${c.unread > 99 ? '99+' : c.unread}</div>` : ''}</div></div>`;
+                <div class="sd"><div class="tm">${esc(agoShort(c.last.created_at))}</div><div class="gdm-ic">${pin ? `<span class="gdm-pn">${mi('push_pin')}</span>` : ''}${c.unread ? `<div class="bd">${c.unread > 99 ? '99+' : c.unread}</div>` : ''}<button class="gdm-more" data-act="dmrowmenu" data-id="${esc(c.id)}" aria-label="${esc(tr('common.more', 'More'))}">${mi('more_horiz')}</button></div></div></div>`;
+        },
+        async dmNewFolder(name, thenMove) {
+            name = String(name || '').trim(); GF._dm.nf = false;
+            if (!name) { GF.dmPaint(); return; }
+            try {
+                const d = await rpc('msg_folder', { p_user: uid(), p_action: 'create', p_name: name });
+                if (d && d.ok) {
+                    const P = GF._dm.prefs || (GF._dm.prefs = { folders: [], prefs: {} });
+                    P.folders = (P.folders || []).filter(x => x.id !== d.id).concat([{ id: d.id, name: d.name }]);
+                    if (thenMove) { await GF.dmSetPref(thenMove, 'move', 'f:' + d.id); return; }
+                    GF._dm.folder = 'f:' + d.id;
+                }
+            } catch (e) { toast(e.message || String(e), 'error'); }
+            GF.dmPaint();
+        },
+        async dmSetPref(id, action, folder) {
+            const P = GF._dm.prefs || (GF._dm.prefs = { folders: [], prefs: {} });
+            const p = (P.prefs || (P.prefs = {}))['u:' + id] || (P.prefs['u:' + id] = {});   // instant, then the server
+            if (action === 'pin') p.pin = new Date().toISOString(); else if (action === 'unpin') p.pin = null;
+            else if (action === 'move') p.folder = folder || null;
+            GF.dmPaint();
+            try { await rpc('msg_pref', { p_user: uid(), p_key: 'u:' + id, p_action: action, p_folder: folder || null }); } catch (e) { }
+            try { const d = await rpc('msg_prefs', { p_user: uid() }); if (d && d.ok) { GF._dm.prefs = d; GF.dmPaint(); } } catch (e) { }
+        },
+        // ⋯ on a chat: Pin / Unpin + Move to folder (the built-in folders + mine + New folder)
+        dmRowMenu(id, nfm) {
+            injectStyle();
+            const c = (GF._dm.convs || []).find(x => x.id === id); if (!c) return;
+            document.getElementById('gfdSheet')?.remove();
+            const pin = GF.dmPref(c).pin, cur = GF.dmFolderOf(c), home = (c.who && c.who.folder) || 'player';
+            const opts = GF.DMF.filter(([k]) => k !== 'all').map(([k, key, fb]) => ({ k, name: tr(key, fb) }))
+                .concat(GF.dmOwn().map(x => ({ k: 'f:' + x.id, name: x.name })));
+            const ov = document.createElement('div');
+            ov.id = 'gfdSheet'; ov.className = 'gfd-sheet mkp-scope';
+            ov.innerHTML = `<div class="box" role="dialog" aria-modal="true"><div class="grab"></div><h4>${esc((c.who && c.who.name) || '')}</h4>
+                <button class="it gdm-pinit" data-m="pin">${mi('push_pin')}<span style="flex:1;min-width:0">${esc(pin ? tr('gfd.dm.unpin', 'Unpin') : tr('gfd.dm.pin', 'Pin to top'))}</span></button>
+                <div class="gdm-mhd">${esc(tr('gfd.dm.move', 'Move to folder'))}</div><div class="gdm-fg">
+                ${opts.map(o => `<button class="${o.k === cur ? 'cur' : ''}" data-m="mv" data-v="${esc(o.k)}">${mi(o.k === cur ? 'check' : 'folder')}<span>${esc(o.name)}</span></button>`).join('')}
+                ${nfm ? `<div class="gdm-nfm"><input id="gdmNfm" maxlength="40" placeholder="${esc(tr('gfd.dm.fname', 'Folder name'))}"><button data-m="nfmok">${esc(tr('common.save', 'Save'))}</button></div>`
+                    : `<button class="new" data-m="nfm">${mi('add')}<span>${esc(tr('gfd.dm.newfolder', 'New folder'))}</span></button>`}</div></div>`;
+            ov.style.background = 'rgba(0,0,0,.5)';
+            ov.addEventListener('click', (e) => {
+                const b = e.target.closest('[data-m]');
+                if (!b) { if (!e.target.closest('.box')) ov.remove(); return; }
+                const m = b.dataset.m;
+                if (m === 'pin') { ov.remove(); GF.dmSetPref(id, pin ? 'unpin' : 'pin'); }
+                else if (m === 'mv') { ov.remove(); GF.dmSetPref(id, 'move', b.dataset.v === home ? null : b.dataset.v); }
+                else if (m === 'nfm') GF.dmRowMenu(id, true);
+                else if (m === 'nfmok') { const v = document.getElementById('gdmNfm').value; ov.remove(); GF.dmNewFolder(v, id); }
+            });
+            document.body.appendChild(ov);
+            const inp = document.getElementById('gdmNfm');
+            if (inp) { inp.focus(); inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ov.remove(); GF.dmNewFolder(inp.value, id); } }); }
         },
 
         async rDmThread(top, seq) {
@@ -2087,6 +2190,12 @@
                 case 'dmnew': if (!uid()) { GF.needLogin(); break; } GF.go({ s: 'dmnew' }); break;
                 case 'dmthread': if (id) GF.dmOpen(id); break;
                 case 'dmfolder': GF._dm.folder = v; GF.dmPaint(); break;
+                case 'dmrowmenu': if (id) GF.dmRowMenu(id); break;
+                case 'dmnf': GF._dm.nf = true; GF.dmPaint(); break;
+                case 'dmnfok': { const i = document.getElementById('gdmNf'); GF.dmNewFolder(i && i.value); break; }
+                case 'dmdelf': { const fid = String(v || '').slice(2); const P = GF._dm.prefs;
+                    if (P) { P.folders = (P.folders || []).filter(x => x.id !== fid); Object.values(P.prefs || {}).forEach(p => { if (p.folder === v) p.folder = null; }); }
+                    GF._dm.folder = 'all'; GF.dmPaint(); rpc('msg_folder', { p_user: uid(), p_action: 'delete', p_id: fid }).catch(() => { }); break; }
                 case 'dmsend': GF.dmSend(id); break;
                 case 'dmmenu': GF.dmMenu(id); break;
                 case 'myprofile': GF.profile(uid()); break;

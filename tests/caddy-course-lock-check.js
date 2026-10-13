@@ -35,7 +35,7 @@ else {
 }
 if (!/open\(opts = \{\}\) \{\s*if \(window\._caddyHasCourse\(window\.CaddyDashboardData && CaddyDashboardData\.profile\)\) \{ this\._refuse\(\); return; \}/.test(html)) fail.push('index.html: CaddySetup.open must refuse a caddy who is already registered at a course');
 if (!/_strict: true/.test(html) || !/if \(e && e\.caddyReg\) throw e;/.test(html)) fail.push('index.html: CaddySetup must surface a refused registration (claimCaddyProfileOnRegistration _strict)');
-if ((html.match(/\.is\('user_id', null\)\.is\('left_at', null\)/g) || []).length < 2) fail.push('index.html: registration number lookups must skip a departed caddy\'s record (.is(\'left_at\', null))');
+if ((html.match(/(\.is\('user_id', null\)|\.or\('user_id\.is\.null,user_id\.like\.CADDY-%'\))\.is\('left_at', null\)/g) || []).length < 2)   // v1558: unused roster placeholders count as unclaimed fail.push('index.html: registration number lookups must skip a departed caddy\'s record (.is(\'left_at\', null))');
 
 // 3. leaving = the RPC; the server owns the lock
 if (!/sb\.rpc\('caddy_leave_course', \{ p_actor: uid \}\)/.test(html)) fail.push('index.html: Leave this course must call the caddy_leave_course RPC');

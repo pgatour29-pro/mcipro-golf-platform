@@ -39979,9 +39979,12 @@
                             || (fkey && window._caddyFacilityKey(r.course_name) === fkey))
                         : (rows || []);
                     // an explicitly TAPPED roster card wins over a same-number sibling
-                    const free = scoped.find(r => !r.user_id && r.id === window._caddyPickedId)
-                        || scoped.find(r => !r.user_id);
-                    const taken = scoped.find(r => r.user_id);
+                    // v1558: a roster caddy's placeholder account ('CADDY-<hex>') is hers to claim; the server refuses
+                    // one that has already signed in with its caddy PIN, and hands its messages over on a claim
+                    const open = r => !r.user_id || /^CADDY-[0-9a-f]{32}$/.test(r.user_id);
+                    const free = scoped.find(r => open(r) && r.id === window._caddyPickedId)
+                        || scoped.find(open);
+                    const taken = scoped.find(r => !open(r));
                     window._caddyClaimTarget = free || null;
                     if (free) {
                         out.className = 'mt-2';
@@ -40041,7 +40044,7 @@
                     const { data: target } = await sb.from('caddy_profiles')
                         .select('id, name, caddy_number, course_id, course_name, photo_url, user_id')
                         .eq('id', claimId).maybeSingle();
-                    if (target && !target.user_id) {
+                    if (target && (!target.user_id || /^CADDY-[0-9a-f]{32}$/.test(target.user_id))) {   // v1558: placeholder = hers
                         const patch = { user_id: uid, is_active: true, languages: profileData.roleSpecific?.languages || null };
                         if (courseId && !target.course_id) patch.course_id = courseId;
                         if (!window._caddyRealName(target.name)) patch.name = name;
@@ -40058,10 +40061,10 @@
                     // matches fall through to a fresh row rather than guessing.
                     // v1435: .is('left_at', null) — a departed caddy's record is never matched by number
                     let { data: rows } = await sb.from('caddy_profiles')
-                        .select('id, name, course_id, course_name, caddy_number, photo_url').ilike('caddy_number', num).is('user_id', null).is('left_at', null).eq('is_mock', false).limit(5);
+                        .select('id, name, course_id, course_name, caddy_number, photo_url').ilike('caddy_number', num).or('user_id.is.null,user_id.like.CADDY-%').is('left_at', null).eq('is_mock', false).limit(5);
                     if (!rows || !rows.length) {
                         const alt = await sb.from('caddy_profiles')
-                            .select('id, name, course_id, course_name, caddy_number, photo_url').ilike('caddy_number', '%' + num).is('user_id', null).is('left_at', null).eq('is_mock', false).limit(5);
+                            .select('id, name, course_id, course_name, caddy_number, photo_url').ilike('caddy_number', '%' + num).or('user_id.is.null,user_id.like.CADDY-%').is('left_at', null).eq('is_mock', false).limit(5);
                         rows = alt.data || [];
                     }
                     const pick = window._caddyClaimPick(rows, courseId);
@@ -90244,7 +90247,7 @@ window.AdminSystem = AdminSystem;
     <script defer src="caddy-work.js?v=1473"></script>
     <script defer src="course-traffic.js?v=1459"></script>
     <script defer src="marketing-dashboard.js?v=1522"></script>
-    <script defer src="golf-feed.js?v=1325"></script>
+    <script defer src="golf-feed.js?v=1558"></script>
     <script defer src="handicap-ledger.js?v=1533"></script>
     <script defer src="course-society-link.js?v=1545"></script>
     <script defer src="course-crm.js?v=1557"></script>
@@ -90254,10 +90257,10 @@ window.AdminSystem = AdminSystem;
     <script defer src="course-open-times.js?v=1446"></script>
     <script defer src="engagement-meter.js?v=1377"></script>
     <script defer src="persona-test.js?v=1450"></script>
-    <script defer src="course-inbox.js?v=1544"></script>
+    <script defer src="course-inbox.js?v=1558"></script>
     <script defer src="proshop-dashboard.js?v=1551"></script>
     <script defer src="proshop-glass.js?v=1553"></script>
-    <script defer src="caddy-dm.js?v=1555"></script>
+    <script defer src="caddy-dm.js?v=1558"></script>
     <script defer src="facility-insights.js?v=1487"></script>
 
     <!-- Course Data & Handicap Calculations -->
@@ -91622,7 +91625,10 @@ class SocietyGolfSupabase {
         const searchWords = sanitizeSearch(searchTerm).split(/\s+/).filter(w => w.length > 0);
         let query = window.SupabaseDB.client
             .from('user_profiles')
-            .select('line_user_id, name, profile_data, handicap_index');
+            .select('line_user_id, name, profile_data, handicap_index')
+            // v1558: a course's message sender and the roster caddies' placeholder accounts are not golfers
+            .not('line_user_id', 'like', 'COURSE-%')
+            .not('line_user_id', 'like', 'CADDY-%');
 
         // ANCHORED word-prefix match: each typed word must PREFIX a name token — either the start of
         // the name (name.ilike.`w%`) or a token after a space (name.ilike.`% w%`). So "h" surfaces
@@ -136886,33 +136892,120 @@ const MessagesSystem = {
     },
 
     // ========== DIRECT MESSAGES ==========
+    // v1558 (Pete 2026-10-13: "we have folders but we need to be able to put them in those folders and the ability to
+    // Pin those chat threads to keep up on top"): Chats = DMs + the course chats the golfer is in (golfer + pro shop +
+    // caddy, group_chats.course_slug). PINNED on top, the golfer's own folders as chips, ⋯ = sheet (Pin / Move to folder).
+    // Pins + folders live in msg_thread_prefs (msg_prefs / msg_pref / msg_folder RPCs), keys u:<partner> / g:<group>,
+    // shared with Tap-In's message centre. Rows are delegated (data-dm / data-grp) — no ids inside inline handlers.
+    _dmFolder: 'all', _dmItems: null, _dmPrefs: null, _dmNf: false,
+    _mfT(k) {
+        let l = 'en';
+        try { l = String((typeof currentLanguage !== 'undefined' && currentLanguage) || localStorage.getItem('mci-pro-language') || 'en').slice(0, 2); } catch (e) { }
+        const S = {
+            all: ['All', 'ทั้งหมด', '전체', 'すべて'], unread: ['Unread', 'ยังไม่อ่าน', '읽지 않음', '未読'], folder: ['Folder', 'โฟลเดอร์', '폴더', 'フォルダ'],
+            pinned: ['Pinned', 'ปักหมุด', '고정됨', 'ピン留め'], recent: ['Recent', 'ล่าสุด', '최근', '最近'],
+            pin: ['Pin to top', 'ปักหมุดไว้บนสุด', '맨 위에 고정', '一番上にピン留め'], unpin: ['Unpin', 'เลิกปักหมุด', '고정 해제', 'ピン留めを外す'],
+            move: ['Move to folder', 'ย้ายไปโฟลเดอร์', '폴더로 이동', 'フォルダへ移動'], none: ['No folder', 'ไม่มีโฟลเดอร์', '폴더 없음', 'フォルダなし'],
+            newf: ['New folder', 'โฟลเดอร์ใหม่', '새 폴더', '新しいフォルダ'], name: ['Folder name', 'ชื่อโฟลเดอร์', '폴더 이름', 'フォルダ名'],
+            save: ['Save', 'บันทึก', '저장', '保存'], caddy: ['+ caddy', '+ แคดดี้', '+ 캐디', '+ キャディ'], you: ['You:', 'คุณ:', '나:', 'あなた:'],
+            emptyF: ['Nothing in this folder yet.', 'ยังไม่มีอะไรในโฟลเดอร์นี้', '이 폴더는 비어 있습니다.', 'このフォルダはまだ空です。'],
+            emptyU: ['No unread chats.', 'ไม่มีแชทที่ยังไม่อ่าน', '읽지 않은 대화가 없습니다.', '未読のチャットはありません。'],
+            del: ['Delete this folder', 'ลบโฟลเดอร์นี้', '이 폴더 삭제', 'このフォルダを削除']
+        };
+        const i = { th: 1, ko: 2, ja: 3 }[l] || 0;
+        return (S[k] && (S[k][i] || S[k][0])) || k;
+    },
+    _mfCss() {
+        if (document.getElementById('msgfCss')) return;
+        const s = document.createElement('style'); s.id = 'msgfCss';
+        s.textContent = `
+#golfer-messages .msgf-f{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+#golfer-messages .msgf-f button{height:30px;padding:0 11px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045);color:#C6CDD4;font-weight:700;font-size:12.5px;line-height:1;font-family:inherit;display:inline-flex;align-items:center;gap:6px;cursor:pointer;max-width:100%}
+#golfer-messages .msgf-f button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#golfer-messages .msgf-f button.on{background:#F2F5F7;color:#10151B;border-color:#F2F5F7}
+#golfer-messages .msgf-f button i{font-style:normal;font-size:10.5px;background:#16a34a;color:#fff;border-radius:8px;padding:1px 6px}
+#golfer-messages .msgf-f button.add{border-style:dashed;color:#4ade80;border-color:#16a34a;background:transparent}
+#golfer-messages .msgf-f .nf{display:inline-flex;gap:6px;max-width:100%}
+#golfer-messages .msgf-f .nf input{width:150px;max-width:52vw;height:30px;border-radius:10px;border:1px solid #16a34a;background:transparent;color:inherit;padding:0 10px;font:600 12.5px/1 inherit;font-family:inherit;outline:none}
+#golfer-messages .msgf-f .nf button{background:#16a34a;border-color:#16a34a;color:#fff}
+#golfer-messages .msgf-sec{display:flex;align-items:center;gap:5px;font-weight:800;font-size:10.5px;line-height:1;letter-spacing:.09em;text-transform:uppercase;color:#8C96A1;margin:12px 4px 8px}
+#golfer-messages .scv3msg-conv.msgf-pin{border-color:rgba(74,222,128,.45)}
+#golfer-messages .msgf-pn{color:#4ade80;display:inline-flex}
+#golfer-messages .msgf-more{border:0;background:transparent;color:#8C96A1;padding:2px;display:inline-flex;cursor:pointer;border-radius:6px}
+#golfer-messages .scv3msg-cname.msgf-cn{display:flex;align-items:center;min-width:0}
+#golfer-messages .msgf-nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#golfer-messages .msgf-tag{flex:none;display:inline-block;margin-left:6px;font-size:10px;font-weight:800;padding:1px 6px;border-radius:6px;background:rgba(74,222,128,.14);color:#4ade80;vertical-align:1px}
+#golfer-messages .msgf-del{display:block;margin:10px auto 0;border:1px dashed rgba(255,255,255,.18);background:transparent;color:#8C96A1;border-radius:10px;padding:8px 12px;font:700 12px/1 inherit;font-family:inherit;cursor:pointer}
+body.theme-light #golfer-messages .msgf-f button{background:#fff;border-color:rgba(15,23,42,.1);color:#334155}
+body.theme-light #golfer-messages .msgf-f button.on{background:#0f172a;color:#fff;border-color:#0f172a}
+body.theme-light #golfer-messages .msgf-f button.add{border-color:#16a34a;color:#16a34a;background:#fff}
+body.theme-light #golfer-messages .msgf-f .nf button{background:#16a34a;color:#fff}
+body.theme-light #golfer-messages .msgf-sec{color:#64748b}
+body.theme-light #golfer-messages .scv3msg-conv.msgf-pin{border-color:rgba(22,163,74,.45)!important;box-shadow:0 0 0 1px rgba(22,163,74,.15) inset}
+body.theme-light #golfer-messages .msgf-pn{color:#16a34a}
+body.theme-light #golfer-messages .msgf-tag{background:#dcfce7;color:#166534}
+.msgf-dim{position:fixed;inset:0;z-index:99998;background:rgba(15,23,42,.45)}
+.msgf-sheet{position:fixed;left:0;right:0;bottom:0;z-index:99999;max-width:560px;margin:0 auto;background:#161B21;color:#F2F5F7;border-radius:20px 20px 0 0;box-shadow:0 -14px 40px rgba(0,0,0,.4);padding:10px 14px calc(18px + env(safe-area-inset-bottom));font-family:'Instrument Sans',system-ui,sans-serif;max-height:80vh;overflow:auto}
+.msgf-sheet .gr{width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.2);margin:2px auto 10px}
+.msgf-sheet .ti{font-weight:800;font-size:15px;line-height:1.2;margin:0 4px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msgf-sheet .it{display:flex;align-items:center;gap:10px;width:100%;border:0;background:rgba(74,222,128,.10);color:#4ade80;font-weight:700;font-size:14.5px;line-height:1;font-family:inherit;padding:13px 10px;border-radius:12px;text-align:left;cursor:pointer}
+.msgf-sheet .hd{font-weight:800;font-size:10.5px;line-height:1;letter-spacing:.09em;text-transform:uppercase;color:#8C96A1;padding:12px 8px 8px;border-top:1px solid rgba(255,255,255,.08);margin-top:6px}
+.msgf-sheet .fg{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
+.msgf-sheet .fg button{display:flex;align-items:center;gap:8px;min-width:0;border:1px solid rgba(255,255,255,.12);background:transparent;color:#F2F5F7;border-radius:12px;padding:12px 10px;font-weight:700;font-size:13.5px;line-height:1;font-family:inherit;cursor:pointer}
+.msgf-sheet .fg button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msgf-sheet .fg button svg{flex:none;color:#8C96A1}
+.msgf-sheet .fg button.cur{border-color:#16a34a;color:#4ade80}.msgf-sheet .fg button.cur svg{color:#4ade80}
+.msgf-sheet .fg button.new{border-style:dashed;color:#4ade80;border-color:#16a34a}
+.msgf-sheet .nfm{grid-column:1/-1;display:flex;gap:6px}
+.msgf-sheet .nfm input{flex:1;min-width:0;border:1px solid #16a34a;border-radius:12px;background:transparent;color:inherit;padding:11px 12px;font-size:14px;font-weight:600;font-family:inherit;outline:none}
+.msgf-sheet .nfm button{border:0;background:#16a34a;color:#fff;border-radius:12px;padding:0 16px;font-weight:800;font-size:13.5px;font-family:inherit;cursor:pointer}
+body.theme-light .msgf-sheet{background:#fff;color:#0f172a;box-shadow:0 -14px 40px rgba(15,23,42,.25)}
+body.theme-light .msgf-sheet .gr{background:#cbd5e1}
+body.theme-light .msgf-sheet .it{background:#f0fdf4;color:#15803d}
+body.theme-light .msgf-sheet .hd{color:#64748b;border-top-color:#e2e8f0}
+body.theme-light .msgf-sheet .fg button{border-color:#e2e8f0;background:#fff;color:#0f172a}
+body.theme-light .msgf-sheet .fg button svg{color:#94a3b8}
+body.theme-light .msgf-sheet .fg button.cur{border-color:#16a34a;color:#15803d}body.theme-light .msgf-sheet .fg button.cur svg{color:#16a34a}
+body.theme-light .msgf-sheet .fg button.new{color:#16a34a;background:#fff;border-color:#16a34a}
+`;
+        document.head.appendChild(s);
+    },
+    _mfIc: {
+        pin: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6l-1 5 3 3v2H7v-2l3-3-1-5zM12 14v7"/></svg>',
+        more: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>',
+        fold: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+        ck: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>'
+    },
+
     async loadConversationList() {
         const container = document.getElementById('dm-list');
         if (!container) return;
+        this._mfCss();
+        this._mfWire(container);
 
-        container.innerHTML = '<div class="scv3msg-loading">LOADING…</div>';
+        if (!this._dmItems) container.innerHTML = '<div class="scv3msg-loading">LOADING…</div>';
         // Stale-list guard: tab switches AND the dm_badge realtime callback both repaint
         // this list — a slower stale response must not land over a fresher one.
         const seq = this._listSeq = (this._listSeq || 0) + 1;
+        const me = this.userLineId;
+        const sb = window.SupabaseDB.client;
 
         try {
-            // Get all DMs via secure Edge Function
-            const dmResult = await window.SecureDM.readAll(this.userLineId, 200);
+            // DMs (secure edge fn), my course chats, my pins/folders — in parallel
+            const [dmResult, grpItems, prefs] = await Promise.all([
+                window.SecureDM.readAll(me, 200),
+                this._courseChats(me).catch(() => []),
+                sb.rpc('msg_prefs', { p_user: me }).then(r => (r && r.data && r.data.ok) ? r.data : null, () => null)
+            ]);
             if (seq !== this._listSeq) return;
             const messages = dmResult.data || [];
-            const error = dmResult.error ? { message: dmResult.error } : null;
-
-            if (error) throw error;
-
-            if (!messages || messages.length === 0) {
-                container.innerHTML = `<div class="scv3msg-empty">No conversations yet — tap New to start one</div>`;
-                return;
-            }
+            if (dmResult.error) throw { message: dmResult.error };
+            if (prefs) this._dmPrefs = prefs;
 
             // Group by conversation partner
             const conversations = {};
             messages.forEach(m => {
-                const partnerId = m.sender_line_id === this.userLineId ? m.recipient_line_id : m.sender_line_id;
+                const partnerId = m.sender_line_id === me ? m.recipient_line_id : m.sender_line_id;
                 if (!conversations[partnerId]) {
                     conversations[partnerId] = {
                         partnerId,
@@ -136920,59 +137013,232 @@ const MessagesSystem = {
                         unreadCount: 0
                     };
                 }
-                if (m.recipient_line_id === this.userLineId && !m.is_read) {
+                if (m.recipient_line_id === me && !m.is_read) {
                     conversations[partnerId].unreadCount++;
                 }
             });
 
             // Get partner profiles
             const partnerIds = Object.keys(conversations);
-            const { data: profiles } = await window.SupabaseDB.client
-                .from('user_profiles')
-                .select('line_user_id, name, profile_data')
-                .in('line_user_id', partnerIds);
-
             const profileMap = {};
-            (profiles || []).forEach(p => profileMap[p.line_user_id] = p);
+            if (partnerIds.length) {
+                const { data: profiles } = await sb.from('user_profiles').select('line_user_id, name, profile_data').in('line_user_id', partnerIds);
+                (profiles || []).forEach(p => profileMap[p.line_user_id] = p);
+            }
             if (seq !== this._listSeq) return;
-
-            // Render conversations
-            const sortedConvos = Object.values(conversations).sort((a, b) =>
-                new Date(b.lastMessage.created_at) - new Date(a.lastMessage.created_at)
-            );
 
             // SCV3MSG conversation cards (approved model): initials avatar (photo when
             // available), preview with You: prefix, mono time, green unread count.
-            const avCls = ['', ' b', ' o'];
-            container.innerHTML = sortedConvos.map((c, i) => {
+            const items = Object.values(conversations).map(c => {
                 const profile = profileMap[c.partnerId] || {};
                 const name = profile.name || 'Unknown';
-                const avatar = profile.profile_data?.media?.profilePhoto || profile.profile_data?.linePictureUrl || profile.profile_data?.pictureUrl || '';
-                const initials = name.split(/\s+/).map(w => w.charAt(0)).join('').slice(0, 2).toUpperCase() || '?';
-                const lastMsg = c.lastMessage.message_text;
-                const timeAgo = this.formatTimeAgo(c.lastMessage.created_at);
-                const isMine = c.lastMessage.sender_line_id === this.userLineId;
-
-                return `
-                    <div class="scv3msg-conv${c.unreadCount > 0 ? ' unread' : ''}" data-name="${this.escapeHtml(name).toLowerCase()}"
-                         onclick="MessagesSystem.openDirectConversation('${c.partnerId}')">
-                        <div class="scv3msg-av${avCls[i % 3]}">${avatar ? `<img src="${avatar}" onerror="this.remove()">` : ''}${avatar ? '' : initials}</div>
-                        <div class="scv3msg-cmain">
-                            <div class="scv3msg-cname">${this.escapeHtml(name)}</div>
-                            <div class="scv3msg-cprev">${isMine ? '<b>You:</b> ' : ''}${this.escapeHtml(lastMsg)}</div>
-                        </div>
-                        <div class="scv3msg-cside">
-                            <div class="scv3msg-ctime">${timeAgo}</div>
-                            ${c.unreadCount > 0 ? `<div class="scv3msg-cbadge">${c.unreadCount}</div>` : ''}
-                        </div>
-                    </div>`;
-            }).join('');
-            this.dmSearchFilter();
-
+                return {
+                    key: 'u:' + c.partnerId, dm: c.partnerId, name,
+                    avatar: profile.profile_data?.media?.profilePhoto || profile.profile_data?.linePictureUrl || profile.profile_data?.pictureUrl || '',
+                    text: c.lastMessage.message_text, mine: c.lastMessage.sender_line_id === me, by: '',
+                    at: c.lastMessage.created_at, unread: c.unreadCount
+                };
+            }).concat(grpItems || []);
+            items.sort((a, b) => new Date(b.at) - new Date(a.at));
+            this._dmItems = items;
+            this.renderDmList();
         } catch (err) {
             console.error('[MessagesSystem] Error loading conversations:', err);
             if (seq === this._listSeq) container.innerHTML = `<div class="scv3msg-empty">Failed to load conversations</div>`;
         }
+    },
+
+    // the course chats I'm in (golfer + pro shop + caddy): last line, my unread, the caddy's number
+    async _courseChats(me) {
+        const sb = window.SupabaseDB.client;
+        const { data: mem } = await sb.from('group_chat_members').select('group_id').eq('member_line_id', me).limit(200);
+        const ids = (mem || []).map(m => m.group_id);
+        if (!ids.length) return [];
+        const { data: groups } = await sb.from('group_chats').select('id, name, course_slug').in('id', ids).not('course_slug', 'is', null);
+        if (!groups || !groups.length) return [];
+        const gids = groups.map(g => g.id);
+        const [msgsRes, memRes, readsRes] = await Promise.all([
+            sb.from('group_chat_messages').select('group_id, message_text, sender_line_id, created_at, kind').in('group_id', gids).order('created_at', { ascending: false }).limit(300),
+            sb.from('group_chat_members').select('group_id, member_line_id').in('group_id', gids),
+            sb.from('group_chat_reads').select('group_id, last_read_at').eq('reader_line_id', me).in('group_id', gids)
+        ]);
+        const lastRead = {}, last = {}, unread = {};
+        (readsRes.data || []).forEach(r => { lastRead[r.group_id] = new Date(r.last_read_at); });
+        (msgsRes.data || []).forEach(m => {
+            if (!last[m.group_id]) last[m.group_id] = m;
+            if (m.sender_line_id !== me && (!lastRead[m.group_id] || new Date(m.created_at) > lastRead[m.group_id])) unread[m.group_id] = (unread[m.group_id] || 0) + 1;
+        });
+        const others = [...new Set((memRes.data || []).map(r => r.member_line_id).filter(id => id && id !== me && !/^COURSE-/.test(id)))];
+        const cad = {}, names = {};
+        if (others.length) {
+            const [cp, up] = await Promise.all([
+                sb.from('caddy_profiles').select('user_id, caddy_number, name').in('user_id', others),
+                sb.from('user_profiles').select('line_user_id, name').in('line_user_id', others.concat(Object.values(last).map(m => m.sender_line_id)).slice(0, 200))
+            ]);
+            (cp.data || []).forEach(c => { cad[c.user_id] = c; });
+            (up.data || []).forEach(u => { names[u.line_user_id] = u.name; });
+        }
+        return groups.map(g => {
+            const L = last[g.id] || null;
+            const cads = (memRes.data || []).filter(r => r.group_id === g.id && cad[r.member_line_id]).map(r => cad[r.member_line_id]);
+            let by = '';
+            if (L && L.sender_line_id !== me && L.kind !== 'system') {
+                const c = cad[L.sender_line_id];
+                by = c ? '#' + c.caddy_number + ' ' + String(c.name || '').trim().split(/\s+/)[0] : (/^COURSE-/.test(L.sender_line_id) ? '' : (names[L.sender_line_id] || '').split(' ')[0]);
+            }
+            return {
+                key: 'g:' + g.id, grp: g.id, name: g.name || 'Pro shop', avatar: '', course: true,
+                tag: cads.length ? this._mfT('caddy') + ' #' + cads[cads.length - 1].caddy_number : '',
+                text: L ? L.message_text : '', mine: !!(L && L.sender_line_id === me), by,
+                at: L ? L.created_at : new Date(0).toISOString(), unread: unread[g.id] || 0
+            };
+        });
+    },
+
+    renderDmList() {
+        const container = document.getElementById('dm-list');
+        if (!container || !this._dmItems) return;
+        const I = this._mfIc, T = k => this._mfT(k), esc = s => this.escapeHtml(String(s == null ? '' : s));
+        const P = (this._dmPrefs && this._dmPrefs.prefs) || {}, folders = (this._dmPrefs && this._dmPrefs.folders) || [];
+        const items = this._dmItems.map(it => Object.assign(it, { pin: (P[it.key] || {}).pin || null, folder: (P[it.key] || {}).folder || null }));
+        let f = this._dmFolder || 'all';
+        if (f.indexOf('f:') === 0 && !folders.some(x => 'f:' + x.id === f)) f = this._dmFolder = 'all';
+
+        // the chip row lives above the list (inside the Chats pane, under the search box)
+        let chips = document.getElementById('dmFolders');
+        if (!chips) {
+            chips = document.createElement('div'); chips.id = 'dmFolders'; chips.className = 'msgf-f';
+            container.parentNode.insertBefore(chips, container);
+            this._mfWire(chips);
+        }
+        const nUn = items.filter(i => i.unread > 0).length;
+        chips.innerHTML = `<button type="button" class="${f === 'all' ? 'on' : ''}" data-mf="fold" data-v="all"><span>${esc(T('all'))}</span>${items.length ? `<i>${items.length}</i>` : ''}</button>`
+            + `<button type="button" class="${f === 'unread' ? 'on' : ''}" data-mf="fold" data-v="unread"><span>${esc(T('unread'))}</span>${nUn ? `<i>${nUn}</i>` : ''}</button>`
+            + folders.map(x => { const n = items.filter(i => i.folder === 'f:' + x.id).length; return `<button type="button" class="${f === 'f:' + x.id ? 'on' : ''}" data-mf="fold" data-v="f:${esc(x.id)}"><span>${esc(x.name)}</span>${n ? `<i>${n}</i>` : ''}</button>`; }).join('')
+            + (this._dmNf ? `<span class="nf"><input data-mf-in="nf" maxlength="40" placeholder="${esc(T('name'))}"><button type="button" data-mf="nfok">${esc(T('save'))}</button></span>`
+                : `<button type="button" class="add" data-mf="nf">+ ${esc(T('folder'))}</button>`);
+
+        if (!items.length) { container.innerHTML = `<div class="scv3msg-empty">No conversations yet — tap New to start one</div>`; return; }
+        const shown = items.filter(i => f === 'all' || (f === 'unread' ? i.unread > 0 : i.folder === f));
+        const avCls = ['', ' b', ' o'];
+        const row = (c, i) => {
+            const initials = String(c.name || '?').split(/\s+/).map(w => w.charAt(0)).join('').slice(0, 2).toUpperCase() || '?';
+            const who = c.mine ? `<b>${esc(T('you'))}</b> ` : c.by ? `<b>${esc(c.by)}:</b> ` : '';
+            const data = c.grp ? `data-grp="${esc(c.grp)}"` : `data-dm="${esc(c.dm)}"`;
+            return `
+                    <div class="scv3msg-conv${c.unread > 0 ? ' unread' : ''}${c.pin ? ' msgf-pin' : ''}" data-name="${esc(c.name).toLowerCase()}" ${data} data-k="${esc(c.key)}">
+                        <div class="scv3msg-av${c.course ? ' b' : avCls[i % 3]}">${c.avatar ? `<img src="${esc(c.avatar)}" onerror="this.remove()">` : esc(initials)}</div>
+                        <div class="scv3msg-cmain">
+                            <div class="scv3msg-cname${c.tag ? ' msgf-cn' : ''}">${c.tag ? `<span class="msgf-nm">${esc(c.name)}</span><span class="msgf-tag">${esc(c.tag)}</span>` : esc(c.name)}</div>
+                            <div class="scv3msg-cprev">${who}${esc(c.text || '')}</div>
+                        </div>
+                        <div class="scv3msg-cside">
+                            <div class="scv3msg-ctime">${c.at && new Date(c.at).getTime() > 0 ? this.formatTimeAgo(c.at) : ''}</div>
+                            <div style="display:flex;gap:6px;align-items:center">${c.pin ? `<span class="msgf-pn">${I.pin}</span>` : ''}${c.unread > 0 ? `<div class="scv3msg-cbadge">${c.unread}</div>` : ''}<button type="button" class="msgf-more" data-mf="more" data-k="${esc(c.key)}" aria-label="More">${I.more}</button></div>
+                        </div>
+                    </div>`;
+        };
+        const pinned = shown.filter(c => c.pin), rest = shown.filter(c => !c.pin);
+        let h = '';
+        if (pinned.length) h += `<div class="msgf-sec">${I.pin} ${esc(T('pinned'))}</div>` + pinned.map(row).join('');
+        if (rest.length) h += (pinned.length ? `<div class="msgf-sec">${esc(T('recent'))}</div>` : '') + rest.map((c, i) => row(c, i + pinned.length)).join('');
+        if (!shown.length) h = `<div class="scv3msg-empty">${esc(f === 'unread' ? T('emptyU') : T('emptyF'))}</div>`;
+        if (f.indexOf('f:') === 0) h += `<button type="button" class="msgf-del" data-mf="delf" data-v="${esc(f)}">${esc(T('del'))}</button>`;
+        container.innerHTML = h;
+        this.dmSearchFilter();
+        const nf = chips.querySelector('[data-mf-in="nf"]'); if (nf) nf.focus();
+    },
+
+    // one delegated listener per element: open a chat, ⋯, chips, inline new-folder input
+    _mfWire(el) {
+        if (!el || el._mfWired) return;
+        el._mfWired = true;
+        el.addEventListener('click', (e) => {
+            const a = e.target.closest('[data-mf]');
+            if (a) { e.stopPropagation(); this._mfAct(a.dataset.mf, a); return; }
+            const r = e.target.closest('.scv3msg-conv');
+            if (!r) return;
+            if (r.dataset.grp) { const g = (this._dmItems || []).find(x => x.grp === r.dataset.grp); this.openGroupConversation(r.dataset.grp, (g && g.name) || ''); }
+            else if (r.dataset.dm) this.openDirectConversation(r.dataset.dm);
+        });
+        el.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' || !e.target.matches('[data-mf-in="nf"]')) return;
+            e.preventDefault(); this._mfAct('nfok');
+        });
+    },
+    _mfAct(act, a) {
+        const v = a && a.dataset.v;
+        if (act === 'fold') { this._dmFolder = v; this._dmNf = false; this.renderDmList(); }
+        else if (act === 'nf') { this._dmNf = true; this.renderDmList(); }
+        else if (act === 'nfok') {
+            const inp = document.querySelector('#dmFolders [data-mf-in="nf"]'); const name = (inp && inp.value || '').trim();
+            this._dmNf = false;
+            if (!name) { this.renderDmList(); return; }
+            this._mfFolder(name).then(id => { if (id) this._dmFolder = 'f:' + id; this.renderDmList(); });
+        }
+        else if (act === 'more') this._mfSheet(a.dataset.k);
+        else if (act === 'delf') {
+            const id = String(v).slice(2);
+            if (this._dmPrefs) this._dmPrefs.folders = (this._dmPrefs.folders || []).filter(x => x.id !== id);
+            Object.values((this._dmPrefs && this._dmPrefs.prefs) || {}).forEach(p => { if (p.folder === v) p.folder = null; });
+            this._dmFolder = 'all'; this.renderDmList();
+            window.SupabaseDB.client.rpc('msg_folder', { p_user: this.userLineId, p_action: 'delete', p_id: id }).then(() => this._mfReload(), () => {});
+        }
+    },
+    async _mfFolder(name) {
+        try {
+            const r = await window.SupabaseDB.client.rpc('msg_folder', { p_user: this.userLineId, p_action: 'create', p_name: name });
+            const d = r && r.data; if (!d || !d.ok) return null;
+            const P = this._dmPrefs || (this._dmPrefs = { folders: [], prefs: {} });
+            P.folders = (P.folders || []).filter(x => x.id !== d.id).concat([{ id: d.id, name: d.name }]);
+            return d.id;
+        } catch (e) { return null; }
+    },
+    async _mfPref(key, action, folder) {
+        const P = this._dmPrefs || (this._dmPrefs = { folders: [], prefs: {} });
+        const p = (P.prefs || (P.prefs = {}))[key] || (P.prefs[key] = {});   // instant, then the server
+        if (action === 'pin') p.pin = new Date().toISOString(); else if (action === 'unpin') p.pin = null;
+        else if (action === 'move') p.folder = folder || null;
+        this.renderDmList();
+        try { await window.SupabaseDB.client.rpc('msg_pref', { p_user: this.userLineId, p_key: key, p_action: action, p_folder: folder || null }); } catch (e) { }
+        this._mfReload();
+    },
+    async _mfReload() {
+        try {
+            const r = await window.SupabaseDB.client.rpc('msg_prefs', { p_user: this.userLineId });
+            if (r && r.data && r.data.ok) { this._dmPrefs = r.data; this.renderDmList(); }
+        } catch (e) { }
+    },
+    _mfClose() { document.querySelectorAll('.msgf-sheet,.msgf-dim').forEach(x => x.remove()); },
+    _mfSheet(key, nfm) {
+        this._mfClose();
+        const it = (this._dmItems || []).find(x => x.key === key); if (!it) return;
+        const I = this._mfIc, T = k => this._mfT(k), esc = s => this.escapeHtml(String(s == null ? '' : s));
+        const folders = (this._dmPrefs && this._dmPrefs.folders) || [];
+        const cur = (((this._dmPrefs && this._dmPrefs.prefs) || {})[key] || {}).folder || null;
+        const dim = document.createElement('div'); dim.className = 'msgf-dim';
+        const sh = document.createElement('div'); sh.className = 'msgf-sheet'; sh.setAttribute('role', 'dialog');
+        sh.innerHTML = `<div class="gr"></div><div class="ti">${esc(it.name)}</div>`
+            + `<button type="button" class="it" data-s="pin">${I.pin} ${esc(it.pin ? T('unpin') : T('pin'))}</button>`
+            + `<div class="hd">${esc(T('move'))}</div><div class="fg">`
+            + `<button type="button" class="${!cur ? 'cur' : ''}" data-s="mv" data-v="">${!cur ? I.ck : I.fold}<span>${esc(T('none'))}</span></button>`
+            + folders.map(x => `<button type="button" class="${cur === 'f:' + x.id ? 'cur' : ''}" data-s="mv" data-v="f:${esc(x.id)}">${cur === 'f:' + x.id ? I.ck : I.fold}<span>${esc(x.name)}</span></button>`).join('')
+            + (nfm ? `<div class="nfm"><input data-s-in="nfm" maxlength="40" placeholder="${esc(T('name'))}"><button type="button" data-s="nfmok">${esc(T('save'))}</button></div>`
+                : `<button type="button" class="new" data-s="nfm"><span>+ ${esc(T('newf'))}</span></button>`)
+            + `</div>`;
+        document.body.appendChild(dim); document.body.appendChild(sh);
+        dim.addEventListener('click', () => this._mfClose());
+        const go = async (name) => { name = (name || '').trim(); if (!name) return; this._mfClose(); const id = await this._mfFolder(name); if (id) this._mfPref(key, 'move', 'f:' + id); };
+        sh.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-s]'); if (!b) return;
+            const s = b.dataset.s;
+            if (s === 'pin') { this._mfClose(); this._mfPref(key, it.pin ? 'unpin' : 'pin'); }
+            else if (s === 'mv') { this._mfClose(); this._mfPref(key, 'move', b.dataset.v || null); }
+            else if (s === 'nfm') this._mfSheet(key, true);
+            else if (s === 'nfmok') go(sh.querySelector('[data-s-in="nfm"]').value);
+        });
+        sh.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('[data-s-in="nfm"]')) { e.preventDefault(); go(e.target.value); } else if (e.key === 'Escape') this._mfClose(); });
+        const inp = sh.querySelector('[data-s-in="nfm"]'); if (inp) inp.focus();
     },
 
     // SCV3MSG: client-side chat search over rendered cards

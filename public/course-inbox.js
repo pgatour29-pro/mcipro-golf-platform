@@ -129,7 +129,9 @@
       this.expanded = false;
       try {
         // v1544: a direct message (no event) opens that golfer's player card on Messages
-        if (!it.event_id && it.sender_id && window.CourseCRM && CourseCRM.ready && CourseCRM.ready()) CourseCRM.open({ id: it.sender_id, name: it.sender_name, tab: 'msg' });
+        // v1558: on the tee sheet / caddy desk it opens their thread in Messages (reply, pin, add their caddy)
+        if (!it.event_id && it.sender_id && window.MessagesHub && MessagesHub.api && MessagesHub.tok()) { MessagesHub.open(); MessagesHub.openThread(it.sender_id, { name: it.sender_name }); }
+        else if (!it.event_id && it.sender_id && window.CourseCRM && CourseCRM.ready && CourseCRM.ready()) CourseCRM.open({ id: it.sender_id, name: it.sender_name, tab: 'msg' });
         else if (this.opts.open) this.opts.open(it.event_id);
       } catch (e) { console.warn('[CourseInbox] open', e); }
     },

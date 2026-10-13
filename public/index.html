@@ -6825,6 +6825,7 @@
         .cbk-bk-meta { font-size:12px; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .cbk-bk-tier { display:flex; align-items:center; gap:6px; font-size:11px; color:#cbd5e1; }
         .cbk-bk-x { width:36px; height:36px; border-radius:50%; border:1px solid rgba(248,113,113,.4); background:rgba(248,113,113,.1); color:#fca5a5; display:flex; align-items:center; justify-content:center; flex:none; cursor:pointer; }
+        .cbk-bk-x.cbk-bk-msg { border-color:rgba(34,197,94,.5); background:rgba(34,197,94,.12); color:#4ade80; margin-right:6px; }
         .cbk-bk-x .material-symbols-outlined { font-size:18px; }
         #hotDealsStrip { margin: 0 0 12px; }
         /* notification preferences sheet + in-app legal pages (2026-09-17) */
@@ -135657,7 +135658,12 @@ const GolferCaddyBooking = {
     _msgBtnHTML(caddy) {
         if (!caddy || !caddy.user_id) return '';
         const e = this._esc;
-        return `<button type="button" class="cbk-primary cbk-msg" style="margin-top:8px;background:transparent;border:1px solid rgba(34,197,94,.55);color:#16a34a" onclick="GolferCaddyBooking.messageCaddy('${e(caddy.user_id)}')"><span class="material-symbols-outlined">chat</span><span>${e(this._tt('cbk.msg', 'Message your caddy'))}</span></button>`;
+        // no data inside an inline handler: the id rides a data attribute, one delegated listener opens the thread
+        if (!GolferCaddyBooking._msgBound) {
+            GolferCaddyBooking._msgBound = true;
+            document.addEventListener('click', (ev) => { const b = ev.target.closest && ev.target.closest('[data-cbkmsg]'); if (b) GolferCaddyBooking.messageCaddy(b.getAttribute('data-cbkmsg')); });
+        }
+        return `<button type="button" class="cbk-primary cbk-msg" data-cbkmsg="${e(caddy.user_id)}" style="margin-top:8px;background:transparent;border:1px solid rgba(34,197,94,.55);color:#16a34a"><span class="material-symbols-outlined">chat</span><span>${e(this._tt('cbk.msg', 'Message your caddy'))}</span></button>`;
     },
     messageCaddy(uid) {
         if (!uid) return;

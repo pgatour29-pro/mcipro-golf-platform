@@ -61,6 +61,8 @@ const L10N: Record<string, Record<string, string>> = {
     btn_confirm: "Confirm Booking",
     ap_title: "✅ Caddy Booking Confirmed!",
     ap_footer: "Your caddy is confirmed. See you on the course!",
+    wl_title: "🎉 You're off the waiting list!",
+    wl_footer: "The caddy you waited for is now booked for you. Open MyCaddiPro to message her.",
     dn_title: "❌ Caddy Booking Declined",
     dn_body: "We're sorry, but {caddy} is not available for:",
     dn_the_caddy: "the caddy",
@@ -93,6 +95,8 @@ const L10N: Record<string, Record<string, string>> = {
     btn_confirm: "ยืนยันการจอง",
     ap_title: "✅ ยืนยันการจองแคดดี้แล้ว!",
     ap_footer: "ยืนยันแคดดี้ของคุณเรียบร้อยแล้ว พบกันที่สนามกอล์ฟ!",
+    wl_title: "🎉 คุณได้คิวแล้ว!",
+    wl_footer: "แคดดี้ที่คุณรอคิวถูกจองให้คุณแล้ว เปิด MyCaddiPro เพื่อส่งข้อความหาเธอ",
     dn_title: "❌ การจองแคดดี้ถูกปฏิเสธ",
     dn_body: "ขออภัย {caddy} ไม่ว่างสำหรับ:",
     dn_the_caddy: "แคดดี้",
@@ -125,6 +129,8 @@ const L10N: Record<string, Record<string, string>> = {
     btn_confirm: "예약 확정",
     ap_title: "✅ 캐디 예약이 확정되었습니다!",
     ap_footer: "캐디가 확정되었습니다. 코스에서 만나요!",
+    wl_title: "🎉 대기 순번이 되었습니다!",
+    wl_footer: "기다리던 캐디가 회원님께 예약되었습니다. MyCaddiPro에서 메시지를 보내 보세요.",
     dn_title: "❌ 캐디 예약이 거절되었습니다",
     dn_body: "죄송하지만 {caddy}님은 다음 시간에 예약할 수 없습니다:",
     dn_the_caddy: "해당 캐디",
@@ -157,6 +163,8 @@ const L10N: Record<string, Record<string, string>> = {
     btn_confirm: "予約を確定する",
     ap_title: "✅ キャディ予約が確定しました！",
     ap_footer: "キャディが確定しました。コースでお会いしましょう！",
+    wl_title: "🎉 キャンセル待ちが確定しました！",
+    wl_footer: "お待ちのキャディがあなたの予約になりました。MyCaddiProからメッセージを送れます。",
     dn_title: "❌ キャディ予約が拒否されました",
     dn_body: "申し訳ございませんが、{caddy}は以下の日時に対応できません:",
     dn_the_caddy: "キャディ",
@@ -211,7 +219,7 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: bk, error } = await supabase
       .from("caddy_bookings")
-      .select("id, caddy_id, caddie_name, golfer_id, user_id, golfer_name, booking_date, tee_time, start_time, course_name, status, special_requests, holes")
+      .select("id, caddy_id, caddie_name, golfer_id, user_id, golfer_name, booking_date, tee_time, start_time, course_name, status, special_requests, holes, booking_source")
       .eq("id", bookingId)
       .maybeSingle();
     if (error) throw error;
@@ -219,7 +227,14 @@ serve(async (req) => {
     if (bk.booking_date < bangkokToday()) return json({ success: true, skipped: "past" });
 
     let result;
-    if (action === "new_job") result = await caddyNewJob(supabase, bk);
+    if (action === "new_job") {
+      result = await caddyNewJob(supabase, bk);
+      // v1555: off the waiting list (trg_auto_promote_caddy made this booking) — the golfer hears it too
+      if (bk.booking_source === "waitlist_auto_promote") {
+        const g = await golferPromoted(supabase, bk);
+        result = Object.assign({}, result, { golfer: g });
+      }
+    }
     else if (action === "job_moved") result = await caddyMoved(supabase, bk, String(body.old_time || ""));
     else if (action === "job_cancelled") result = await caddyCancelled(supabase, bk, String(body.caddy_id || bk.caddy_id || ""));
     else if (action === "approved") result = await golferConfirmed(supabase, bk);
@@ -330,6 +345,25 @@ async function golferConfirmed(supabase: any, bk: any) {
       tr(lang, "ap_footer"),
   };
   return await deliver(supabase, bk.id, to.id, "golfer_confirmed", time, [message]);
+}
+
+async function golferPromoted(supabase: any, bk: any) {
+  if (bk.status !== "confirmed") return { success: true, skipped: "not_confirmed" };
+  const to = await userRecipient(supabase, bk.golfer_id || bk.user_id);
+  if (!to.id) return { success: true, notified: 0, reason: "golfer_has_no_line" };
+  const time = hm(bk.tee_time || bk.start_time);
+  if (!(await claim(supabase, bk.id, to.id, "golfer_promoted", time))) return { success: true, skipped: "already_sent" };
+  const lang = to.lang;
+  const message: LineMessage = {
+    type: "text",
+    text: tr(lang, "wl_title") + "\n\n" +
+      tr(lang, "label_caddy", { name: caddyLabel(bk) }) + "\n" +
+      "📅 " + formatDate(bk.booking_date, lang) + "\n" +
+      "⏰ " + time + "\n" +
+      "📍 " + (bk.course_name || "") + "\n\n" +
+      tr(lang, "wl_footer"),
+  };
+  return await deliver(supabase, bk.id, to.id, "golfer_promoted", time, [message]);
 }
 
 async function golferCancelled(supabase: any, bk: any) {

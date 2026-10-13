@@ -93,6 +93,28 @@
             PS.onTab('pos');
             PS.subscribeRealtime();
             PS.updateMsgBadge();
+            PS.startInbox();
+        },
+
+        // v1539: messages the course receives (society organizer / golfer) = a loud alert on THIS screen, whichever tab
+        // is showing, until read, assigned and done (course-inbox.js). The embedded tee sheet leaves it to us.
+        startInbox() {
+            if (!window.CourseInbox) return;
+            CourseInbox.start({
+                sb: () => db(), who: (PS.course && PS.course.name) || 'Pro shop',
+                lang: () => (typeof currentLanguage !== 'undefined' && currentLanguage) || 'en',
+                open: (evId) => {
+                    try { window.showProshopTab('teesheet'); } catch (e) { }
+                    let n = 0;
+                    const go = () => {
+                        const f = document.getElementById('teesheet-iframe'), w = f && f.contentWindow;
+                        let CLk = null; try { CLk = w && w.CourseLink; } catch (e) { }
+                        if (CLk && CLk.state && CLk.state.ready) { CLk.openPanel(evId); return; }
+                        if (++n < 40) setTimeout(go, 250);
+                    };
+                    go();
+                }
+            });
         },
 
         // ================= COURSE CONTEXT =================

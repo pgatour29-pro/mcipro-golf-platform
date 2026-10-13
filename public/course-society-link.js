@@ -163,7 +163,7 @@
   };
 
   var CL = window.CourseLink = {
-    _v: 1538,
+    _v: 1539,
     KEYS: KEYS,
     sb: null,
     lang: 'en',
@@ -514,6 +514,7 @@
           var ev = self.state.byId[m.event_id];
           if (ev && !ev.msgTimes.some(function (x) { return x.created_at === m.created_at && x.side === m.side; })) ev.msgTimes.unshift({ event_id: m.event_id, side: m.side, created_at: m.created_at });
           if (m.side !== self.state.side) {
+            if (self.state.side === 'course' && window.CourseInbox) CourseInbox.local(m, ev);   // v1539: no desk token → this device's loud alert
             if (self.state.openId === m.event_id && self._panel()) self._markRead(m.event_id);
             else self.toast('💬 ' + (m.sender_name || '') + ': ' + self._msgText(m), function () { self.openPanel(m.event_id); });
           }

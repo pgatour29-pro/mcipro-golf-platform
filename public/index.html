@@ -11723,6 +11723,9 @@
                 'ts2.v.direct': 'Direct',
                 'ts2.v.special': 'Special',
                 'ts2.v.van': 'Van',
+                'ts2.vfull': 'FULL',
+                'ts2.vleft': '{n} left',
+                'ts2.vnext': '← NEXT',
                 'ts2.s.group': 'Group {n}',
                 'ts2.s.player': 'Player',
                 'ts2.s.hcp': 'HCP',
@@ -15527,6 +15530,9 @@
                 'ts2.v.direct': 'ไปเอง',
                 'ts2.v.special': 'พิเศษ',
                 'ts2.v.van': 'รถตู้',
+                'ts2.vfull': 'เต็ม',
+                'ts2.vleft': 'ว่าง {n}',
+                'ts2.vnext': '← คันถัดไป',
                 'ts2.s.group': 'กลุ่ม {n}',
                 'ts2.s.player': 'ผู้เล่น',
                 'ts2.s.hcp': 'HCP',
@@ -19316,6 +19322,9 @@
                 'ts2.v.direct': '직접',
                 'ts2.v.special': '특별',
                 'ts2.v.van': '밴',
+                'ts2.vfull': '만석',
+                'ts2.vleft': '{n}석 남음',
+                'ts2.vnext': '← 다음',
                 'ts2.s.group': '{n}조',
                 'ts2.s.player': '선수',
                 'ts2.s.hcp': '핸디',
@@ -23156,6 +23165,9 @@
                 'ts2.v.direct': '直行',
                 'ts2.v.special': '特別',
                 'ts2.v.van': 'バン',
+                'ts2.vfull': '満席',
+                'ts2.vleft': '残り{n}',
+                'ts2.vnext': '← 次',
                 'ts2.s.group': '{n}組',
                 'ts2.s.player': '選手',
                 'ts2.s.hcp': 'HC',
@@ -166680,11 +166692,31 @@ window.TeeSheet = {
         return pObj;
     },
     _vanLabel: function(v){ return v==='own' ? t('ts2.v.direct') : (v==='special' ? t('ts2.v.special') : (v ? (t('ts2.v.van')+' '+v) : '—')); },
+    _VAN_CAP: 9,
+    // Riders per van number right now (grouped + pool), the SAME count the transport lanes show.
+    // Built once per render() into _vanSeat; falls back to a fresh count if called outside a render.
+    _vanSeatCounts: function(){
+        var self=this, c={}, seen={};
+        var add=function(pid){ if(seen[String(pid)]) return; seen[String(pid)]=1; var v=self._vanOf(pid); if(v && v!=='own' && v!=='special' && !isNaN(parseInt(v,10))) c[String(parseInt(v,10))]=(c[String(parseInt(v,10))]||0)+1; };
+        (this.groups||[]).forEach(function(g){ (g.players||[]).forEach(function(p){ add(p.playerId); }); });
+        this._pool().forEach(function(r){ add(r.playerId); });
+        return c;
+    },
+    // First van with a free seat → marked NEXT in the pickers (V1 full → V2, and so on).
+    _nextOpenVan: function(c){ for(var v=1; v<=15; v++){ if((c[String(v)]||0) < this._VAN_CAP) return v; } return null; },
     _vanOptions: function(cur){
+        var c=this._vanSeat || this._vanSeatCounts(), CAP=this._VAN_CAP, nx=this._nextOpenVan(c);
         var o = '<option value=""'+(!cur?' selected':'')+'>—</option>';
         o += '<option value="own"'+(cur==='own'?' selected':'')+'>Dir</option>';
         o += '<option value="special"'+(cur==='special'?' selected':'')+'>Spc</option>';
-        for (var i=1;i<=15;i++){ o += '<option value="'+i+'"'+(String(cur)===String(i)?' selected':'')+'>V'+i+'</option>'; }
+        for (var i=1;i<=15;i++){
+            var mine=String(cur)===String(i), n=c[String(i)]||0, full=n>=CAP;
+            // The collapsed select shows the selected label, so the player's own van stays a short "V2";
+            // every other van carries its seats. A full van can't be picked (the rider already in it can stay).
+            var seat = full ? t('ts2.vfull')+' '+n+'/'+CAP : (n ? n+'/'+CAP : '');
+            var lbl = mine ? 'V'+i : 'V'+i+(seat ? ' · '+seat : '')+(i===nx ? ' '+t('ts2.vnext') : '');
+            o += '<option value="'+i+'"'+(mine?' selected':'')+(full&&!mine?' disabled':'')+'>'+this._esc(lbl)+'</option>';
+        }
         return o;
     },
     // GMV1: one event source per mode — golfer mode reads ONLY the host's own created events
@@ -167888,6 +167920,7 @@ window.TeeSheet = {
         this._applyCascade();
         this._sugPrune();   // drop REGULARS suggestions for anyone now on the sheet (hero + tray agree)
         this._vanMap=this._deriveVanMap();
+        this._vanSeat=this._vanSeatCounts();   // seats per van for the FULL / NEXT marks in every van picker
         var un=this._pool();
         var grouped=0; this.groups.forEach(function(g){ grouped += (g.players||[]).length; });
         var total=grouped+un.length;
@@ -168555,7 +168588,17 @@ window.TeeSheet = {
         var o='<option value=""'+(!cur?' selected':'')+'>Grp van</option>';
         o+='<option value="own"'+(cur==='own'?' selected':'')+'>All Dir</option>';
         o+='<option value="special"'+(cur==='special'?' selected':'')+'>All Spc</option>';
-        for(var v=1;v<=15;v++){ o+='<option value="'+v+'"'+(String(cur)===String(v)?' selected':'')+'>All V'+v+'</option>'; }
+        // Seats left in each van for THIS group: riders already in it from other groups don't count this group
+        // twice. A van the whole group can't fit in shows FULL and can't be picked.
+        var self=this, c=this._vanSeat || this._vanSeatCounts(), CAP=this._VAN_CAP, pls=(this.groups[i]||{}).players||[];
+        var mineIn={}; pls.forEach(function(p){ var pv=self._vanOf(p.playerId); if(pv && !isNaN(parseInt(pv,10))) mineIn[String(parseInt(pv,10))]=(mineIn[String(parseInt(pv,10))]||0)+1; });
+        var nx=null;
+        for(var v=1;v<=15;v++){
+            var sel=String(cur)===String(v), left=CAP-((c[String(v)]||0)-(mineIn[String(v)]||0)), fits=left>=pls.length;
+            if(nx==null && fits && left>0) nx=v;
+            var lbl = sel ? 'All V'+v : ('All V'+v+(left<=0||!fits ? ' · '+t('ts2.vfull') : (left<CAP ? ' · '+t('ts2.vleft').replace('{n}',left) : ''))+(nx===v ? ' '+t('ts2.vnext') : ''));
+            o+='<option value="'+v+'"'+(sel?' selected':'')+(!fits&&!sel?' disabled':'')+'>'+this._esc(lbl)+'</option>';
+        }
         return '<select class="ts2-gvan'+(cur&&cur!=='own'?' set':'')+'" onchange="TeeSheet.setGroupVan('+i+',this.value)" title="Assign a van to the whole group — you can still change individuals on their rows below">'+o+'</select>';
     },
     // Set every player in the group to one van (V3, All Dir, …). Individual rows still override afterward.

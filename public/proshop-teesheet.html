@@ -5566,9 +5566,59 @@
       }
       return touched;
     }
+    // v1549 EVERY PLAYER HAS A PROFILE (Pete 2026-10-13): a name typed without a directory pick resolves on the
+    // server (golfer_for_name, nickname-aware) to the ONE guest profile that carries it, or a new MANUAL- one —
+    // the ids the first-login claim offers, so this history lands on the golfer's account when they register.
+    // A real account is never linked by name (a namesake would get the tee time + its alerts): those stay
+    // name-only and the course CRM joins them by name. Never blocks a save (2.5s cap, errors ignored).
+    const tsNameIds = {};   // normalized name -> profile id, or '' when the server refused it
+    const tsNameKey = n => String(n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    function tsPeople(b) {
+      const out = [];
+      (b.golfers || []).forEach((g, i) => {
+        if (!g) return;
+        out.push({ x: g, path: [i] });
+        (Array.isArray(g.guests) ? g.guests : []).forEach((x, j) => { if (x) out.push({ x, path: [i, j] }); });
+      });
+      return out;
+    }
+    async function tsLinkNames(d, ups) {
+      const want = [];
+      ups.forEach(b => tsPeople(b).forEach(p => { if (String(p.x.name || '').trim() && !p.x.odoo_id) want.push(p.x); }));
+      if (!want.length) return;
+      const todo = [...new Set(want.map(x => tsNameKey(x.name)))].filter(k => !(k in tsNameIds));
+      const course = el.courseSelect.value || null;
+      if (todo.length) await Promise.race([
+        Promise.all(todo.map(k => supabaseClient.rpc('golfer_for_name', { p_name: want.find(x => tsNameKey(x.name) === k).name, p_source: 'proshop-teesheet', p_course: course })
+          .then(r => { if (!r.error) tsNameIds[k] = (r.data && r.data.ok && r.data.id) || ''; }, () => {}))),
+        new Promise(res => setTimeout(res, 2500))
+      ]);
+      let n = 0;
+      want.forEach(x => { const id = tsNameIds[tsNameKey(x.name)]; if (id) { x.odoo_id = id; n++; } });
+      if (!n) return;
+      // this device's copy of the day carries the same ids, so the next diff matches what was saved
+      const patch = list => {
+        let hit = false;
+        (list || []).forEach(lb => {
+          const b = lb && ups.find(u => u.id === lb.id); if (!b) return;
+          const got = tsPeople(b);
+          tsPeople(lb).forEach(p => {
+            const s = got.find(q => q.path.join() === p.path.join());
+            if (s && s.x.odoo_id && !p.x.odoo_id && tsNameKey(s.x.name) === tsNameKey(p.x.name)) { p.x.odoo_id = s.x.odoo_id; hit = true; }
+          });
+        });
+        return hit;
+      };
+      try {
+        const stored = JSON.parse(localStorage.getItem(storageKey(d)) || '[]');
+        if (patch(stored)) localStorage.setItem(storageKey(d), JSON.stringify(stored));
+      } catch (e) {}
+      patch(teeSheetDbCache[d]);
+    }
     async function tsFlush(d, ups, dels) {
       if (!supabaseClient) return;
       if (!el.courseSelect.value) { console.warn('[TeeSheet] No course selected — bookings not written'); return; }
+      try { await tsLinkNames(d, ups); } catch (e) { console.warn('[TeeSheet] name link:', e); }
       const ver = teeSheetVer[d] = teeSheetVer[d] || {};
       const snap = teeSheetSnap[d] = teeSheetSnap[d] || {};
       const p_upserts = ups.map(b => ({ row: bookingToDbRow(b, d), expected: ver[b.id] || null }));

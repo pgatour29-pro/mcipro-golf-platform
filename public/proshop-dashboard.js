@@ -90,7 +90,10 @@
             await PS.resolveFacility();
             PS.paintHeader();
             PS.linkTeeSheet();
-            PS.onTab('pos');
+            // v1551 GLASS: the look switch + HOME tab (proshop-glass.js); Glass lands on HOME
+            try { if (window.PSGlass) PSGlass.boot(); } catch (e) { console.warn('[PS] glass', e); }
+            if (window.PSGlass && PSGlass.on()) window.showProshopTab('home');
+            else PS.onTab('pos');
             PS.subscribeRealtime();
             PS.updateMsgBadge();
             PS.startInbox();
@@ -1314,6 +1317,7 @@
             if (window.psDockActive) window.psDockActive(tabName);
         } catch (e) { }
         try { TabManager.showTab('proshopDashboard', tabName, event); } catch (e) { console.warn('[PS] showTab', e); }
+        try { if (window.PSGlass) PSGlass.onTab(tabName); } catch (e) { }
         setTimeout(() => { try { PS.onTab(tabName); } catch (e) { console.warn('[PS] onTab', e); } }, 50);
     };
 

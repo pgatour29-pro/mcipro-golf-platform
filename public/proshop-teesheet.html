@@ -2457,6 +2457,20 @@
     .cd-av{width:54px;height:54px;border-radius:14px;overflow:hidden;flex:none;display:flex;align-items:center;justify-content:center;
       background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.4);font:800 19px 'IBM Plex Mono',monospace;color:var(--cd-green)}
     .cd-av img{width:100%;height:100%;object-fit:cover}
+    /* v1553 (Pete: "in the caddy panels we need to see the images along with the names and number"): a face on every caddy row */
+    .cd-ph{display:inline-flex;align-items:center;justify-content:center;flex:none;width:26px;height:26px;border-radius:50%;overflow:hidden;
+      background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.35);font:700 10px 'IBM Plex Mono',monospace;color:var(--cd-green);vertical-align:middle}
+    .cd-ph img{width:100%;height:100%;object-fit:cover;display:block}
+    .cd-ph.sm{width:20px;height:20px;font-size:9px}
+    .cd-ph.lg{width:36px;height:36px;font-size:12px;border-radius:12px}
+    .cd-c{display:flex!important;gap:8px;align-items:center}
+    .cd-c .tx{min-width:0;flex:1}
+    .cd-qi{padding:3px 8px 3px 3px!important}
+    .cd-pk{display:flex;align-items:center;gap:8px}
+    .cd-row .who .cd-ph{margin-right:2px}
+    .ds-cn .cd-ph{margin-right:4px}
+    .cm-cc .cd-ph{margin-right:5px}
+    @media print{.cd-ph{display:none!important}}
     .cd-hd .nm{min-width:0}
     .cd-hd .n{font-size:19px;font-weight:800;line-height:1.2}
     .cd-hd .s{font-size:11.5px;color:var(--muted);margin-bottom:3px}
@@ -3577,7 +3591,7 @@
   <script src="course-promos.js?v=1522"></script>
   <script src="caddy-work-core.js?v=1473"></script>
   <script src="course-traffic.js?v=1459"></script>
-  <script src="caddy-module.js?v=1530"></script>
+  <script src="caddy-module.js?v=1553"></script>
   <script src="phone-desk.js?v=1545"></script>
   <script>
   (function() {
@@ -7384,11 +7398,13 @@
         if (!num) return null;
         const nm = String(g.caddyName || '').trim();
         const st = g.caddyStatus || (b.source === 'caddy-booking-db' ? (b.status === 'confirmed' ? 'confirmed' : 'pending') : '');
-        return { num, name: /^caddy(\s*#?\s*\d+)?$/i.test(nm) ? '' : nm, st };
+        let photo = null;
+        try { const rc = (typeof allCaddies !== 'undefined' && allCaddies || []).find(x => String(x.number) === num); photo = rc && rc.photoUrl || null; } catch (e) { }
+        return { num, name: /^caddy(\s*#?\s*\d+)?$/i.test(nm) ? '' : nm, st, photo };
       },
       cadHtml(c) {
         if (!c) return '<span class="ds-none">—</span>';
-        return '<span class="ds-cn">#' + this.esc(c.num) + '</span>' + (c.name ? ' <span class="ds-cnm">' + this.esc(c.name) + '</span>' : '')
+        return '<span class="ds-cn">' + (window.CaddyDesk || CaddyDesk).ph(c, 'sm') + '#' + this.esc(c.num) + '</span>' + (c.name ? ' <span class="ds-cnm">' + this.esc(c.name) + '</span>' : '')
           + (c.st ? ' <span class="ds-st ' + (c.st === 'confirmed' ? 'ok' : 'pend') + '">' + t(c.st === 'confirmed' ? 'dsStOk' : 'dsStPend') + '</span>' : '');
       },
       rows() {
@@ -7737,6 +7753,10 @@
         }
         this.paint();
       },
+      ph(r, cls) {
+        const src = r && (r.photo || r.photoUrl);
+        return '<span class="cd-ph' + (cls ? ' ' + cls : '') + '">' + (src ? '<img src="' + this.esc(src) + '" alt="" loading="lazy" onerror="this.remove()">' : this.esc(String((r && r.num) || '').slice(0, 3))) + '</span>';
+      },
       model(date, c, rows, offs, chk, rots, workOff, susMap) {
         const WSb = (d, m) => window.CaddyWorkSchedule ? window.CaddyWorkSchedule.bkk(d, m) : 0;
         const isToday = date === this.today();
@@ -7887,7 +7907,7 @@
         return '<div class="cd-sec">' + t('cdNeedList') + ' <span class="n">' + D.open.length + '</span>'
           + (D.open.some(j => j.sug) ? '<button type="button" class="r cd-link' + (this._arm === 'fill' ? ' armed' : '') + '" data-a="fill">' + (this._arm === 'fill' ? t('cdSure') : t('cdFillAll')) + '</button>' : '') + '</div>'
           + '<div class="cd-list">' + D.open.map(j => {
-            const sug = j.sug ? '<span class="cd-sug" title="' + this.esc(j.sug.name) + '">#' + this.esc(j.sug.num) + ' · Q' + (D.queue.indexOf(j.sug) + 1) + '</span>' : '<span class="cd-sug none">' + t('cdNobody') + '</span>';
+            const sug = j.sug ? '<span class="cd-sug" title="' + this.esc(j.sug.name) + '">' + this.ph(j.sug, 'sm') + ' #' + this.esc(j.sug.num) + ' · Q' + (D.queue.indexOf(j.sug) + 1) + '</span>' : '<span class="cd-sug none">' + t('cdNobody') + '</span>';
             const picker = pickOpen === j.id ? this.pickerHtml(D, j) : '';
             return '<div class="cd-need' + (pickOpen === j.id ? ' on' : '') + '"><div class="row"><div class="tm">' + j.t + '</div>'
               + '<div class="who"><div>' + this.esc(j.golfer) + '</div><small>' + this.esc(this.srcLabel(j)) + '</small></div>' + sug
@@ -7907,14 +7927,14 @@
         return '<div class="cd-search cd-pq"><span class="ic">⌕</span><input id="cd-pq" data-pq type="search" autocomplete="off" placeholder="' + this.esc(t('cdPickPh')) + '" value="' + this.esc(this.pq) + '"></div>'
           + '<div class="cd-pick">' + (list.length ? '' : '<div class="cd-empty">' + t('cdNoMatch') + '</div>') + list.map(({ r, ok }) => {
           const why = r.off ? this.offWord(r) : r.st === 'nochk' ? t('cdNotIn') : ok ? (r.cur ? t('cdBack').replace('{t}', hhmmOf(r.cur.e)) : t('cdHere')) : t('cdBusy');
-          return '<button type="button" class="cd-pk' + (ok ? '' : ' no') + '" ' + (ok ? 'data-a="assign" data-j="' + this.esc(j.id) + '" data-c="' + this.esc(r.id) + '"' : 'disabled') + '><b>#' + this.esc(r.num) + '</b> ' + this.esc(r.name) + '<small>' + this.esc(why) + '</small></button>';
+          return '<button type="button" class="cd-pk' + (ok ? '' : ' no') + '" ' + (ok ? 'data-a="assign" data-j="' + this.esc(j.id) + '" data-c="' + this.esc(r.id) + '"' : 'disabled') + '>' + this.ph(r) + '<b>#' + this.esc(r.num) + '</b> ' + this.esc(r.name) + '<small>' + this.esc(why) + '</small></button>';
         }).join('') + '</div>';
       },
       queueHtml(D) {
         const q = D.queue.filter(r => this.cadHit(r)).slice(0, 12);
         if (this.qn() && !q.length) return '';
         return '<div class="cd-sec">' + t('cdQueue') + (D.cfg ? '<span class="r mono">' + t('cdStartNo').replace('{n}', D.cfg.start_number) + '</span>' : '') + '</div>'
-          + (q.length ? '<div class="cd-q">' + q.map((r, i) => '<button type="button" class="cd-qi' + (i === 0 ? ' first' : '') + '" data-a="card" data-c="' + this.esc(r.id) + '"><i>Q' + (i + 1) + '</i><b>#' + this.esc(r.num) + '</b>' + this.esc(r.name)
+          + (q.length ? '<div class="cd-q">' + q.map((r, i) => '<button type="button" class="cd-qi' + (i === 0 ? ' first' : '') + '" data-a="card" data-c="' + this.esc(r.id) + '">' + this.ph(r) + '<i>Q' + (i + 1) + '</i><b>#' + this.esc(r.num) + '</b>' + this.esc(r.name)
             + '<i>' + (r.cur ? t('cdBack').replace('{t}', hhmmOf(r.cur.e)) : t('cdHere')) + '</i></button>').join('') + '</div>' : '<div class="cd-empty">' + t('cdQueueEmpty') + '</div>');
       },
       stateText(D, r) {
@@ -7933,7 +7953,7 @@
         return '<div class="cd-sec">' + t('cdAll') + '<span class="r">' + t('cdOnRoster').replace('{n}', D.roster.length) + '</span></div>'
           + '<div class="cd-chips">' + chip('all', t('cdFAll'), D.roster.length) + chip('free', t('cdFFree'), n('free') + n('bkd')) + chip('out', t('cdFOut'), n('out'))
           + (D.useChk ? chip('nochk', t('cdFNotIn'), n('nochk')) : '') + chip('off', t('cdFOff'), n('off')) + '</div>'
-          + '<div class="cd-grid">' + D.roster.filter(r => pass(r) && this.cadHit(r)).map(r => '<button type="button" class="cd-c ' + r.st + (this.sel === r.id ? ' sel' : '') + '" data-a="card" data-c="' + this.esc(r.id) + '"><span class="h"><b>#' + this.esc(r.num) + '</b><span>' + this.esc(r.name) + '</span></span><small>' + this.esc(this.stateText(D, r)) + '</small></button>').join('') + '</div>';
+          + '<div class="cd-grid">' + D.roster.filter(r => pass(r) && this.cadHit(r)).map(r => '<button type="button" class="cd-c ' + r.st + (this.sel === r.id ? ' sel' : '') + '" data-a="card" data-c="' + this.esc(r.id) + '">' + this.ph(r, 'lg') + '<span class="tx"><span class="h"><b>#' + this.esc(r.num) + '</b><span>' + this.esc(r.name) + '</span></span><small>' + this.esc(this.stateText(D, r)) + '</small></span></button>').join('') + '</div>';
       },
       deskHtml() {
         const D = this.data;
@@ -8042,7 +8062,7 @@
         const rows = D.roster.filter(r => r.jobs.length).map(r => {
           const fee = r.jobs.reduce((n, j) => n + j.fee, 0), paid = r.jobs.filter(j => j.paid).reduce((n, j) => n + j.fee, 0);
           const due = r.jobs.filter(j => !j.paid && j.fee && (j.done || j.state === 'late'));
-          return '<div class="cd-cl"><button type="button" class="nm" data-a="card" data-c="' + this.esc(r.id) + '"><b>#' + this.esc(r.num) + '</b> ' + this.esc(r.name) + '<small>' + t('cdLoopsN').replace('{n}', r.jobs.length) + '</small></button>'
+          return '<div class="cd-cl"><button type="button" class="nm" data-a="card" data-c="' + this.esc(r.id) + '">' + this.ph(r, 'sm') + ' <b>#' + this.esc(r.num) + '</b> ' + this.esc(r.name) + '<small>' + t('cdLoopsN').replace('{n}', r.jobs.length) + '</small></button>'
             + '<div class="amt">' + this.baht(fee) + '<small>' + t('cdPaidAmt').replace('{f}', this.baht(paid)) + '</small></div>'
             + (due.length ? '<button type="button" class="cd-btn" data-a="payall" data-c="' + this.esc(r.id) + '">' + t('cdPayFinished').replace('{f}', this.baht(due.reduce((n, j) => n + j.fee, 0))) + '</button>' : (fee && paid >= fee ? '<span class="cd-st done">✓ ' + t('cdPaid') + '</span>' : '<span class="cd-st bkd">' + t('cdNotFinished') + '</span>'))
             + '</div>';
@@ -8084,7 +8104,7 @@
           + L.map(j => '<button type="button" class="cd-bar open mv" style="left:' + x(j.s) + ';width:' + w(j.s, j.s + 95) + '" data-a="pick" data-j="' + this.esc(j.id) + '" data-desk="1">' + j.t + ' · ' + this.esc(j.golfer) + (j.sug ? ' → #' + this.esc(j.sug.num) : '') + '</button>').join('') + '</div><div class="fee"></div></div>').join('');
         const rows = order.map(r => {
           const inner = r.off ? '<span class="cd-bar dayoff"' + (r.susNow ? ' style="background:rgba(220,38,38,.25);color:#fca5a5"' : '') + '>' + this.esc(this.offWord(r)) + '</span>' : (r.st === 'nochk' && !r.jobs.length) ? '<span class="cd-bar dayoff dot">' + t('cdNotIn') + '</span>' : r.jobs.map(bar).join('');
-          return '<div class="cd-row' + (this.sel === r.id ? ' sel' : '') + '" data-a="card" data-c="' + this.esc(r.id) + '"><div class="who"><span class="dot ' + r.st + '"></span><b>#' + this.esc(r.num) + '</b><span class="nm">' + this.esc(r.name) + '</span><span class="lp">' + t('cdLoopsN').replace('{n}', r.loops) + '</span></div>'
+          return '<div class="cd-row' + (this.sel === r.id ? ' sel' : '') + '" data-a="card" data-c="' + this.esc(r.id) + '"><div class="who"><span class="dot ' + r.st + '"></span>' + this.ph(r, 'sm') + '<b>#' + this.esc(r.num) + '</b><span class="nm">' + this.esc(r.name) + '</span><span class="lp">' + t('cdLoopsN').replace('{n}', r.loops) + '</span></div>'
             + '<div class="trk">' + lines + inner + '</div><div class="fee">' + (r.loops ? this.baht(r.jobs.reduce((n, j) => n + j.fee, 0)) : '—') + '</div></div>';
         }).join('');
         const n = k => D.roster.filter(r => r.st === k).length;

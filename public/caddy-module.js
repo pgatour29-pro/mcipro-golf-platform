@@ -239,11 +239,15 @@
       if (j) {
         const num = j.num ? '#' + E(j.num) : '', nm = j.cad && j.cad.name && !/^Caddy #/i.test(j.cad.name) ? E(j.cad.name) : (g.caddyName && !/^Caddy #/i.test(g.caddyName) ? E(g.caddyName) : '');
         const sub = j.done ? T('cmBackAt').replace('{t}', this.hm(j.e)) : j.out ? T('cmOutBack').replace('{t}', this.hm(j.e)) : j.pending ? T('cmConfirmSub') : T('cmConfirmed');
-        return '<button type="button" class="cm-cc ' + (j.done ? 'done' : j.out ? 'out' : '') + '" data-a="job" data-j="' + E(j.id) + '"><b>' + num + '</b>' + nm + '<small>' + sub + '</small></button>';
+        // v1553: her face beside the number and name (CaddyDesk.ph = the desk's one avatar)
+        const face = (j.cad && this.api.CaddyDesk.ph) ? this.api.CaddyDesk.ph(j.cad, 'sm') : '';
+        return '<button type="button" class="cm-cc ' + (j.done ? 'done' : j.out ? 'out' : '') + '" data-a="job" data-j="' + E(j.id) + '">' + face + '<b>' + num + '</b>' + nm + '<small>' + sub + '</small></button>';
       }
       if (g.caddyNumber || g.caddyId) {
         const sub = g.caddyStatus === 'pending' ? T('cmConfirmSub') : T('cmBooked');
-        return '<span class="cm-cc"><b>' + (g.caddyNumber ? '#' + E(g.caddyNumber) : '') + '</b>' + E(g.caddyName && !/^Caddy #/i.test(g.caddyName) ? g.caddyName : '') + '<small>' + sub + '</small></span>';
+        const D0 = this.api.CaddyDesk.data, rc = D0 && D0.roster && D0.roster.find(x => (g.caddyId && x.id === g.caddyId) || (g.caddyNumber && String(x.num) === String(g.caddyNumber)));
+        const face0 = (rc && this.api.CaddyDesk.ph) ? this.api.CaddyDesk.ph(rc, 'sm') : '';
+        return '<span class="cm-cc">' + face0 + '<b>' + (g.caddyNumber ? '#' + E(g.caddyNumber) : '') + '</b>' + E(g.caddyName && !/^Caddy #/i.test(g.caddyName) ? g.caddyName : '') + '<small>' + sub + '</small></span>';
       }
       return '';
     },

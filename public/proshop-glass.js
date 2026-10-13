@@ -366,7 +366,7 @@
                 safe(sb.from('society_events').select('id,title,event_date,start_time,departure_time,course_name,course_id,organizer_name,status')
                     .in('event_date', [today, lastWk]).limit(300)),
                 safe(sb.from('golf_course_settings').select('teesheet_config').eq('course_id', slug).maybeSingle()),
-                safe(sb.from('caddy_profiles').select('id,caddy_number,name').eq('is_active', true).eq('is_mock', false).or(courseOr).limit(1000)),
+                safe(sb.from('caddy_profiles').select('id,caddy_number,name,photo_url').eq('is_active', true).eq('is_mock', false).or(courseOr).limit(1000)),
                 safe(sb.from('caddy_bookings').select('id,caddy_id,caddie_name,status,tee_time,start_time,end_time,started_at,completed_at,golfer_name,course_name,course_id,caddy_profiles(caddy_number)')
                     .eq('booking_date', today).neq('status', 'cancelled').or(courseOr).limit(1000)),
                 safe(sb.from('caddy_dayoff_requests').select('caddy_number,course_name').eq('status', 'approved').lte('date_from', today).gte('date_to', today).limit(500)),
@@ -424,7 +424,7 @@
             //     a job is out from its tee time (or when sent) until done / its end; a job with no caddy is "needs a caddy";
             //     off = approved day off + the work schedule + a suspension now; a course that checks caddies in only counts those in
             const nowMin = now.getHours() * 60 + now.getMinutes();
-            const roster = (ros.data || []).filter(inPool).map(r => ({ id: r.id, num: String(r.caddy_number == null ? '' : r.caddy_number).trim(), caddy_number: r.caddy_number, jobs: [] }));
+            const roster = (ros.data || []).filter(inPool).map(r => ({ id: r.id, num: String(r.caddy_number == null ? '' : r.caddy_number).trim(), caddy_number: r.caddy_number, name: r.name || '', photo: r.photo_url || null, jobs: [] }));
             const byId = {}, byNum = {}; roster.forEach(r => { byId[r.id] = r; if (r.num) byNum[r.num] = r; });
             const ids = roster.map(r => r.id).filter(Boolean);
             const WS = window.CaddyWorkSchedule;
@@ -467,7 +467,8 @@
                 out: outR.length,
                 free: roster.filter(r => r.st === 'free' || r.st === 'bkd').length,
                 loops: jobsM.length, need: open.length,
-                outList: outR.map(r => ({ num: r.num, at: r.cur.sent && r.cur.at ? r.cur.at : null, s: r.cur.s }))
+                faces: roster.reduce((m, r) => { if (r.num) m[r.num] = { photo: r.photo, name: r.name }; return m; }, {}),
+                outList: outR.map(r => ({ num: r.num, name: r.name, photo: r.photo, at: r.cur.sent && r.cur.at ? r.cur.at : null, s: r.cur.s }))
                     .sort((a, b) => (a.s - b.s) || (Number(a.num) - Number(b.num)))
             };
 
@@ -525,6 +526,7 @@
             const sheetTimes = new Set(T.filter(g => !g.society).map(g => g.t + '|' + g.start)).size;
             const next = T.find(g => g.t != null && g.t > nowM);
             const C = D.caddies, S = D.sales, K = D.kitchen;
+            const face = (num, photo, cls) => `<span class="psg-ph ${cls || ''}">${photo ? `<img src="${esc(photo)}" alt="" loading="lazy" onerror="this.remove()">` : esc(String(num || '').slice(0, 3))}</span>`;
             const day = now.toLocaleDateString(LOC(), { weekday: 'short', day: 'numeric', month: 'short' });
             const lwDayS = new Date(D.lastWk + 'T12:00').toLocaleDateString(LOC(), { weekday: 'short' });
             const pl = (n) => TT(n === 1 ? '{n} player' : '{n} players', { n: fmtN(n) });
@@ -566,7 +568,7 @@
             const row = (g) => {
                 const [cls, lab] = statusOf(g);
                 const past = g.t != null && g.t <= nowM;
-                const cad = g.society ? '' : `<div class="cad">${g.cads.map(c => `<i>#${esc(c)}</i>`).join('')}${g.need ? Array.from({ length: Math.min(g.need, 4) }, () => '<i class="need">' + esc(TT('caddy?')) + '</i>').join('') : ''}</div>`;
+                const cad = g.society ? '' : `<div class="cad">${g.cads.map(c => { const f = (C.faces || {})[String(c)]; return `<i class="${f ? 'f' : ''}" title="${esc(f && f.name || '')}">${f ? face(c, f.photo, 'xs') : ''}#${esc(c)}</i>`; }).join('')}${g.need ? Array.from({ length: Math.min(g.need, 4) }, () => '<i class="need">' + esc(TT('caddy?')) + '</i>').join('') : ''}</div>`;
                 return `<button type="button" class="psg-tee ${past ? 'past' : ''}" data-tab="teesheet"><div class="t">${g.t != null ? hhmm(g.t) : '--:--'}<small>${esc(g.society ? TT('Society') : g.start)}</small></div><div class="g"><b>${esc(g.name || TT(g.society ? 'Society day' : 'Group'))}</b><span>${esc(pl(g.players))}</span>${cad}</div><span class="psg-st ${cls}">${esc(lab)}</span></button>`;
             };
             const firstUp = T.findIndex(g => g.t == null || g.t > nowM);
@@ -577,14 +579,14 @@
                     : `<div class="psg-none">${esc(TT('Nothing on the sheet for today yet.'))}<button type="button" class="psg-mini g" data-tab="teesheet">${esc(TT('Open the tee sheet'))}</button></div>`}</div></div>`;
 
             const chart = G.chart(T, L, D.hours, nowM, players, D);
-            const outChips = C.outList.slice(0, 14).map(o => `<i>#${esc(o.num)} <em>${o.at ? hhmm(new Date(o.at).getHours() * 60 + new Date(o.at).getMinutes()) : hhmm(o.s)}</em></i>`).join('');
+            const outChips = C.outList.slice(0, 12).map(o => `<div class="psg-out">${face(o.num, o.photo)}<span class="w"><b>#${esc(o.num)}</b> ${esc(o.name || '')}</span><em>${o.at ? hhmm(new Date(o.at).getHours() * 60 + new Date(o.at).getMinutes()) : hhmm(o.s)}</em></div>`).join('');
             const caddyCard = `<div class="psg-card">${go('caddies')}<h3>${ms('groups')} ${esc(TT('Caddy desk'))}</h3>
                 <div class="psg-cstat"><div><b>${fmtN(C.onDuty)}</b><span>${esc(TT('On duty'))}</span></div><div><b class="am">${fmtN(C.out)}</b><span>${esc(TT('Out'))}</span></div><div><b class="gr">${fmtN(C.free)}</b><span>${esc(TT('Free'))}</span></div></div>
                 <div class="psg-lab">${esc(TT('OUT ON THE COURSE · SINCE'))}</div>
-                <div class="psg-q">${outChips || '<span class="psg-none sm">' + esc(TT('Nobody out yet.')) + '</span>'}${C.outList.length > 14 ? `<i>+${C.outList.length - 14}</i>` : ''}</div>
+                <div class="psg-outs">${outChips || '<span class="psg-none sm">' + esc(TT('Nobody out yet.')) + '</span>'}</div>${C.outList.length > 12 ? `<div class="psg-more">+${C.outList.length - 12}</div>` : ''}
                 <div class="psg-row">${C.need ? `<button type="button" class="psg-mini a" data-tab="caddies">${esc(TT('{n} need a caddy', { n: C.need }))}</button>` : ''}<button type="button" class="psg-mini" data-tab="caddies">${esc(TT('Open the desk'))}</button></div></div>`;
             const mins = (o) => Math.max(0, Math.round((now - new Date(o.created_at)) / 60000));
-            const itemTxt = (o) => { try { const it = Array.isArray(o.items) ? o.items : []; return it.map(x => (x.qty && x.qty > 1 ? x.qty + ' ' : '') + (x.name || '')).filter(Boolean).join(', '); } catch (e) { return ''; } };
+            const itemTxt = (o) => { try { const it = Array.isArray(o.items) ? o.items : []; return it.map(x => { const q = x.quantity || x.qty; return (q && q > 1 ? q + '× ' : '') + (x.name || ''); }).filter(Boolean).join(', '); } catch (e) { return ''; } };
             const where = (o) => o.delivery_type === 'halfway' ? TT('Halfway') : o.delivery_type === 'room' ? TT('Room {r}', { r: o.room || '' }) : o.delivery_type === 'course' ? TT('On course') : TT('Clubhouse');
             const kitCard = K ? `<div class="psg-card">${go('kitchen')}<h3>${ms('restaurant')} ${esc(TT('Kitchen'))} <small>${esc(K.open.length ? TT('{n} open', { n: K.open.length }) : TT('all clear'))}</small></h3>
                 ${K.open.length ? K.open.slice(0, 6).map(o => `<div class="psg-order"><b>#${esc(String(o.order_number || o.id).slice(-4))}</b><span>${esc(where(o))} · ${esc(itemTxt(o) || o.customer_name || '')}</span><span class="psg-st ${o.status === 'ready' ? 'in' : 'wait'}">${esc(o.status === 'ready' ? TT('Ready') : TT('{n} min ago', { n: mins(o) }))}</span></div>`).join('') : '<div class="psg-none sm">' + esc(TT('No orders waiting.')) + '</div>'}</div>` : '';
@@ -826,6 +828,16 @@ html.psg body #kitchenQueueOverlay .kq-card,html.psg body #kitchenQueueOverlay .
 .psg-cstat span{font:700 10px Inter,sans-serif;letter-spacing:.06em;color:var(--ink3);text-transform:uppercase}
 .psg-lab{font:700 10px Inter,sans-serif;letter-spacing:.08em;color:var(--ink3);margin-top:14px}
 .psg-q{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.psg-ph{display:inline-flex;align-items:center;justify-content:center;flex:none;width:30px;height:30px;border-radius:50%;overflow:hidden;background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.35);font:700 10px 'JetBrains Mono',monospace;color:#86efac}
+.psg-ph img{width:100%;height:100%;object-fit:cover;display:block}
+.psg-ph.xs{width:18px;height:18px;font-size:8px;margin-right:4px;border-width:0}
+.psg-tee .cad i.f{display:inline-flex;align-items:center;padding:2px 6px 2px 2px}
+.psg-outs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:10px}
+.psg-out{display:flex;align-items:center;gap:8px;min-width:0;padding:5px 8px 5px 5px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid var(--line)}
+.psg-out .w{flex:1;min-width:0;font-size:12px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.psg-out .w b{font:700 12px 'JetBrains Mono',monospace;color:#fff}
+.psg-out em{font:600 10.5px 'JetBrains Mono',monospace;font-style:normal;color:var(--ink3)}
+.psg-more{font:600 11px 'JetBrains Mono',monospace;color:var(--ink3);margin-top:6px}
 .psg-q i em{font-style:normal;color:var(--ink3);font-weight:500;margin-left:2px}
 .psg-row{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
 .psg-mini{display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 13px;border-radius:999px;font:700 12px Inter,sans-serif;background:rgba(255,255,255,.1);border:1px solid var(--line2);color:#fff;white-space:nowrap;cursor:pointer}

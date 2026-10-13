@@ -7077,6 +7077,7 @@
         #conversation-view .scv3msg-msg.me { align-self:flex-end; background:linear-gradient(180deg,#22b45f,#15803d); color:#fff; border-bottom-right-radius:6px;
             box-shadow:0 4px 18px rgba(34,197,94,.18); }
         #conversation-view .scv3msg-msg.me.pending { opacity:.6; }
+        #conversation-view .scv3msg-txt { white-space:pre-line; }   /* v1540: a course message's event line stays on its own line */
         #conversation-view .scv3msg-meta { font:500 8.5px/1 'JetBrains Mono',monospace; letter-spacing:.08em; color:#59636E; margin:4px 4px 10px; display:flex; align-items:center; gap:4px; }
         #conversation-view .scv3msg-meta.me { align-self:flex-end; }
         #conversation-view .scv3msg-meta.them { align-self:flex-start; }
@@ -136970,14 +136971,14 @@ const MessagesSystem = {
                         readReceipt = `<span id="group-read-${m.id}" data-created="${m.created_at}"></span>`;
                     }
                     return `${divider}
-                        <div class="scv3msg-msg me" data-mid="${m.id}">${this._quoteHtml(m)}${this.escapeHtml(m.message_text)}</div>
+                        <div class="scv3msg-msg me" data-mid="${m.id}">${this._quoteHtml(m)}<span class="scv3msg-txt">${this.escapeHtml(m.message_text)}</span></div>
                         <div class="scv3msg-meta me">${time} ${readReceipt}</div>`;
                 } else {
                     const senderProfile = profileMap[m.sender_line_id] || {};
                     const showSender = this.currentConversation.type === 'event' || this.currentConversation.type === 'group';
                     return `${divider}
                         ${showSender ? `<div class="scv3msg-sender">${this.escapeHtml(senderProfile.name || 'Unknown')}</div>` : ''}
-                        <div class="scv3msg-msg them" data-mid="${m.id}">${this._quoteHtml(m)}${this.escapeHtml(m.message_text)}</div>
+                        <div class="scv3msg-msg them" data-mid="${m.id}">${this._quoteHtml(m)}<span class="scv3msg-txt">${this.escapeHtml(m.message_text)}</span></div>
                         <div class="scv3msg-meta them">${time}
                             <button onclick="ContentModeration.showReportModal('message', '${m.id}', '${m.sender_line_id}')" title="Report">
                                 <span class="material-symbols-outlined">flag</span>
@@ -186613,6 +186614,10 @@ showOrganizerTab = function(tabName) {
         /* v1342: the golfer's "Your booking" guest sheet (z 12000) buried the button under its footer — a tap
            on "back" landed on EDIT MY REGISTRATION instead. The sheet footer keeps a left gutter for it. */
         body:has(#scv3gGuestSheet) #dashboardBackBtn { bottom: 16px !important; }
+        /* v1540: a full-screen chat has its own back arrow on top; the floating button sat ON the message box
+           (Pete: "the back button is blocking") — same for the Tap-In message thread */
+        body:has(#conversation-view:not(.hidden)) #dashboardBackBtn, body:has(#conversation-view:not(.hidden)) #globalScrollToTopBtn,
+        body:has(#gdmIn) #dashboardBackBtn, body:has(#gdmIn) #globalScrollToTopBtn { display: none !important; }
     </style>
     <!-- Floating Back Button (mobile only, always in DOM) -->
     <button id="dashboardBackBtn" onclick="dashboardGoBack()" class="md:hidden" style="

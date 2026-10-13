@@ -87930,6 +87930,8 @@ const DevMode = {
     },
 
     init() {
+        if (this._inited) return;
+        this._inited = true;
         // Listen for Ctrl+Shift+D to toggle dev mode
         document.addEventListener('keydown', (e) => {
             if (e.ctrlKey && e.shiftKey && e.key === 'D') {
@@ -87938,20 +87940,20 @@ const DevMode = {
             }
         });
 
-        // Check URL for dev mode
-        if (window.location.search.includes('dev=true')) {
-            localStorage.setItem('dev_mode', 'true');
-        }
-
-        // Show switcher if admin
-        if (this.isAdmin()) {
-            this.show();
+        // v1550 (Pete 2026-10-13): "stop the Dev Mode popping up on my logins, if i want it open i will
+        // use the command to open it". The panel NEVER opens by itself any more: not for the admin LINE
+        // id, not from a remembered flag. Only Ctrl+Shift+D (or an explicit ?dev=true) opens it, and only
+        // for that page view. The old remembered flag is cleared so it can't come back on a reload.
+        try { localStorage.removeItem('dev_mode'); } catch (e) { }
+        if (!this._urlChecked) {
+            this._urlChecked = true;
+            if (/[?&]dev=true\b/.test(window.location.search)) this.show();
         }
     },
 
     toggle() {
-        const current = localStorage.getItem('dev_mode') === 'true';
-        localStorage.setItem('dev_mode', (!current).toString());
+        const sw = document.getElementById('devRoleSwitcher');
+        const current = !!(sw && sw.style.display === 'block');
         if (!current) {
             this.show();
             this.showNotification('Developer Mode Enabled', 'success');

@@ -6,7 +6,11 @@ const fail = [];
 if (!/#dashboardBackBtn\s*\{\s*z-index:\s*2147483000\s*!important;\s*\}/.test(s)) fail.push('#dashboardBackBtn must be z-index 2147483000 !important (top layer)');
 const lowered = s.match(/#dashboardBackBtn[^{]*\{[^}]*z-index:\s*(\d+)/g) || [];
 lowered.forEach(r => { const z = +r.match(/z-index:\s*(\d+)/)[1]; if (z !== 2147483000 && z !== 9999) fail.push('a rule sets the back button z-index to ' + z + ' — never lower it: ' + r.slice(0, 90)); });
-if (!/function dashboardGoBack\(\) \{\s*\/\/ v1366[^\n]*\n\s*const _top = _backTopOverlay\(\);\s*if \(_top\) \{ _backCloseOverlay\(_top\); return; \}/.test(s)) fail.push('dashboardGoBack must start with the _backTopOverlay() catch-all');
+if (!/function dashboardGoBack\(\) \{\s*\/\/ v1366[^\n]*\n\s*if \(_backDialog\(\)\) return;[\s\S]{0,400}?const _top = _backTopOverlay\(\);\s*if \(_top\) \{ _backCloseOverlay\(_top\); return; \}/.test(s)) fail.push('dashboardGoBack must start with _backDialog() (v1559) then the _backTopOverlay() catch-all');
+// v1559: Android's back is a close request — a self-re-arming CloseWatcher routes EVERY press into dashboardGoBack, so
+// back can never walk out of the app (Pete 2026-10-13: "make sure the back button does not back out of the app").
+if (!/_armWatch\(\) \{[\s\S]{0,300}new CloseWatcher\(\);[\s\S]{0,200}w\.onclose = \(\) => \{[^}]*this\._armWatch\(\); this\._inAppBack\(\); \};/.test(s)) fail.push('PWAGuard must arm a CloseWatcher that re-arms itself and runs the in-app back on every close (v1559)');
+if (!/this\._armWatch\(\);\s*\n\s*\/\/ Handle page visibility/.test(s)) fail.push('PWAGuard.init must arm the CloseWatcher (v1559)');
 if (!/v1402 BACK NEVER A DEAD TAP[\s\S]{0,900}if \(!NavHistory\.canGoBack\(\)\) \{[\s\S]{0,400}showGolferTab\('overview', null\)/.test(s)) fail.push('dashboardGoBack must fall back to the golfer home when history is empty (v1402)');
 if (!/if \(dashboardId === 'golferDashboard' && typeof NavHistory !== 'undefined'\) NavHistory\.push\(/.test(s)) fail.push('TabManager.showTab must record golfer tab switches in NavHistory (v1402)');
 // v1442: a PIN organizer (no line_user_id) never leaves the organizer home for the organizer's PERSONAL golfer dashboard

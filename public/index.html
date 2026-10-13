@@ -11189,6 +11189,30 @@
                     this._depth = d;
                 } catch (e) {}
             },
+            // v1559 (Pete 2026-10-13: "Back button from the message section backs out of the app … go through the
+            // entire system now and make sure the back button does not back out of the app"). Android's back is a
+            // CLOSE REQUEST: a CloseWatcher takes it BEFORE Chrome walks history, so it can never skip the app's
+            // entries (Chrome skips entries added without a fresh tap — the history buffer alone can run dry). The
+            // watcher re-arms itself on every close, so every back press — any screen, any number in a row — lands
+            // in dashboardGoBack. A <dialog> or popover opened later sits ABOVE it and closes first. Android only:
+            // on a computer the same watcher would turn Esc into "back". The history buffer stays as the fallback.
+            _inAppBack() {
+                if (this.isDirty) {
+                    this.showUnsavedModal(() => {
+                        if (typeof dashboardGoBack === 'function') dashboardGoBack();
+                    });
+                    return;
+                }
+                if (typeof dashboardGoBack === 'function') dashboardGoBack();
+            },
+            _armWatch() {
+                if (typeof window.CloseWatcher !== 'function' || !/Android/i.test(navigator.userAgent || '')) return;
+                try {
+                    const w = new CloseWatcher();
+                    w.onclose = () => { if (this._watch === w) this._watch = null; this._armWatch(); this._inAppBack(); };
+                    this._watch = w;
+                } catch (e) { console.warn('[PWAGuard] CloseWatcher', e); }
+            },
             init() {
                 // Prime baseline history entries — two entries so back always has somewhere to go
                 history.replaceState({ _appNav: true, page: location.pathname, d: 0 }, "", location.pathname);
@@ -11210,18 +11234,9 @@
                         try { history.pushState({ _appNav: true, d: 1 }, '', location.href); this._depth = 1; } catch (err) {}
                     }
 
-                    if (this.isDirty) {
-                        this.showUnsavedModal(() => {
-                            if (typeof dashboardGoBack === 'function') dashboardGoBack();
-                        });
-                        return;
-                    }
-
-                    // Navigate back in-app
-                    if (typeof dashboardGoBack === 'function') {
-                        dashboardGoBack();
-                    }
+                    this._inAppBack();
                 });
+                this._armWatch();
 
                 // Handle page visibility (reload/unload)
                 window.addEventListener("pageshow", (e) => {
@@ -41585,8 +41600,27 @@ Sent from Login Page`;
             if (el.id) el.style.display = 'none'; else el.remove();
         }
 
+        // v1559: an open modal <dialog> closes first — the app's own, then one inside an embedded page (the pro shop
+        // Tee sheet / Caddy desk frames: Messages, Caller, Book Slot …). 'cancel' first, so a dialog with its own
+        // steps (Messages: thread → list) steps back instead of closing.
+        function _backDialog() {
+            const docs = [document];
+            document.querySelectorAll('iframe').forEach(f => { try { if (f.offsetParent && f.contentDocument) docs.push(f.contentDocument); } catch (e) {} });
+            for (const doc of docs) {
+                const open = Array.from(doc.querySelectorAll('dialog[open]')).filter(d => { try { return d.matches(':modal'); } catch (e) { return true; } });
+                const d = open[open.length - 1];
+                if (!d) continue;
+                try { const ev = new Event('cancel', { cancelable: true }); d.dispatchEvent(ev); if (!ev.defaultPrevented && d.open) d.close(); } catch (e) {}
+                return true;
+            }
+            return false;
+        }
+
         function dashboardGoBack() {
             // v1366: the topmost overlay nobody registered closes FIRST — back is never a dead tap.
+            if (_backDialog()) return;
+            // v1559: the Messages ⋯ sheet (pin / move to folder) is body-mounted with its own dim — back closes BOTH
+            if (document.querySelector('.msgf-sheet') && window.MessagesSystem && MessagesSystem._mfClose) { try { MessagesSystem._mfClose(); } catch (e) {} return; }
             const _top = _backTopOverlay();
             if (_top) { _backCloseOverlay(_top); return; }
             // v1034: IRMA reply popup is body-mounted and global (any screen) — back must

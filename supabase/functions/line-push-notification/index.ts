@@ -258,6 +258,9 @@ serve(async (req) => {
       case "course_offer":
         result = await handleCourseOffer(supabase, payload.record);
         break;
+      case "tee_sheet":
+        result = await handleTeeSheet(supabase, payload);
+        break;
       default:
         return new Response(JSON.stringify({ error: "Unknown notification type" }), {
           status: 400,
@@ -1473,6 +1476,61 @@ async function handleSystemAlert(supabase: any, payload: any) {
 
   console.log("[LINE Push] System alert result:", sent ? "SUCCESS" : "FAILED");
   return { success: sent, notified: sent ? 1 : 0 };
+}
+
+// ============================================================================
+// TEE SHEET → THE EVENT'S PLAYERS (organizer tee sheet "Send LINE", v1562)
+// Recipients are resolved HERE from event_registrations for that one event — the caller can't
+// name recipients, so the button can only ever reach that event's own players. Header (title +
+// date) comes from the DB. Each player gets their own group / tee / van line on top ("mine" is
+// keyed by player_id and only read for ids that ARE registered). Played events are refused.
+// ============================================================================
+async function handleTeeSheet(supabase: any, payload: any) {
+  const eventId = String(payload.event_id || "");
+  const sheet = String(payload.sheet || "").slice(0, 4200);
+  const mine = (payload.mine && typeof payload.mine === "object") ? payload.mine : {};
+  if (!eventId || !sheet.trim()) return { success: false, error: "missing event_id or sheet" };
+
+  const { data: ev } = await supabase
+    .from("society_events").select("id, title, event_date, course_name").eq("id", eventId).maybeSingle();
+  if (!ev) return { success: false, error: "event_not_found" };
+  const today = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);   // Asia/Bangkok date
+  if (ev.event_date && String(ev.event_date).slice(0, 10) < today) return { success: false, error: "event_past" };
+
+  const { data: regs } = await supabase
+    .from("event_registrations").select("player_id").eq("event_id", eventId);
+  const playerIds = [...new Set((regs || []).map((r: any) => r.player_id).filter((id: any) => typeof id === "string" && id.startsWith("U")))] as string[];
+  if (!playerIds.length) return { success: true, notified: 0, recipients: 0 };
+
+  const { data: profs } = await supabase
+    .from("user_profiles").select("line_user_id, messaging_user_id").in("line_user_id", playerIds);
+  const targetOf = new Map<string, string>();
+  for (const p of profs || []) {
+    const t = p.messaging_user_id || p.line_user_id;
+    if (t?.startsWith("U")) targetOf.set(p.line_user_id, t);
+  }
+  for (const id of playerIds) if (!targetOf.has(id)) targetOf.set(id, id);
+
+  let dateStr = "";
+  try {
+    dateStr = new Date(String(ev.event_date).slice(0, 10) + "T00:00:00Z")
+      .toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  } catch (_) { /* no date */ }
+  const header = "⛳ " + (ev.title || ev.course_name || "Tee sheet") + (dateStr ? "\n📅 " + dateStr : "");
+
+  const sentTo = new Set<string>();
+  let notified = 0;
+  const jobs = playerIds.map((pid) => async () => {
+    const target = targetOf.get(pid)!;
+    if (sentTo.has(target)) return;
+    sentTo.add(target);
+    const you = typeof mine[pid] === "string" ? String(mine[pid]).slice(0, 120) : "";
+    const text = header + (you ? "\n\n👉 " + you : "") + "\n\n" + sheet;
+    if (await sendPushMessage(target, [{ type: "text", text: text.slice(0, 4900) }])) notified++;
+  });
+  for (let i = 0; i < jobs.length; i += 10) await Promise.all(jobs.slice(i, i + 10).map((j) => j()));
+  console.log(`[LINE Push] tee_sheet ${eventId}: ${notified}/${playerIds.length} delivered`);
+  return { success: true, notified, recipients: playerIds.length };
 }
 
 // ============================================================================

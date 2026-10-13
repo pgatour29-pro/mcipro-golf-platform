@@ -58246,6 +58246,21 @@ document.addEventListener('DOMContentLoaded', function() {
                     return 'ok';
                 } catch (e) { return 'offline'; }
             }
+            // v1554 (Pete 2026-10-13): a caddy PIN other than the 000000 demo opens a REAL caddy account (the Chee Chan
+            // sample caddy first). caddy_pin_login maps PIN -> account server-side; the client keeps only the account id,
+            // exactly what a LINE sign-in keeps, and boots as that caddy (real data, real controls, realtime).
+            if (role === 'caddie' && pin !== '000000') {
+                if (!/^\d{6}$/.test(pin)) return 'wrong';
+                try {
+                    const sb = window.SupabaseDB && window.SupabaseDB.client;
+                    if (!sb) return 'offline';
+                    const { data, error } = await sb.rpc('caddy_pin_login', { p_pin: pin });
+                    if (error) return 'offline';
+                    if (!data || !data.user_id) return 'wrong';
+                    window._staffPinAccount = data;
+                    return 'account';
+                } catch (e) { return 'offline'; }
+            }
             if (role !== 'proshop') return pin === '000000' ? 'ok' : 'wrong';
             if (pin === '000000') {
                 try { localStorage.removeItem('ps_pin_lock_v1'); localStorage.removeItem('ps_desk_token_v1'); } catch (e) { }
@@ -58293,6 +58308,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 window.cancelStaffPin();
                 if (window.LoginSheets) LoginSheets.close();
                 if (window.KitchenQueue) KitchenQueue.station();
+                return true;
+            }
+            if (verdict === 'account') {   // v1554: a real account behind the PIN: sign in as it (same path as a LINE session)
+                const acc = window._staffPinAccount || {};
+                window._staffPinAccount = null;
+                try {
+                    localStorage.removeItem('mcipro_staff_role');
+                    sessionStorage.removeItem('__user_logged_out');
+                    localStorage.setItem('line_user_id', acc.user_id);
+                } catch (e) { }
+                window.cancelStaffPin();
+                if (window.LoginSheets) LoginSheets.close();
+                location.reload();
                 return true;
             }
             if (verdict === 'ok') {

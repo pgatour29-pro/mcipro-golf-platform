@@ -24,5 +24,13 @@ if (/font:\s*\d{3}\s+[\d.]+px(\/[\d.]+(px)?)?\s+inherit/.test(dd)) fail.push('da
 if (/\bprompt\(|\bconfirm\(|\balert\(/.test(dd)) fail.push('dash-dock.js: no native dialogs');
 if (!/<style>#golferWinningsCard\{display:none !important\}<\/style>/.test(html)) fail.push('the golfer chips box must stay hidden (Pete 2026-10-14)');
 if (!/WinningsWallet\.open\(\); closeMobileDrawer\(\);"><span[^>]*>poker_chip/.test(html)) fail.push('Chips must stay in the golfer drawer (and so in MORE)');
+// v1566: every dashboard (Pete: "This goes for all dashboard"): admin gets the generated bar; caddie/manager/maintenance lose
+// the hamburger (outranking #mhvcCSS) and their MORE is topped up from their drawer; glass reaches the staff docks/sheets
+if (!/admin:\s*\{\s*screen: 'adminDashboard', drawer: 'drawer-admin'/.test(dd)) fail.push('the platform admin phone must get the generated bar (drawer-admin)');
+['caddieDashboard', 'managerDashboard', 'maintenanceDashboard'].forEach(function (d) {
+    if (!new RegExp('html body #' + d + ' \\.nav-header button\\[onclick\\*="openMobileDrawer"\\]').test(css)) fail.push(d + ': the hamburger must be hidden with a selector that outranks #mhvcCSS');
+});
+if (!/sheet: 'cadMoreSheet'/.test(dd) || !/sheet: 'mgrMoreSheet'/.test(dd) || !/sheet: 'mntMoreSheet'/.test(dd)) fail.push('the staff MORE sheets must be topped up from their drawers');
+if (!/\.mhvDock:not\(#psDock\)/.test(dd)) fail.push('staff glass must skip the pro shop (it has PSGlass)');
 if (fail.length) { console.error('dash-dock-check FAILED:\n - ' + fail.join('\n - ')); process.exit(1); }
-console.log('dash-dock-check: ok (phone bar replaces the hamburger, glass opt-in, chips box hidden)');
+console.log('dash-dock-check: ok (bar replaces the hamburger on every phone dashboard, glass opt-in, chips box hidden)');

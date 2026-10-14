@@ -7,7 +7,15 @@
      time it opens: same items, same order, same role gating, same badges. ONE menu list, never a copy.
    - The bar hides during a live round (#golferDashboard.round-active) — the scoring keypad owns the bottom.
    - GLASS = the proshop-glass.js recipe over the SAME screen; per device (localStorage dash_look_v1), off by
-     default. Phase 1 covers the header, the Home cubes, the bar and the More sheet. */
+     default. Phase 1 covers the header, the Home cubes, the bar and the More sheet.
+   v1566 (Pete: "This goes for all dashboard including the golf courses, kitchen, etc"):
+   - Platform admin phone: the same generated bar (MORE read from #drawer-admin).
+   - Caddie / manager / maintenance already had the pro shop bar but ALSO a hamburger: the hamburger goes, and
+     every drawer row their own MORE sheet lacks (Tech Support, Play Golf, Logout…) is added to that sheet,
+     read from the drawer on each open.
+   - Glass option ("Glass look" tile in every staff MORE sheet; same dash_look_v1 key) for caddie, manager,
+     maintenance, caddy master, marketing, course admin: header, cube home, bar, sheet, photo ground on home.
+     The pro shop keeps its own PSGlass (ps_look_v1). */
 (function () {
     'use strict';
     if (window.DashDock) return;
@@ -33,6 +41,16 @@
                 { k: 'messages', i: 'chat', l: 'Chat', go: function () { showGolferTab('messages'); }, badgeFrom: 'messages' }
             ]
         },
+        admin: {
+            screen: 'adminDashboard', drawer: 'drawer-admin',
+            items: [
+                { k: 'overview', i: 'dashboard', l: 'Home', go: function () { showAdminTab('overview'); } },
+                { k: 'users', i: 'people', l: 'Users', go: function () { showAdminTab('users'); } },
+                { k: 'societies', i: 'groups', l: 'Societies', go: function () { showAdminTab('societies'); } },
+                { k: 'courses', i: 'golf_course', l: 'Courses', go: function () { showAdminTab('courses'); } },
+                { k: 'engagement', i: 'monitoring', l: 'Engagement', go: function () { showAdminTab('engagement'); } }
+            ]
+        },
         organizer: {
             screen: 'societyOrganizerDashboard', drawer: 'drawer-organizer',
             items: [
@@ -45,15 +63,27 @@
         }
     };
 
+    // dashboards that already carry the pro shop bar (index.html #mhvcCSS): their MORE gets the missing drawer rows + the look tile
+    var STAFF = [
+        { dash: 'caddieDashboard', drawer: 'drawer-caddie', sheet: 'cadMoreSheet', dim: 'cadMoreDim', home: 'cadCubeHome' },
+        { dash: 'managerDashboard', drawer: 'drawer-manager', sheet: 'mgrMoreSheet', dim: 'mgrMoreDim', home: 'mgrCubeHome' },
+        { dash: 'maintenanceDashboard', drawer: 'drawer-maintenance', sheet: 'mntMoreSheet', dim: 'mntMoreDim', home: 'mntCubeHome' },
+        { dash: 'caddyMasterDashboard', drawer: null, sheet: 'cmMoreSheet', dim: 'cmMoreDim', home: 'cmCubeHome' },
+        { dash: 'marketingDashboard', drawer: null, sheet: 'mkMoreSheet', dim: 'mkMoreDim', home: 'mkCubeHome' },
+        { dash: 'courseAdminDashboard', drawer: null, sheet: null, dim: null, home: 'admCubeHome' }
+    ];
+
     var D = window.DashDock = {
         who: function () {
             var g = document.getElementById('golferDashboard'), o = document.getElementById('societyOrganizerDashboard');
             if (o && o.classList.contains('active')) return 'organizer';
             if (g && g.classList.contains('active')) return 'golfer';
+            var a = document.getElementById('adminDashboard');
+            if (a && a.classList.contains('active')) return 'admin';
             return null;
         },
         glass: function () { try { return localStorage.getItem(LOOK_KEY) === 'glass'; } catch (e) { return false; } },
-        setLook: function (l) { try { localStorage.setItem(LOOK_KEY, l); } catch (e) { } D.applyLook(); D.closeMore(); },
+        setLook: function (l) { try { localStorage.setItem(LOOK_KEY, l); } catch (e) { } D.applyLook(); D.closeMore(); D.closeStaffSheets(); },
         applyLook: function () { document.documentElement.classList.toggle('dgl', D.glass()); },
 
         css: function () {
@@ -61,17 +91,22 @@
             var s = document.createElement('style'); s.id = 'dashDockCSS';
             var G = 'html.dgl', GA = 'html.dgl body:has(#golferDashboard.active)', OA = 'html.dgl body:has(#societyOrganizerDashboard.active)';
             var CUBE = G + ' #liteCubesGrid .cube-poster,' + G + ' #orgLiteCubesGrid .cube-poster';
+            var SA = STAFF.map(function (x) { return x.dash; });
+            var SH = ['#caddieDashboard .nav-header', '#managerDashboard .nav-header', '#maintenanceDashboard .nav-header', '#caddyMasterDashboard .nav-header', '#marketingDashboard .nav-header', '#courseAdminMain header.nav-header'];
             s.textContent = [
                 '#ddDock,#ddSheet,#ddDim,#ddGround{display:none}',
                 '@media (max-width:767px){',
                 // the bar replaces the hamburger
-                ' #golferDashboard .nav-header button[onclick*="openMobileDrawer"],#societyOrganizerDashboard [onclick*="openMobileDrawer"]{display:none!important}',
-                ' body:has(#golferDashboard.active:not(.round-active)) #ddDock,body:has(#societyOrganizerDashboard.active) #ddDock{display:flex}',
+                ' #golferDashboard .nav-header button[onclick*="openMobileDrawer"],#societyOrganizerDashboard [onclick*="openMobileDrawer"],#adminDashboard [onclick*="openMobileDrawer"]{display:none!important}',
+                // #mhvcCSS styles these three hamburgers with display:inline-flex!important at (1,2,1) — outrank it, don't edit it
+                ' html body #caddieDashboard .nav-header button[onclick*="openMobileDrawer"],html body #managerDashboard .nav-header button[onclick*="openMobileDrawer"],html body #maintenanceDashboard .nav-header button[onclick*="openMobileDrawer"]{display:none!important}',
+                ' body:has(#golferDashboard.active:not(.round-active)) #ddDock,body:has(#societyOrganizerDashboard.active) #ddDock,body:has(#adminDashboard.active) #ddDock{display:flex}',
                 // z 45: every dashboard pop-up (z-50 and up) covers the bar. The leftover .screen.active transform made the
                 // screen the box for its fixed pop-ups (stacked under anything on <body>) — desktop drops it since v1086, phones now too
                 ' #ddDock{z-index:45}',
-                ' #golferDashboard.active:not(.round-active),#societyOrganizerDashboard.active{transform:none!important}',
-                ' body:has(#golferDashboard.active:not(.round-active)),body:has(#societyOrganizerDashboard.active){padding-bottom:calc(66px + env(safe-area-inset-bottom))}',
+                ' #golferDashboard.active:not(.round-active),#societyOrganizerDashboard.active,#adminDashboard.active{transform:none!important}',
+                ' body:has(#golferDashboard.active:not(.round-active)),body:has(#societyOrganizerDashboard.active),body:has(#adminDashboard.active){padding-bottom:calc(66px + env(safe-area-inset-bottom))}',
+                ' body:has(#adminDashboard.active) #globalScrollToTopBtn,body:has(#adminDashboard.active) #dashboardBackBtn{bottom:88px!important}',
                 ' #ddSheet.open,#ddDim.open{display:block}',   // #ddSheet{display:none} (id) beats the shared .mhvSheet.open — restate it
                 ' #ddSheet{max-height:80vh;overflow-y:auto;overscroll-behavior:contain}',
                 ' #ddSheet .s{position:relative}',
@@ -116,6 +151,23 @@
                 ' ' + G + ' #liteCubesGrid [style*="#0d9488"],' + G + ' #orgLiteCubesGrid [style*="#0d9488"],' + G + ' #liteCubesGrid .text-teal-600,' + G + ' #liteCubesGrid .text-teal-700{color:#5eead4!important}',
                 ' ' + G + ' #cubeHandicapValue,' + G + ' #liteCubesGrid [style*="#16a34a"],' + G + ' #orgLiteCubesGrid [style*="#16a34a"],' + G + ' #orgLiteCubesGrid .text-green-600,' + G + ' #liteCubesGrid .text-green-700{color:#4ade80!important}',
                 ' ' + G + ' #liteCubesGrid [style*="#0284c7"],' + G + ' #liteCubesGrid [style*="#0369a1"],' + G + ' #orgLiteCubesGrid [style*="#0284c7"],' + G + ' #orgLiteCubesGrid [style*="#0369a1"],' + G + ' #liteCubesGrid .text-sky-600,' + G + ' #liteCubesGrid .text-blue-600,' + G + ' #orgLiteCubesGrid .text-sky-600,' + G + ' #orgLiteCubesGrid .text-blue-600{color:#7dd3fc!important}',
+                // ---------- GLASS for the staff dashboards (v1566) ----------
+                ' ' + G + ' .mhvDock:not(#psDock){background:rgba(8,14,12,.86)!important;border-top:1px solid rgba(255,255,255,.12)!important;backdrop-filter:blur(24px) saturate(150%);-webkit-backdrop-filter:blur(24px) saturate(150%);box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}',
+                ' ' + G + ' .mhvDock:not(#psDock) .mdk{color:rgba(236,244,239,.62)}' + G + ' .mhvDock:not(#psDock) .mdk.active{color:#22c55e}',
+                ' ' + G + ' .mhvSheet:not(#psMoreSheet){background:linear-gradient(155deg,rgba(255,255,255,.09),rgba(255,255,255,.02) 60%),rgba(10,17,14,.92)!important;border-top:1px solid rgba(255,255,255,.14);backdrop-filter:blur(26px) saturate(150%);-webkit-backdrop-filter:blur(26px) saturate(150%)}',
+                ' ' + G + ' .mhvSheet:not(#psMoreSheet) .grab{background:rgba(255,255,255,.25)}',
+                ' ' + G + ' .mhvSheet:not(#psMoreSheet) .s{background:rgba(255,255,255,.06)!important;border-color:rgba(255,255,255,.12)!important;color:#f4f7f5!important}',
+                ' ' + G + ' .mhvSheet:not(#psMoreSheet) .s .material-symbols-outlined{color:#86efac!important}',
+                ' ' + G + ' .mhvDim:not(#psMoreDim){background:rgba(3,8,6,.55);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}',
+                ' ' + SH.map(function (x) { return G + ' ' + x; }).join(',') + '{background:rgba(6,12,10,.86)!important;backdrop-filter:blur(22px) saturate(150%);-webkit-backdrop-filter:blur(22px) saturate(150%);border-bottom:1px solid rgba(255,255,255,.1)!important}',
+                ' ' + G + ' .mhvCubeHome .mgc{background:linear-gradient(155deg,rgba(255,255,255,.085),rgba(255,255,255,.025) 60%),rgba(14,22,19,.52)!important;border:1px solid rgba(255,255,255,.12)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 10px 30px rgba(0,0,0,.25)!important;backdrop-filter:blur(22px) saturate(150%);-webkit-backdrop-filter:blur(22px) saturate(150%)}',
+                ' ' + G + ' .mhvCubeHome .mgc .t{color:#f4f7f5!important}',
+                ' ' + G + ' .mhvCubeHome .mgc .chip{background:rgba(255,255,255,.1)!important;color:#f4f7f5!important;border:1px solid rgba(255,255,255,.16);box-shadow:none!important}',
+                ' ' + G + ' .mhvCubeHome .mgc-hero{background:linear-gradient(150deg,rgba(34,197,94,.9),rgba(13,148,136,.82))!important;border:1px solid rgba(134,239,172,.55)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 18px 40px rgba(16,185,129,.25)!important}',
+                ' ' + G + ' .mhvCubeHome .mgc-hero .t{color:#fff!important}' + G + ' .mhvCubeHome .mgc-hero .chip{background:rgba(255,255,255,.2)!important;border-color:rgba(255,255,255,.35)}',
+                ' ' + SA.map(function (x) { return G + ' body.dd-home:has(#' + x + '.active) #ddGround'; }).join(',') + '{display:block;position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}',
+                ' ' + SA.map(function (x) { return G + ' body.dd-home:has(#' + x + '.active)'; }).join(',') + '{background:#040706!important}',
+                ' ' + SA.map(function (x) { return G + ' body.dd-home #' + x + ',' + G + ' body.dd-home #' + x + ' main,' + G + ' body.dd-home #' + x + ' .bg-gray-50'; }).join(',') + '{background:transparent!important}',
                 '}'
             ].join('\n');
             document.head.appendChild(s);
@@ -146,7 +198,9 @@
         setActive: function (k) {
             D._tab = k;
             document.querySelectorAll('#ddDock .mdk').forEach(function (b) { b.classList.toggle('active', !!k && b.dataset.k === k); });
-            var home = (D.who() === 'golfer' && (k === 'overview' || !k)) || (D.who() === 'organizer' && (k === 'home' || (!k && document.getElementById('societyOrganizerDashboard').classList.contains('org-on-home'))));
+            var w = D.who();
+            var home = (w === 'golfer' && (k === 'overview' || !k)) || (w === 'organizer' && (k === 'home' || (!k && document.getElementById('societyOrganizerDashboard').classList.contains('org-on-home'))));
+            if (!w) home = D.staffHome();
             document.body.classList.toggle('dd-home', !!home);
         },
         onDock: function (e) {
@@ -236,12 +290,83 @@
             });
         },
 
-        refresh: function () { D.applyLook(); if (!D.who()) { D.closeMore(); return; } D.paintDock(); },
+        // ---------- staff dashboards (they own their bar + MORE; we only top it up) ----------
+        _norm: function (t) { return String(t || '').replace(/\d+/g, '').replace(/\s+/g, ' ').trim().toLowerCase(); },   // badge counts glued to labels
+        staffNow: function () { for (var i = 0; i < STAFF.length; i++) { var d = document.getElementById(STAFF[i].dash); if (d && d.classList.contains('active')) return STAFF[i]; } return null; },
+        staffHome: function () { var c = D.staffNow(), h = c && document.getElementById(c.home); return !!(h && h.offsetParent !== null); },
+        _keysOf: function (root) {
+            var ks = { calls: [], args: {}, labels: {} };
+            if (!root) return ks;
+            root.querySelectorAll('button').forEach(function (b) {   // tiles wired by JS (no onclick attr) still count by their label
+                if ((b.style && b.style.display === 'none') || b.classList.contains('hidden') || b.classList.contains('dd-x')) return;
+                ks.labels[D._norm(D._readItem(b).label)] = 1;
+            });
+            root.querySelectorAll('[onclick]').forEach(function (b) {
+                if ((b.style && b.style.display === 'none') || b.classList.contains('hidden')) return;   // a hidden tile is not "there"
+                var oc = (b.getAttribute('onclick') || '').replace(/\s+/g, '');
+                ks.calls.push(oc);
+                (oc.match(/'([^']+)'/g) || []).forEach(function (q) { ks.args[q.slice(1, -1)] = 1; });
+            });
+            return ks;
+        },
+        _missingRows: function (c) {
+            if (!c.drawer) return [];
+            var sec = document.getElementById(c.drawer); if (!sec) return [];
+            var dash = document.getElementById(c.dash);
+            var ks = D._keysOf(document.getElementById(c.sheet)), kd = D._keysOf(dash && dash.querySelector('.mhvDock'));
+            var has = function (el) {
+                var oc = (el.getAttribute('onclick') || '').replace(/closeMobileDrawer\(\);?/g, '').replace(/\s+/g, '');
+                var tab = (oc.match(/^show\w+Tab\('([^']+)'/) || [])[1];
+                if (tab === 'overview') return true;                                   // = the bar's Home
+                if (ks.labels[D._norm(D._readItem(el).label)]) return true;
+                if (tab && (ks.args[tab] || kd.args[tab])) return true;
+                // otherwise compare the row's final call, e.g. TechSupport.open() / OneOnOne.enter('partner') / logout()
+                var m = oc.replace(/;+$/, '').match(/([A-Za-z_$][\w$.]*\([^()]*\))$/), sig = m && m[1];
+                return !!sig && ks.calls.concat(kd.calls).some(function (x) { return x.indexOf(sig) !== -1; });
+            };
+            var rows = [], ts = document.getElementById('drawerTechSupport');
+            if (ts) rows.push(ts);
+            sec.querySelectorAll('.drawer-link').forEach(function (el) {
+                for (var p = el; p && p !== sec; p = p.parentElement) { if ((p.style && p.style.display === 'none') || (p.classList && p.classList.contains('hidden'))) return; }
+                if (!has(el)) rows.push(el);
+            });
+            return rows;
+        },
+        topUpSheet: function (c) {
+            var sh = document.getElementById(c.sheet); if (!sh) return;
+            var grid = sh.querySelector('.grid') || sh;
+            grid.querySelectorAll('.dd-x').forEach(function (x) { x.remove(); });
+            var rows = D._missingRows(c);
+            rows.forEach(function (el) {
+                var r = D._readItem(el), b = document.createElement('button');
+                b.type = 'button'; b.className = 's dd-x';
+                b.innerHTML = ms(r.icon) + '<span>' + esc(r.label) + '</span>';
+                b.addEventListener('click', function () { D.closeStaffSheets(); el.click(); });
+                grid.appendChild(b);
+            });
+            var lk = document.createElement('button');
+            lk.type = 'button'; lk.className = 's dd-x';
+            lk.innerHTML = ms('auto_awesome') + '<span>' + esc(TT(D.glass() ? 'Classic look' : 'Glass look')) + '</span>';
+            lk.addEventListener('click', function () { D.setLook(D.glass() ? 'classic' : 'glass'); });
+            grid.appendChild(lk);
+            D.dedupeSheet(sh);
+        },
+        // a sheet's own tile always wins: drop any top-up tile whose label the sheet now carries itself
+        dedupeSheet: function (sh) {
+            var own = {};
+            sh.querySelectorAll('button.s:not(.dd-x)').forEach(function (b) { if (!((b.style && b.style.display === 'none') || b.classList.contains('hidden'))) own[D._norm(D._readItem(b).label)] = 1; });
+            sh.querySelectorAll('button.dd-x').forEach(function (b) { if (own[D._norm(D._readItem(b).label)]) b.remove(); });
+        },
+        closeStaffSheets: function () {
+            STAFF.forEach(function (c) { if (!c.sheet) return; var s = document.getElementById(c.sheet), d = document.getElementById(c.dim); if (s) s.classList.remove('open'); if (d) d.classList.remove('open'); });
+        },
+
+        refresh: function () { D.applyLook(); if (!D.who()) { D.closeMore(); D.setActive(null); return; } D.paintDock(); },
 
         boot: function () {
             D.css(); D.mount(); D.applyLook();
             // follow the tab the dashboard is on (wrap, never replace, the two tab switchers)
-            ['showGolferTab', 'showOrganizerTab'].forEach(function (fn) {
+            ['showGolferTab', 'showOrganizerTab', 'showAdminTab'].forEach(function (fn) {
                 var orig = window[fn]; if (typeof orig !== 'function' || orig._dd) return;
                 var wrapped = function (tab) { var r = orig.apply(this, arguments); try { D.setActive(tab); D.refresh(); } catch (e) { } return r; };
                 wrapped._dd = true; window[fn] = wrapped;
@@ -250,7 +375,21 @@
             if (typeof lang === 'function' && !lang._dd) { var lw = function () { var r = lang.apply(this, arguments); try { D.refresh(); } catch (e) { } return r; }; lw._dd = true; window.changeLanguage = lw; }
             // screens switch by class; badges change inside the drawer — watch both, cheaply
             var mo = new MutationObserver(function () { clearTimeout(D._t); D._t = setTimeout(D.refresh, 60); });
-            ['golferDashboard', 'societyOrganizerDashboard'].forEach(function (id) { var el = document.getElementById(id); if (el) mo.observe(el, { attributes: true, attributeFilter: ['class'] }); });
+            ['golferDashboard', 'societyOrganizerDashboard', 'adminDashboard'].concat(STAFF.map(function (c) { return c.dash; })).forEach(function (id) { var el = document.getElementById(id); if (el) mo.observe(el, { attributes: true, attributeFilter: ['class'] }); });
+            // staff: top up a MORE sheet the moment it opens; follow cube-home show/hide for the glass ground
+            var so = new MutationObserver(function (recs) {
+                recs.forEach(function (r) {
+                    if (r.type === 'childList') { var shx = r.target.closest && r.target.closest('.mhvSheet'); if (shx) D.dedupeSheet(shx); return; }
+                    var c = STAFF.filter(function (x) { return x.sheet === r.target.id; })[0];
+                    // a beat later: tech-support.js drops its own tile into the sheet on the same open
+                    if (c && r.target.classList.contains('open')) { clearTimeout(r.target._ddT); r.target._ddT = setTimeout(function () { D.topUpSheet(c); }, 40); }
+                    if (r.target.classList && r.target.classList.contains('mhvCubeHome')) D.setActive(D._tab);
+                });
+            });
+            STAFF.forEach(function (c) {
+                var s = c.sheet && document.getElementById(c.sheet); if (s) so.observe(s, { attributes: true, attributeFilter: ['class'], childList: true, subtree: true });
+                var h = document.getElementById(c.home); if (h) so.observe(h, { attributes: true, attributeFilter: ['style', 'class'] });
+            });
             var dr = document.getElementById('mobileDrawer'); if (dr) mo.observe(dr, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] });
             D.refresh();
         }

@@ -42,15 +42,14 @@
             var CARDS = [GO + ' .g3-card', OO + ' .g3-card', GO + ' #g3Band', OO + ' #g3oBand'];
             var s = document.createElement('style'); s.id = 'dashRailCSS';
             s.textContent = [
-                '#ddFly,#ddTip,.dd-look,.dd-more,.dd-mark{display:none}',
+                '#ddFly,#ddTip,.dd-look,.dd-more{display:none}',
                 '#golferDashboard:not(.g3) .dd-who,#societyOrganizerDashboard:not(.g3o) .dd-who{display:none!important}',
                 '@media ' + MQ + '{',
                 // ---------- the 76px rail ----------
                 ' ' + GO + ',' + OO + '{padding-left:76px!important}',
                 ' ' + RL + '{width:76px!important;padding:14px 0 12px!important;align-items:center;gap:0}',
-                ' ' + both(' .g3-brand') + '{padding:0 0 12px!important;display:flex!important;justify-content:center;width:100%}',
-                ' ' + both(' .g3-logo') + ',' + both(' .g3-brand small') + '{display:none!important}',
-                ' ' + both(' .g3-brand .dd-mark') + '{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:13px;background:linear-gradient(150deg,#22c55e,#0d9488);color:#fff;font-size:26px;box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 6px 16px rgba(0,0,0,.25)}',
+                // no brand tile on the slim rail — Pete 10-14: "get rid of that flag on the top left corner, the home button is enough"
+                ' ' + both(' .g3-brand') + '{display:none!important}',
                 ' ' + both(' .g3-nav') + '{width:100%;display:flex;flex-direction:column;align-items:center;gap:4px;padding:2px 0}',
                 ' ' + both(' .g3-grp') + '{display:none!important}',
                 ' ' + both(' .g3-it') + '{width:48px!important;height:44px!important;padding:0!important;gap:0!important;justify-content:center;border-radius:13px!important;flex:none}',
@@ -157,8 +156,6 @@
                 mb.addEventListener('click', function (e) { e.stopPropagation(); R.toggle(); });
                 var nav = rail.querySelector('.g3-nav');
                 if (nav && nav.nextSibling) rail.insertBefore(mb, nav.nextSibling); else rail.appendChild(mb);
-                var br = rail.querySelector('.g3-brand');
-                if (br) br.insertAdjacentHTML('afterbegin', '<span class="dd-mark material-symbols-outlined" aria-hidden="true">golf_course</span>');
                 rail.addEventListener('mouseover', R.tipOn); rail.addEventListener('mouseout', R.tipOff);
                 if (nav) nav.addEventListener('scroll', R.tipOff);
             }

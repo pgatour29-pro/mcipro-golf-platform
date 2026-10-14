@@ -23,6 +23,7 @@ if (!/localStorage\.getItem\('dash_look_v1'\) === 'glass'/.test(dr)) fail.push('
 if (!/\.flex\.flex-col\{display:flex!important\}/.test(dr)) fail.push('the golfer header name block (Call PIN) must come back when the rail foot goes');
 if (!/orgWho/.test(dr)) fail.push('the organizer foot card (name, Call PIN) must move to the header');
 if (!/SHARED\.map\(/.test(dd) || !/'@media \(min-width:1024px\)\{'/.test(dd)) fail.push('dash-dock.js must emit the ground + cube glass for desktop too');
+if (!/both\(' \.g3-brand'\) \+ '\{display:none!important\}'/.test(dr) || /dd-mark/.test(dr)) fail.push('no brand tile on the slim rail (Pete: the home button is enough)');
 if (/font:\s*\d{3}\s+[\d.]+px(\/[\d.]+(px)?)?\s+inherit/.test(dr)) fail.push('dash-rail.js: `font:<w> <size> inherit` is invalid CSS');
 if (/\bprompt\(|\bconfirm\(|\balert\(/.test(dr)) fail.push('dash-rail.js: no native dialogs');
 if (fail.length) { console.error('dash-rail-check FAILED:\n - ' + fail.join('\n - ')); process.exit(1); }

@@ -130,24 +130,24 @@
             G._busy = false;
         },
         run: function (force) {
+            if (!glass()) return;   // a pass queued just before the switch back to Classic must not bring the dark base back
             var sc = G.scope(); if (!sc) return;
             if (sc.c.dark) G.theme(true);
             G.pass(sc.el, force);
         },
         undo: function () {
-            GEN++;
+            GEN++; clearTimeout(G._t); G._t = null; G._force = false;
             document.querySelectorAll('.dgx-s,.dgx-t,.dgx-d,.dgx-i,.dgx-m,.dgx-c,.dgx-b').forEach(G.clear);
             G.theme(false);
         },
-        // golfer: glass rides the dark theme for this session; Classic gives back the theme they had
+        // golfer: glass paints the app's dark theme WITHOUT choosing it — ThemeMode.get() reads 'dark' while glass is on
+        // (no ThemeMode.set: nothing reaches localStorage or the profile); Classic repaints whatever they really picked
         theme: function (on) {
-            if (!window.ThemeMode || !ThemeMode.set) return;
-            try {
-                if (on) {
-                    var cur = ThemeMode.get();
-                    if (cur === 'light') { G._prev = cur; ThemeMode.set('dark', false); }
-                } else if (G._prev) { var p = G._prev; G._prev = null; if (ThemeMode.get() === 'dark') ThemeMode.set(p, false); }
-            } catch (e) { }
+            var T = window.ThemeMode; if (!T || !T.get || !T.apply) return;
+            if (!T._dgx) { var orig = T.get; T.get = function () { var v = orig.apply(this, arguments); return (G._dark && v === 'light') ? 'dark' : v; }; T._dgx = true; }
+            if (!!G._dark === !!on) return;
+            G._dark = !!on;
+            try { T.apply(); } catch (e) { }
         },
 
         // throttle, not debounce: a ticker that mutates every frame must not starve the pass

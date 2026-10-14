@@ -1,4 +1,4 @@
-/* DashGlass (v1570) — GLASS on EVERY tab of every dashboard, at every width.
+/* DashGlass (v1570, v1572 sync pass) — GLASS on EVERY tab of every dashboard, at every width.
    Pete 2026-10-14: "stop giving me excuses" (glass had covered only the header, home, bar and menu).
    Glass stays the option (localStorage dash_look_v1 === 'glass', html.dgl, switched by DashDock.setLook);
    Classic = default and untouched. The screen's layout never changes — only surfaces and ink.
@@ -112,9 +112,10 @@
                 }
             }
         },
-        pass: function (root, force) {
+        pass: function (root, force, wide) {
             if (!glass() || !root) return;
-            var wide = root.clientWidth || window.innerWidth, gen = GEN;
+            wide = wide || root.clientWidth || window.innerWidth;
+            var gen = GEN;
             var tw = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
                 acceptNode: function (n) {
                     if (n.matches(SKIP)) return NodeFilter.FILTER_REJECT;
@@ -128,6 +129,29 @@
                 G.clear(n); G.judge(n, wide); n._dgx = gen;
             }
             G._busy = false;
+        },
+        // v1572: style the changed subtrees NOW (same tick as the mutation, before the browser paints them)
+        stats: { sync: 0, ms: 0, throttled: 0 },
+        _syncLog: [],
+        runOn: function (roots) {
+            if (!glass()) return;
+            var sc = G.scope(); if (!sc) return;
+            var now = Date.now(), log = G._syncLog;
+            while (log.length && now - log[0] > 250) log.shift();
+            if (log.length > 60) { G.stats.throttled++; G.schedule(false); return; }   // something is ping-ponging the DOM: throttle, never hang
+            log.push(now);
+            if (sc.c.dark) G.theme(true);
+            var seen = [], wide = sc.el.clientWidth || window.innerWidth, t0 = performance.now();
+            for (var i = 0; i < roots.length; i++) {
+                var r = roots[i];
+                if (!r || r.nodeType !== 1 || (r !== sc.el && !sc.el.contains(r))) continue;
+                var dup = false;
+                for (var j = 0; j < seen.length; j++) if (seen[j] === r || seen[j].contains(r)) { dup = true; break; }
+                if (dup) continue;
+                seen.push(r);
+                G.pass(r, false, wide);
+            }
+            G.stats.sync++; G.stats.ms += performance.now() - t0;
         },
         run: function (force) {
             if (!glass()) return;   // a pass queued just before the switch back to Classic must not bring the dark base back
@@ -164,23 +188,35 @@
             new MutationObserver(function () {
                 var now = glass(); if (now === was) return; was = now;
                 try { if (window.DashRail) DashRail.paintAllLooks(); } catch (e) { }
-                if (now) { GEN++; G.schedule(true); } else G.undo();
+                if (now) { GEN++; G.run(true); } else G.undo();   // v1572: same tick as the switch, never a frame of classic
             }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
             // content renders / tab switches / state classes inside the active dashboard
+            // v1572 (Pete: every section flashed classic white, then went glass, on phones and desktops alike):
+            // the pass used to wait 160 ms after a render, so the browser painted the classic surfaces first.
+            // Mutation callbacks run BEFORE the next paint, so new content (childList) and a tab/screen/panel
+            // coming into view (class) are styled in the same tick, scoped to the changed subtree so the cost
+            // stays proportional to what changed. Attribute churn on painted nodes (tickers, chips) keeps the
+            // throttled full pass. Valve: more than 60 sync runs inside 250 ms → back to the throttle (never a hang).
+            var DN = /display\s*:\s*none/i;
             var mo = new MutationObserver(function (recs) {
                 if (!glass() || G._busy) return;
-                var need = false;
+                var need = false, roots = [];
                 for (var i = 0; i < recs.length; i++) {
-                    var r = recs[i];
+                    var r = recs[i], t = r.target;
+                    if (r.type === 'childList') { if (r.addedNodes.length) roots.push(t); need = true; continue; }
                     if (r.type === 'attributes') {
-                        var t = r.target;
                         if (r.attributeName === 'class' && /\bdgx-|dgx-big/.test(t.className) && r.oldValue != null && r.oldValue.replace(/\s*dgx-\w+/g, '') === String(t.className).replace(/\s*dgx-\w+/g, '')) continue;   // our own marks
                         if (r.attributeName === 'style' && r.oldValue != null && r.oldValue.replace(/--dgx-\w+:[^;]+;?\s*/g, '') === (t.getAttribute('style') || '').replace(/--dgx-\w+:[^;]+;?\s*/g, '')) continue;
                         t._dgx = 0;   // its real colours may have changed (active chip, selected row)
+                        // something coming into view: a class flip (tab-content/screen/hidden/active) or an inline
+                        // display toggle (organizer tabs switch with style.display = 'block')
+                        if (r.attributeName === 'class' && (t.classList.contains('tab-content') || t.classList.contains('screen') || t.tagName === 'MAIN' || t.tagName === 'SECTION' || /\b(hidden|active)\b/.test((r.oldValue || '') + ' ' + t.className))) roots.push(t);
+                        else if (r.attributeName === 'style' && DN.test(r.oldValue || '') !== DN.test(t.getAttribute('style') || '')) roots.push(t);
                     }
                     need = true;
                 }
-                if (need) G.schedule(false);
+                if (!need) return;
+                if (roots.length) G.runOn(roots); else G.schedule(false);
             });
             SCOPES.forEach(function (c) {
                 var el = document.getElementById(c.dash);
@@ -195,7 +231,7 @@
             };
             new MutationObserver(kit).observe(document.body, { childList: true });
             kit();
-            if (was) G.schedule(true);
+            if (was) G.run(true);   // v1572: glass already chosen → style before the first paint
         }
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', G.boot); else G.boot();

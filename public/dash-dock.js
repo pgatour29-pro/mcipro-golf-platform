@@ -93,6 +93,20 @@
             var CUBE = G + ' #liteCubesGrid .cube-poster,' + G + ' #orgLiteCubesGrid .cube-poster';
             var SA = STAFF.map(function (x) { return x.dash; });
             var SH = ['#caddieDashboard .nav-header', '#managerDashboard .nav-header', '#maintenanceDashboard .nav-header', '#caddyMasterDashboard .nav-header', '#marketingDashboard .nav-header', '#courseAdminMain header.nav-header'];
+            // ground photo + Home cube glass — phone (<768) and desktop (>=1024) share these lines
+            var SHARED = [
+                ' #ddGround .ph{position:absolute;inset:-60px;background:url("/features/img/fairway-path.webp") center 62%/cover no-repeat;filter:blur(22px) brightness(.7) saturate(1.3);transform:scale(1.08)}',
+                ' #ddGround .sh{position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,7,6,.55) 0%,rgba(4,7,6,.2) 35%,rgba(4,7,6,.45) 75%,rgba(4,7,6,.72))}',
+                // Home cubes: glass fill + light ink; same size, art, pills, order,
+                ' ' + CUBE + '{background:linear-gradient(155deg,rgba(255,255,255,.085),rgba(255,255,255,.025) 60%),rgba(14,22,19,.52)!important;border:1px solid rgba(255,255,255,.12)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 10px 30px rgba(0,0,0,.25)!important;backdrop-filter:blur(22px) saturate(150%);-webkit-backdrop-filter:blur(22px) saturate(150%)}',
+                ' ' + G + ' #liteCubesGrid .cube-poster h3,' + G + ' #orgLiteCubesGrid .cube-poster h3,' + G + ' #liteCubesGrid .cube-poster .text-gray-900,' + G + ' #liteCubesGrid .cube-poster .text-gray-800,' + G + ' #orgLiteCubesGrid .cube-poster .text-gray-900,' + G + ' #orgLiteCubesGrid .cube-poster .text-gray-800{color:#f4f7f5!important}',
+                ' ' + G + ' #liteCubesGrid .cube-poster .cube-pill,' + G + ' #orgLiteCubesGrid .cube-poster .cube-pill{background:rgba(255,255,255,.1)!important;color:#f4f7f5!important;border:1px solid rgba(255,255,255,.16);box-shadow:none!important}',
+                ' ' + G + ' #liteCubesGrid .cube-poster .text-gray-500,' + G + ' #liteCubesGrid .cube-poster .text-gray-600,' + G + ' #liteCubesGrid .cube-poster .text-gray-700,' + G + ' #orgLiteCubesGrid .cube-poster .text-gray-500,' + G + ' #orgLiteCubesGrid .cube-poster .text-gray-600,' + G + ' #orgLiteCubesGrid .cube-poster .text-gray-700,' + G + ' #liteCubesGrid [style*="#64748b"],' + G + ' #orgLiteCubesGrid [style*="#64748b"]{color:rgba(236,244,239,.68)!important}',
+                ' ' + G + ' #liteCubesGrid [style*="#334155"],' + G + ' #orgLiteCubesGrid [style*="#334155"]{color:rgba(236,244,239,.88)!important}',
+                ' ' + G + ' #liteCubesGrid [style*="#0d9488"],' + G + ' #orgLiteCubesGrid [style*="#0d9488"],' + G + ' #liteCubesGrid .text-teal-600,' + G + ' #liteCubesGrid .text-teal-700{color:#5eead4!important}',
+                ' ' + G + ' #cubeHandicapValue,' + G + ' #liteCubesGrid [style*="#16a34a"],' + G + ' #orgLiteCubesGrid [style*="#16a34a"],' + G + ' #orgLiteCubesGrid .text-green-600,' + G + ' #liteCubesGrid .text-green-700{color:#4ade80!important}',
+                ' ' + G + ' #liteCubesGrid [style*="#0284c7"],' + G + ' #liteCubesGrid [style*="#0369a1"],' + G + ' #orgLiteCubesGrid [style*="#0284c7"],' + G + ' #orgLiteCubesGrid [style*="#0369a1"],' + G + ' #liteCubesGrid .text-sky-600,' + G + ' #liteCubesGrid .text-blue-600,' + G + ' #orgLiteCubesGrid .text-sky-600,' + G + ' #orgLiteCubesGrid .text-blue-600{color:#7dd3fc!important}'
+            ];
             s.textContent = [
                 '#ddDock,#ddSheet,#ddDim,#ddGround{display:none}',
                 '@media (max-width:767px){',
@@ -131,8 +145,6 @@
                 ' ' + G + ' #ddDim{background:rgba(3,8,6,.55);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}',
                 // photo ground + transparent page — HOME only (other tabs keep their light pages in phase 1)
                 ' ' + GA + '.dd-home #ddGround,' + OA + '.dd-home #ddGround{display:block;position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}',
-                ' #ddGround .ph{position:absolute;inset:-60px;background:url("/features/img/fairway-path.webp") center 62%/cover no-repeat;filter:blur(22px) brightness(.7) saturate(1.3);transform:scale(1.08)}',
-                ' #ddGround .sh{position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,7,6,.55) 0%,rgba(4,7,6,.2) 35%,rgba(4,7,6,.45) 75%,rgba(4,7,6,.72))}',
                 ' ' + GA + '.dd-home,' + OA + '.dd-home{background:#040706!important}',
                 ' ' + GA + '.dd-home #golferDashboard,' + OA + '.dd-home #societyOrganizerDashboard{background:transparent!important}',
                 ' ' + GA + '.dd-home #golferDashboard main,' + OA + '.dd-home #societyOrganizerDashboard main,' + GA + '.dd-home #golferDashboard .bg-gray-50,' + OA + '.dd-home #societyOrganizerDashboard .bg-gray-50{background:transparent!important}',
@@ -142,15 +154,7 @@
                 ' ' + G + ' #golferDashboard .nav-header .text-gray-500,' + G + ' #golferDashboard .nav-header .text-gray-600,' + G + ' #golferDashboard .nav-header .text-gray-400,' + G + ' #societyOrganizerDashboard .nav-header .text-gray-500,' + G + ' #societyOrganizerDashboard .nav-header .text-gray-600{color:rgba(236,244,239,.62)!important}',
                 ' ' + G + ' .nav-header .cp-hb,' + G + ' .nav-header .cp-hb b,' + G + ' #societyOrganizerDashboard .nav-header .text-sky-600{color:#7dd3fc!important}',
                 ' ' + G + ' #golferDashboard .nav-header .user-handicap{color:#4ade80!important}',
-                // Home cubes: glass fill + light ink; same size, art, pills, order
-                ' ' + CUBE + '{background:linear-gradient(155deg,rgba(255,255,255,.085),rgba(255,255,255,.025) 60%),rgba(14,22,19,.52)!important;border:1px solid rgba(255,255,255,.12)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 10px 30px rgba(0,0,0,.25)!important;backdrop-filter:blur(22px) saturate(150%);-webkit-backdrop-filter:blur(22px) saturate(150%)}',
-                ' ' + G + ' #liteCubesGrid .cube-poster h3,' + G + ' #orgLiteCubesGrid .cube-poster h3,' + G + ' #liteCubesGrid .cube-poster .text-gray-900,' + G + ' #liteCubesGrid .cube-poster .text-gray-800,' + G + ' #orgLiteCubesGrid .cube-poster .text-gray-900,' + G + ' #orgLiteCubesGrid .cube-poster .text-gray-800{color:#f4f7f5!important}',
-                ' ' + G + ' #liteCubesGrid .cube-poster .cube-pill,' + G + ' #orgLiteCubesGrid .cube-poster .cube-pill{background:rgba(255,255,255,.1)!important;color:#f4f7f5!important;border:1px solid rgba(255,255,255,.16);box-shadow:none!important}',
-                ' ' + G + ' #liteCubesGrid .cube-poster .text-gray-500,' + G + ' #liteCubesGrid .cube-poster .text-gray-600,' + G + ' #liteCubesGrid .cube-poster .text-gray-700,' + G + ' #orgLiteCubesGrid .cube-poster .text-gray-500,' + G + ' #orgLiteCubesGrid .cube-poster .text-gray-600,' + G + ' #orgLiteCubesGrid .cube-poster .text-gray-700,' + G + ' #liteCubesGrid [style*="#64748b"],' + G + ' #orgLiteCubesGrid [style*="#64748b"]{color:rgba(236,244,239,.68)!important}',
-                ' ' + G + ' #liteCubesGrid [style*="#334155"],' + G + ' #orgLiteCubesGrid [style*="#334155"]{color:rgba(236,244,239,.88)!important}',
-                ' ' + G + ' #liteCubesGrid [style*="#0d9488"],' + G + ' #orgLiteCubesGrid [style*="#0d9488"],' + G + ' #liteCubesGrid .text-teal-600,' + G + ' #liteCubesGrid .text-teal-700{color:#5eead4!important}',
-                ' ' + G + ' #cubeHandicapValue,' + G + ' #liteCubesGrid [style*="#16a34a"],' + G + ' #orgLiteCubesGrid [style*="#16a34a"],' + G + ' #orgLiteCubesGrid .text-green-600,' + G + ' #liteCubesGrid .text-green-700{color:#4ade80!important}',
-                ' ' + G + ' #liteCubesGrid [style*="#0284c7"],' + G + ' #liteCubesGrid [style*="#0369a1"],' + G + ' #orgLiteCubesGrid [style*="#0284c7"],' + G + ' #orgLiteCubesGrid [style*="#0369a1"],' + G + ' #liteCubesGrid .text-sky-600,' + G + ' #liteCubesGrid .text-blue-600,' + G + ' #orgLiteCubesGrid .text-sky-600,' + G + ' #orgLiteCubesGrid .text-blue-600{color:#7dd3fc!important}',
+            ].concat(SHARED, [
                 // ---------- GLASS for the staff dashboards (v1566) ----------
                 ' ' + G + ' .mhvDock:not(#psDock){background:rgba(8,14,12,.86)!important;border-top:1px solid rgba(255,255,255,.12)!important;backdrop-filter:blur(24px) saturate(150%);-webkit-backdrop-filter:blur(24px) saturate(150%);box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}',
                 ' ' + G + ' .mhvDock:not(#psDock) .mdk{color:rgba(236,244,239,.62)}' + G + ' .mhvDock:not(#psDock) .mdk.active{color:#22c55e}',
@@ -168,8 +172,11 @@
                 ' ' + SA.map(function (x) { return G + ' body.dd-home:has(#' + x + '.active) #ddGround'; }).join(',') + '{display:block;position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}',
                 ' ' + SA.map(function (x) { return G + ' body.dd-home:has(#' + x + '.active)'; }).join(',') + '{background:#040706!important}',
                 ' ' + SA.map(function (x) { return G + ' body.dd-home #' + x + ',' + G + ' body.dd-home #' + x + ' main,' + G + ' body.dd-home #' + x + ' .bg-gray-50'; }).join(',') + '{background:transparent!important}',
-                '}'
-            ].join('\n');
+                '}',
+                // desktop (dash-rail.js, >=1024px) wears the same ground + cube glass
+                '@media (min-width:1024px){'
+            ], SHARED.map(function (r) { return r.split(G + ' #').join(G + ' body #'); }), ['}'])
+            .join('\n');
             document.head.appendChild(s);
         },
 

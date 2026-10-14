@@ -98,7 +98,7 @@
                 ' body.theme-sun > #pfStart{background:linear-gradient(180deg,rgba(255,255,255,0),#fff 30%)}',
                 ' body.theme-glass > #pfStart{background:linear-gradient(180deg,rgba(4,10,8,0),rgba(4,10,8,.92) 30%)}',
                 ' body > #pfStart.pf-off{display:none}',
-                ' body:has(> #pfStart:not(.pf-off)):has(#golferDashboard.active:not(.round-active)) #globalScrollToTopBtn,body:has(> #pfStart:not(.pf-off)):has(#golferDashboard.active:not(.round-active)) #dashboardBackBtn{bottom:calc(214px + env(safe-area-inset-bottom))!important}',
+                ' html.has-pfStart.scr-golferDashboard:not(.round-on) #globalScrollToTopBtn,html.has-pfStart.scr-golferDashboard:not(.round-on) #dashboardBackBtn{bottom:calc(214px + env(safe-area-inset-bottom))!important}',
                 // the setup's outer card keeps its themed ground (dark/glass/sun paint it) — only its side padding steps back
                 ' ' + X + '.pf-on{padding-left:8px!important;padding-right:8px!important}',
                 '}'

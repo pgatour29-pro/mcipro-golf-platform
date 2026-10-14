@@ -109,7 +109,7 @@
   "#golferDashboard.g3.light-mode:not(.round-active) #g3Week{display:flex}\n" +
   /* v1086: the home FLOWS (no viewport lock) - collapsed cards cap their own lists, expanded ones grow and the page scrolls */
   "#golferDashboard.g3.light-mode:not(.round-active) #g3Home{display:grid;grid-template-columns:minmax(0,1fr) 380px;grid-template-rows:auto auto;gap:18px 20px;align-items:start}\n" +
-  "#golferDashboard.g3:not(.round-active) #dashboardBackBtn,#golferDashboard.g3:not(.round-active) ~ #dashboardBackBtn,body:has(#golferDashboard.g3.active:not(.round-active)) #dashboardBackBtn,body:has(#golferDashboard.g3.active:not(.round-active)) #globalScrollToTopBtn{display:none !important}\n" +
+  "#golferDashboard.g3:not(.round-active) #dashboardBackBtn,#golferDashboard.g3:not(.round-active) ~ #dashboardBackBtn,html.scr-golferDashboard.g3-on:not(.round-on) #dashboardBackBtn,html.scr-golferDashboard.g3-on:not(.round-on) #globalScrollToTopBtn{display:none !important}\n" +
   "#golferDashboard.g3.light-mode:not(.round-active) #g3Band{display:flex;grid-column:1 / -1;align-items:stretch;background:#fff;border:1px solid #DDE5DE;border-radius:14px;box-shadow:0 1px 2px rgba(11,59,42,.06),0 6px 18px rgba(11,59,42,.07);overflow:hidden;height:72px;font-family:'Instrument Sans',sans-serif}\n" +
   "#golferDashboard.g3.light-mode:not(.round-active) #g3Left{display:flex;flex-direction:column;gap:16px;min-height:0;min-width:0}\n" +
   "#golferDashboard.g3.light-mode:not(.round-active) #g3Right{display:flex;flex-direction:column;gap:16px;min-height:0;min-width:0}\n" +

@@ -89,7 +89,7 @@
         css: function () {
             if (document.getElementById('dashDockCSS')) return;
             var s = document.createElement('style'); s.id = 'dashDockCSS';
-            var G = 'html.dgl', GA = 'html.dgl body:has(#golferDashboard.active)', OA = 'html.dgl body:has(#societyOrganizerDashboard.active)';
+            var G = 'html.dgl', GA = 'html.dgl.scr-golferDashboard body', OA = 'html.dgl.scr-societyOrganizerDashboard body';
             var CUBE = G + ' #liteCubesGrid .cube-poster,' + G + ' #orgLiteCubesGrid .cube-poster';
             var SA = STAFF.map(function (x) { return x.dash; });
             var SH = ['#caddieDashboard .nav-header', '#managerDashboard .nav-header', '#maintenanceDashboard .nav-header', '#caddyMasterDashboard .nav-header', '#marketingDashboard .nav-header', '#courseAdminMain header.nav-header'];
@@ -117,13 +117,13 @@
                 ' #golferDashboard .nav-header button[onclick*="openMobileDrawer"],#societyOrganizerDashboard [onclick*="openMobileDrawer"],#adminDashboard [onclick*="openMobileDrawer"]{display:none!important}',
                 // #mhvcCSS styles these three hamburgers with display:inline-flex!important at (1,2,1) — outrank it, don't edit it
                 ' html body #caddieDashboard .nav-header button[onclick*="openMobileDrawer"],html body #managerDashboard .nav-header button[onclick*="openMobileDrawer"],html body #maintenanceDashboard .nav-header button[onclick*="openMobileDrawer"]{display:none!important}',
-                ' body:has(#golferDashboard.active:not(.round-active)) #ddDock,body:has(#societyOrganizerDashboard.active) #ddDock,body:has(#adminDashboard.active) #ddDock{display:flex}',
+                ' html.scr-golferDashboard:not(.round-on) #ddDock,html.scr-societyOrganizerDashboard #ddDock,html.scr-adminDashboard #ddDock{display:flex}',
                 // z 45: every dashboard pop-up (z-50 and up) covers the bar. The leftover .screen.active transform made the
                 // screen the box for its fixed pop-ups (stacked under anything on <body>) — desktop drops it since v1086, phones now too
                 ' #ddDock{z-index:45}',
                 ' #golferDashboard.active:not(.round-active),#societyOrganizerDashboard.active,#adminDashboard.active{transform:none!important}',
-                ' body:has(#golferDashboard.active:not(.round-active)),body:has(#societyOrganizerDashboard.active),body:has(#adminDashboard.active){padding-bottom:calc(66px + env(safe-area-inset-bottom))}',
-                ' body:has(#adminDashboard.active) #globalScrollToTopBtn,body:has(#adminDashboard.active) #dashboardBackBtn{bottom:88px!important}',
+                ' html.scr-golferDashboard:not(.round-on) body,html.scr-societyOrganizerDashboard body,html.scr-adminDashboard body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}',
+                ' html.scr-adminDashboard #globalScrollToTopBtn,html.scr-adminDashboard #dashboardBackBtn{bottom:88px!important}',
                 ' #ddSheet.open,#ddDim.open{display:block}',   // #ddSheet{display:none} (id) beats the shared .mhvSheet.open — restate it
                 ' #ddSheet{max-height:80vh;overflow-y:auto;overscroll-behavior:contain}',
                 ' #ddSheet .s{position:relative}',
@@ -134,9 +134,9 @@
                 ' #ddSheet .dd-lang button{border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc;padding:10px;font-family:inherit;font-weight:700;font-size:12px;color:#0f172a}',
                 ' #ddDock .mdk .badge.on{display:flex}',
                 // floating buttons ride ABOVE the bar (same as the staff docks); the bar's Home replaces the lite back button
-                ' body:has(#golferDashboard.active:not(.round-active)) #globalScrollToTopBtn,body:has(#golferDashboard.active:not(.round-active)) #dashboardBackBtn,body:has(#societyOrganizerDashboard.active) #globalScrollToTopBtn,body:has(#societyOrganizerDashboard.active) #dashboardBackBtn{bottom:88px!important}',
-                ' body:has(#golferDashboard.active:not(.round-active)) #returnToScoringBanner{bottom:84px!important}',
-                ' body:has(#golferDashboard.active:not(.round-active)) #fg2Bar{bottom:calc(80px + env(safe-area-inset-bottom))!important}',   // food basket bar (food-fgv1.js, on <body>)
+                ' html.scr-golferDashboard:not(.round-on) #globalScrollToTopBtn,html.scr-golferDashboard:not(.round-on) #dashboardBackBtn,html.scr-societyOrganizerDashboard #globalScrollToTopBtn,html.scr-societyOrganizerDashboard #dashboardBackBtn{bottom:88px!important}',
+                ' html.scr-golferDashboard:not(.round-on) #returnToScoringBanner{bottom:84px!important}',
+                ' html.scr-golferDashboard:not(.round-on) #fg2Bar{bottom:calc(80px + env(safe-area-inset-bottom))!important}',   // food basket bar (food-fgv1.js, on <body>)
                 ' body #societyOrganizerDashboard.light-mode:not(.org-on-home) #orgLiteBackBtn{display:none!important}',
                 // ---------- GLASS (option) ----------
                 ' ' + G + ' #ddDock{background:rgba(8,14,12,.86);border-top:1px solid rgba(255,255,255,.12);backdrop-filter:blur(24px) saturate(150%);-webkit-backdrop-filter:blur(24px) saturate(150%);box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}',
@@ -172,8 +172,8 @@
                 ' ' + G + ' .mhvCubeHome .mgc .chip{background:rgba(255,255,255,.1)!important;color:#f4f7f5!important;border:1px solid rgba(255,255,255,.16);box-shadow:none!important}',
                 ' ' + G + ' .mhvCubeHome .mgc-hero{background:linear-gradient(150deg,rgba(34,197,94,.9),rgba(13,148,136,.82))!important;border:1px solid rgba(134,239,172,.55)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 18px 40px rgba(16,185,129,.25)!important}',
                 ' ' + G + ' .mhvCubeHome .mgc-hero .t{color:#fff!important}' + G + ' .mhvCubeHome .mgc-hero .chip{background:rgba(255,255,255,.2)!important;border-color:rgba(255,255,255,.35)}',
-                ' ' + SA.map(function (x) { return G + ' body.dd-home:has(#' + x + '.active) #ddGround'; }).join(',') + '{display:block;position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}',
-                ' ' + SA.map(function (x) { return G + ' body.dd-home:has(#' + x + '.active)'; }).join(',') + '{background:#040706!important}',
+                ' ' + SA.map(function (x) { return G + '.scr-' + x + ' body.dd-home #ddGround'; }).join(',') + '{display:block;position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}',
+                ' ' + SA.map(function (x) { return G + '.scr-' + x + ' body.dd-home'; }).join(',') + '{background:#040706!important}',
                 ' ' + SA.map(function (x) { return G + ' body.dd-home #' + x + ',' + G + ' body.dd-home #' + x + ' main,' + G + ' body.dd-home #' + x + ' .bg-gray-50'; }).join(',') + '{background:transparent!important}',
                 '}',
                 // desktop (dash-rail.js, >=1024px) wears the same ground + cube glass

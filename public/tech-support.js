@@ -244,7 +244,7 @@
     /* v1319/v1366: the back button rides on top; on the staff dashboards it floats at bottom:88px (above their dock),
        which would sit on the sheet's text — with the sheet open it comes down into the footer gutter.
        #tsDim.ts-dim on purpose: the staff rule is body:has(#xDashboard.active) (2,1,1) — this must out-rank it. */
-    "html body:has(#tsDim.ts-dim) #dashboardBackBtn{bottom:calc(14px + env(safe-area-inset-bottom,0px)) !important}\n";
+    "html.has-tsDim body #dashboardBackBtn{bottom:calc(14px + env(safe-area-inset-bottom,0px)) !important}\n";
   (function injectCSS() {
     if (document.getElementById('tsCSS')) return;
     var s = document.createElement('style'); s.id = 'tsCSS'; s.textContent = CSS;

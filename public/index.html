@@ -458,7 +458,7 @@
     <!-- Defer heavy scripts until needed -->
     <!-- REMOVED: hole-by-hole-leaderboard-enhancement.js causes mobile stack overflow -->
     <script src="golf-buddies-v2.js?v=17" defer></script>
-    <script src="food-fgv1.js?v=1534b" defer></script>
+    <script src="food-fgv1.js?v=1573" defer></script>
     <script src="promo-wall.js?v=1530" defer></script>
     <script src="tee-times.js?v=1544" defer></script>
     <script src="call-pin.js?v=1546" defer></script>
@@ -3574,7 +3574,7 @@
         /* v1319: back stands down only while the live card itself is on screen. This rule used to hide
            it on EVERY page for the whole round — step off the card to the tee sheet or Tap-In and the
            hamburger was the only way back. */
-        body.round-active-mode:has(#golferDashboard.active #golfer-scorecard.active) #dashboardBackBtn,
+        html.scr-golferDashboard.sc-tab body.round-active-mode #dashboardBackBtn,
         body.round-active-mode #scrollToTopBtn,
         body.round-active-mode [id$="BackToTop"] {
             display: none !important;
@@ -8317,8 +8317,8 @@
         #golferDashboard.pcv-frame:has(#golfer-scorecard.active) .max-w-7xl { padding-bottom:6px !important; }
         /* Both float over the foot at the screen edges — scroll-to-top is meaningless on a
            card that never scrolls, and the round's own way out is END / Finish. */
-        body.pcv-frame:has(#golferDashboard.active #golfer-scorecard.active) #globalScrollToTopBtn,
-        body.pcv-frame:has(#golferDashboard.active #golfer-scorecard.active) #dashboardBackBtn { display:none !important; }
+        html.scr-golferDashboard.sc-tab body.pcv-frame #globalScrollToTopBtn,
+        html.scr-golferDashboard.sc-tab body.pcv-frame #dashboardBackBtn { display:none !important; }
         /* the tab carries min-height:100vh so short tabs still fill the screen — with the card
            that is 31px of empty page below the foot, i.e. a scroll with nothing in it. */
         #golferDashboard.pcv-frame #golfer-scorecard { min-height:0 !important; padding-bottom:0 !important; }
@@ -31874,6 +31874,42 @@
         }
 
         // Screen Management System
+        /* v1573 — HTML STATE FLAGS. Pete 2026-10-15: "response time is shit … even in classic … tee times".
+           Profiling: every small DOM change (a badge, the ticker, a pill text) cost a 70–110 ms style recalc on a
+           desktop, several hundred on a phone, because ~66 rules used body:has( #X.active ) / html:has( #id ) — Chrome
+           re-walks the whole document for a body-anchored :has() on every mutation. Those rules now read classes
+           on <html> that this mirror keeps in sync (a few getElementById per mutation batch, ~20 µs):
+             html.scr-<screenId>   the .screen that is .active (golferDashboard, loginScreen, …)
+             html.round-on         #golferDashboard.round-active      html.sc-tab   #golfer-scorecard.active
+             html.g3-on            #golferDashboard.g3                html.g3o-on   #societyOrganizerDashboard.g3o
+             html.has-<id>         #fpSheet / #gdmIn / #playersListModal / #scv3gGuestSheet / #appUpdateBar present
+             html.has-convo        #conversation-view not .hidden     html.has-tsDim  #tsDim.ts-dim
+             html.has-pfStart      body > #pfStart:not(.pf-off)
+           Never add a body:has()/html:has() rule again — add a flag here and use it. Small anchors
+           (label:has(input:checked)) are fine. */
+        (function () {
+            var SCREENS = ['loginScreen', 'golferDashboard', 'societyOrganizerDashboard', 'adminDashboard', 'caddyMasterDashboard',
+                'managerDashboard', 'marketingDashboard', 'proshopDashboard', 'caddieDashboard', 'maintenanceDashboard', 'courseAdminDashboard', 'ooDashboard'];
+            var PRESENT = ['fpSheet', 'gdmIn', 'playersListModal', 'scv3gGuestSheet', 'appUpdateBar'];
+            var H = document.documentElement, last = {};
+            function set(k, on) { on = !!on; if (last[k] === on) return; last[k] = on; H.classList.toggle(k, on); }
+            function sync() {
+                var g = document.getElementById('golferDashboard'), o = document.getElementById('societyOrganizerDashboard');
+                for (var i = 0; i < SCREENS.length; i++) { var el = document.getElementById(SCREENS[i]); set('scr-' + SCREENS[i], el && el.classList.contains('active')); }
+                set('round-on', g && g.classList.contains('round-active'));
+                set('g3-on', g && g.classList.contains('g3'));
+                set('g3o-on', o && o.classList.contains('g3o'));
+                var sc = document.getElementById('golfer-scorecard'); set('sc-tab', sc && sc.classList.contains('active'));
+                var cv = document.getElementById('conversation-view'); set('has-convo', cv && !cv.classList.contains('hidden'));
+                var td = document.getElementById('tsDim'); set('has-tsDim', td && td.classList.contains('ts-dim'));
+                var pf = document.getElementById('pfStart'); set('has-pfStart', pf && pf.parentNode === document.body && !pf.classList.contains('pf-off'));
+                for (var j = 0; j < PRESENT.length; j++) set('has-' + PRESENT[j], !!document.getElementById(PRESENT[j]));
+            }
+            window.HtmlFlags = { sync: sync };
+            function boot() { sync(); new MutationObserver(sync).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] }); }
+            if (document.body) boot(); else document.addEventListener('DOMContentLoaded', boot);
+        })();
+
         class ScreenManager {
             static showScreen(screenId, dataOrSkipSave = null) {
                 try {
@@ -59146,8 +59182,8 @@ document.addEventListener('DOMContentLoaded', function() {
         #loginScreen{padding:0;}
         /* the global floating back / scroll-to-top helpers have no business over the login page
            (they sat on top of the dock — Pete's screenshot 2026-07-16) */
-        body:has(#loginScreen.active) #globalScrollToTopBtn,
-        body:has(#loginScreen.active) #dashboardBackBtn{display:none !important;}
+        html.scr-loginScreen #globalScrollToTopBtn,
+        html.scr-loginScreen #dashboardBackBtn{display:none !important;}
         #loginScreen .lgv2-root{position:relative; min-height:100dvh; display:flex; flex-direction:column; background:#03110B; overflow-x:hidden; font-family:'Instrument Sans',sans-serif;}
         #loginScreen .lgv2-scene{position:absolute; inset:0; width:100%; height:100%; pointer-events:none;}
         #loginScreen .lgv2-scene-desk{display:none;}
@@ -71648,8 +71684,8 @@ document.addEventListener('DOMContentLoaded', function() {
             #caddyMasterDashboard .nav-header .cm-logout span[data-i18n] { display: none; }
             #caddyMasterDashboard main { padding-bottom: 96px; }
             #caddyMasterDashboard #cm-teesheet-iframe { height: calc(100dvh - 176px); min-height: 480px; border-radius: 10px; }
-            body:has(#caddyMasterDashboard.active) #dashboardBackBtn,
-            body:has(#caddyMasterDashboard.active) #globalScrollToTopBtn { bottom: 88px !important; }
+            html.scr-caddyMasterDashboard #dashboardBackBtn,
+            html.scr-caddyMasterDashboard #globalScrollToTopBtn { bottom: 88px !important; }
         }
     </style>
 
@@ -71683,16 +71719,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 display: inline-flex !important; align-items: center; justify-content: center; flex: 0 0 auto;
             }
             /* body-level FABs (back / scroll-top) must ride ABOVE the dock */
-            body:has(#managerDashboard.active) #dashboardBackBtn,
-            body:has(#managerDashboard.active) #globalScrollToTopBtn,
-            body:has(#proshopDashboard.active) #dashboardBackBtn,
-            body:has(#proshopDashboard.active) #globalScrollToTopBtn,
-            body:has(#caddieDashboard.active) #dashboardBackBtn,
-            body:has(#caddieDashboard.active) #globalScrollToTopBtn,
-            body:has(#maintenanceDashboard.active) #dashboardBackBtn,
-            body:has(#maintenanceDashboard.active) #globalScrollToTopBtn,
-            body:has(#courseAdminDashboard.active) #dashboardBackBtn,
-            body:has(#courseAdminDashboard.active) #globalScrollToTopBtn { bottom: 88px !important; }
+            html.scr-managerDashboard #dashboardBackBtn,
+            html.scr-managerDashboard #globalScrollToTopBtn,
+            html.scr-proshopDashboard #dashboardBackBtn,
+            html.scr-proshopDashboard #globalScrollToTopBtn,
+            html.scr-caddieDashboard #dashboardBackBtn,
+            html.scr-caddieDashboard #globalScrollToTopBtn,
+            html.scr-maintenanceDashboard #dashboardBackBtn,
+            html.scr-maintenanceDashboard #globalScrollToTopBtn,
+            html.scr-courseAdminDashboard #dashboardBackBtn,
+            html.scr-courseAdminDashboard #globalScrollToTopBtn { bottom: 88px !important; }
             #managerDashboard .nav-header .emergency-btn .material-symbols-outlined { font-size: 18px; }
             #managerDashboard .nav-header .btn-logout .material-symbols-outlined { font-size: 17px; }
             #managerDashboard .nav-header .btn-logout span[data-i18n] { display: none; }
@@ -72151,8 +72187,8 @@ document.addEventListener('DOMContentLoaded', function() {
             #marketingDashboard .nav-header .mk-logout { width: 32px; height: 32px; padding: 0; border-radius: 50%; justify-content: center; border: 1px solid rgba(255,255,255,.14); }
             #marketingDashboard .nav-header .mk-logout span[data-i18n] { display: none; }
             #marketingDashboard main { padding-bottom: 96px; }
-            body:has(#marketingDashboard.active) #dashboardBackBtn,
-            body:has(#marketingDashboard.active) #globalScrollToTopBtn { bottom: 88px !important; }
+            html.scr-marketingDashboard #dashboardBackBtn,
+            html.scr-marketingDashboard #globalScrollToTopBtn { bottom: 88px !important; }
         }
     </style>
 
@@ -90367,7 +90403,7 @@ window.AdminSystem = AdminSystem;
     <script defer src="manager-dashboard.js?v=1396"></script>
     <script defer src="caddy-demo.js?v=1473"></script>
     <!-- v1437 Tech Support help desk: the drawer row, the ticket sheet and the thread (Messages > Reports is the admin side) -->
-    <script defer src="tech-support.js?v=1439"></script>
+    <script defer src="tech-support.js?v=1573"></script>
     <script defer src="caddy-work-core.js?v=1473"></script>
     <script defer src="caddy-work.js?v=1473"></script>
     <script defer src="course-traffic.js?v=1459"></script>
@@ -144420,7 +144456,7 @@ const FollowPrompt = {
         d.id = 'fpSheet';
         d.style.cssText = 'position:fixed;inset:0;z-index:10060;background:rgba(2,10,7,.45);display:flex;align-items:flex-end;justify-content:center;padding:12px';
         // the floating back / scroll-top buttons sit at the top layer; the sheet has its own close, so they step aside while it is open
-        d.innerHTML = `<style>body:has(#fpSheet) #dashboardBackBtn, body:has(#fpSheet) #globalScrollToTopBtn { display:none !important; }</style><div style="background:#fff;color:#0f172a;width:100%;max-width:420px;border-radius:18px;padding:16px 16px 14px;box-shadow:0 -12px 40px rgba(0,0,0,.3);font-family:inherit">
+        d.innerHTML = `<style>html.has-fpSheet #dashboardBackBtn, html.has-fpSheet #globalScrollToTopBtn { display:none !important; }</style><div style="background:#fff;color:#0f172a;width:100%;max-width:420px;border-radius:18px;padding:16px 16px 14px;box-shadow:0 -12px 40px rgba(0,0,0,.3);font-family:inherit">
             <div style="display:flex;align-items:flex-start;gap:10px">
               <span class="material-symbols-outlined" style="font-size:26px;color:#16a34a;flex:0 0 auto">golf_course</span>
               <div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:800;line-height:1.25">${E(this.tr('fp.title', 'Follow {c} for offers?').replace('{c}', c.course_name || ''))}</div>
@@ -187283,14 +187319,14 @@ showOrganizerTab = function(tabName) {
            event detail modal z 10000 and What's New z 10050). Where it must NOT show is display:none
            rules elsewhere (login, live card, desktop) — never lower its z-index to hide it. */
         #dashboardBackBtn { z-index: 2147483000 !important; }
-        body:has(#playersListModal) #dashboardBackBtn { bottom: 84px !important; }
+        html.has-playersListModal #dashboardBackBtn { bottom: 84px !important; }
         /* v1342: the golfer's "Your booking" guest sheet (z 12000) buried the button under its footer — a tap
            on "back" landed on EDIT MY REGISTRATION instead. The sheet footer keeps a left gutter for it. */
-        body:has(#scv3gGuestSheet) #dashboardBackBtn { bottom: 16px !important; }
+        html.has-scv3gGuestSheet #dashboardBackBtn { bottom: 16px !important; }
         /* v1540: a full-screen chat has its own back arrow on top; the floating button sat ON the message box
            (Pete: "the back button is blocking") — same for the Tap-In message thread */
-        body:has(#conversation-view:not(.hidden)) #dashboardBackBtn, body:has(#conversation-view:not(.hidden)) #globalScrollToTopBtn,
-        body:has(#gdmIn) #dashboardBackBtn, body:has(#gdmIn) #globalScrollToTopBtn { display: none !important; }
+        html.has-convo #dashboardBackBtn, html.has-convo #globalScrollToTopBtn,
+        html.has-gdmIn #dashboardBackBtn, html.has-gdmIn #globalScrollToTopBtn { display: none !important; }
         /* v1543 Pete: "get rid of the back button entirely on the screen and just use the phone's back navigation
            button — that's what almost everyone uses". The phone's back already runs dashboardGoBack (PWAGuard popstate),
            which never leaves the app or walks into the login page. Only an iPhone home-screen app has NO system back,
@@ -187367,13 +187403,13 @@ showOrganizerTab = function(tabName) {
         } catch (e) {}
     })();
     </script>
-    <script src="oo-1on1.js?v=1278"></script>
-    <script src="g3-desk.js?v=1528"></script>
-    <script src="g3-org.js?v=1528"></script>
-    <script src="dash-dock.js?v=1570"></script>
-    <script src="dash-rail.js?v=1570"></script>
-    <script src="dash-glass.js?v=1572"></script>
-    <script src="play-flow.js?v=1567"></script>
+    <script src="oo-1on1.js?v=1573"></script>
+    <script src="g3-desk.js?v=1573"></script>
+    <script src="g3-org.js?v=1573"></script>
+    <script src="dash-dock.js?v=1573"></script>
+    <script src="dash-rail.js?v=1573"></script>
+    <script src="dash-glass.js?v=1573"></script>
+    <script src="play-flow.js?v=1573"></script>
 </body>
 
 

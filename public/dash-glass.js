@@ -1,4 +1,4 @@
-/* DashGlass (v1570, v1572 sync pass) — GLASS on EVERY tab of every dashboard, at every width.
+/* DashGlass (v1570, v1572 sync pass, v1573 batched reads/writes) — GLASS on EVERY tab of every dashboard, at every width.
    Pete 2026-10-14: "stop giving me excuses" (glass had covered only the header, home, bar and menu).
    Glass stays the option (localStorage dash_look_v1 === 'glass', html.dgl, switched by DashDock.setLook);
    Classic = default and untouched. The screen's layout never changes — only surfaces and ink.
@@ -36,7 +36,7 @@
     var G = window.DashGlass = {
         css: function () {
             if (document.getElementById('dashGlassCSS')) return;
-            var H = 'html.dgl', ON = SCOPES.map(function (c) { return H + ' body:has(#' + c.dash + '.active)'; });
+            var H = 'html.dgl', ON = SCOPES.map(function (c) { return H + '.scr-' + c.dash + ' body'; });
             var DASH = SCOPES.map(function (c) { return H + ' #' + c.dash; });
             var MAIN = SCOPES.map(function (c) { return H + ' #' + (c.root || c.dash) + ' main'; });
             var HDR = SCOPES.filter(function (c) { return !c.dark; }).map(function (c) { return H + ' #' + (c.root || c.dash) + ' > header'; });
@@ -84,34 +84,44 @@
 
         // ---------- the pass ----------
         clear: function (el) { CLS.forEach(function (k) { el.classList.remove(k); }); el.classList.remove('dgx-big'); },
-        judge: function (el, wide) {
-            var cs = getComputedStyle(el);
+        // v1573: plan() only READS (computed colours, size), apply() only WRITES — pass() runs them in two
+        // batches so the whole subtree costs one style recalc + one layout instead of one per node
+        // (the node-by-node read/write interleave was 50–240 ms per section → every tap in glass lagged).
+        plan: function (el, wide) {
+            var cs = getComputedStyle(el), p = { c: [] };
             var bg = rgba(cs.backgroundColor), big = el.offsetWidth > wide * 0.9 && el.offsetHeight > window.innerHeight * 0.5;
             if (bg && bg.a > 0.5) {
                 var L = lum(bg), hs = hsl(bg);
-                if (L > 0.72 && hs.s < 0.2) el.classList.add('dgx-s');                       // white / light grey surface
-                else if (L > 0.6) {                                                            // light tint (green-50, amber-100 …) → same hue, glass strength
-                    el.style.setProperty('--dgx-bg', 'hsla(' + hs.h + ',' + Math.round(Math.min(1, hs.s + 0.2) * 100) + '%,45%,.18)');
-                    el.classList.add('dgx-t');
-                } else if (L < 0.02 && bg.a > 0.9) el.classList.add('dgx-d');                // solid near-black shell (dark theme) → translucent
-                if (big && (el.classList.contains('dgx-s') || el.classList.contains('dgx-d'))) el.classList.add('dgx-big');
+                if (L > 0.72 && hs.s < 0.2) p.c.push('dgx-s');                                  // white / light grey surface
+                else if (L > 0.6) {                                                             // light tint (green-50, amber-100 …) → same hue, glass strength
+                    p.bg = 'hsla(' + hs.h + ',' + Math.round(Math.min(1, hs.s + 0.2) * 100) + '%,45%,.18)';
+                    p.c.push('dgx-t');
+                } else if (L < 0.02 && bg.a > 0.9) p.c.push('dgx-d');                           // solid near-black shell (dark theme) → translucent
+                if (big && (p.c[0] === 'dgx-s' || p.c[0] === 'dgx-d')) p.c.push('dgx-big');
             } else if (cs.backgroundImage !== 'none' && /gradient/.test(cs.backgroundImage)) {
                 var stops = cs.backgroundImage.match(/rgba?\([^)]+\)/g) || [], light = stops.length && stops.every(function (x) { var c = rgba(x); return c && (c.a < 0.3 || lum(c) > 0.7); });
-                if (light) { el.classList.add('dgx-s'); if (big) el.classList.add('dgx-big'); }
+                if (light) { p.c.push('dgx-s'); if (big) p.c.push('dgx-big'); }
             }
             var bw = parseFloat(cs.borderTopWidth) || parseFloat(cs.borderBottomWidth) || parseFloat(cs.borderLeftWidth);
-            if (bw > 0) { var bc = rgba(cs.borderTopColor); if (bc && bc.a > 0.3 && lum(bc) > 0.6) el.classList.add('dgx-b'); }
+            if (bw > 0) { var bc = rgba(cs.borderTopColor); if (bc && bc.a > 0.3 && lum(bc) > 0.6) p.c.push('dgx-b'); }
             if (ownText(el) || el.tagName === 'INPUT') {
                 var fg = rgba(cs.color);
                 if (fg && fg.a > 0.3) {
                     var lf = lum(fg), fh = hsl(fg);
                     if (lf < 0.4) {
-                        if (fh.s > 0.35 && fh.l > 0.12) { el.style.setProperty('--dgx-fg', 'hsl(' + fh.h + ',' + Math.round(Math.min(1, fh.s) * 85) + '%,72%)'); el.classList.add('dgx-c'); }
-                        else el.classList.add(lf < 0.06 ? 'dgx-i' : 'dgx-m');
+                        if (fh.s > 0.35 && fh.l > 0.12) { p.fg = 'hsl(' + fh.h + ',' + Math.round(Math.min(1, fh.s) * 85) + '%,72%)'; p.c.push('dgx-c'); }
+                        else p.c.push(lf < 0.06 ? 'dgx-i' : 'dgx-m');
                     }
                 }
             }
+            return p;
         },
+        apply: function (el, p) {
+            if (p.bg) el.style.setProperty('--dgx-bg', p.bg);
+            if (p.fg) el.style.setProperty('--dgx-fg', p.fg);
+            for (var i = 0; i < p.c.length; i++) el.classList.add(p.c[i]);
+        },
+        judge: function (el, wide) { G.clear(el); G.apply(el, G.plan(el, wide)); },
         pass: function (root, force, wide) {
             if (!glass() || !root) return;
             wide = wide || root.clientWidth || window.innerWidth;
@@ -123,11 +133,17 @@
                     return NodeFilter.FILTER_ACCEPT;
                 }
             });
-            G._busy = true;
+            var todo = [], i;
             for (var n = tw.nextNode(); n; n = tw.nextNode()) {
                 if (!force && n._dgx === gen) continue;
-                G.clear(n); G.judge(n, wide); n._dgx = gen;
+                todo.push(n);
             }
+            if (!todo.length) return;
+            G._busy = true;
+            for (i = 0; i < todo.length; i++) G.clear(todo[i]);          // 1. drop earlier marks (writes) so the reads see the real colours
+            var plans = new Array(todo.length);
+            for (i = 0; i < todo.length; i++) plans[i] = G.plan(todo[i], wide);   // 2. reads only: one recalc + one layout for the batch
+            for (i = 0; i < todo.length; i++) { G.apply(todo[i], plans[i]); todo[i]._dgx = gen; }   // 3. writes only
             G._busy = false;
         },
         // v1572: style the changed subtrees NOW (same tick as the mutation, before the browser paints them)

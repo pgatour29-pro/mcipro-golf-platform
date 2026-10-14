@@ -78,7 +78,7 @@
   D + ".light-mode #g3oHome{display:grid;grid-template-columns:minmax(0,1fr) 380px;grid-template-rows:auto auto;gap:18px 20px;align-items:start}\n" +
   "#g3oWeek .g3-list{max-height:max(268px,calc(100vh - 608px))}\n" +
   "#g3oNeeds .g3-list{max-height:216px}#g3oRegs .g3-list{max-height:max(216px,calc(100vh - 372px))}\n" +
-  "body:has(#societyOrganizerDashboard.g3o.active) #globalScrollToTopBtn{display:none !important}\n" +
+  "html.scr-societyOrganizerDashboard.g3o-on #globalScrollToTopBtn{display:none !important}\n" +
   "@media (max-width:1499px){" + D + ".light-mode #g3oHome{grid-template-columns:minmax(0,1fr) 340px}}\n" +
   D + ".light-mode #g3oBand{display:flex;grid-column:1 / -1;align-items:stretch;background:#fff;border:1px solid #DDE5DE;border-radius:14px;box-shadow:0 1px 2px rgba(11,59,42,.06),0 6px 18px rgba(11,59,42,.07);overflow:hidden;height:74px;font-family:'Instrument Sans',sans-serif}\n" +
   D + ".light-mode #g3oLeft{display:flex;flex-direction:column;gap:16px;min-height:0;min-width:0}" + D + ".light-mode #g3oRight{display:flex;flex-direction:column;gap:16px;min-height:0;min-width:0}" + D + ".light-mode #g3oWeek{display:flex}\n" +

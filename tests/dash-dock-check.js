@@ -16,7 +16,8 @@ else if (g3o === -1 || ddi < g3o) fail.push('dash-dock.js must load AFTER g3-org
 const css = dd.slice(dd.indexOf("'@media (max-width:1023px){'"), dd.indexOf("].join('\\n')"));
 if (!css) fail.push('dash-dock.js: phone CSS block not found');
 if (!/openMobileDrawer[^']*\{display:none!important\}/.test(css)) fail.push('the hamburger must be hidden inside the phone block');
-if (!/#golferDashboard\.active:not\(\.round-active\)\) #ddDock/.test(css)) fail.push('the bar must hide during a live round (.round-active)');
+if (!/html\.scr-golferDashboard:not\(\.round-on\) #ddDock/.test(css)) fail.push('the bar must hide during a live round (html.round-on, mirrored from .round-active by the v1573 HTML STATE FLAGS)');
+if (/body:has\(|html:has\(/.test(dd)) fail.push('dash-dock.js: no body/html-anchored :has() — Chrome re-walks the whole document per mutation (v1573); use the html.scr-*/has-* flags');
 if (!/#ddDock\{z-index:45\}/.test(css)) fail.push('the bar must sit under the z-50 pop-ups (z-index:45)');
 if (!/getElementById\(DOCKS\[w\]\.drawer\)/.test(dd) || !/drawer-golfer/.test(dd) || !/drawer-organizer/.test(dd)) fail.push('MORE must be read from the hamburger drawer');
 if (!/localStorage\.getItem\(LOOK_KEY\) === 'glass'/.test(dd)) fail.push('glass must be opt-in (dash_look_v1 === glass)');

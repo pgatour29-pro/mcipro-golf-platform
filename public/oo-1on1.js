@@ -522,7 +522,7 @@
     '#ooDashboard .oo-hdr .role{font-size:11px;font-weight:800;border-radius:999px;padding:4px 10px;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.35);color:#4ade80;white-space:nowrap}' +
     '#ooTabs{background:#f8fafb;border-bottom:1px solid rgba(0,0,0,.06)}#ooTabs .tab-button{border-radius:10px;font-size:13px;padding:8px 14px;border-bottom:0}' +
     '.oo-tb{position:absolute;top:-2px;right:-2px;background:#ef4444;color:#fff;font-size:10px;font-weight:800;min-width:16px;height:16px;border-radius:99px;align-items:center;justify-content:center;padding:0 4px}' +
-    '@media(max-width:767px){#ooDashboard .oo-hdr .ib-desk{display:none}#ooDashboard main{padding-bottom:96px}body:has(#ooDashboard.active) #dashboardBackBtn,body:has(#ooDashboard.active) #globalScrollToTopBtn{bottom:88px !important}}' +
+    '@media(max-width:767px){#ooDashboard .oo-hdr .ib-desk{display:none}#ooDashboard main{padding-bottom:96px}html.scr-ooDashboard #dashboardBackBtn,html.scr-ooDashboard #globalScrollToTopBtn{bottom:88px !important}}' +
     '.oo-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px;color:#0f172a}.oo-card h4{font-weight:800;font-size:14px;margin:0 0 8px}' +
     '.oo-seg{display:flex;flex-wrap:wrap;gap:6px;padding-bottom:2px}.oo-seg button{flex:0 0 auto;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700;white-space:nowrap}' +
     '.oo-seg button.on{background:#16a34a;border-color:#16a34a;color:#fff}' +

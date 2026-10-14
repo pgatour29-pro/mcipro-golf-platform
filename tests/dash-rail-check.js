@@ -16,7 +16,7 @@ else if (ddi === -1 || dri < ddi) fail.push('dash-rail.js must load AFTER dash-d
 if (!/var MQ = '\(min-width:1024px\)'/.test(dr) || !/'@media ' \+ MQ \+ '\{'/.test(dr)) fail.push('dash-rail.js: rules must sit in the min-width:1024px block');
 if (!/on: '#golferDashboard\.g3:not\(\.round-active\)'/.test(dr)) fail.push('the golfer rail must keep the live-round gate (.g3:not(.round-active))');
 if (!/rail: 'g3Rail'/.test(dr) || !/rail: 'g3oRail'/.test(dr)) fail.push('the slim rail must restyle the existing G3 rails (#g3Rail / #g3oRail)');
-if (/createElement\('aside'\)/.test(dr)) fail.push('dash-rail.js must not build a second rail');
+if ((dr.match(/createElement\('aside'\)/g) || []).length !== 1 || !/createElement\('aside'\); rail\.className = 'dd-srail'/.test(dr)) fail.push('dash-rail.js may only build the STAFF rail — the G3 rails are restyled, never rebuilt');
 if (!/getComputedStyle\(el\)\.display === 'none'\) return;\s+\/\/ role-gated/.test(dr)) fail.push('MORE must leave out role-gated rail items');
 if (!/if \(el\) el\.click\(\);/.test(dr)) fail.push('a MORE row must click the real rail button (one action path)');
 if (!/localStorage\.getItem\('dash_look_v1'\) === 'glass'/.test(dr)) fail.push('glass must be opt-in (dash_look_v1 === glass)');
@@ -26,5 +26,12 @@ if (!/SHARED\.map\(/.test(dd) || !/'@media \(min-width:1024px\)\{'/.test(dd)) fa
 if (!/both\(' \.g3-brand'\) \+ '\{display:none!important\}'/.test(dr) || /dd-mark/.test(dr)) fail.push('no brand tile on the slim rail (Pete: the home button is enough)');
 if (/font:\s*\d{3}\s+[\d.]+px(\/[\d.]+(px)?)?\s+inherit/.test(dr)) fail.push('dash-rail.js: `font:<w> <size> inherit` is invalid CSS');
 if (/\bprompt\(|\bconfirm\(|\balert\(/.test(dr)) fail.push('dash-rail.js: no native dialogs');
+// v1570 staff dashboards (Pete: "stop giving me excuses"): their tab strip becomes the same slim rail, generated + mirrored live
+['caddieDashboard', 'caddyMasterDashboard', 'managerDashboard', 'marketingDashboard', 'maintenanceDashboard', 'courseAdminDashboard', 'adminDashboard'].forEach(function (d) {
+    if (dr.indexOf("dash: '" + d + "'") === -1) fail.push('staff rail missing for #' + d);
+});
+if (!/if \(b\) b\.click\(\); return; \}   \/\/ the strip button's own handler/.test(dr)) fail.push('a staff rail button must click the real strip button');
+if (!/if \(nav\._h !== h\)/.test(dr)) fail.push('the staff rail must only repaint on change (the strip is observed)');
+if (!/k: 'pa', dash: 'adminDashboard'[^\n]*mq: '\(min-width:1024px\)'/.test(dr)) fail.push('the platform admin rail starts at 1024px (the bar covers it below)');
 if (fail.length) { console.error('dash-rail-check FAILED:\n - ' + fail.join('\n - ')); process.exit(1); }
 console.log('dash-rail-check: OK');

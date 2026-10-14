@@ -109,7 +109,10 @@
             ];
             s.textContent = [
                 '#ddDock,#ddSheet,#ddDim,#ddGround{display:none}',
-                '@media (max-width:767px){',
+                // phones AND tablets (v1570): the desktop rails (g3-desk / g3-org / dash-rail.js) start at 1024px, so up to 1023px the bar is the menu
+                '@media (max-width:1023px){',
+                // tablet header: the icon tab row (#ghd2Tabs) collided with the HCP pill — the bar replaces it
+                ' #golferDashboard:not(.round-active) > header.nav-header #ghd2Tabs{display:none!important}',
                 // the bar replaces the hamburger
                 ' #golferDashboard .nav-header button[onclick*="openMobileDrawer"],#societyOrganizerDashboard [onclick*="openMobileDrawer"],#adminDashboard [onclick*="openMobileDrawer"]{display:none!important}',
                 // #mhvcCSS styles these three hamburgers with display:inline-flex!important at (1,2,1) — outrank it, don't edit it
@@ -178,6 +181,31 @@
             ], SHARED.map(function (r) { return r.split(G + ' #').join(G + ' body #'); }), ['}'])
             .join('\n');
             document.head.appendChild(s);
+            D.tabletCSS();
+        },
+        // tablets (768–1023): #mhvcCSS styles the bar/sheet only under 768px. Re-emit ITS rules for our three ids in
+        // the tablet band (one source, read at boot) — minus the dock's display, which stays gated to the dashboards above.
+        tabletCSS: function () {
+            var src = document.getElementById('mhvcCSS'); if (!src || !src.sheet || document.getElementById('dashDockTabCSS')) return;
+            var out = [];
+            try {
+                Array.prototype.forEach.call(src.sheet.cssRules, function (m) {
+                    if (!m.media || !/max-width:\s*767px/.test(m.media.mediaText)) return;
+                    Array.prototype.forEach.call(m.cssRules, function (r) {
+                        if (!r.selectorText || !/^\.mhv(Dock|Sheet|Dim)\b/.test(r.selectorText)) return;
+                        var sel = r.selectorText.split(',').map(function (x) {
+                            return x.trim().replace(/^\.mhvDock/, '#ddDock.mhvDock').replace(/^\.mhvSheet/, '#ddSheet.mhvSheet').replace(/^\.mhvDim/, '#ddDim.mhvDim');
+                        }).join(',');
+                        var css = r.style.cssText;
+                        if (r.selectorText === '.mhvDock') css = css.replace(/(^|;)\s*display:[^;]*;?/, '$1');
+                        out.push(sel + '{' + css + '}');
+                    });
+                });
+            } catch (e) { return; }
+            if (!out.length) return;
+            var t = document.createElement('style'); t.id = 'dashDockTabCSS';
+            t.textContent = '@media (min-width:768px) and (max-width:1023px){' + out.join('\n') + '\n#ddSheet.mhvSheet .grid{grid-template-columns:repeat(4,1fr)}}';
+            document.head.appendChild(t);
         },
 
         mount: function () {

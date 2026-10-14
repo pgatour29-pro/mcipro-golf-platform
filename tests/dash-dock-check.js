@@ -1,7 +1,7 @@
 // Guard for v1565 — DASH DOCK (Pete 2026-10-14): golfer + society organizer PHONES get the pro shop's bottom bar instead
 // of the hamburger, plus an optional GLASS look. "Mobile design does not change" / "Default is the classic view".
 // 1. index.html loads dash-dock.js after g3-desk/g3-org (it wraps showGolferTab/showOrganizerTab, never replaces them).
-// 2. Phone only: every rule lives inside the max-width:767px block; the hamburger is hidden there, not removed.
+// 2. Phone + tablet only: every rule lives inside the max-width:1023px block (desktop rails start at 1024); the hamburger is hidden there, not removed.
 // 3. MORE is read from the drawer (#drawer-golfer / #drawer-organizer) — no hard-coded copy of the menu.
 // 4. Glass is OFF unless localStorage dash_look_v1 === 'glass'.
 // 5. The bar hides during a live round and sits UNDER every dashboard pop-up (z 45 < z-50).
@@ -13,7 +13,7 @@ const fail = [];
 const g3o = html.indexOf('<script src="g3-org.js'), ddi = html.search(/<script src="dash-dock\.js\?v=\w+"><\/script>/);
 if (ddi === -1) fail.push('index.html must load dash-dock.js');
 else if (g3o === -1 || ddi < g3o) fail.push('dash-dock.js must load AFTER g3-org.js');
-const css = dd.slice(dd.indexOf("'@media (max-width:767px){'"), dd.indexOf("].join('\\n')"));
+const css = dd.slice(dd.indexOf("'@media (max-width:1023px){'"), dd.indexOf("].join('\\n')"));
 if (!css) fail.push('dash-dock.js: phone CSS block not found');
 if (!/openMobileDrawer[^']*\{display:none!important\}/.test(css)) fail.push('the hamburger must be hidden inside the phone block');
 if (!/#golferDashboard\.active:not\(\.round-active\)\) #ddDock/.test(css)) fail.push('the bar must hide during a live round (.round-active)');

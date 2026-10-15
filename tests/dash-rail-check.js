@@ -33,5 +33,12 @@ if (/\bprompt\(|\bconfirm\(|\balert\(/.test(dr)) fail.push('dash-rail.js: no nat
 if (!/if \(b\) b\.click\(\); return; \}   \/\/ the strip button's own handler/.test(dr)) fail.push('a staff rail button must click the real strip button');
 if (!/if \(nav\._h !== h\)/.test(dr)) fail.push('the staff rail must only repaint on change (the strip is observed)');
 if (!/k: 'pa', dash: 'adminDashboard'[^\n]*mq: '\(min-width:1024px\)'/.test(dr)) fail.push('the platform admin rail starts at 1024px (the bar covers it below)');
+// v1579 (Pete: the left menu bar is constant on every society page except the tee sheet): the organizer's page
+// overlays start where the 76px rail ends, and a rail tap closes the open page first.
+['#arrivalsModal', '#orgLiteRegModal', '#trggDirModal', '#dupMgrModal'].forEach(function (id) { if (!(new RegExp('html\\.scr-societyOrganizerDashboard\\.g3o-on ' + id.replace('#', '#') + '[^{]*\\{left:76px!important\\}')).test(dr)) fail.push('dash-rail.js: ' + id + ' must sit beside the rail (left:76px) on the organizer desktop'); });
+if (/teeSheetOverlay[^\n]*left:76px/.test(dr)) fail.push('the tee sheet keeps the whole width (Pete: except the tee sheet)');
+const g3o = read('g3-org.js');
+if (!/this\.closePages\(act\);/.test(g3o) || !/closePages: function \(keep\)/.test(g3o)) fail.push('g3-org.js: a rail tap must close the open page first (closePages in go())');
+if (!/act \? b\.getAttribute\('data-act'\) === act : b\.getAttribute\('data-tab'\) === tab/.test(g3o)) fail.push('g3-org.js: the open page is the current rail item');
 if (fail.length) { console.error('dash-rail-check FAILED:\n - ' + fail.join('\n - ')); process.exit(1); }
 console.log('dash-rail-check: OK');

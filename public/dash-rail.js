@@ -75,6 +75,11 @@
                 '@media ' + MQ + '{',
                 // ---------- the 76px rail ----------
                 ' ' + GO + ',' + OO + '{padding-left:76px!important}',
+                // v1579 (Pete: the left menu bar is constant on every society page except the tee sheet): the organizer's
+                // full-screen PAGES (Arrivals, registrations cockpit, TRGG Directory, Duplicates) start where the rail ends,
+                // so the rail stays visible and tappable while they are open. The tee sheet is its own screen and keeps
+                // the whole width. g3-org.js closes the open page when a rail item is tapped.
+                ' html.scr-societyOrganizerDashboard.g3o-on #arrivalsModal,html.scr-societyOrganizerDashboard.g3o-on #orgLiteRegModal,html.scr-societyOrganizerDashboard.g3o-on #trggDirModal,html.scr-societyOrganizerDashboard.g3o-on #dupMgrModal{left:76px!important}',
                 ' ' + RL + '{width:76px!important;padding:14px 0 12px!important;align-items:center;gap:0}',
                 // no brand tile on the slim rail — Pete 10-14: "get rid of that flag on the top left corner, the home button is enough"
                 ' ' + both(' .g3-brand') + '{display:none!important}',

@@ -127,8 +127,19 @@
     { tab: 'admin', icon: 'settings', k: 'g3o.settings', fb: 'Society settings' }
   ];
 
+  /* v1579 (Pete 2026-10-15: "the left menu bar constant on all of the pages except the tee sheet"): the organizer's
+     full-screen PAGES. dash-rail.js keeps the rail beside them (left:76px); a rail tap closes the open page first, and
+     the rail item of an open page reads as the current one. The tee sheet (its own screen) is not a page here. */
+  var PAGES = [
+    { id: 'arrivalsModal', act: 'arrivals', close: function () { window.ArrivalsPage.close(); } },
+    { id: 'orgLiteRegModal', act: '', close: function () { window.OrgLiteRegistrations.close(); } },
+    { id: 'trggDirModal', act: 'trgg', close: function () { window.TRGGDirectory.close(); } },
+    { id: 'dupMgrModal', act: 'dups', close: function () { window.DuplicateManager.close(); } }
+  ];
+  function pageOpen(p) { var el = document.getElementById(p.id); return !!(el && el.style.display !== 'none' && getComputedStyle(el).display !== 'none'); }
+
   var G = {
-    _built: false, _tab: 'home', _mq: null, _timer: null, _seq: 0,
+    _built: false, _tab: 'home', _act: null, _pageT: null, _mq: null, _timer: null, _seq: 0,
 
     init: function () {
       if (!document.getElementById('societyOrganizerDashboard')) return;
@@ -217,13 +228,38 @@
 
     go: function (tab, act) {
       try {
+        this.closePages(act);   // v1579: a rail tap leaves whichever page is open (the rail never hides behind one)
         if (act === 'teesheet') { if (window.TeeSheet) TeeSheet.open(); return; }
-        if (act === 'arrivals') { if (window.ArrivalsPage) ArrivalsPage.open(); return; }
-        if (act === 'trgg') { if (typeof TRGGDirectory !== 'undefined') TRGGDirectory.open(); return; }
-        if (act === 'dups') { if (window.DuplicateManager) DuplicateManager.open(); return; }
+        if (act === 'arrivals') { if (window.ArrivalsPage) this.openPage('arrivals', function () { return ArrivalsPage.open(); }); return; }
+        if (act === 'trgg') { if (typeof TRGGDirectory !== 'undefined') this.openPage('trgg', function () { return TRGGDirectory.open(); }); return; }
+        if (act === 'dups') { if (window.DuplicateManager) this.openPage('dups', function () { return DuplicateManager.open(); }); return; }
         if (act === 'payouts') { if (window.PayoutFormula) PayoutFormula.openSheet(); return; }   // v1323: one society-wide formula
         if (tab) window.showOrganizerTab(tab);
       } catch (e) { console.warn('[G3Org] go', e); }
+    },
+
+    /* v1579: pages beside the rail */
+    closePages: function (keep) {
+      PAGES.forEach(function (p) { if (keep && p.act === keep) return; if (pageOpen(p)) { try { p.close(); } catch (e) {} } });
+      this._act = null; this.watchPages();
+    },
+    openPage: function (act, fn) {
+      var r = null; try { r = fn(); } catch (e) { console.warn('[G3Org] page', e); }
+      var self = this, upd = function () {
+        self._act = PAGES.some(function (p) { return p.act === act && pageOpen(p); }) ? act : null;
+        self.syncNav(self._tab); self.watchPages();
+      };
+      upd(); try { Promise.resolve(r).then(upd, upd); } catch (e) {}
+    },
+    // the page's own ✕ / back hands the highlight back to the tab underneath (a light poll, only while a page is marked open)
+    watchPages: function () {
+      var self = this;
+      if (!this._act) { if (this._pageT) { clearInterval(this._pageT); this._pageT = null; } return; }
+      if (this._pageT) return;
+      this._pageT = setInterval(function () {
+        var still = PAGES.some(function (p) { return p.act === self._act && pageOpen(p); });
+        if (!still) { self._act = null; clearInterval(self._pageT); self._pageT = null; self.syncNav(self._tab); }
+      }, 500);
     },
 
     onTab: function (tab) {
@@ -235,7 +271,8 @@
     },
 
     syncNav: function (tab) {
-      document.querySelectorAll('#g3oRail .g3-it').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === tab); });
+      var act = this._act;   // v1579: an open page (Arrivals / Directory / Duplicates) is the current item while it is up
+      document.querySelectorAll('#g3oRail .g3-it').forEach(function (b) { b.classList.toggle('on', act ? b.getAttribute('data-act') === act : b.getAttribute('data-tab') === tab); });
       var t = TABS[tab] || TABS.home, el = document.querySelector('#g3oTitle .g3-ttl'); if (el) el.textContent = T(t[0], t[1]);
       var c = document.getElementById('g3oCrumb'); if (c) { try { c.textContent = (tab === 'home') ? new Date().toLocaleDateString(loc(), { weekday: 'long', day: 'numeric', month: 'long' }) : socName(); } catch (e) {} }
       var sn = socName(), sub = document.getElementById('g3oBrandSub'); if (sub) sub.textContent = sn;

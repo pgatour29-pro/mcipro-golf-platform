@@ -333,14 +333,15 @@
       var t = this.t.bind(this), E = this.esc.bind(this), el = this.host && this.host.querySelector('#cimHist'); if (!el) return;
       if (!this.batches.length) { el.innerHTML = '<div class="p-4 text-sm text-gray-500">' + E(t('none')) + '</div>'; return; }
       var self = this;
-      el.innerHTML = '<table class="w-full text-sm"><thead><tr class="text-left text-xs text-gray-600 border-b border-gray-200"><th class="px-3 py-2">' + E(t('s4')) + '</th><th class="px-3 py-2">' + E(t('result')) + '</th><th class="px-3 py-2"></th><th class="px-3 py-2"></th></tr></thead><tbody>' +
+      el.innerHTML = '<table class="w-full text-sm"><tbody>' +
         this.batches.map(function (b) {
           var m = KIND_META[b.kind] || KIND_META.customers;
-          var st = b.status === 'undone' ? '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700">' + E(t('undone')) + '</span>' : '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-800">' + E(t('done')) + '</span>';
-          return '<tr class="border-b border-gray-100"><td class="px-3 py-2"><div class="font-semibold text-gray-900 whitespace-nowrap"><span class="material-symbols-outlined align-middle text-gray-500" style="font-size:16px">' + m.icon + '</span> ' + E(t(m.t)) + (b.file ? ' <span class="text-gray-500 font-normal">· ' + E(b.file) + '</span>' : '') + '</div><div class="text-xs text-gray-500">' + E(self.dfmt(b.at)) + (b.actor && b.actor !== 'pin' ? ' · ' + E(t('by')) + ' ' + E(decodeURIComponent(String(b.actor))) : '') + '</div></td>' +
-            '<td class="px-3 py-2 text-gray-700" style="min-width:120px">' + b.inserted + ' ' + E(t('rIns')) + ' · ' + b.updated + ' ' + E(t('rUpd')) + ' · ' + b.skipped + ' ' + E(t('rSkip')) + '</td>' +
-            '<td class="px-3 py-2">' + st + '</td>' +
-            '<td class="px-3 py-2 text-right">' + (b.status === 'done' ? '<button type="button" data-undo="' + E(b.id) + '" class="px-3 py-1.5 rounded-lg border border-red-300 text-red-700 text-xs font-semibold hover:bg-red-50">' + E(t('undo')) + '</button>' : '') + '</td></tr>';
+          var st = b.status === 'undone' ? '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 whitespace-nowrap">' + E(t('undone')) + '</span>' : '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-800 whitespace-nowrap">' + E(t('done')) + '</span>';
+          var who = b.actor && b.actor !== 'pin' && !/^[0-9a-f-]{20,}$/i.test(String(b.actor)) ? ' · ' + E(t('by')) + ' ' + E(decodeURIComponent(String(b.actor))) : '';
+          return '<tr class="border-b border-gray-100"><td class="px-3 py-2 align-top"><div class="font-semibold text-gray-900"><span class="material-symbols-outlined align-middle text-gray-500" style="font-size:16px">' + m.icon + '</span> ' + E(t(m.t)) + (b.file ? ' <span class="text-gray-500 font-normal">· ' + E(b.file) + '</span>' : '') + '</div>' +
+            '<div class="text-xs text-gray-500">' + E(self.dfmt(b.at)) + who + '</div>' +
+            '<div class="text-xs text-gray-700 mt-0.5">' + b.inserted + ' ' + E(t('rIns')) + ' · ' + b.updated + ' ' + E(t('rUpd')) + ' · ' + b.skipped + ' ' + E(t('rSkip')) + '</div></td>' +
+            '<td class="px-3 py-2 align-top text-right whitespace-nowrap">' + st + (b.status === 'done' ? ' <button type="button" data-undo="' + E(b.id) + '" class="ml-1 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 text-xs font-semibold hover:bg-red-50">' + E(t('undo')) + '</button>' : '') + '</td></tr>';
         }).join('') + '</tbody></table>';
     },
     undo: async function (id, btn) {

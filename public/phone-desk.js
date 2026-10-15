@@ -16,6 +16,7 @@
   'use strict';
   var STR = {
     en: {
+      pinsNeed: 'Show golfers\' Call PINs: enter this course\'s PIN once on this device.',
       btn: 'Caller', title: 'Caller', box: 'Call PIN', ph: '6-digit Call PIN',
       found: 'Found by Call PIN', foundFb: 'Found by caddy #{c} + {d}', miss: 'No golfer has Call PIN {p}',
       locked: 'Too many wrong PINs on this device. Wait an hour, or find the golfer by caddy number below.',
@@ -40,6 +41,7 @@
       prof: 'Full profile', profSub: 'History here, caddies, deals, messages', refused: 'These caddies cannot take that time:', fail: 'Not saved: {m}', full: 'Full', today: 'Today', usual: 'usual'
     },
     th: {
+      pinsNeed: 'แสดง Call PIN ของนักกอล์ฟ: ใส่ PIN ของสนามนี้หนึ่งครั้งบนเครื่องนี้',
       btn: 'ผู้โทร', title: 'ผู้โทร', box: 'PIN โทร', ph: 'PIN โทร 6 หลัก',
       found: 'พบจาก PIN โทร', foundFb: 'พบจากแคดดี้ #{c} + {d}', miss: 'ไม่มีนักกอล์ฟที่ใช้ PIN โทร {p}',
       locked: 'ใส่ PIN ผิดหลายครั้งบนเครื่องนี้ รอหนึ่งชั่วโมง หรือหานักกอล์ฟจากเลขแคดดี้ด้านล่าง',
@@ -64,6 +66,7 @@
       prof: 'โปรไฟล์ทั้งหมด', profSub: 'ประวัติที่นี่ แคดดี้ ดีล ข้อความ', refused: 'แคดดี้เหล่านี้รับเวลานั้นไม่ได้:', fail: 'บันทึกไม่สำเร็จ: {m}', full: 'เต็ม', today: 'วันนี้', usual: 'ประจำ'
     },
     ko: {
+      pinsNeed: '골퍼 Call PIN 표시: 이 기기에서 이 골프장 PIN을 한 번 입력하세요.',
       btn: '발신자', title: '발신자', box: '전화 PIN', ph: '전화 PIN 6자리',
       found: '전화 PIN으로 찾음', foundFb: '캐디 #{c} + {d}로 찾음', miss: '전화 PIN {p}을(를) 쓰는 골퍼가 없습니다',
       locked: '이 기기에서 틀린 PIN이 너무 많습니다. 한 시간 기다리거나 아래에서 캐디 번호로 찾으세요.',
@@ -88,6 +91,7 @@
       prof: '전체 프로필', profSub: '이곳 기록, 캐디, 딜, 메시지', refused: '이 캐디들은 그 시간에 안 됩니다:', fail: '저장 안 됨: {m}', full: '마감', today: '오늘', usual: '평소'
     },
     ja: {
+      pinsNeed: 'ゴルファーのCall PINを表示: この端末で一度だけこのゴルフ場のPINを入力してください。',
       btn: '発信者', title: '発信者', box: '電話PIN', ph: '6桁の電話PIN',
       found: '電話PINで確認', foundFb: 'キャディー #{c} + {d} で確認', miss: '電話PIN {p} のゴルファーはいません',
       locked: 'この端末で間違ったPINが多すぎます。1時間待つか、下のキャディー番号で探してください。',
@@ -201,7 +205,7 @@
   function numKey(n) { var x = parseInt(n, 10); return isNaN(x) ? String(n || '').trim() : String(x); }
 
   var PD = W.PhoneDesk = {
-    _v: 1528,
+    _v: 1591,
     api: null,
     pins: {},          // golfer id -> PIN ('' = none / not shown to this course)
     S: null,
@@ -217,6 +221,79 @@
     // the tee sheet hands its client over; inside the app (pro shop dashboard: Customers) the app's own client
     sb: function () { return (this.api && this.api.sb && this.api.sb()) || (W.SupabaseDB && W.SupabaseDB.client) || W.supabaseClient || null; },
     token: function () { try { return localStorage.getItem('ps_desk_token_v1') || ''; } catch (e) { return ''; } },
+    /* v1591 (Pete: "All of the courses should be populated"): a pro shop on the shared login gets a token for the
+       course it picked (proshop_shared_desk_token). A course with its OWN PIN is refused there and keeps signing in
+       with it; a device locked to such a course but signed in before v1528 is asked for that PIN once (askOwn). */
+    proshop: function () { try { return localStorage.getItem('mcipro_staff_role') === 'proshop'; } catch (e) { return false; } },
+    lock: function () { try { return JSON.parse(localStorage.getItem('ps_pin_lock_v1') || 'null'); } catch (e) { return null; } },
+    sharedCourse: function () {
+      var c = '';
+      try { if (/proshop-teesheet/.test(location.pathname)) c = new URLSearchParams(location.search).get('course') || ''; } catch (e) { }
+      if (!c) { try { var p = JSON.parse(localStorage.getItem('ps_course_v1') || 'null'); c = (p && p.id) || ''; } catch (e) { } }
+      return c;
+    },
+    ensureToken: function () {
+      var self = this, tok = this.token(), sb = this.sb();
+      if (!this.proshop() || this.lock() || !sb) return Promise.resolve(tok);
+      var c = this.sharedCourse(), sh = null;
+      try { sh = JSON.parse(localStorage.getItem('ps_desk_token_shared_v1') || 'null'); } catch (e) { }
+      if (tok && !sh) return Promise.resolve(tok);                                   // a course's own-PIN token
+      if (!c || (this._noShared && this._noShared[c])) return Promise.resolve(tok && sh && sh.keys.indexOf(c) >= 0 ? tok : '');
+      if (tok && sh && sh.keys.indexOf(c) >= 0) return Promise.resolve(tok);       // same course (dashboard id or tee sheet slug)
+      if (this._mint) return this._mint;
+      this._mint = Promise.resolve(sb.rpc('proshop_shared_desk_token', { p_course: c })).then(function (r) {
+        self._mint = null;
+        var d = r && !r.error && r.data;
+        if (!d || !d.ok || !d.desk_token) {
+          if (d && d.reason) { (self._noShared = self._noShared || {})[c] = 1; }
+          return tok && sh && sh.keys.indexOf(c) >= 0 ? tok : '';
+        }
+        // the token another key of the SAME course minted is kept; a different course replaces it
+        if (tok && sh && sh.c === d.course_id) { sh.keys.push(c); localStorage.setItem('ps_desk_token_shared_v1', JSON.stringify(sh)); return tok; }
+        localStorage.setItem('ps_desk_token_v1', d.desk_token);
+        localStorage.setItem('ps_desk_token_shared_v1', JSON.stringify({ c: d.course_id, keys: [c] }));
+        self.pins = {};
+        return d.desk_token;
+      }, function () { self._mint = null; return ''; });
+      return this._mint;
+    },
+    // a device locked to a course with its own PIN but no token yet: one line, the course PIN, done
+    askOwn: function () {
+      if (this._asked || !this.proshop() || !this.lock() || this.token() || document.getElementById('pd-own')) return;
+      this._asked = true;
+      var self = this, d = document.createElement('div'); d.id = 'pd-own';
+      d.setAttribute('style', 'position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:2147483000;width:min(440px,calc(100vw - 32px));box-sizing:border-box;background:#0c4a6e;color:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.3);font:600 13px/1.4 system-ui,sans-serif');
+      d.innerHTML = '<div style="display:flex;gap:8px;align-items:flex-start"><div style="flex:1">' + E(this.t('pinsNeed')) + '</div>' +
+        '<button type="button" data-x aria-label="Close" style="background:none;border:0;color:#fff;font-size:18px;line-height:1;cursor:pointer;padding:0 2px">×</button></div>' +
+        '<div style="display:flex;gap:8px;margin-top:8px"><input data-p type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" class="pin-mask" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore placeholder="' + E(this.t('tokPh')) + '" style="flex:1;min-width:0;border:0;border-radius:10px;padding:9px 10px;font:700 16px system-ui;color:#0f172a;background:#fff">' +
+        '<button type="button" data-go style="border:0;border-radius:10px;padding:0 14px;flex:none;white-space:nowrap;background:#22c55e;color:#04210f;font:800 13px system-ui;cursor:pointer">' + E(this.t('tokGo')) + '</button></div>' +
+        '<div data-m style="display:none;margin-top:6px;color:#fecaca"></div>';
+      document.body.appendChild(d);
+      var go = async function () {
+        var ok = await self.ownLogin(d.querySelector('[data-p]').value);
+        if (ok === true) { d.remove(); self.fillSlots(document); return; }
+        var m = d.querySelector('[data-m]'); m.textContent = self.t(ok === 'offline' ? 'offline' : 'tokBad'); m.style.display = 'block';
+      };
+      d.querySelector('[data-go]').addEventListener('click', go);
+      d.querySelector('[data-p]').addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
+      d.querySelector('[data-x]').addEventListener('click', function () { d.remove(); });
+    },
+    // the course's OWN PIN -> its desk token; the PIN must be THIS device's course (a pinned pro shop)
+    ownLogin: async function (pin) {
+      var sb = this.sb(); if (!sb) return 'offline';
+      pin = digits(pin);
+      if (!/^\d{6}$/.test(pin) || pin === '000000') return false;
+      try {
+        var r = await sb.rpc('proshop_pin_login', { p_pin: pin });
+        var data = r && r.data, lock = this.lock();
+        var ok = data && data.desk_token && (!lock || lock.id === data.course_id || (lock.facility_id && lock.facility_id === data.facility_id));
+        if (!ok) return false;
+        localStorage.setItem('ps_desk_token_v1', data.desk_token);
+        localStorage.removeItem('ps_desk_token_shared_v1');
+        this.pins = {};
+        return true;
+      } catch (e) { return 'offline'; }
+    },
     crm: function () { var C = this.api && this.api.crm && this.api.crm(); return (C && C.ready && C.ready()) ? C : null; },
     date: function () { return this.api.el.dateInput.value; },
     loc: function () { var l = this.api.lang(); return l === 'en' ? 'en-GB' : l; },
@@ -280,7 +357,16 @@
     },
     slot: function (id) { return id ? '<span class="pd-pinslot" data-cp-gid="' + E(id) + '"></span>' : ''; },
     fillSlots: function (root) {
-      if (!this.token()) return;
+      var self = this;
+      if (!this.token() || !this.lock()) {
+        if (!document.querySelector('.pd-pinslot[data-cp-gid]:not([data-cp-done]), .pill .pill-av[data-golfer-face]')) return;
+        if (this.lock() && !this.token()) { this.askOwn(); return; }
+        if (!this._ens) { this._ens = 1; this.ensureToken().then(function (t) { self._ens = 0; if (t) self._fill(root); }); }
+        return;
+      }
+      this._fill(root);
+    },
+    _fill: function (root) {
       var self = this, els = Array.prototype.slice.call((root || document).querySelectorAll('.pd-pinslot[data-cp-gid]:not([data-cp-done])'));
       if (!els.length) return;
       var ids = {}; els.forEach(function (x) { ids[x.getAttribute('data-cp-gid')] = 1; });
@@ -295,7 +381,7 @@
     // 6 digits typed where a golfer NAME is searched -> that golfer, in the shape name-search.js returns
     /* v1545: PIN → golfer at EVERY course: the course's own-PIN desk token when it has one, else pin_lookup (name + hcp, rate-limited) */
     lookupAny: async function (pin) {
-      var sb = this.sb(), tok = this.token(); if (!sb) return null;
+      var sb = this.sb(), tok = await this.ensureToken(); if (!sb) return null;
       try {
         if (tok) {
           var r = await sb.rpc('desk_call_lookup', { p_token: tok, p_pin: pin });
@@ -323,7 +409,7 @@
 
     // ---------- PINs on the course's booking pills ----------
     async pinsFor(ids) {
-      var tok = this.token(), sb = this.sb(), self = this;
+      var tok = await this.ensureToken(), sb = this.sb(), self = this;
       ids = (ids || []).filter(function (i) { return i && !(i in self.pins); });
       if (!tok || !sb || !ids.length) return this.pins;
       ids.forEach(function (i) { self.pins[i] = ''; });   // asked once per page; a PIN set later shows on the next open
@@ -337,7 +423,12 @@
       return this.pins;
     },
     onRender: function (grid) {
-      if (!grid || !this.token()) return;
+      if (!grid) return;
+      var self = this;
+      if (this.lock() && !this.token()) { this.askOwn(); return; }
+      this.ensureToken().then(function (t) { if (t) self._onRender(grid); });
+    },
+    _onRender: function (grid) {
       var self = this, ids = {};
       grid.querySelectorAll('.pill .pill-av[data-golfer-face]').forEach(function (a) { var id = a.getAttribute('data-golfer-face'); if (id) ids[id] = 1; });
       var list = Object.keys(ids); if (!list.length) return;
@@ -411,6 +502,7 @@
         var ok = data && data.desk_token && (!lock || lock.id === data.course_id || (lock.facility_id && lock.facility_id === data.facility_id));
         if (!ok) { S.msg = this.t('tokBad'); this.paint(); return; }
         localStorage.setItem('ps_desk_token_v1', data.desk_token);
+        localStorage.removeItem('ps_desk_token_shared_v1');
         this.pins = {};
         S.view = 'find'; S.msg = null; S.focus = 'pin'; this.paint();
         this.api.render();

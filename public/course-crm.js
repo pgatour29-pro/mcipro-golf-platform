@@ -432,10 +432,8 @@
       // a name-only record joins the ONE account that carries the same name (two accounts = leave it alone)
       var byNorm = {};
       Object.keys(people).forEach(function (k) { var p = people[k]; if (p.id) Object.keys(p.norm).forEach(function (n) { (byNorm[n] = byNorm[n] || []).push(p); }); });
-      Object.keys(people).forEach(function (k) {
-        var p = people[k]; if (p.id) return;
-        var hit = byNorm[k.slice(2)]; if (!hit || hit.length !== 1) return;
-        var t = hit[0];
+      function into(k, t) {
+        var p = people[k];
         Object.keys(p.visits).forEach(function (d) {
           var a = p.visits[d], b = t.visits[d];
           if (!b) { t.visits[d] = a; return; }
@@ -446,6 +444,22 @@
         if (!t.rec && p.rec) t.rec = p.rec;
         if (!t.member && p.member) t.member = p.member;
         delete people[k];
+      }
+      Object.keys(people).forEach(function (k) {
+        var p = people[k]; if (p.id) return;
+        var hit = byNorm[k.slice(2)]; if (!hit || hit.length !== 1) return;
+        into(k, hit[0]);
+      });
+      /* v1591 (Pete: the Call PIN always next to the player's name): a guest / manual / roster id (MANUAL-…, manual_…,
+         TRGG-GUEST-…, player_…) carrying the name of ONE registered account here is that golfer — one row, under the
+         account, so the PIN shows. Two accounts with that name = left alone. */
+      var acct = function (id) { return /^U[0-9a-f]{32}$/.test(id) || /^(KAKAO|GOOGLE)-/.test(id); }, byAcct = {};
+      Object.keys(people).forEach(function (k) { var p = people[k]; if (p.id && acct(p.id)) Object.keys(p.norm).forEach(function (n) { var l = byAcct[n] || (byAcct[n] = []); if (l.indexOf(p) < 0) l.push(p); }); });
+      Object.keys(people).forEach(function (k) {
+        var p = people[k]; if (!p.id || acct(p.id)) return;
+        var ts = []; Object.keys(p.norm).forEach(function (n) { (byAcct[n] || []).forEach(function (t) { if (ts.indexOf(t) < 0) ts.push(t); }); });
+        var one = Object.keys(p.norm).every(function (n) { return (byAcct[n] || []).length <= 1; });
+        if (ts.length === 1 && one) into(k, ts[0]);
       });
 
       var list = Object.keys(people).map(function (k) { return self._stats(people[k], today, cadByNum); });

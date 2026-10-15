@@ -97,6 +97,8 @@
   D + ".light-mode #g3oLeft > #orgLiteCubesGrid.trgg-on{grid-template-columns:repeat(5,1fr) !important}\n" +
   /* v1086: cubes are EXACTLY their row - 1.0's min-height:150px beat the old 126px short-screen rows and row 1 spilled over row 2 */
   D + ".light-mode #g3oLeft > #orgLiteCubesGrid > .metric-card," + D + ".light-mode #g3oLeft > #orgLiteCubesGrid > .cube-split{min-height:0 !important;height:100% !important;max-height:100% !important;overflow:hidden}\n" +
+  /* v1587: the split cell must not clip its halves' premium shadow into square corners (golfer twin in g3-desk.js) */
+  D + ".light-mode #g3oLeft > #orgLiteCubesGrid > .cube-split{overflow:visible}\n" +
   D + ".light-mode #g3oLeft > #orgLiteCubesGrid > .cube-poster .cube-art{width:104px !important;height:104px !important;right:-14px !important;bottom:-16px !important}\n" +
   D + ".light-mode #g3oLeft > #orgLiteCubesGrid .cube-split > .cube-poster .cube-art{width:54px !important;height:54px !important;right:-8px !important;bottom:-10px !important}\n" +
   D + ".light-mode #g3oLeft > #orgLiteCubesGrid .cube-split > .cube-poster h3{font-size:14px !important;margin-bottom:0 !important}\n" +

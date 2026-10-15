@@ -147,7 +147,9 @@
   "#golferDashboard.g3.light-mode:not(.round-active) #g3Left #cubeScheduleBody .cubeCaddyLine img{width:40px !important;height:40px !important;border-radius:10px !important}\n" +
   "#golferDashboard.g3.light-mode:not(.round-active) #g3Left #cubeScheduleBody .cubeCaddyLine{font-size:12.5px !important;margin-top:3px !important}\n" +
   /* GTS1 split cell: on desktop the Society Events half fills the cell; Tee Sheet lives in the rail + band action */
-  "#golferDashboard.g3.light-mode:not(.round-active) #g3Left > #liteCubesGrid > .cube-split{display:block !important;height:100%}\n" +
+  /* v1587: the split cell is only a wrapper here - its v1086 overflow:hidden squared off the Society Events cube's premium
+     shadow into dark bottom corners (Pete 10-15). The cube clips its own art; the cell must not clip the cube. */
+  "#golferDashboard.g3.light-mode:not(.round-active) #g3Left > #liteCubesGrid > .cube-split{display:block !important;height:100%;overflow:visible}\n" +
   "#golferDashboard.g3.light-mode:not(.round-active) #g3Left > #liteCubesGrid > .cube-split > .cube-poster:first-child{height:100% !important;min-height:0 !important}\n" +
   "#golferDashboard.g3.light-mode:not(.round-active) #g3Left > #liteCubesGrid > .cube-split > .cube-poster:nth-child(2){display:none !important}\n" +
   "#golferDashboard.g3.light-mode:not(.round-active) #g3Left > #liteCubesGrid .cube-split > .cube-poster .cube-art{width:110px !important;height:110px !important;right:-14px !important;bottom:-16px !important}\n" +

@@ -25,7 +25,17 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { action, user_id, recipient_id, message_text, message_id, limit,
-            scope, reply_to_id, reply_to_text, reply_to_name } = await req.json();
+            scope, reply_to_id, reply_to_text, reply_to_name, attachments } = await req.json();
+    // IM v1577: photos in chat. Client uploads to the private chat-media bucket and sends the
+    // storage paths; clamped here (max 4, path only inside chat-media, ints for the size).
+    const atts: Array<{ path: string; w: number; h: number }> = [];
+    if (Array.isArray(attachments)) {
+      for (const a of attachments.slice(0, 4)) {
+        const p = String((a && a.path) || "").replace(/[^A-Za-z0-9_\-./]/g, "").slice(0, 200);
+        if (!p || p.includes("..") || !/^im\//.test(p)) continue;
+        atts.push({ path: p, w: Math.max(0, Math.min(8000, parseInt(a.w, 10) || 0)), h: Math.max(0, Math.min(8000, parseInt(a.h, 10) || 0)) });
+      }
+    }
 
     if (!user_id) return json({ error: "Missing user_id" }, 400, origin);
 
@@ -77,7 +87,7 @@ Deno.serve(async (req: Request) => {
 
     } else if (action === "send") {
       // Send DM — verify sender matches authenticated user
-      if (!recipient_id || !message_text) {
+      if (!recipient_id || (!message_text && !atts.length)) {
         return json({ error: "Missing recipient_id or message_text" }, 400, origin);
       }
 
@@ -87,8 +97,9 @@ Deno.serve(async (req: Request) => {
       const row: Record<string, unknown> = {
         sender_line_id: user_id,  // Enforced to be the authenticated user
         recipient_line_id: recipient_id,
-        message_text: message_text,
+        message_text: String(message_text || ""),
       };
+      if (atts.length) row.attachments = atts;
       if (reply_to_id) {
         row.reply_to_id = reply_to_id;
         row.reply_to_text = String(reply_to_text || "").slice(0, 160);
@@ -121,7 +132,7 @@ Deno.serve(async (req: Request) => {
             recipient_id: recipient_id,
             sender_id: user_id,
             sender_name: userProfile.name || "Someone",
-            content: message_text,
+            content: String(message_text || "") || (atts.length ? "📷 Photo" : ""),
           },
         }),
       }).catch((pushErr) => { console.error("LINE push failed:", pushErr); });

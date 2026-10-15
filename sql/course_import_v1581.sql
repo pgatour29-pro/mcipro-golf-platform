@@ -827,3 +827,148 @@ revoke all on function public.course_import_list(text, text, text) from public;
 grant execute on function public.course_import_list(text, text, text) to anon, authenticated;
 
 commit;
+
+-- ---------------------------------------------------------------------------------------------------------
+-- 6. v1583 hardening (commit security review, 2026-10-15): bind every write to the course the token (or the
+--    open course itself) allows — the slug, the venue key, the facility and the course name are checked or
+--    derived server-side, never trusted from the client; customer records are read through a gated RPC.
+-- ---------------------------------------------------------------------------------------------------------
+begin;
+
+-- the ids this caller may write for p_course: a locked course = its desk token's keys (which must include the
+-- course); an open (shared-PIN) course = its own id, its tee sheet slug(s) and their course refs
+create or replace function public._import_keys(p_token text, p_course text)
+returns text[] language plpgsql stable as $$
+declare keys text[]; v_locked boolean;
+begin
+    if coalesce(p_course, '') = '' then raise exception 'IMPORT_NO_COURSE' using errcode = '22023'; end if;
+    v_locked := public._import_course_locked(p_course, null)
+             or exists (select 1 from public.course_venues v where v.course_ref = p_course and public._import_course_locked(p_course, v.slug))
+             or exists (select 1 from public.course_venues v where v.slug = p_course and public._import_course_locked(coalesce(v.course_ref, p_course), v.slug));
+    if v_locked then
+        keys := public._desk_keys(p_token);
+        if keys is null or not (p_course = any(keys)) then
+            raise exception 'IMPORT_TOKEN: this course imports with its own pro shop PIN' using errcode = '42501';
+        end if;
+        return keys;
+    end if;
+    select array_remove(array_agg(distinct k), null) into keys from (
+        select p_course k
+        union select v.slug from public.course_venues v where v.course_ref = p_course
+        union select v.course_ref from public.course_venues v where v.slug = p_course
+    ) x;
+    return keys;
+end $$;
+revoke all on function public._import_keys(text, text) from public, anon, authenticated;
+
+-- a slug / venue key belongs to the allowed keys: same normalised id, or one is a prefix of the other
+-- (burapha ~ burapha-ac, pattaya-golf ~ pattayagolf), never shorter than 5 characters
+create or replace function public._import_key_match(p_key text, p_keys text[])
+returns boolean language sql immutable as $$
+    select coalesce(p_key, '') <> '' and exists (
+        select 1 from unnest(coalesce(p_keys, '{}'::text[])) k
+         where public.course_key_of(k) = public.course_key_of(p_key)
+            or (length(public.course_key_of(p_key)) >= 5 and public.course_key_of(k) like public.course_key_of(p_key) || '%')
+            or (length(public.course_key_of(k)) >= 5 and public.course_key_of(p_key) like public.course_key_of(k) || '%'))
+$$;
+revoke all on function public._import_key_match(text, text[]) from public, anon, authenticated;
+
+create or replace function public._import_gate(p_token text, p_course text, p_slug text)
+returns void language plpgsql as $$
+declare keys text[];
+begin
+    keys := public._import_keys(p_token, p_course);
+    if coalesce(p_slug, '') <> '' and not (p_slug = any(keys) or public._import_key_match(p_slug, keys)) then
+        raise exception 'IMPORT_SCOPE: that tee sheet is not this course' using errcode = '42501';
+    end if;
+end $$;
+
+-- roster lookup bound to the allowed keys: the course's own rows, or an unplaced row at the same facility name
+create or replace function public._import_caddy_by_number(p_course text, p_slug text, p_course_name text, p_num text)
+returns public.caddy_profiles language plpgsql stable as $$
+declare r public.caddy_profiles; v_num text; keys text[];
+begin
+    v_num := coalesce(nullif(ltrim(regexp_replace(coalesce(p_num, ''), '\D', '', 'g'), '0'), ''), '0');
+    if v_num = '0' then return null; end if;
+    keys := coalesce(nullif(current_setting('mcp.import_keys', true), ''), p_course)::text[];
+    select cp.* into r from public.caddy_profiles cp
+     where not coalesce(cp.is_mock, false) and cp.left_at is null
+       and coalesce(nullif(ltrim(coalesce(cp.caddy_number, ''), '0'), ''), '0') = v_num
+       and (cp.course_id = any(keys)
+            or (coalesce(cp.course_id, '') = '' and p_course_name is not null
+                and public.caddy_facility_key(cp.course_name) = public.caddy_facility_key(p_course_name)))
+     order by (cp.course_id = p_course) desc, (cp.course_id = p_slug) desc, cp.created_at
+     limit 1;
+    return r;
+end $$;
+
+create or replace function public.course_import_run(p_token text, p_course text, p_slug text, p_course_name text, p_kind text,
+                                                    p_rows jsonb, p_opts jsonb default '{}'::jsonb, p_batch uuid default null,
+                                                    p_final boolean default true, p_file text default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare b public.course_import_batches; r jsonb; v_n int; keys text[]; opts jsonb; v_name text; v_fac text;
+begin
+    keys := public._import_keys(p_token, p_course);
+    perform public._import_gate(p_token, p_course, p_slug);
+    perform set_config('mcp.import_keys', keys::text, true);
+    if p_kind not in ('teesheet', 'caddies', 'members', 'customers', 'products') then raise exception 'IMPORT_KIND' using errcode = '22023'; end if;
+    v_n := jsonb_array_length(coalesce(p_rows, '[]'::jsonb));
+    if v_n > 500 then raise exception 'IMPORT_CHUNK: at most 500 rows per call' using errcode = '22023'; end if;
+    -- the course name and facility come from the database, the venue key must belong to the course
+    select c.name into v_name from public.courses c where c.id = p_course;
+    if v_name is null then select v.name into v_name from public.course_venues v where v.slug = coalesce(p_slug, p_course) or v.course_ref = p_course limit 1; end if;
+    v_name := coalesce(v_name, left(p_course_name, 120), p_course);
+    select fc.facility_id into v_fac from public.facility_courses fc where fc.course_ref = p_course or fc.slug = coalesce(p_slug, p_course) limit 1;
+    opts := coalesce(p_opts, '{}'::jsonb) - 'facility_id' - 'venue';
+    if v_fac is not null then opts := opts || jsonb_build_object('facility_id', v_fac); end if;
+    if coalesce(p_opts->>'venue', '') <> '' then
+        if not public._import_key_match(p_opts->>'venue', keys) then raise exception 'IMPORT_SCOPE: that venue is not this course' using errcode = '42501'; end if;
+        opts := opts || jsonb_build_object('venue', left(p_opts->>'venue', 80));
+    end if;
+    if p_batch is null then
+        insert into public.course_import_batches (course_id, course_slug, course_name, kind, status, file_name, opts, actor)
+        values (p_course, p_slug, v_name, p_kind, 'open', left(p_file, 160), opts, public._import_actor())
+        returning * into b;
+    else
+        select * into b from public.course_import_batches where id = p_batch and course_id = p_course and kind = p_kind and status = 'open' for update;
+        if not found then raise exception 'IMPORT_BATCH: unknown or closed batch' using errcode = '22023'; end if;
+    end if;
+    r := case p_kind
+            when 'teesheet'  then public._import_teesheet(b.id, p_course, p_slug, v_name, p_rows, opts)
+            when 'caddies'   then public._import_caddies(b.id, p_course, p_slug, v_name, p_rows, opts)
+            when 'members'   then public._import_members(b.id, p_course, p_slug, v_name, p_rows, opts)
+            when 'customers' then public._import_customers(b.id, p_course, p_slug, v_name, p_rows, opts)
+            else                  public._import_products(b.id, p_course, p_slug, v_name, p_rows, opts)
+         end;
+    update public.course_import_batches x set
+        rows_in = x.rows_in + v_n, inserted = x.inserted + (r->>'inserted')::int, updated = x.updated + (r->>'updated')::int,
+        skipped = x.skipped + (r->>'skipped')::int,
+        notes = case when jsonb_array_length(x.notes) >= 400 then x.notes else x.notes || coalesce(r->'notes', '[]'::jsonb) end,
+        status = case when p_final then 'done' else x.status end, done_at = case when p_final then now() else x.done_at end
+     where x.id = b.id returning * into b;
+    if p_final then perform public._import_log(p_course, b, 'IMPORT'); end if;
+    return jsonb_build_object('batch', b.id, 'status', b.status, 'inserted', r->'inserted', 'updated', r->'updated', 'skipped', r->'skipped', 'notes', r->'notes',
+                              'totals', jsonb_build_object('rows', b.rows_in, 'inserted', b.inserted, 'updated', b.updated, 'skipped', b.skipped));
+end $$;
+
+-- customer records: no browser SELECT; the player book reads them through this gate
+drop policy if exists course_customers_select on public.course_customers;
+revoke select on public.course_customers from anon, authenticated;
+revoke all on public.course_customers from public, anon, authenticated;   -- also the default TRUNCATE / REFERENCES / TRIGGER grants
+create or replace function public.course_customers_list(p_token text, p_course text, p_slug text, p_venue text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare keys text[]; v_course text;
+begin
+    v_course := coalesce(nullif(p_course, ''), (select v.course_ref from public.course_venues v where v.slug = p_slug), p_slug);
+    keys := public._import_keys(p_token, v_course);
+    if coalesce(p_slug, '') <> '' and not (p_slug = any(keys) or public._import_key_match(p_slug, keys)) then
+        raise exception 'IMPORT_SCOPE' using errcode = '42501';
+    end if;
+    if not public._import_key_match(p_venue, keys) then raise exception 'IMPORT_SCOPE' using errcode = '42501'; end if;
+    return coalesce((select jsonb_agg(to_jsonb(c) - 'batch_id' - 'created_at' - 'updated_at' - 'source' order by c.name)
+                       from (select * from public.course_customers where venue = p_venue limit 20000) c), '[]'::jsonb);
+end $$;
+revoke all on function public.course_customers_list(text, text, text, text) from public;
+grant execute on function public.course_customers_list(text, text, text, text) to anon, authenticated;
+
+commit;

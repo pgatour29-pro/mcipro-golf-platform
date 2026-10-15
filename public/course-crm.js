@@ -323,7 +323,11 @@
         this._all(function () { return sb.from('bookings').select('id,date,time,name,golfer_id,golfer_name,course_id,course_name,phone,booking_type,deleted,booking_data').neq('deleted', true).order('id'); }),
         this._all(function () { return sb.from('course_golfer_notes').select('golfer_key,note,vip,updated_at').eq('venue', self.venueKey()).order('golfer_key'); }),
         // v1581: the course's own customer records (Import data) and its memberships (facility or plain course)
-        this._all(function () { return sb.from('course_customers').select('id,golfer_key,golfer_id,name,phone,email,country,member_no,visits,first_visit,last_visit,vip,tags,note').eq('venue', self.venueKey()).order('id'); }),
+        (function () {   // v1583: a gated read (the course's desk token when it has its own PIN) — never an open table
+          var tok = null; try { tok = localStorage.getItem('ps_desk_token_v1') || null; } catch (e) { }
+          return sb.rpc('course_customers_list', { p_token: tok, p_course: self.course.id || null, p_slug: self.course.slug || null, p_venue: self.venueKey() })
+            .then(function (r) { return (r && Array.isArray(r.data)) ? r.data : []; }, function () { return []; });
+        })(),
         (function () { var keys = [self.course.facility, self.course.id].filter(Boolean); return keys.length ? self._all(function () { return sb.from('course_memberships').select('id,golfer_id,golfer_name,member_no,tier,valid_from,valid_to,status,home_slug').in('facility_id', keys).order('id'); }) : Promise.resolve([]); })()
       ]);
       var notes = {}; res[5].forEach(function (n) { notes[n.golfer_key] = n; });

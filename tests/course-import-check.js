@@ -34,13 +34,16 @@ if (/from\('(bookings|caddy_bookings|caddy_profiles|course_memberships|course_cu
 if (!/new TextDecoder\('windows-874'\)/.test(mod)) fail.push('course-import.js: Thai legacy CSVs (windows-874) must still be read');
 
 // 3. the CRM reads the imported records and memberships
-if (!/from\('course_customers'\)/.test(crm) || !/from\('course_memberships'\)/.test(crm)) fail.push('course-crm.js: the player book must read course_customers + course_memberships');
+if (!/rpc\('course_customers_list'/.test(crm) || /from\('course_customers'\)/.test(crm) || !/from\('course_memberships'\)/.test(crm)) fail.push('course-crm.js: the player book reads customer records through course_customers_list (never the table) + course_memberships');
 
 // 4. SQL: locked tables, server-only helpers, the quiet switch, public RPCs gated
 ['course_import_batches', 'course_import_rows'].forEach(t => {
     if (!new RegExp('alter table public\\.' + t + ' enable row level security;\\s*revoke all on public\\.' + t + ' from public, anon, authenticated;').test(sql)) fail.push('sql: ' + t + ' must stay locked to the browser');
 });
-if (!/create policy course_customers_select on public\.course_customers for select to anon, authenticated using \(true\);/.test(sql) || !/revoke insert, update, delete on public\.course_customers from anon, authenticated;/.test(sql)) fail.push('sql: course_customers is read-only for the browser');
+if (!/drop policy if exists course_customers_select on public\.course_customers;\s*revoke select on public\.course_customers from anon, authenticated;/.test(sql) || !/revoke insert, update, delete on public\.course_customers from anon, authenticated;/.test(sql)) fail.push('sql: course_customers has no browser read or write — the player book reads it through course_customers_list');
+if (!/create or replace function public\.course_customers_list\(p_token text, p_course text, p_slug text, p_venue text\)\s*returns jsonb language plpgsql security definer/.test(sql)) fail.push('sql: course_customers_list must be the gated reader');
+if (!/keys := public\._import_keys\(p_token, p_course\);\s*perform public\._import_gate\(p_token, p_course, p_slug\);\s*perform set_config\('mcp\.import_keys', keys::text, true\);/.test(sql)) fail.push('sql: course_import_run must bind the caller to its course keys (slug, venue, facility, roster all checked against them)');
+if (/opts := coalesce\(p_opts, '\{\}'::jsonb\) - 'facility_id' - 'venue';/.test(sql) === false) fail.push('sql: facility_id and venue are never taken from the client as-is');
 if (!/if coalesce\(current_setting\('mcp\.quiet', true\), ''\) = '1' then return null; end if;/.test(sql)) fail.push('sql: caddy_job_alert must honour the mcp.quiet switch (bulk imports with alerts off)');
 ['course_import_run', 'course_import_undo', 'course_import_list'].forEach(n => {
     if (!new RegExp('create or replace function public\\.' + n + '\\([^)]*\\)\\s*returns jsonb language plpgsql security definer').test(sql)) fail.push('sql: ' + n + ' must be security definer');

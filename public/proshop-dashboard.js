@@ -464,7 +464,7 @@
                 <div class="lg:sticky lg:top-3">
                   <div class="bg-slate-900 rounded-2xl p-4 shadow-lg">
                     <h3 class="font-bold text-white mb-3 flex items-center gap-2 text-sm">${mi('shopping_cart', 'text-emerald-400')} ${tr('ps.cart', 'Cart')} ${cartN ? `<span class="text-[11px] bg-emerald-500 text-white rounded-full px-2 py-0.5 font-bold">${cartN}</span>` : ''}</h3>
-                    <div class="space-y-1.5 mb-3" style="max-height:38vh;overflow-y:auto;">
+                    <div class="space-y-1.5 mb-3">
                       ${PS.cart.map(c => `
                         <div class="flex items-center gap-2 bg-slate-800 rounded-lg px-2.5 py-2">
                           <div class="flex-1 min-w-0">
@@ -1051,6 +1051,20 @@
                 });
             } catch (e) { }
         },
+        /* v1592 (Pete: "get rid of the inner pages, its either the entire page scrolls or none at all"): the Tee Sheet and
+           Caddies tabs are a frame whose page scrolls itself. Sized to the screen below the header (and above the phone
+           dock, which main's padding already clears), the dashboard never scrolls under it — one scroller, not two. */
+        fitFrames() {
+            const f = ['teesheet-iframe', 'caddies-iframe'].map(id => document.getElementById(id)).find(x => x && x.offsetParent);
+            if (!f) return;
+            // one measurement: what sits above and below the frame (main's padding, the phone dock's room); a read-back after
+            // setting the height lies, the app-wide 1e-5s transition reports the OLD height for that tick
+            f.style.transition = 'none'; f.style.display = 'block';   // block: no inline line-gap under the frame
+            const r = f.getBoundingClientRect(), tab = f.parentElement, main = f.closest('main');
+            const cs = main ? getComputedStyle(main) : null;
+            const below = Math.max(0, tab.getBoundingClientRect().bottom - r.bottom) + (cs ? parseFloat(cs.paddingBottom) + parseFloat(cs.borderBottomWidth) : 0);
+            f.style.height = Math.max(320, Math.floor(window.innerHeight - (r.top + window.scrollY) - below)) + 'px';
+        },
         async loadMessages(silent) {
             const host = document.getElementById('ps-messages-body');
             if (!host) return;
@@ -1064,6 +1078,7 @@
                 if (seq !== PS._seq.msg) return;
                 PS._msgState.rows = data || [];
                 PS.renderMessages();
+                if (!silent) PS.chatToBox();
                 PS._loaded.msg = true;
                 PS.updateMsgBadge();
             } catch (e) {
@@ -1094,7 +1109,7 @@
             let panel = '';
             if (st.tab === 'chat') {
                 panel = `
-                  <div class="bg-gray-50 border border-gray-200 rounded-xl p-3 mb-3" style="max-height:48vh;overflow-y:auto;display:flex;flex-direction:column-reverse;">
+                  <div class="bg-gray-50 border border-gray-200 rounded-xl p-3 mb-3">
                     <div>${chat.slice(0, 60).reverse().map(bubble).join('') || `<div class="text-center text-gray-500 py-8 text-sm">${tr('ps.nochat', 'No messages yet — say hello to the team')}</div>`}</div>
                   </div>
                   <div class="flex gap-2">
@@ -1150,7 +1165,9 @@
             if (rinp) rinp.addEventListener('keydown', (e) => { if (e.key === 'Enter') PS.sendRequest(); });
             if (st.tab === 'chat') PS.markChatRead(chat);
         },
-        msgTab(id) { PS._msgState.tab = id; PS.renderMessages(); },
+        msgTab(id) { PS._msgState.tab = id; PS.renderMessages(); PS.chatToBox(); },
+        // v1592: the team chat grows with the page (no box of its own to scroll) — opening it lands on the newest + the box
+        chatToBox() { try { const i = PS._msgState.tab === 'chat' && document.getElementById('ps-msg-input'); if (i) i.scrollIntoView({ block: 'nearest' }); } catch (e) { } },
         async markChatRead(chat) {
             const me = uid();
             const unread = chat.filter(m => m.sender_id !== me && !(m.read_by || []).includes(me));
@@ -1345,7 +1362,10 @@
         try { const tb = document.getElementById('proshop-' + tabName + '-tab'); if (tb && tb.offsetParent && tb.scrollIntoView) tb.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) { }
         try { if (window.PSGlass) PSGlass.onTab(tabName); } catch (e) { }
         setTimeout(() => { try { PS.onTab(tabName); } catch (e) { console.warn('[PS] onTab', e); } }, 50);
+        // v1592 one scroller: a frame tab fills the screen exactly (twice: the header can settle a beat later)
+        [80, 450].forEach(ms => setTimeout(() => { try { PS.fitFrames(); } catch (e) { } }, ms));
     };
+    window.addEventListener('resize', () => { try { PS.fitFrames(); } catch (e) { } });
 
     window.ProshopDashboard = PS;
     console.log('[ProshopDashboard] module loaded');

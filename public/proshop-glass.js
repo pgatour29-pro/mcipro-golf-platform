@@ -798,7 +798,7 @@ html.psg body #kitchenQueueOverlay .kq-card,html.psg body #kitchenQueueOverlay .
 .psg-chart .col.now .x{color:#bbf7d0;font-weight:700}
 .psg-chart .tipb{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);white-space:nowrap;font:700 11px Inter,sans-serif;background:#fff;color:#06281a;padding:5px 9px;border-radius:9px;box-shadow:0 8px 20px rgba(0,0,0,.35);z-index:2}
 .psg-chart .tipb::after{content:"";position:absolute;left:50%;bottom:-4px;width:8px;height:8px;background:#fff;transform:translateX(-50%) rotate(45deg)}
-.psg-tees .psg-list{margin-top:10px;max-height:calc(100vh - 230px);min-height:200px;overflow:auto;scrollbar-width:thin;overscroll-behavior:contain}
+.psg-tees .psg-list{margin-top:10px}
 .psg-tee{display:grid;grid-template-columns:58px minmax(0,1fr) auto;align-items:center;gap:12px;padding:11px 0;border:0;border-top:1px solid var(--line);background:transparent;color:inherit;width:100%;text-align:left;cursor:pointer;font:inherit}
 .psg-list > .psg-tee:first-child{border-top:0}
 .psg-tee.past{opacity:.55}

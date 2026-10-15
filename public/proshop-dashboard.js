@@ -1063,7 +1063,7 @@
             const r = f.getBoundingClientRect(), tab = f.parentElement, main = f.closest('main');
             const cs = main ? getComputedStyle(main) : null;
             const below = Math.max(0, tab.getBoundingClientRect().bottom - r.bottom) + (cs ? parseFloat(cs.paddingBottom) + parseFloat(cs.borderBottomWidth) : 0);
-            f.style.height = Math.max(320, Math.floor(window.innerHeight - (r.top + window.scrollY) - below)) + 'px';
+            f.style.height = Math.max(160, Math.floor(window.innerHeight - (r.top + window.scrollY) - below)) + 'px';
         },
         async loadMessages(silent) {
             const host = document.getElementById('ps-messages-body');
@@ -1365,7 +1365,9 @@
         // v1592 one scroller: a frame tab fills the screen exactly (twice: the header can settle a beat later)
         [80, 450].forEach(ms => setTimeout(() => { try { PS.fitFrames(); } catch (e) { } }, ms));
     };
-    window.addEventListener('resize', () => { try { PS.fitFrames(); } catch (e) { } });
+    // a resize / rotation re-lays the header + dock after the event: fit again once it has settled
+    let fitT = 0;
+    window.addEventListener('resize', () => { try { PS.fitFrames(); } catch (e) { } clearTimeout(fitT); fitT = setTimeout(() => { try { PS.fitFrames(); } catch (e) { } }, 350); });
 
     window.ProshopDashboard = PS;
     console.log('[ProshopDashboard] module loaded');

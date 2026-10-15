@@ -38196,10 +38196,31 @@
                 // Update now / On next login / Dismiss. The only reloads are the ones a person asked for: the bar's
                 // Update now, or a pending update applied when they log out (a safe moment). The old auto-reload
                 // (v1186→v1481) threw people out of the tee sheet, a booking or a half-filled form on every deploy.
+                // v1590 (Pete 2026-10-15: "There is no reason for users to tap update consecutively"): updates ROLL UP into
+                // one prompt. (1) A build found while the app is open waits HOLD before its bar shows; every newer build
+                // restarts the wait, so back-to-back deploys = one bar. (2) After someone taps Update now, no bar for COOL —
+                // later builds wait for the next open. (3) A build already waiting when the page OPENS is taken silently
+                // with no reload: HTML + JS are network-first in sw.js, so a freshly opened page already runs the new code.
                 window.__swUpdate = {
-                    reg: null, waiting: null, requested: false, dismissed: false,
+                    reg: null, waiting: null, requested: false, dismissed: false, _t: null, born: Date.now(),
+                    HOLD: 15 * 60 * 1000, COOL: 3 * 60 * 60 * 1000, FRESH: 90 * 1000,
                     T: function (k, fb) { try { return _lvT(k, fb); } catch (e) { return fb; } },
                     pending: function () { return !!(this.waiting || (this.reg && this.reg.waiting)); },
+                    cooled: function () { try { return Date.now() - (+localStorage.getItem('mc_upd_at') || 0) < this.COOL; } catch (e) { return false; } },
+                    // a new build arrived while the app is open: offer it once the deploys have settled, never twice in a row
+                    queue: function () {
+                        var self = this;
+                        if (this._t) clearTimeout(this._t);
+                        if (this.dismissed || this.cooled()) return;
+                        this._t = setTimeout(function () { self._t = null; if (!self.cooled()) self.show(); }, this.HOLD);
+                    },
+                    // the page was opened AFTER the build landed, so it already runs it: hand over quietly, no reload, no bar
+                    quiet: function () {
+                        var w = this.waiting || (this.reg && this.reg.waiting);
+                        if (!w) return;
+                        try { w.postMessage({ type: 'SKIP_WAITING' }); } catch (e) {}
+                        this.waiting = null;
+                    },
                     show: function () {
                         if (!this.pending() || this.dismissed || document.getElementById('appUpdateBar')) return;
                         var bar = document.createElement('div'); bar.id = 'appUpdateBar'; bar.setAttribute('role', 'status');
@@ -38226,6 +38247,7 @@
                     apply: function (cb) {
                         var w = this.waiting || (this.reg && this.reg.waiting);
                         var done = function () { try { if (window.LiveScorecardManager && window.LiveScorecardManager.saveRoundState) window.LiveScorecardManager.saveRoundState(); } catch (e) {} if (cb) cb(); else window.location.reload(); };
+                        try { localStorage.setItem('mc_upd_at', String(Date.now())); } catch (e) {}
                         if (!w) { done(); return; }
                         this.requested = true;
                         var fired = false; var tm = setTimeout(function () { if (!fired) { fired = true; done(); } }, 2500);
@@ -38249,22 +38271,22 @@
                     });
 
                     const buildId = window.__BUILD_ID__;
-                    const onLogin = function () { try { var l = document.getElementById('loginScreen'); return !!(l && l.classList.contains('active')) && !localStorage.getItem('line_user_id') && !localStorage.getItem('mcipro_staff_role'); } catch (e) { return false; } };
 
                     navigator.serviceWorker.register('/sw.js', { scope: '/' })
                         .then(reg => {
                             U.reg = reg;
                             console.log('[ServiceWorker] Registered successfully:', reg.scope);
-                            // a build already waiting from an earlier visit: nobody signed in = take it quietly now; else offer it
-                            if (reg.waiting && navigator.serviceWorker.controller) { U.waiting = reg.waiting; if (onLogin()) U.apply(); else U.show(); }
+                            // a build already waiting from an earlier visit: this fresh page already runs it (network-first) — take it quietly
+                            if (reg.waiting && navigator.serviceWorker.controller) { U.waiting = reg.waiting; U.quiet(); }
                             reg.addEventListener('updatefound', () => {
                                 const sw = reg.installing;
                                 if (!sw) return;
                                 sw.addEventListener('statechange', () => {
                                     if (sw.state === 'installed' && navigator.serviceWorker.controller) {
                                         U.waiting = sw;
-                                        console.log('[ServiceWorker] New version ready — offered, never forced');
-                                        U.show();
+                                        // found while this page was still opening = the page itself came off the network with it
+                                        if (Date.now() - U.born < U.FRESH) { console.log('[ServiceWorker] New version found at open — taken quietly'); U.quiet(); }
+                                        else { console.log('[ServiceWorker] New version ready — offered once deploys settle, never forced'); U.queue(); }
                                     }
                                 });
                             });

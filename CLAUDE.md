@@ -119,6 +119,9 @@ building, not after.
   (`sql/all_societies_upcoming_rosters_follow_hcp_20260923.sql`); a started/played round is frozen.
 
 ## Deploy ritual (every `public/` change)
+0. ROLL UP (Pete 2026-10-15: "if there are multiple updates roll it up into one"): every deploy = an "Update ready"
+   prompt on every open device. Batch all ready changes into ONE push / ONE SW bump; check every `?v=` tag first so no
+   follow-up deploy is needed. Only an outage/live-ops fix ships on its own.
 1. `npm test` — must pass.
 2. Bump `SW_VERSION` in `public/sw.js` (vNNN — increment; find current with grep). Every
    index.html deploy REQUIRES this or clients keep the stale cached app.

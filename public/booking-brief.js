@@ -19,7 +19,7 @@
     en: {
       whoTitle: 'Who is this booking for?', whoSub: 'Type a name — their history at this course shows here.',
       regulars: '{day} regulars', recent: 'Recently here', dayN: '{day} ×{n}', tapAdd: 'Add to booking',
-      newHere: 'New here', noHist: 'no history at this course', firstVisit: 'First booking at this course',
+      member: 'Member', newHere: 'New here', noHist: 'no history at this course', firstVisit: 'First booking at this course',
       back: 'Not seen for {n} days', onSheet: 'Already on this day’s sheet · {t}', onEvent: 'Coming with {s} this day', hasCaddy: 'Has a caddy booked this day',
       usually: 'Usually', k12: '12 mo: {n}', kNext: 'Next', cads: 'Their caddies', book: 'Book', picked: 'On this booking', bookedAt: 'Booked', dayOff: 'Day off', outUntil: 'Out until {t}', inGroup: 'In this group', gone: 'Not on roster',
       fav: 'Favourite', susUntil: 'Suspended · until {t}', add: 'Add', added: 'Added', full4: 'Group is full',
@@ -34,7 +34,7 @@
     th: {
       whoTitle: 'จองให้ใคร?', whoSub: 'พิมพ์ชื่อ — ประวัติที่สนามนี้จะแสดงตรงนี้',
       regulars: 'ขาประจำวัน{day}', recent: 'มาเมื่อเร็วๆ นี้', dayN: '{day} ×{n}', tapAdd: 'เพิ่มในการจอง',
-      newHere: 'ลูกค้าใหม่', noHist: 'ยังไม่มีประวัติที่สนามนี้', firstVisit: 'จองที่สนามนี้ครั้งแรก',
+      member: 'สมาชิก', newHere: 'ลูกค้าใหม่', noHist: 'ยังไม่มีประวัติที่สนามนี้', firstVisit: 'จองที่สนามนี้ครั้งแรก',
       back: 'ไม่ได้มา {n} วันแล้ว', onSheet: 'มีชื่อในตารางวันนี้แล้ว · {t}', onEvent: 'มากับ {s} วันนี้', hasCaddy: 'จองแคดดี้ไว้แล้ววันนี้',
       usually: 'มักมา', k12: '12 เดือน: {n}', kNext: 'ครั้งถัดไป', cads: 'แคดดี้ที่ใช้', book: 'จอง', picked: 'อยู่ในการจองนี้', bookedAt: 'ถูกจองแล้ว', dayOff: 'หยุด', outUntil: 'ออกรอบถึง {t}', inGroup: 'อยู่ในกลุ่มนี้', gone: 'ไม่อยู่ในรายชื่อ',
       fav: 'คนโปรด', susUntil: 'พักงาน · ถึง {t}', add: 'เพิ่ม', added: 'เพิ่มแล้ว', full4: 'กลุ่มเต็มแล้ว',
@@ -49,7 +49,7 @@
     ko: {
       whoTitle: '누구의 예약인가요?', whoSub: '이름을 입력하면 이 코스에서의 기록이 여기에 표시됩니다.',
       regulars: '{day} 단골', recent: '최근 방문', dayN: '{day} ×{n}', tapAdd: '예약에 추가',
-      newHere: '첫 방문', noHist: '이 코스 기록 없음', firstVisit: '이 코스 첫 예약',
+      member: '회원', newHere: '첫 방문', noHist: '이 코스 기록 없음', firstVisit: '이 코스 첫 예약',
       back: '{n}일 동안 방문 없음', onSheet: '이 날 티시트에 이미 있음 · {t}', onEvent: '이 날 {s} 일정으로 방문', hasCaddy: '이 날 캐디 예약 있음',
       usually: '주로', k12: '12개월: {n}', kNext: '다음 예약', cads: '이용 캐디', book: '예약', picked: '이 예약에 지정됨', bookedAt: '예약됨', dayOff: '휴무', outUntil: '{t}까지 라운드 중', inGroup: '이 그룹에 있음', gone: '명단에 없음',
       fav: '즐겨찾기', susUntil: '정지 · {t}까지', add: '추가', added: '추가됨', full4: '그룹이 가득 찼습니다',
@@ -64,7 +64,7 @@
     ja: {
       whoTitle: 'どなたの予約ですか？', whoSub: '名前を入力すると、このコースでの履歴がここに表示されます。',
       regulars: '{day}の常連', recent: '最近の来場', dayN: '{day} ×{n}', tapAdd: '予約に追加',
-      newHere: '初来場', noHist: 'このコースでの履歴なし', firstVisit: 'このコースで初めての予約',
+      member: 'メンバー', newHere: '初来場', noHist: 'このコースでの履歴なし', firstVisit: 'このコースで初めての予約',
       back: '{n}日間来場なし', onSheet: 'この日のティーシートに既にあります · {t}', onEvent: 'この日 {s} で来場予定', hasCaddy: 'この日キャディ予約あり',
       usually: 'いつも', k12: '12か月: {n}', kNext: '次回', cads: '指名キャディ', book: '予約', picked: 'この予約に指定済み', bookedAt: '予約済み', dayOff: '休み', outUntil: '{t}までラウンド中', inGroup: 'この組に指定済み', gone: '名簿にいません',
       fav: 'お気に入り', susUntil: '停止中 · {t}まで', add: '追加', added: '追加済み', full4: '組が満員です',
@@ -442,11 +442,12 @@
       var pr = id ? this.prof[id] : null, prof = pr && pr.prof, favs = (pr && pr.favs) || [];
       var name = (p && p.name) || C.nice((prof && (prof.name || prof.display_name)) || who.name);
       var nk = C.noteKey(p, who), note = data.notes[nk] || null, date = this.host.date();
-      var tags = [];
+      var tags = [], FXm = null;
       try {   // v1487: a facility member (course_memberships) — valid at every course of the facility
-        var FXm = window.FacilitySheet && window.FacilitySheet.active() && window.FacilitySheet.memberOf(name, id);
+        FXm = window.FacilitySheet && window.FacilitySheet.active() && window.FacilitySheet.memberOf(name, id);
         if (FXm) tags.push('<span class="bb-seg vip">' + E(window.FacilitySheet.t('memberAt', { f: window.FacilitySheet.fac.name })) + (FXm.member_no ? ' · ' + E(FXm.member_no) : '') + '</span>');
       } catch (e) {}
+      if (p && p.member && !FXm) tags.push('<span class="bb-seg vip">' + E(T('member')) + (p.member.member_no ? ' \u00b7 ' + E(p.member.member_no) : '') + '</span>');   // v1581: a plain course's member (course_memberships by courses.id)
       if (note && note.vip) tags.push('<span class="bb-seg vip">' + E(T('vip')) + '</span>');
       tags.push(p ? '<span class="bb-seg ' + p.seg + '">' + E(T({ 'new': 'segNew', regular: 'segRegular', lapsing: 'segLapsing', occ: 'segOcc', up: 'segUp' }[p.seg])) + '</span>' : '<span class="bb-seg">' + E(T('newHere')) + '</span>');
       var hc = this._hcp(prof); if (hc != null) tags.push('<span>' + E(T('hcp', { n: hc })) + '</span>');

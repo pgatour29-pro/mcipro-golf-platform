@@ -10,6 +10,7 @@
 
   var STR = {
     en: {
+      aShop: 'Shop stock', aCust: 'Customer records', aImport: 'Data imports', imported: 'Imported', importUndone: 'Import undone',
       title: 'Change log', sub: 'Every change to this course\u2019s tee sheet, caddies, rates, notes and PINs, whichever screen made it. Before and after, who, when, from where.',
       d7: '7 days', d30: '30 days', d90: '90 days', d365: '1 year', all: 'All areas', export: 'Export CSV', more: 'Show older',
       none: 'No changes recorded in this period', err: 'Could not load the change log \u2014 try again', loading: 'Loading\u2026',
@@ -24,6 +25,7 @@
       csvTime: 'Time', csvArea: 'Area', csvAction: 'Action', csvSubject: 'Subject', csvWho: 'Who', csvRole: 'Role', csvCountry: 'Country', csvChanges: 'Changes'
     },
     th: {
+      aShop: 'สต็อกสินค้า', aCust: 'ข้อมูลลูกค้า', aImport: 'นำเข้าข้อมูล', imported: 'นำเข้าแล้ว', importUndone: 'ยกเลิกการนำเข้า',
       title: 'บันทึกการเปลี่ยนแปลง', sub: 'ทุกการเปลี่ยนแปลงของตารางทีออฟ แคดดี้ ราคา บันทึก และ PIN ของสนามนี้ ไม่ว่าจะทำจากหน้าจอใด ก่อน–หลัง ใคร เมื่อไร จากที่ไหน',
       d7: '7 วัน', d30: '30 วัน', d90: '90 วัน', d365: '1 ปี', all: 'ทุกส่วน', export: 'ส่งออก CSV', more: 'ดูเก่ากว่านี้',
       none: 'ไม่มีการเปลี่ยนแปลงในช่วงนี้', err: 'โหลดบันทึกไม่ได้ ลองอีกครั้ง', loading: 'กำลังโหลด…',
@@ -38,6 +40,7 @@
       csvTime: 'เวลา', csvArea: 'ส่วน', csvAction: 'การกระทำ', csvSubject: 'รายการ', csvWho: 'ใคร', csvRole: 'บทบาท', csvCountry: 'ประเทศ', csvChanges: 'การเปลี่ยนแปลง'
     },
     ko: {
+      aShop: '매장 재고', aCust: '고객 기록', aImport: '데이터 가져오기', imported: '가져옴', importUndone: '가져오기 되돌림',
       title: '변경 기록', sub: '이 골프장의 티시트, 캐디, 요금, 메모, PIN에 대한 모든 변경 사항. 어느 화면에서 했든 전후 내용, 누가, 언제, 어디서.',
       d7: '7일', d30: '30일', d90: '90일', d365: '1년', all: '전체', export: 'CSV 내보내기', more: '이전 기록 보기',
       none: '이 기간에 기록된 변경이 없습니다', err: '변경 기록을 불러오지 못했습니다. 다시 시도하세요', loading: '불러오는 중…',
@@ -52,6 +55,7 @@
       csvTime: '시간', csvArea: '영역', csvAction: '작업', csvSubject: '대상', csvWho: '누가', csvRole: '역할', csvCountry: '국가', csvChanges: '변경 내용'
     },
     ja: {
+      aShop: 'ショップ在庫', aCust: '顧客記録', aImport: 'データ取り込み', imported: '取り込み', importUndone: '取り込み取り消し',
       title: '変更履歴', sub: 'このコースのティーシート、キャディ、料金、メモ、PINに対するすべての変更。どの画面からでも、変更前後・誰が・いつ・どこから。',
       d7: '7日間', d30: '30日間', d90: '90日間', d365: '1年', all: 'すべて', export: 'CSVを書き出す', more: '以前の履歴を表示',
       none: 'この期間に記録された変更はありません', err: '変更履歴を読み込めませんでした。もう一度お試しください', loading: '読み込み中…',
@@ -73,7 +77,8 @@
     ['aSusp', ['caddy_suspensions']], ['aSched', ['caddy_work_days', 'caddy_work_week']],
     ['aOpen', ['course_open_times', 'course_open_time_claims']], ['aSlots', ['course_event_slots']],
     ['aOffers', ['course_offers']], ['aWork', ['course_work_orders']], ['aSettings', ['golf_course_settings', 'course_venues']],
-    ['aNotes', ['course_golfer_notes']], ['aStaff', ['proshop_pins', 'course_admins', 'course_staff']]
+    ['aNotes', ['course_golfer_notes']], ['aStaff', ['proshop_pins', 'course_admins', 'course_staff']],
+    ['aShop', ['proshop_products']], ['aCust', ['course_customers']], ['aImport', ['course_import_batches']]   // v1581
   ];
   var ROLE = { golfer: 'rGolfer', proshop: 'rProshop', caddymaster: 'rCaddymaster', caddy_master: 'rCaddymaster', manager: 'rManager', caddy: 'rCaddy', caddie: 'rCaddy', organizer: 'rOrganizer', admin: 'rAdmin' };
 
@@ -224,10 +229,10 @@
       if (!this._rows.length) { list.innerHTML = '<div class="cal-empty">' + t('none') + '</div>'; more.innerHTML = ''; return; }
       list.innerHTML = this._rows.map(function (r) {
         var d = new Date(r.at); var area = self.areaOf(r); var who = self.who(r);
-        var opCls = r.op === 'INSERT' ? 'add' : r.op === 'DELETE' ? 'del' : r.op === 'PIN_LOGIN' ? 'pin' : '';
-        var opTxt = r.op === 'INSERT' ? t('added') : r.op === 'DELETE' ? t('removed') : r.op === 'PIN_LOGIN' ? t('aLogin') : t('changed');
+        var opCls = r.op === 'INSERT' || r.op === 'IMPORT' ? 'add' : r.op === 'DELETE' || r.op === 'IMPORT_UNDO' ? 'del' : r.op === 'PIN_LOGIN' ? 'pin' : '';
+        var opTxt = r.op === 'INSERT' ? t('added') : r.op === 'DELETE' ? t('removed') : r.op === 'PIN_LOGIN' ? t('aLogin') : r.op === 'IMPORT' ? t('imported') : r.op === 'IMPORT_UNDO' ? t('importUndone') : t('changed');
         var ch = self.changes(r);
-        var line = r.op === 'PIN_LOGIN' ? t('pinLogin') : (r.op === 'UPDATE' ? ch.map(function (k) { return k + ': ' + self.fmtVal((r.before || {})[k]) + ' \u2192 ' + self.fmtVal((r.after || {})[k]); }).join(' \u00b7 ') : '');
+        var line = r.op === 'PIN_LOGIN' ? t('pinLogin') : (r.op === 'IMPORT' || r.op === 'IMPORT_UNDO') ? [(r.after || {}).kind, (r.after || {}).file, ((r.after || {}).inserted != null ? (r.after || {}).inserted + ' ' + t('added').toLowerCase() : ''), ((r.after || {}).updated ? (r.after || {}).updated + ' ' + t('changed').toLowerCase() : '')].filter(Boolean).join(' \u00b7 ') : (r.op === 'UPDATE' ? ch.map(function (k) { return k + ': ' + self.fmtVal((r.before || {})[k]) + ' \u2192 ' + self.fmtVal((r.after || {})[k]); }).join(' \u00b7 ') : '');
         var open = !!self._open[r.id];
         var det = '';
         if (open && r.op !== 'PIN_LOGIN') {

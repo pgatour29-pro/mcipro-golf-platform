@@ -341,6 +341,7 @@
             else if (tab === 'messages') PS.loadMessages();
             else if (tab === 'settings') PS.loadSettings();
             else if (tab === 'audit') PS.loadAudit();
+            else if (tab === 'import') PS.loadImport();
             else if (tab === 'insights') PS.loadInsights();
             else if (tab === 'teesheet') {
                 try {
@@ -904,6 +905,29 @@
             A.open({ sb: db(), lang: lang, host: host, course: { id: PS.course.id, slug: PS.teeSheetSlug(), name: PS.course.name } });
         },
 
+        /* v1581 Import data (course-import.js): the course brings its own records over — tee sheet, caddies, members,
+           customers, shop stock — previewed row by row, written by course_import_run, undone by course_import_undo. */
+        loadImport() {
+            const host = document.getElementById('ps-import-body');
+            const I = window.CourseImport;
+            if (!host) return;
+            if (!I || !PS.course || !db()) { host.innerHTML = PS.errorBox(); return; }
+            const lang = (typeof currentLanguage !== 'undefined' && currentLanguage) || 'en';
+            let venue = '';
+            try { const C = PS.crm(); venue = C ? C.venueKey() : ''; } catch (e) { }
+            I.open({
+                sb: db(), lang, host, course: { id: PS.course.id, slug: PS.teeSheetSlug(), name: PS.course.name }, facility: PS.facility || null, venue,
+                token: () => { try { return localStorage.getItem('ps_desk_token_v1') || ''; } catch (e) { return ''; } },
+                onDone: () => {   // every tab re-reads on its next open; open tee sheet / caddies frames refresh now
+                    PS._loaded = {};
+                    try { if (window.CourseCRM) window.CourseCRM._cache = null; } catch (e) { }
+                    ['teesheet-iframe', 'caddies-iframe'].forEach(id => {
+                        try { const f = document.getElementById(id); if (f && f.contentWindow && f.getAttribute('src')) f.contentWindow.postMessage({ type: 'REFRESH_TEESHEET' }, '*'); } catch (e) { }
+                    });
+                }
+            });
+        },
+
         // ================= CUSTOMERS =================
         /* v1467: the Customers tab is the course's player book (course-crm.js) — everyone who has played,
            registered, booked a caddy or been on the tee sheet AT THIS VENUE, all time. Tap a row for the
@@ -912,7 +936,7 @@
             const C = window.CourseCRM;
             if (!C || !PS.course || !db()) return null;
             const lang = (typeof currentLanguage !== 'undefined' && currentLanguage) || 'en';
-            C.init({ sb: db(), lang: lang, course: { slug: PS.teeSheetSlug(), name: PS.course.name } });
+            C.init({ sb: db(), lang: lang, course: { slug: PS.teeSheetSlug(), name: PS.course.name, id: PS.course.id, facility: PS.facility ? PS.facility.id : null } });
             C.onNote = (key, note) => { PS._custVip = PS._custVip || {}; PS._custVip[key] = !!(note && note.vip); PS.renderCustomers(); };
             return C.ready() ? C : null;
         },
@@ -978,9 +1002,9 @@
                         const sg = SEG[r.seg] || SEG.occ, cd = r.cads[0];
                         return `
                       <tr class="border-b border-gray-100 cursor-pointer hover:bg-green-50" data-k="${esc(r.key)}" tabindex="0">
-                        <td class="px-3 py-2 font-semibold text-gray-900 whitespace-nowrap">${esc(r.name)}${window.PhoneDesk ? PhoneDesk.slot(r.id) : ''}${isVip(r) ? ' <span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-400 text-gray-900">VIP</span>' : ''}</td>
+                        <td class="px-3 py-2 font-semibold text-gray-900 whitespace-nowrap">${esc(r.name)}${window.PhoneDesk ? PhoneDesk.slot(r.id) : ''}${r.member ? ' <span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">' + T('member') + (r.member.member_no ? ' ' + esc(r.member.member_no) : '') + '</span>' : ''}${isVip(r) ? ' <span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-400 text-gray-900">VIP</span>' : ''}</td>
                         <td class="px-3 py-2"><span class="text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${sg[1]}">${T(sg[0])}</span></td>
-                        <td class="px-3 py-2 text-center text-gray-900 font-semibold">${r.visits}</td>
+                        <td class="px-3 py-2 text-center text-gray-900 font-semibold">${r.visits}${r.recVisits ? ' <span class="text-gray-500 font-normal" title="' + T('recTitle') + '">+' + r.recVisits + '</span>' : ''}</td>
                         <td class="px-3 py-2 text-center text-gray-700">${r.v12}</td>
                         <td class="px-3 py-2 text-gray-700 whitespace-nowrap">${dshort(r.last)}</td>
                         <td class="px-3 py-2 whitespace-nowrap ${r.next ? 'text-green-700 font-semibold' : 'text-gray-500'}">${dshort(r.next)}</td>

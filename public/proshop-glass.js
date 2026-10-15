@@ -152,6 +152,7 @@
             rail.innerHTML = `<div class="lg">${ms('storefront')}</div>` +
                 R.map(([t, i, l]) => `<button type="button" data-tab="${t}" data-l="${l}">${ms(i)}${t === 'messages' ? '<span class="dot" id="psgMsgDot" style="display:none">0</span>' : ''}${t === 'kitchen' ? '<span class="dot am" id="psgKitDot" style="display:none">0</span>' : ''}<span class="tip"></span></button>`).join('') +
                 `<div class="sp"></div><button type="button" data-tab="audit" data-l="Change log">${ms('history')}<span class="tip"></span></button>` +
+                `<button type="button" data-tab="import" data-l="Import data">${ms('upload_file')}<span class="tip"></span></button>` +
                 `<button type="button" data-tab="settings" data-l="Settings">${ms('settings')}<span class="tip"></span></button>` +
                 `<button type="button" data-act="logout" data-l="Logout">${ms('logout')}<span class="tip"></span></button>`;
             rail.addEventListener('click', (e) => {
@@ -232,7 +233,7 @@
         watchPopups() {
             const tag = (el) => {
                 if (!el || el.nodeType !== 1 || !G.on()) return;
-                if (/^(psProdModal|psVenueQrModal|psCoursePick)$/.test(el.id)) el.classList.add('psx', 'psxm');
+                if (/^(psProdModal|psVenueQrModal|psCoursePick|psImportModal)$/.test(el.id)) el.classList.add('psx', 'psxm');
                 if (el.id === 'crmOv') el.classList.add('dk');   // the player card's own dark tokens, then glass on top
             };
             document.querySelectorAll('#psProdModal,#psVenueQrModal,#psCoursePick,#crmOv').forEach(tag);

@@ -25,6 +25,7 @@
 
   var STR = {
     en: {
+      member: 'Member', rec: 'On the course\u2019s records: {n} visits', recTitle: 'visits on the course\u2019s own records',
       title: 'Player profile', loading: 'Loading history…', none: 'No history at this course yet', err: 'Could not load this player — try again',
       visits: 'Visits', last12: 'Last 12 months', lastVisit: 'Last visit', next: 'Next booking', every: 'Between visits', days: '{n} days',
       today: 'today', dago: '{n}d ago', since: 'First visit {d}', hcp: 'HCP {n}',
@@ -44,6 +45,7 @@
       profile: 'Player history'
     },
     th: {
+      member: 'สมาชิก', rec: 'ตามบันทึกของสนาม: {n} ครั้ง', recTitle: 'ครั้งตามบันทึกของสนาม',
       title: 'ประวัติผู้เล่น', loading: 'กำลังโหลดประวัติ…', none: 'ยังไม่มีประวัติที่สนามนี้', err: 'โหลดข้อมูลผู้เล่นไม่ได้ ลองอีกครั้ง',
       visits: 'จำนวนครั้ง', last12: '12 เดือนล่าสุด', lastVisit: 'มาครั้งล่าสุด', next: 'การจองถัดไป', every: 'ระยะห่างแต่ละครั้ง', days: '{n} วัน',
       today: 'วันนี้', dago: '{n} วันก่อน', since: 'มาครั้งแรก {d}', hcp: 'แต้มต่อ {n}',
@@ -63,6 +65,7 @@
       profile: 'ประวัติผู้เล่น'
     },
     ko: {
+      member: '회원', rec: '골프장 자체 기록: {n}회 방문', recTitle: '골프장 자체 기록의 방문',
       title: '플레이어 프로필', loading: '기록을 불러오는 중…', none: '이 코스에서의 기록이 아직 없습니다', err: '플레이어를 불러오지 못했습니다. 다시 시도하세요',
       visits: '방문', last12: '최근 12개월', lastVisit: '마지막 방문', next: '다음 예약', every: '방문 간격', days: '{n}일',
       today: '오늘', dago: '{n}일 전', since: '첫 방문 {d}', hcp: '핸디캡 {n}',
@@ -82,6 +85,7 @@
       profile: '플레이어 기록'
     },
     ja: {
+      member: 'メンバー', rec: 'コースの記録: {n}回来場', recTitle: 'コース自身の記録による来場',
       title: 'プレーヤープロフィール', loading: '履歴を読み込み中…', none: 'このコースでの履歴はまだありません', err: 'プレーヤーを読み込めませんでした。もう一度お試しください',
       visits: '来場', last12: '直近12か月', lastVisit: '前回の来場', next: '次の予約', every: '来場間隔', days: '{n}日',
       today: '今日', dago: '{n}日前', since: '初来場 {d}', hcp: 'HC {n}',
@@ -199,7 +203,8 @@
         var CL = window.CourseLink, c = o.course;
         var slug = c.slug || (CL && CL.slugFor(c.name)) || null;
         if (!this.course || this.course.slug !== slug || this.course.name !== c.name) this._cache = null;
-        this.course = { slug: slug, name: c.name || slug || '' };
+        if (!this.course || this.course.id !== (c.id || null)) this._cache = null;
+        this.course = { slug: slug, name: c.name || slug || '', id: c.id || null, facility: c.facility || null };   // v1581: id + facility for memberships
       }
       return this;
     },
@@ -316,7 +321,10 @@
         this._byWords('caddy_bookings', 'id,booking_date,tee_time,start_time,status,golfer_id,user_id,golfer_name,caddie_name,caddy_id,booking_source,course_name', 'course_name'),
         this._byWords('caddy_profiles', 'id,caddy_number,name,photo_url,course_name', 'course_name'),
         this._all(function () { return sb.from('bookings').select('id,date,time,name,golfer_id,golfer_name,course_id,course_name,phone,booking_type,deleted,booking_data').neq('deleted', true).order('id'); }),
-        this._all(function () { return sb.from('course_golfer_notes').select('golfer_key,note,vip,updated_at').eq('venue', self.venueKey()).order('golfer_key'); })
+        this._all(function () { return sb.from('course_golfer_notes').select('golfer_key,note,vip,updated_at').eq('venue', self.venueKey()).order('golfer_key'); }),
+        // v1581: the course's own customer records (Import data) and its memberships (facility or plain course)
+        this._all(function () { return sb.from('course_customers').select('id,golfer_key,golfer_id,name,phone,email,country,member_no,visits,first_visit,last_visit,vip,tags,note').eq('venue', self.venueKey()).order('id'); }),
+        (function () { var keys = [self.course.facility, self.course.id].filter(Boolean); return keys.length ? self._all(function () { return sb.from('course_memberships').select('id,golfer_id,golfer_name,member_no,tier,valid_from,valid_to,status,home_slug').in('facility_id', keys).order('id'); }) : Promise.resolve([]); })()
       ]);
       var notes = {}; res[5].forEach(function (n) { notes[n.golfer_key] = n; });
       var evs = res[0], rounds = res[1], cbs = res[2], cads = res[3];
@@ -407,6 +415,16 @@
         });
       });
 
+      // v1581: the course's own records join the book — by account when the contact matched one, else by name
+      res[6].forEach(function (c) {
+        var p = person(c.golfer_id || null, c.name); if (!p) return;
+        p.rec = c; if (!p.phone && c.phone) p.phone = String(c.phone);
+      });
+      res[7].forEach(function (m) {
+        if (String(m.status || 'active') !== 'active' || (m.valid_to && String(m.valid_to).slice(0, 10) < today)) return;
+        var p = person(m.golfer_id || null, m.golfer_name); if (p) p.member = m;
+      });
+
       // a name-only record joins the ONE account that carries the same name (two accounts = leave it alone)
       var byNorm = {};
       Object.keys(people).forEach(function (k) { var p = people[k]; if (p.id) Object.keys(p.norm).forEach(function (n) { (byNorm[n] = byNorm[n] || []).push(p); }); });
@@ -421,6 +439,8 @@
           b.played = b.played || a.played; if (a.tsrc < b.tsrc) { b.time = a.time; b.tsrc = a.tsrc; } if (!b.soc) { b.soc = a.soc; b.title = a.title; }
         });
         if (!t.phone) t.phone = p.phone;
+        if (!t.rec && p.rec) t.rec = p.rec;
+        if (!t.member && p.member) t.member = p.member;
         delete people[k];
       });
 
@@ -501,6 +521,12 @@
       var ago = function (n) { var x = new Date(today + 'T00:00:00'); x.setDate(x.getDate() - n); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
       var first = past[0] || '', last = past[past.length - 1] || '', v90 = past.filter(function (d) { return d > ago(90); }).length;
       var seg = !past.length ? 'up' : (first > ago(30) && past.length <= 2) ? 'new' : v90 >= 3 ? 'regular' : (past.length >= 3 && last <= ago(60) && !fut.length) ? 'lapsing' : 'occ';
+      // v1581: the course's own record (imported) extends what we know — first/last visit, and a known customer with no
+      // visit in our data is "lapsing" or "occasional" rather than "upcoming"
+      var rec = p.rec || null, recFirst = rec && rec.first_visit ? String(rec.first_visit).slice(0, 10) : '', recLast = rec && rec.last_visit ? String(rec.last_visit).slice(0, 10) : '';
+      if (recFirst && (!first || recFirst < first)) first = recFirst;
+      if (recLast && recLast <= today && (!last || recLast > last)) last = recLast;
+      if (!past.length && rec && !fut.length) seg = (recLast && recLast <= ago(60)) ? 'lapsing' : 'occ';
       tm.sort(function (a, b) { return a - b; });
       var med = tm.length ? tm[Math.floor((tm.length - 1) / 2)] : null;
       var topDay = -1; wd.forEach(function (n, i2) { if (n > 0 && (topDay < 0 || n > wd[topDay])) topDay = i2; });
@@ -510,7 +536,8 @@
         key: p.key, id: p.id, name: name, phone: p.phone, visitsMap: p.visits, dates: dates,
         visits: past.length, v12: past.filter(function (d) { return d > ago(365); }).length, v90: v90, first: first, last: last, next: fut[0] || '', upcoming: fut.length,
         gap: gaps.length >= 2 ? Math.round(gaps.reduce(function (a, b) { return a + b; }, 0) / gaps.length) : null,
-        wd: wd, bands: bands, medTime: med, topDay: (topDay >= 0 && past.length >= 3) ? topDay : -1, soc: soc, cads: cads, withCad: withCad, partners: part, partnerIds: pids, seg: seg
+        wd: wd, bands: bands, medTime: med, topDay: (topDay >= 0 && past.length >= 3) ? topDay : -1, soc: soc, cads: cads, withCad: withCad, partners: part, partnerIds: pids, seg: seg,
+        rec: rec, recVisits: rec && rec.visits != null ? (+rec.visits || 0) : 0, member: p.member || null, email: (rec && rec.email) || ''
       };
     },
 
@@ -612,6 +639,7 @@
       var hcp = prof && prof.handicap_index != null && prof.handicap_index !== '' && !isNaN(+prof.handicap_index) ? (+prof.handicap_index < 0 ? '+' + Math.abs(+prof.handicap_index) : String(+prof.handicap_index)) : null;   // stored negative = a plus handicap
       var sub = [];
       if (c.note && c.note.vip) sub.push('<span class="seg vip">' + E(T('vip')) + '</span>');
+      if (p && p.member) sub.push('<span class="seg vip">' + E(T('member')) + (p.member.member_no ? ' \u00b7 ' + E(p.member.member_no) : '') + '</span>');   // v1581
       if (p) sub.push('<span class="seg ' + (p.seg === 'occ' ? '' : p.seg) + '">' + E(T({ 'new': 'segNew', regular: 'segRegular', lapsing: 'segLapsing', occ: 'segOcc', up: 'segUp' }[p.seg])) + '</span>');
       if (hcp != null) sub.push('<span>' + E(T('hcp', { n: hcp })) + '</span>');
       if (p && p.first) sub.push('<span>· ' + E(T('since', { d: this.dfmt(p.first, { month: 'short', year: 'numeric' }) })) + '</span>');
@@ -630,6 +658,7 @@
           '<div><b>' + (p.last ? E(this.dfmt(p.last, { day: 'numeric', month: 'short' })) : '–') + '</b><span>' + E(T('lastVisit')) + '</span><small>' + (lastAgo == null ? '' : lastAgo === 0 ? E(T('today')) : E(T('dago', { n: lastAgo }))) + '</small></div>' +
           '<div><b>' + (p.next ? E(this.dfmt(p.next, { day: 'numeric', month: 'short' })) : '–') + '</b><span>' + E(T('next')) + '</span><small>' + (p.next && p.visitsMap[p.next].time ? E(p.visitsMap[p.next].time) : '') + '</small></div>' +
           '<div><b>' + (p.gap != null ? E(T('days', { n: p.gap })) : '–') + '</b><span>' + E(T('every')) + '</span><small></small></div></div>';
+        if (p.rec && (p.recVisits || p.rec.note)) h += '<p class="mut" style="margin:0 0 8px">' + E(T('rec', { n: p.recVisits })) + (p.rec.note ? ' \u00b7 ' + E(p.rec.note) : '') + '</p>';   // v1581
 
         // when they play
         h += '<div class="sec"><h3>' + E(T('when')) + '</h3>';

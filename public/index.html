@@ -61707,9 +61707,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                 }
 
                                 // If the organizer set Divisions/Flights for THIS event, split the field into
-                                // those handicap bands, each its own ranked mini-list. Greedy assignment: the
-                                // first matching band (lowest listed first) claims a player, so nobody is
-                                // double-listed; anyone outside every band falls into "Unclassified".
+                                // those handicap bands, each its own ranked mini-list. Every round with a
+                                // handicap lands in exactly one band — the SAME rule as the organizer board
+                                // and results.html (GolfDivisions.indexFor): bands are cut-offs taken from the
+                                // field (0–14.8 / 16.1+), so a plus handicap (-0.8) or a late entry in the gap
+                                // snaps to the NEAREST band instead of falling out. Only a round with no
+                                // handicap at all is "Unclassified". (v1576 — Pete Park and Rocky Jones sat
+                                // unclassified under TRGG Bangpakong 2026-10-14 for being plus handicaps.)
                                 // (Different societies at the same course already sit in separate groups, so
                                 // their divisions never mix.)
                                 let divisions = g.rounds.find(r => r._divisions)?._divisions || null;
@@ -61717,18 +61721,18 @@ document.addEventListener('DOMContentLoaded', function() {
                                 if (!Array.isArray(divisions)) divisions = null;
                                 if (divisions && divisions.length > 0) {
                                     const assigned = new Set();
+                                    const bandOf = new Map();
+                                    g.rounds.forEach(r => {
+                                        const idx = (window.GolfDivisions && typeof GolfDivisions.indexFor === 'function')
+                                            ? GolfDivisions.indexFor(r.handicap_used, divisions) : -1;
+                                        if (idx >= 0) bandOf.set(r.id, idx);
+                                    });
                                     let divHtml = '';
-                                    divisions.forEach(div => {
-                                        const minH = parseFloat(div.minHandicap) || 0;   // blank/NaN → 0
+                                    divisions.forEach((div, divIdx) => {
                                         const maxNum = parseFloat(div.maxHandicap);
                                         // blank / null / 999 / NaN max → open-ended (no upper bound)
                                         const maxH = (div.maxHandicap == null || div.maxHandicap === '' || maxNum === 999 || isNaN(maxNum)) ? Infinity : maxNum;
-                                        const inDiv = g.rounds.filter(r => {
-                                            if (assigned.has(r.id)) return false;
-                                            const h = parseFloat(r.handicap_used);
-                                            if (!isFinite(h)) return false;   // no handicap on the round → Unclassified, not Div 1
-                                            return h >= minH && h <= maxH;
-                                        });
+                                        const inDiv = g.rounds.filter(r => !assigned.has(r.id) && bandOf.get(r.id) === divIdx);
                                         if (inDiv.length === 0) return;
                                         inDiv.forEach(r => assigned.add(r.id));
                                         const minDisp = (div.minHandicap == null || div.minHandicap === '') ? 0 : div.minHandicap;
@@ -179885,7 +179889,12 @@ class OrganizerScoringSystem {
         const h = parseFloat(hcp);
         if (!isFinite(h)) return null;
         for (const d of divisions) { if (h >= d.min && h <= d.max) return d.name; }
-        return null;
+        // v1576: SNAP to the nearest band (same rule as GolfDivisions.indexFor, the scoring
+        // tabs and results.html) — a plus handicap below "min 0" or a late entry in a gap
+        // between cut-offs used to drop into a nameless group and miss its places.
+        let best = null, bd = Infinity;
+        divisions.forEach(d => { const dd = h < d.min ? (d.min - h) : (h - d.max); if (dd < bd) { bd = dd; best = d; } });
+        return best ? best.name : null;
     }
 
     showResultsSummary(leaderboard, event) {

@@ -17,6 +17,7 @@
 
   var STR = {
     en: {
+      kRec: '+{n} on the course\u2019s own records',
       aBook: 'Book tee time', aCaddy: 'Change caddy', aGuests: 'Guest caddies', aMsg: 'Message', aDeal: 'Send a deal',
       tOv: 'Overview', tDeals: 'Deals', tMsg: 'Messages', tHist: 'History',
       up: 'Coming up', upNone: 'Nothing booked here yet', upLoading: 'Loading their bookings…', socDay: '{s} society day', teeN: 'Tee time · {n} players', tee1: 'Tee time · 1 player',
@@ -38,6 +39,7 @@
       orgOf: 'Organizer · {s}', search: 'Search a golfer or Call PIN…', noRcpt: 'Add a recipient first', sentOk: '✓ Sent', you: 'You', postErr: 'Could not post the deal'
     },
     th: {
+      kRec: '+{n} ตามบันทึกของสนาม',
       aBook: 'จองเวลาออกรอบ', aCaddy: 'เปลี่ยนแคดดี้', aGuests: 'แคดดี้ของแขก', aMsg: 'ส่งข้อความ', aDeal: 'ส่งดีล',
       tOv: 'ภาพรวม', tDeals: 'ดีล', tMsg: 'ข้อความ', tHist: 'ประวัติ',
       up: 'ที่จะมาถึง', upNone: 'ยังไม่มีการจองที่สนามนี้', upLoading: 'กำลังโหลดการจอง…', socDay: 'วันสมาคม {s}', teeN: 'เวลาออกรอบ · {n} คน', tee1: 'เวลาออกรอบ · 1 คน',
@@ -59,6 +61,7 @@
       orgOf: 'ผู้จัด · {s}', search: 'ค้นหานักกอล์ฟหรือ Call PIN…', noRcpt: 'เพิ่มผู้รับก่อน', sentOk: '✓ ส่งแล้ว', you: 'คุณ', postErr: 'ลงดีลไม่สำเร็จ'
     },
     ko: {
+      kRec: '+{n} 골프장 자체 기록',
       aBook: '티타임 예약', aCaddy: '캐디 변경', aGuests: '게스트 캐디', aMsg: '메시지', aDeal: '딜 보내기',
       tOv: '개요', tDeals: '딜', tMsg: '메시지', tHist: '기록',
       up: '예정', upNone: '이 골프장 예약이 아직 없습니다', upLoading: '예약을 불러오는 중…', socDay: '{s} 소사이어티 데이', teeN: '티타임 · {n}명', tee1: '티타임 · 1명',
@@ -80,6 +83,7 @@
       orgOf: '주최자 · {s}', search: '골퍼 또는 Call PIN 검색…', noRcpt: '받는 사람을 먼저 추가하세요', sentOk: '✓ 전송됨', you: '나', postErr: '딜을 올리지 못했습니다'
     },
     ja: {
+      kRec: '+{n} コース自身の記録',
       aBook: 'ティータイム予約', aCaddy: 'キャディ変更', aGuests: 'ゲストのキャディ', aMsg: 'メッセージ', aDeal: 'ディールを送る',
       tOv: '概要', tDeals: 'ディール', tMsg: 'メッセージ', tHist: '履歴',
       up: '今後の予定', upNone: 'このゴルフ場での予約はまだありません', upLoading: '予約を読み込み中…', socDay: '{s} ソサエティデー', teeN: 'ティータイム · {n}名', tee1: 'ティータイム · 1名',
@@ -295,7 +299,7 @@
       if (p) {
         var today = c.data.today, ago = p.last ? C.diffDays(p.last, today) : null, cd = p.cads[0];
         var mt = p.medTime != null ? String(Math.floor(p.medTime / 60)).padStart(2, '0') + ':' + String(p.medTime % 60).padStart(2, '0') : '';
-        h += '<div class="kp"><div><b>' + p.visits + '</b><span>' + E(T('kVisits')) + '</span><small>' + E(T('k12', { n: p.v12 })) + '</small></div>' +
+        h += '<div class="kp"><div><b>' + p.visits + '</b><span>' + E(T('kVisits')) + '</span><small>' + E(p.recVisits ? T('kRec', { n: p.recVisits }) : T('k12', { n: p.v12 })) + '</small></div>' +   // v1581: the course's imported record
           '<div><b>' + (p.last ? E(C.dfmt(p.last, { day: 'numeric', month: 'short' })) : '–') + '</b><span>' + E(T('kLast')) + '</span><small>' + (ago == null ? '' : ago === 0 ? E(T('kToday')) : E(T('kAgo', { n: ago }))) + '</small></div>' +
           '<div><b>' + (p.visits >= 3 && p.topDay != null ? E(C.dayName(p.topDay)) : '–') + '</b><span>' + E(T('kUsually')) + '</span><small>' + (mt ? E(T('kAround', { t: mt })) : '') + '</small></div>' +
           '<div><b>' + (cd ? '#' + E(cd.num) : '–') + '</b><span>' + E(T('kUsual')) + '</span><small>' + (cd ? E(((cd.name && !/^caddy\s*#/i.test(cd.name)) ? cd.name + ' · ' : '') + T('kTimes', { n: cd.n })) : '') + '</small></div></div>';

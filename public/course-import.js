@@ -27,7 +27,7 @@
       dCus: 'Your customer records: names, contacts, visits, VIPs and notes. They join the player book this course keeps.',
       dPro: 'Products and stock for the point of sale: name, category, price, cost, SKU, stock on hand, reorder level.',
       needs: 'Columns', req: 'required', import: 'Import', template: 'Template CSV',
-      history: 'Imports so far', none: 'Nothing imported yet', undo: 'Undo', undoing: 'Undoing…', done: 'Done', undone: 'Undone', by: 'by', rows: 'rows',
+      result: 'Result', history: 'Imports so far', none: 'Nothing imported yet', undo: 'Undo', undoing: 'Undoing…', done: 'Done', undone: 'Undone', by: 'by', rows: 'rows',
       s1: 'Source', s2: 'Columns', s3: 'Check', s4: 'Import',
       drop: 'Drop a file here, or', choose: 'choose a file', types: 'CSV, TSV, TXT or Excel (.xlsx, .xls)', paste: 'or paste rows (from Excel, a web table, a text file)',
       pastePh: 'Date\tTime\tGroup\tPlayers\tCaddies\n2026-11-02\t07:00\tSmith party\tJohn Smith, Lee Park\t12, 34',
@@ -66,7 +66,7 @@
       dCus: 'ข้อมูลลูกค้า: ชื่อ ช่องทางติดต่อ จำนวนครั้ง VIP และบันทึก รวมเข้าสมุดผู้เล่นของสนาม',
       dPro: 'สินค้าและสต็อกสำหรับ POS: ชื่อ หมวด ราคา ต้นทุน SKU สต็อกคงเหลือ จุดสั่งซื้อ',
       needs: 'คอลัมน์', req: 'จำเป็น', import: 'นำเข้า', template: 'เทมเพลต CSV',
-      history: 'นำเข้าแล้ว', none: 'ยังไม่มีการนำเข้า', undo: 'ยกเลิก', undoing: 'กำลังยกเลิก…', done: 'เสร็จ', undone: 'ยกเลิกแล้ว', by: 'โดย', rows: 'แถว',
+      result: 'ผลลัพธ์', history: 'นำเข้าแล้ว', none: 'ยังไม่มีการนำเข้า', undo: 'ยกเลิก', undoing: 'กำลังยกเลิก…', done: 'เสร็จ', undone: 'ยกเลิกแล้ว', by: 'โดย', rows: 'แถว',
       s1: 'แหล่งข้อมูล', s2: 'คอลัมน์', s3: 'ตรวจ', s4: 'นำเข้า',
       drop: 'ลากไฟล์มาวางที่นี่ หรือ', choose: 'เลือกไฟล์', types: 'CSV, TSV, TXT หรือ Excel (.xlsx, .xls)', paste: 'หรือวางแถวข้อมูล (จาก Excel ตารางเว็บ ไฟล์ข้อความ)',
       pastePh: 'วันที่\tเวลา\tกลุ่ม\tผู้เล่น\tแคดดี้\n2026-11-02\t07:00\tSmith party\tJohn Smith, Lee Park\t12, 34',
@@ -105,7 +105,7 @@
       dCus: '고객 기록: 이름, 연락처, 방문 횟수, VIP, 메모. 이 골프장의 플레이어 북에 합쳤집니다.',
       dPro: 'POS용 상품과 재고: 이름, 분류, 가격, 원가, SKU, 보유 재고, 재주문 기준.',
       needs: '열', req: '필수', import: '가져오기', template: '템플릿 CSV',
-      history: '가져온 내역', none: '아직 가져온 데이터가 없습니다', undo: '되돌리기', undoing: '되돌리는 중…', done: '완료', undone: '되돌림', by: '실행자', rows: '행',
+      result: '결과', history: '가져온 내역', none: '아직 가져온 데이터가 없습니다', undo: '되돌리기', undoing: '되돌리는 중…', done: '완료', undone: '되돌림', by: '실행자', rows: '행',
       s1: '소스', s2: '열 매칭', s3: '확인', s4: '가져오기',
       drop: '파일을 여기에 놓거나', choose: '파일 선택', types: 'CSV, TSV, TXT 또는 Excel (.xlsx, .xls)', paste: '또는 행을 붙여넣기 (Excel, 웹 표, 텍스트 파일)',
       pastePh: '날짜\t시간\t그룹\t플레이어\t캐디\n2026-11-02\t07:00\tSmith party\tJohn Smith, Lee Park\t12, 34',
@@ -144,7 +144,7 @@
       dCus: '顧客記録: 名前、連絡先、来場回数、VIP、メモ。このコースのプレーヤーブックに統合されます。',
       dPro: 'POS用の商品と在庫: 名前、カテゴリ、価格、原価、SKU、在庫数、発注点。',
       needs: '列', req: '必須', import: '取り込む', template: 'テンプレートCSV',
-      history: '取り込み履歴', none: 'まだ取り込みはありません', undo: '取り消す', undoing: '取り消し中…', done: '完了', undone: '取り消済み', by: '実行者', rows: '行',
+      result: '結果', history: '取り込み履歴', none: 'まだ取り込みはありません', undo: '取り消す', undoing: '取り消し中…', done: '完了', undone: '取り消済み', by: '実行者', rows: '行',
       s1: 'ソース', s2: '列の対応', s3: '確認', s4: '取り込み',
       drop: 'ファイルをここにドロップするか', choose: 'ファイルを選択', types: 'CSV、TSV、TXTまたはExcel (.xlsx, .xls)', paste: 'または行を貼り付け (Excel、Webの表、テキストファイル)',
       pastePh: '日付\t時刻\tグループ\tプレーヤー\tキャディ\n2026-11-02\t07:00\tSmith party\tJohn Smith, Lee Park\t12, 34',
@@ -267,7 +267,7 @@
     '.cim-fields{display:flex;flex-wrap:wrap;gap:4px}.cim-fields span{font:600 11px/1.2 inherit;padding:3px 7px;border-radius:6px;background:#f1f5f9;color:#334155}.cim-fields span.req{background:#dcfce7;color:#166534}' +
     '.cim-pin{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.cim-pin input{font:700 20px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.35em;width:150px;text-align:center;padding:9px 10px;border:1px solid #cbd5e1;border-radius:10px}' +
     '.psg .cim-drop{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.3);color:#e2e8f0}.psg .cim-drop b{color:#86efac}.psg .cim-tbl th{background:#0c1c14;color:#9fb3a8}.psg .cim-tbl td{color:#eef3f0}.psg .cim-tbl tr.e td{background:rgba(159,18,57,.25);color:#fecdd3}' +
-    '.psg .cim-steps span{background:rgba(255,255,255,.08);color:#cbd5e1}.psg .cim-steps span.on{background:#16a34a;color:#fff}.psg .cim-fields span{background:rgba(255,255,255,.08);color:#dbe7df}.psg .cim-bar{background:rgba(255,255,255,.12)}';
+    '.psg .cim-fields span.req{background:rgba(34,197,94,.28);color:#bbf7d0}.psg .cim-steps span{background:rgba(255,255,255,.08);color:#cbd5e1}.psg .cim-steps span.on{background:#16a34a;color:#fff}.psg .cim-fields span{background:rgba(255,255,255,.08);color:#dbe7df}.psg .cim-bar{background:rgba(255,255,255,.12)}';
 
   var M = {
     sb: null, lang: 'en', host: null, course: null, facility: null, venue: '', tokenFn: null, onDone: null, batches: [], S: null, _layout: null,
@@ -333,12 +333,12 @@
       var t = this.t.bind(this), E = this.esc.bind(this), el = this.host && this.host.querySelector('#cimHist'); if (!el) return;
       if (!this.batches.length) { el.innerHTML = '<div class="p-4 text-sm text-gray-500">' + E(t('none')) + '</div>'; return; }
       var self = this;
-      el.innerHTML = '<table class="w-full text-sm"><thead><tr class="text-left text-xs text-gray-600 border-b border-gray-200"><th class="px-3 py-2">' + E(t('s4')) + '</th><th class="px-3 py-2">' + E(t('rows')) + '</th><th class="px-3 py-2"></th><th class="px-3 py-2"></th></tr></thead><tbody>' +
+      el.innerHTML = '<table class="w-full text-sm"><thead><tr class="text-left text-xs text-gray-600 border-b border-gray-200"><th class="px-3 py-2">' + E(t('s4')) + '</th><th class="px-3 py-2">' + E(t('result')) + '</th><th class="px-3 py-2"></th><th class="px-3 py-2"></th></tr></thead><tbody>' +
         this.batches.map(function (b) {
           var m = KIND_META[b.kind] || KIND_META.customers;
           var st = b.status === 'undone' ? '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700">' + E(t('undone')) + '</span>' : '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-800">' + E(t('done')) + '</span>';
           return '<tr class="border-b border-gray-100"><td class="px-3 py-2"><div class="font-semibold text-gray-900 whitespace-nowrap"><span class="material-symbols-outlined align-middle text-gray-500" style="font-size:16px">' + m.icon + '</span> ' + E(t(m.t)) + (b.file ? ' <span class="text-gray-500 font-normal">· ' + E(b.file) + '</span>' : '') + '</div><div class="text-xs text-gray-500">' + E(self.dfmt(b.at)) + (b.actor && b.actor !== 'pin' ? ' · ' + E(t('by')) + ' ' + E(decodeURIComponent(String(b.actor))) : '') + '</div></td>' +
-            '<td class="px-3 py-2 text-gray-700 whitespace-nowrap">' + b.inserted + ' ' + E(t('rIns')) + ' · ' + b.updated + ' ' + E(t('rUpd')) + ' · ' + b.skipped + ' ' + E(t('rSkip')) + '</td>' +
+            '<td class="px-3 py-2 text-gray-700" style="min-width:120px">' + b.inserted + ' ' + E(t('rIns')) + ' · ' + b.updated + ' ' + E(t('rUpd')) + ' · ' + b.skipped + ' ' + E(t('rSkip')) + '</td>' +
             '<td class="px-3 py-2">' + st + '</td>' +
             '<td class="px-3 py-2 text-right">' + (b.status === 'done' ? '<button type="button" data-undo="' + E(b.id) + '" class="px-3 py-1.5 rounded-lg border border-red-300 text-red-700 text-xs font-semibold hover:bg-red-50">' + E(t('undo')) + '</button>' : '') + '</td></tr>';
         }).join('') + '</tbody></table>';
@@ -394,9 +394,9 @@
       d.innerHTML = '<div class="cim-panel bg-white shadow-2xl" role="dialog" aria-modal="true">' +
         '<div class="flex items-center justify-between gap-3 px-4 sm:px-5 pt-4 pb-3 border-b border-gray-200">' +
         '<div class="min-w-0"><div class="text-xs font-semibold text-gray-500 uppercase tracking-wide">' + E(t('title')) + '</div><div class="font-bold text-gray-900 text-lg truncate"><span class="material-symbols-outlined align-middle text-green-700" style="font-size:20px">' + m.icon + '</span> ' + E(t(m.t)) + '</div></div>' +
-        '<div class="cim-steps hidden sm:flex">' + steps + '</div>' +
+        '<div class="hidden sm:block"><div class="cim-steps">' + steps + '</div></div>' +
         '<button type="button" data-a="close" class="p-2 rounded-lg hover:bg-gray-100 text-gray-600" aria-label="' + E(t('close')) + '"><span class="material-symbols-outlined">close</span></button></div>' +
-        '<div class="cim-steps sm:hidden px-4 pt-3">' + steps + '</div>' +
+        '<div class="sm:hidden px-4 pt-3"><div class="cim-steps">' + steps + '</div></div>' +
         '<div class="cim-body px-4 sm:px-5 py-4">' + body + '</div>' +
         '<div class="px-4 sm:px-5 py-3 border-t border-gray-200 flex items-center gap-2 flex-wrap">' + this.vFooter() + '</div></div>';
       if (!d._bound) {
@@ -482,10 +482,10 @@
       var S = this.S, t = this.t.bind(this), E = this.esc.bind(this), self = this;
       var cols = this.previewCols(S.kind);
       var list = S.showAll ? S.items : S.items.slice(0, 120);
-      var h = '<div class="overflow-x-auto border border-gray-200 rounded-lg" style="max-height:52vh;overflow-y:auto"><table class="cim-tbl"><thead><tr><th>#</th>' + cols.map(function (c) { return '<th>' + E(t(c[0])) + '</th>'; }).join('') + '<th></th></tr></thead><tbody>' +
+      var h = '<div class="overflow-x-auto border border-gray-200 rounded-lg" style="max-height:52vh;overflow-y:auto"><table class="cim-tbl"><thead><tr><th>#</th><th></th>' + cols.map(function (c) { return '<th>' + E(t(c[0])) + '</th>'; }).join('') + '</tr></thead><tbody>' +
         list.map(function (it) {
           var flags = it.flags.map(function (f) { return '<span class="cim-flag ' + f.t + '">' + E(f.m) + '</span>'; }).join('') + (it.upd && !it.err ? '<span class="cim-flag u">' + E(t('willUpdate')) + '</span>' : '');
-          return '<tr class="' + (it.err ? 'e' : it.upd ? 'u' : '') + '"><td>' + it.i + '</td>' + cols.map(function (c) { return '<td title="' + E(c[1](it)) + '">' + E(c[1](it)) + '</td>'; }).join('') + '<td class="whitespace-normal" style="min-width:160px">' + flags + '</td></tr>';
+          return '<tr class="' + (it.err ? 'e' : it.upd ? 'u' : '') + '"><td>' + it.i + '</td><td class="whitespace-normal" style="' + (flags ? 'min-width:150px;max-width:220px' : 'padding:0') + '">' + flags + '</td>' + cols.map(function (c) { return '<td title="' + E(c[1](it)) + '">' + E(c[1](it)) + '</td>'; }).join('') + '</tr>';
         }).join('') + '</tbody></table></div>';
       if (S.items.length > 120) h += '<button type="button" data-a="more" class="mt-2 text-sm font-semibold text-green-700">' + E(S.showAll ? t('showLess') : t('showAll', { n: S.items.length })) + '</button>';
       return h;

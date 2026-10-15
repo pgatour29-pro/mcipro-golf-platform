@@ -14909,6 +14909,7 @@
                 'scorecard.live.endfirst': 'Finish or END your round first',
                 'scorecard.demo.you': 'You',
                 'scorecard.demo.p2': 'Demo Player 2',
+                'scorecard.demo.waltz3': 'Demo: 3-Man Waltz plays as a team of three',
                 'scorecard.demo.p3': 'Demo Player 3',
                 'scorecard.demo.p4': 'Demo Player 4',
                 'scorecard.demo.cardtag': 'DEMO ROUND — nothing was saved',
@@ -18717,6 +18718,7 @@
                 'scorecard.live.endfirst': 'กรุณาจบหรือกด END รอบของคุณก่อน',
                 'scorecard.demo.you': 'คุณ',
                 'scorecard.demo.p2': 'ผู้เล่นทดลอง 2',
+                'scorecard.demo.waltz3': 'ทดลอง: 3-Man Waltz เล่นเป็นทีมละ 3 คน',
                 'scorecard.demo.p3': 'ผู้เล่นทดลอง 3',
                 'scorecard.demo.p4': 'ผู้เล่นทดลอง 4',
                 'scorecard.demo.cardtag': 'รอบทดลอง — ไม่มีการบันทึก',
@@ -22758,6 +22760,7 @@
                 'scorecard.live.endfirst': '먼저 라운드를 종료하세요',
                 'scorecard.demo.you': '나',
                 'scorecard.demo.p2': '체험 플레이어 2',
+                'scorecard.demo.waltz3': '체험: 3인 왈츠는 3명이 한 팀으로 플레이합니다',
                 'scorecard.demo.p3': '체험 플레이어 3',
                 'scorecard.demo.p4': '체험 플레이어 4',
                 'scorecard.demo.cardtag': '체험 라운드 — 저장되지 않음',
@@ -26359,6 +26362,7 @@
                 'scorecard.live.endfirst': '先にラウンドを終了してください',
                 'scorecard.demo.you': 'あなた',
                 'scorecard.demo.p2': '体験プレーヤー2',
+                'scorecard.demo.waltz3': '体験: 3マンワルツは3人1組でプレーします',
                 'scorecard.demo.p3': '体験プレーヤー3',
                 'scorecard.demo.p4': '体験プレーヤー4',
                 'scorecard.demo.cardtag': '体験ラウンド — 保存されません',
@@ -29212,6 +29216,27 @@
         }
         window.setLeaderboardView = function(v) { leaderboardView = v; renderLbToggle(); refreshLiveLeaderboard(); };
 
+        // Game boards (Skins, Nassau, Best Ball, Aggregate, Modified Stableford): the same
+        // per-game tables the full-view card shows, under the main board — built from this
+        // device's scores, so the demo round shows them too (v1575).
+        const LB_GAME_FMTS = ['skins', 'nassau', 'bestball', 'aggregate', 'modifiedstableford'];
+        async function appendLbGameBoards(content, mgr) {
+            try {
+                const fmts = (mgr?.scoringFormats || []).filter(f => LB_GAME_FMTS.includes(f));
+                if (!fmts.length || !content || typeof mgr?.getGroupLeaderboard !== 'function' || typeof mgr?.renderGroupLeaderboard !== 'function') return;
+                const lb = await mgr.getGroupLeaderboard();
+                if (!lb || !lb.length) return;
+                const html = mgr.renderGroupLeaderboard(lb, fmts);
+                if (!html) return;
+                const box = document.createElement('div');
+                box.className = 'lb-games';
+                box.style.cssText = 'margin-top:14px;padding-top:6px;border-top:2px solid #e2e8f0;color:#0f172a;';
+                box.innerHTML = html;
+                content.appendChild(box);
+                if (window._golferChipDecorate) window._golferChipDecorate(box, 20);
+            } catch (e) { console.warn('[LiveLeaderboard] game boards', e); }
+        }
+
         async function refreshLiveLeaderboard() {
             const content = document.getElementById('liveLeaderboardContent');
             if (!content) return;
@@ -29252,7 +29277,10 @@
                 }
 
                 let scorecards = [];
-                if (eventId) {
+                if (mgr?.demoMode && typeof mgr._demoLocalScorecards === 'function') {
+                    // DEMO: nothing is in the DB on purpose — the board reads this device's cards.
+                    scorecards = mgr._demoLocalScorecards();
+                } else if (eventId) {
                     // NO date window: event_id already scopes this to one round, and the old
                     // 48h floor was the only board with it — a card pre-created or started
                     // earlier dropped off HERE while still showing on live.html and the
@@ -29533,6 +29561,7 @@
                         }).join('') + '<p style="text-align:center;color:#9ca3af;font-size:10px;margin-top:8px;">' + tt('lb.autoupdates', 'Auto-updates on score entry') + '</p>';
                     // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
                     if (window._golferChipDecorate) window._golferChipDecorate(content, 16);
+                    await appendLbGameBoards(content, mgr);
                     return;
                 }
 
@@ -29600,6 +29629,7 @@
                             </div>`;
                         }).join('') + `<p style="text-align:center;color:#9ca3af;font-size:10px;margin-top:8px;">${tt('lb.autoupdates', 'Auto-updates on score entry')}</p>`;
                     if (window._golferChipDecorate) window._golferChipDecorate(content, 16);
+                    await appendLbGameBoards(content, mgr);
                     return;
                 }
 
@@ -29658,6 +29688,7 @@
                 }).join('') + '<p style="text-align:center;color:#9ca3af;font-size:10px;margin-top:8px;">' + tt('lb.autoupdates', 'Auto-updates on score entry') + '</p>';
                 // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
                 if (window._golferChipDecorate) window._golferChipDecorate(content, 22);
+                await appendLbGameBoards(content, mgr);
             } catch (e) {
                 console.error('[LiveLeaderboard] Error:', e);
                 content.innerHTML = '<p style="text-align:center;color:#dc2626;padding:20px;">Error loading leaderboard</p>';
@@ -94530,23 +94561,137 @@ class LiveScorecardSystem {
     // The practice group: the golfer plus three partners so every game (teams, scramble,
     // skins, match play, waltz…) is reachable. They live in memory only — these names are
     // never written to the player directory.
-    _demoSeedPlayers() {
+    _demoSeedList() {
         const u = window.AppState?.currentUser;
         let hcp = 18;
         try {
             const prof = JSON.parse(localStorage.getItem('profile_' + (u?.lineUserId || '')) || '{}');
             hcp = HandicapManager.getFromProfile(prof, 18);
         } catch (e) {}
-        this.players = [
+        return [
             { id: u?.lineUserId || 'demo_me', lineUserId: u?.lineUserId || null,
               name: u?.name || _lvT('scorecard.demo.you', 'You'), handicap: hcp, profileData: null },
             { id: 'demo_p2', lineUserId: null, name: _lvT('scorecard.demo.p2', 'Demo Player 2'), handicap: 8, isDemo: true },
             { id: 'demo_p3', lineUserId: null, name: _lvT('scorecard.demo.p3', 'Demo Player 3'), handicap: 16, isDemo: true },
             { id: 'demo_p4', lineUserId: null, name: _lvT('scorecard.demo.p4', 'Demo Player 4'), handicap: 24, isDemo: true }
         ];
+    }
+
+    _demoSeedPlayers() {
+        this.players = this._demoSeedList();
         this.scoresCache = {};
         this.players.forEach(p => { this.scoresCache[p.id] = {}; });
         this.renderPlayersList();
+    }
+
+    // ── Demo plays EVERY game (v1575) ──────────────────────────────────────────────────
+    // Waltz is teams of three, so while it is ticked the seeded group is You + two
+    // partners; everything else plays as four. Only the seeded roster is touched — a
+    // golfer who edited the demo group keeps their own list.
+    _demoFitRoster(formats) {
+        if (!this.demoMode || this._isRoundActive()) return false;
+        const seeds = this._demoSeedList();
+        const seedIds = new Set(seeds.map(p => String(p.id)));
+        if ((this.players || []).some(p => !seedIds.has(String(p.id)))) return false;
+        const want = (formats || []).includes('waltz') ? 3 : 4;
+        if ((this.players || []).length === want) return false;
+        this.players = seeds.slice(0, want);
+        this.scoresCache = {};
+        this.players.forEach(p => { this.scoresCache[p.id] = {}; });
+        this.renderPlayersList();
+        return true;
+    }
+
+    // The demo writes nothing, so every board that normally reads the group's cards from
+    // the DB gets them from here instead: the same row shape the scorecards query returns
+    // (scores with gross/net/points/par), built from this device's cache and course card.
+    _demoLocalScorecards() {
+        const eng = LiveScorecardSystem?.GolfScoringEngine;
+        const holes = this.courseData?.holes || [];
+        const fmt = (this.scoringFormats || []).join(',');
+        const now = new Date().toISOString();
+        return (this.players || []).map(p => {
+            let shots = {};
+            try { shots = eng ? eng.allocHandicapShots(holes, p.handicap) : {}; } catch (e) { shots = {}; }
+            const cache = this.scoresCache?.[p.id] || {};
+            const scores = [];
+            Object.keys(cache).forEach(h => {
+                const hn = Number(h), gross = Number(cache[h]);
+                if (!(hn >= 1 && hn <= 18) || !Number.isFinite(gross) || gross <= 0) return;
+                const hd = this.getHoleData(hn);
+                const par = Number(hd?.par) || 4;
+                const net = gross - (shots[hn] || 0);
+                const pts = eng ? eng.stablefordPointsForHole(net, par, {}) : null;
+                scores.push({ hole_number: hn, gross_score: gross, net_score: net, stableford_points: pts, par });
+            });
+            return {
+                id: this.scorecards?.[p.id] || ('local_demo_' + p.id), player_id: p.id, player_name: p.name,
+                group_id: this.groupId || '', created_at: now, status: 'in_progress', scoring_format: fmt,
+                handicap: p.handicap, course_id: this.courseId || null, course_name: this.courseData?.name || '', scores
+            };
+        });
+    }
+
+    // One tap starts any game in the demo: the roster fits the format, Match Play gets a
+    // type and its teams, Aggregate gets its two teams, 2-man scramble assigns itself.
+    // Nothing a golfer already picked is overwritten — only EMPTY slots are filled.
+    _demoAutoConfigure(formats) {
+        if (!this.demoMode || this._demoCfgBusy) return;
+        this._demoCfgBusy = true;
+        try {
+            const fmts = formats || Array.from(document.querySelectorAll('input[name="scoringFormat"]:checked')).map(i => i.value);
+            if (this._demoFitRoster(fmts)) {
+                fmts.forEach(f => {
+                    try {
+                        this.initializeGameConfig(f);
+                        if (this.gameConfigs?.[f]) this.gameConfigs[f].players = this.players.map(p => p.id);
+                        this.renderGameConfigPanel(f);
+                    } catch (e) {}
+                });
+                if (fmts.includes('waltz')) NotificationManager.show(_lvT('scorecard.demo.waltz3', 'Demo: 3-Man Waltz plays as a team of three'), 'info');
+            }
+            const ids = (this.players || []).map(p => p.id);
+            if (fmts.includes('matchplay')) {
+                const typeBox = v => document.querySelector(`input[name="matchPlayType"][value="${v}"]`);
+                if (ids.length !== 4 && typeBox('teams')?.checked) typeBox('teams').checked = false;
+                if (!document.querySelector('input[name="matchPlayType"]:checked')) {
+                    const want = typeBox(ids.length === 4 ? 'teams' : 'individual');
+                    if (want) want.checked = true;
+                }
+                if (typeof updateMatchPlayType === 'function') updateMatchPlayType();
+                // a type that was switched off takes its matches with it (the live UI keeps them)
+                if (!typeBox('teams')?.checked) this.matchPlayTeams = null;
+                if (!typeBox('roundrobin')?.checked) this.roundRobinMatches = null;
+                if (typeBox('teams')?.checked && ids.length === 4) {
+                    const slots = ['teamA_player1', 'teamA_player2', 'teamB_player1', 'teamB_player2'];
+                    if (slots.every(id => !document.getElementById(id)?.value)) {
+                        slots.forEach((id, i) => { const sel = document.getElementById(id); if (sel) sel.value = ids[i]; });
+                        this.validateTeamSelection();
+                    }
+                }
+                if (typeBox('roundrobin')?.checked && ids.length >= 3) {
+                    let touched = false;
+                    ids.forEach((pid, i) => {
+                        const o1 = document.getElementById('rr_' + pid + '_opp1'), o2 = document.getElementById('rr_' + pid + '_opp2');
+                        if (o1 && !o1.value) { o1.value = ids[(i + 1) % ids.length]; touched = true; }
+                        if (o2 && !o2.value) { o2.value = ids[(i + 2) % ids.length]; touched = true; }
+                    });
+                    if (touched) this.validateRoundRobinSelection();
+                }
+            }
+            if (fmts.includes('aggregate') && ids.length >= 4) {
+                const a1 = document.getElementById('aggTeamA_p1');
+                if (a1 && a1.options.length <= 1 && typeof populateAggregateDropdowns === 'function') populateAggregateDropdowns();
+                const slots = ['aggTeamA_p1', 'aggTeamA_p2', 'aggTeamB_p1', 'aggTeamB_p2'];
+                if (slots.every(id => !document.getElementById(id)?.value)) {
+                    slots.forEach((id, i) => { const sel = document.getElementById(id); if (sel) sel.value = ids[i]; });
+                    if (typeof validateAggregateTeams === 'function') validateAggregateTeams();
+                }
+            }
+            if (fmts.includes('scramble') && typeof updateScrambleTeamUI === 'function') updateScrambleTeamUI();
+            try { if (window.ScorecardStatus) ScorecardStatus.update(); } catch (e) {}
+        } catch (e) { console.warn('[DemoRound] auto-configure', e); }
+        finally { this._demoCfgBusy = false; }
     }
 
     _demoSyncUI() {
@@ -103005,6 +103150,7 @@ class LiveScorecardSystem {
     // read as PENDING and the hole-by-hole grid is empty). Mirrors the leaderboard's scope.
     async loadMatchScoresFromDB() {
         try {
+            if (this.demoMode) return;   // DEMO: every score is in this device's cache
             if (!window.SupabaseDB?.client) return;
             let q = window.SupabaseDB.client.from('scorecards')
                 .select('player_id, player_name, created_at, scores(hole_number, gross_score)')
@@ -103043,6 +103189,7 @@ class LiveScorecardSystem {
     // (e.g. tap-to-fix handicaps) are never clobbered.
     async loadMatchConfigFromDB() {
         try {
+            if (this.demoMode) return;   // DEMO: teams were set on this device
             if (!window.SupabaseDB?.client) return;
             // NOTE: no blanket host early-return here. The per-field guards below
             // protect host-local values (teams/handicaps only fill when missing),
@@ -105030,6 +105177,8 @@ class LiveScorecardSystem {
             document.querySelectorAll('input[name="scoringFormat"]:checked')
         ).map(input => input.value);
         console.log("[LiveScorecard] 🎯 START ROUND: scoringFormats collected =", JSON.stringify(this.scoringFormats));
+        // DEMO: fit the group and fill any team/match slot still empty, so no format can refuse to start
+        if (this.demoMode) { try { this._demoAutoConfigure(this.scoringFormats); } catch (e) {} }
 
         // Validate at least one format selected
         if (this.scoringFormats.length === 0) {
@@ -117125,7 +117274,7 @@ class LiveScorecardSystem {
         }
 
         // Load match play configuration from database if not already loaded
-        if (!this.matchPlayTeams && !this.roundRobinMatches && this.scoringFormats.includes('matchplay')) {
+        if (!this.demoMode && !this.matchPlayTeams && !this.roundRobinMatches && this.scoringFormats.includes('matchplay')) {
             try {
                 // Get any scorecard from this group to load the match play config
                 const { data: scorecards, error } = await window.SupabaseDB.client
@@ -117724,7 +117873,7 @@ class LiveScorecardSystem {
         return leaderboard;
     }
 
-    renderGroupLeaderboard(leaderboard) {
+    renderGroupLeaderboard(leaderboard, onlyFormats) {
         try {
             // Defensive check for leaderboard
             if (!leaderboard || !Array.isArray(leaderboard) || leaderboard.length === 0) {
@@ -117744,7 +117893,7 @@ class LiveScorecardSystem {
             this._renderDepth = (this._renderDepth || 0) + 1;
 
             // Render multiple leaderboards - one for each selected format
-            const leaderboardsHtml = this.scoringFormats.map((format, formatIndex) => {
+            const leaderboardsHtml = ((Array.isArray(onlyFormats) && onlyFormats.length) ? onlyFormats : this.scoringFormats).map((format, formatIndex) => {
             // Clone and sort leaderboard for this specific format
             let sortedLeaderboard = [...leaderboard];
 
@@ -120862,6 +121011,9 @@ window.toggleFormatCheckbox = function(label, event) {
         }
     }
 
+    // DEMO: the game is ready to start the moment it is ticked (roster, teams, matches)
+    if (window.LiveScorecardManager?.demoMode) { try { window.LiveScorecardManager._demoAutoConfigure(); } catch (e) {} }
+
     // Log all selected formats
     const selectedFormats = Array.from(
         document.querySelectorAll('.scoring-format-checkbox:checked')
@@ -121419,6 +121571,8 @@ window.updateMatchPlayType = function() {
             label.classList.add('border-gray-300', 'bg-white');
         }
     });
+    // DEMO: a freshly picked type gets its teams / opponents filled in
+    if (window.LiveScorecardManager?.demoMode) { try { window.LiveScorecardManager._demoAutoConfigure(); } catch (e) {} }
 };
 
 // v1253 (Pete 2026-09-18): "at the end of the round it only records the team and not the individual scores

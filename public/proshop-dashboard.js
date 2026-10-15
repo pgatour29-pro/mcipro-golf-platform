@@ -342,6 +342,8 @@
             else if (tab === 'settings') PS.loadSettings();
             else if (tab === 'audit') PS.loadAudit();
             else if (tab === 'import') PS.loadImport();
+            // the strip scrolls when it is wider than the screen: the open tab is always in view
+            try { const tb = document.getElementById('proshop-' + tab + '-tab'); if (tb && tb.scrollIntoView) tb.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) { }
             else if (tab === 'insights') PS.loadInsights();
             else if (tab === 'teesheet') {
                 try {

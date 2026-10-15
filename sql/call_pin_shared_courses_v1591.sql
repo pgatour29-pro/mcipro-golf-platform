@@ -5,6 +5,8 @@
 -- call_pin_get(p_golfer) already returns any golfer's PIN to the anon key (no JWT for LIFF users yet), so this token
 -- adds no new read path; desk_call_pins still answers only for golfers tied to that course.
 alter table public.proshop_desk_tokens add column if not exists shared boolean not null default false;
+-- v1591b (security review): who minted a shared token, so minting is rate-limited per IP and auditable
+alter table public.proshop_desk_tokens add column if not exists ip text;
 
 create or replace function public.proshop_shared_desk_token(p_course text)
 returns jsonb language plpgsql security definer set search_path = public as $$
@@ -14,6 +16,8 @@ declare
   ks   text[];
   own  text[];
   tok  text;
+  h    jsonb := coalesce(nullif(current_setting('request.headers', true), '')::jsonb, '{}'::jsonb);
+  v_ip text := coalesce(h->>'cf-connecting-ip', split_part(coalesce(h->>'x-forwarded-for', ''), ',', 1));
 begin
   if k is null then return jsonb_build_object('ok', false, 'reason', 'course'); end if;
   select c.id into cid from public.courses c where c.id = k limit 1;
@@ -27,8 +31,12 @@ begin
     union select fc.slug from public.proshop_facility_pins fp join public.facility_courses fc on fc.facility_id = fp.facility_id
     union select fc.course_ref from public.proshop_facility_pins fp join public.facility_courses fc on fc.facility_id = fp.facility_id) q;
   if ks && coalesce(own, '{}') then return jsonb_build_object('ok', false, 'reason', 'own_pin'); end if;
+  if nullif(v_ip, '') is not null and (select count(*) from public.proshop_desk_tokens t
+        where t.shared and t.ip = v_ip and t.created_at > now() - interval '1 hour') >= 10 then
+    return jsonb_build_object('ok', false, 'reason', 'busy');
+  end if;
   tok := encode(extensions.gen_random_bytes(24), 'hex');
-  insert into public.proshop_desk_tokens (token, course_id, shared, expires_at) values (tok, cid, true, now() + interval '30 days');
+  insert into public.proshop_desk_tokens (token, course_id, shared, expires_at, ip) values (tok, cid, true, now() + interval '30 days', nullif(v_ip, ''));
   delete from public.proshop_desk_tokens where expires_at < now();
   return jsonb_build_object('ok', true, 'desk_token', tok, 'course_id', cid);
 end $$;

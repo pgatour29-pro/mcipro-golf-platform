@@ -56,5 +56,10 @@ const pinLit = /['"`]0{5}[1-9]['"`]|['"`]0{4}[1-9][0-9]['"`]/;
 [['public/course-import.js', mod], ['sql/course_import_v1581.sql', sql], ['tests/course-import-check.js', read('tests/course-import-check.js')]]
     .forEach(([f, body]) => { if (pinLit.test(body)) fail.push(f + ': contains a course PIN literal — PINs live in the DB only (public repo)'); });
 
+// 6. every script the import touches must PARSE — v1585 shipped a statement inside an else-if chain and took the
+//    whole pro shop dashboard down (window.ProshopDashboard never defined)
+['public/proshop-dashboard.js', 'public/proshop-glass.js', 'public/course-import.js', 'public/course-crm.js', 'public/course-audit.js', 'public/booking-brief.js', 'public/player-card.js']
+    .forEach(f => { try { new Function(read(f)); } catch (e) { fail.push(f + ': does not parse — ' + e.message); } });
+
 if (fail.length) { console.error('✗ course import guard:\n  ' + fail.join('\n  ')); process.exit(1); }
 console.log('✓ course import: every pro shop entrance, server-only writes, locked tables, pin-mask PIN box, no PIN committed');

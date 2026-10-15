@@ -342,8 +342,6 @@
             else if (tab === 'settings') PS.loadSettings();
             else if (tab === 'audit') PS.loadAudit();
             else if (tab === 'import') PS.loadImport();
-            // the strip scrolls when it is wider than the screen: the open tab is always in view
-            try { const tb = document.getElementById('proshop-' + tab + '-tab'); if (tb && tb.scrollIntoView) tb.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) { }
             else if (tab === 'insights') PS.loadInsights();
             else if (tab === 'teesheet') {
                 try {
@@ -1343,6 +1341,8 @@
             if (window.psDockActive) window.psDockActive(tabName);
         } catch (e) { }
         try { TabManager.showTab('proshopDashboard', tabName, event); } catch (e) { console.warn('[PS] showTab', e); }
+        // v1585: the strip scrolls when it is wider than the screen — the open tab is always in view
+        try { const tb = document.getElementById('proshop-' + tabName + '-tab'); if (tb && tb.offsetParent && tb.scrollIntoView) tb.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) { }
         try { if (window.PSGlass) PSGlass.onTab(tabName); } catch (e) { }
         setTimeout(() => { try { PS.onTab(tabName); } catch (e) { console.warn('[PS] onTab', e); } }, 50);
     };

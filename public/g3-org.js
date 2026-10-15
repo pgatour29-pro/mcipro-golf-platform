@@ -58,6 +58,7 @@
   "#g3oRail .g3-it[data-trgg-only]{display:none}" + D + ".g3o-trgg #g3oRail .g3-it[data-trgg-only]{display:flex}\n" +
   "#g3oRail .g3-me{display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);cursor:pointer;margin-top:10px}\n" +
   "#g3oRail .g3-me .g3-av{width:30px;height:30px;border-radius:50%;background:#E7F7EC;color:#0B3B2A;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex:none;box-shadow:0 0 0 2px rgba(74,222,128,.7)}\n" +
+  ".g3-me .g3-av.g3-logo{background:#fff;overflow:hidden}.g3-me .g3-av.g3-logo img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}\n" +
   "#g3oRail .g3-me .g3-nm{font-family:'Fraunces',Georgia,serif;font-size:15px;font-weight:600;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#g3oRail .g3-me .g3-sb{font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n" +
   /* header -> white 64px strip */
   D + " > header.nav-header{background:#fff !important;border-bottom:1px solid #DDE5DE !important;box-shadow:none !important;position:sticky;top:0;z-index:30}\n" +
@@ -280,7 +281,7 @@
       var sn = socName(), sub = document.getElementById('g3oBrandSub'); if (sub) sub.textContent = sn;
       var dash = document.getElementById('societyOrganizerDashboard');
       try { var trgg = /Travellers/i.test(sn) || (document.getElementById('orgLiteCubesGrid') || {}).classList && document.getElementById('orgLiteCubesGrid').classList.contains('trgg-on'); if (dash) dash.classList.toggle('g3o-trgg', !!trgg); } catch (e) {}
-      try { var me = (window.AppState && AppState.currentUser) || {}; var nm = me.name || me.displayName || 'Organizer'; var meEl = document.getElementById('g3oMe'); if (meEl) meEl.textContent = nm; var av = document.getElementById('g3oAv'); if (av) av.textContent = String(nm).split(/\s+/).map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase(); var ms = document.getElementById('g3oMeSub'); if (ms) ms.textContent = (shortSoc(sn) || sn) + ' · Organizer'; } catch (e) {}
+      try { var me = (window.AppState && AppState.currentUser) || {}; var nm = me.name || me.displayName || 'Organizer'; var meEl = document.getElementById('g3oMe'); if (meEl) meEl.textContent = nm; var av = document.getElementById('g3oAv'); if (av) { var lg = (window.AppState && AppState.selectedSociety && AppState.selectedSociety.logo) || ((window.SocietyOrganizerSystem || {}).societyProfile || {}).societyLogo || ''; if (lg) { if (av._lg !== lg) { av._lg = lg; av.innerHTML = '<img src="' + esc(lg) + '" alt="">'; } av.classList.add('g3-logo'); } else { av._lg = ''; av.classList.remove('g3-logo'); av.textContent = String(nm).split(/\s+/).map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase(); } } var ms = document.getElementById('g3oMeSub'); if (ms) ms.textContent = (shortSoc(sn) || sn) + ' · Organizer'; } catch (e) {}
       try { var light = dash && dash.classList.contains('light-mode'); var lb = document.getElementById('g3oViewLb'), ic = document.getElementById('g3oViewIc'); if (lb) lb.textContent = light ? T('lightview.light', 'Light') : T('lightview.full', 'Full'); if (ic) ic.textContent = light ? 'wb_sunny' : 'tune'; } catch (e) {}
     },
 

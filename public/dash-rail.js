@@ -120,7 +120,9 @@
                 ' ' + OO + ' > header.nav-header .dd-who .g3-sb{font-size:11.5px;color:#6B7A70;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
                 ' ' + OO + ' > header.nav-header .dd-who > .material-symbols-outlined{display:none}',
                 ' ' + OO + ' > header.nav-header .dd-who .g3-av{width:40px;height:40px;border-radius:50%;background:#E7F7EC;color:#0B3B2A;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:none;box-shadow:0 0 0 2px rgba(34,197,94,.55)}',
-                ' ' + OO + ' > header.nav-header .dd-who .cp-hb{color:#0284c7}',
+                // Classic: the twin keeps .g3-me, so call-pin.js's rail colours (#e0f2fe digits) printed white on white — phone blues here; Glass overrides below with !important
+                ' ' + OO + ' > header.nav-header .dd-who .cp-hb{color:#0369a1}' + OO + ' > header.nav-header .dd-who .cp-hb b{color:#0c4a6e}' + OO + ' > header.nav-header .dd-who .cp-hb.set{color:#15803d}',
+                ' ' + OO + ' > header.nav-header .dd-who .g3-av.g3-logo{background:#fff}',
                 // ---------- GLASS (option) ----------
                 ' ' + G + ' ' + GO + ' > #g3Rail,' + G + ' ' + OO + ' > #g3oRail{background:rgba(6,12,10,.82)!important;border-right:1px solid rgba(255,255,255,.1)!important;backdrop-filter:blur(24px) saturate(150%);-webkit-backdrop-filter:blur(24px) saturate(150%)}',
                 ' ' + G + ' ' + GO + ' .g3-it > span[class]:not(.material-symbols-outlined),' + G + ' ' + OO + ' .g3-it > span[class]:not(.material-symbols-outlined){box-shadow:0 0 0 2px #0a1310!important}',

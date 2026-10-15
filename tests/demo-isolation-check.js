@@ -13,5 +13,10 @@ if (!/_ninesPromptStillWanted\(eventId, courseId\) \{\s*if \(this\.demoMode\) re
 if ((s.match(/if \(!this\._ninesPromptStillWanted\(eventId, courseId\)\) return;/g) || []).length < 2) fail.push('_promptNinesConfirm must check _ninesPromptStillWanted at entry AND after its await');
 if (!/_prefillStillWanted\(eventId\) \{\s*if \(this\.demoMode\) return false;/.test(s)) fail.push('_prefillStillWanted must exist and refuse in demoMode');
 if ((s.match(/if \(!this\._prefillStillWanted\(eventId\)\) return;/g) || []).length < 2) fail.push('prefillFromTeeSheet must re-check _prefillStillWanted after its awaits (before it touches players)');
+// v1580 (Pete 2026-10-15: deleted the 3 demo players, started, and they came back): the demo only refits the roster it
+// seeded ITSELF (_demoRosterKey); an edited list is the golfer's group, as in a live round. Never "every id is a seed".
+if (!/_demoFitRoster\(formats\) \{[\s\S]{0,900}if \(this\._demoKey\(this\.players\) !== this\._demoRosterKey\) return false;/.test(s)) fail.push('_demoFitRoster must refit only the roster the demo set itself (_demoRosterKey), never a golfer-edited list');
+if (/seedIds\.has\(String\(p\.id\)\)/.test(s)) fail.push('the old "every id is a seed" roster test is back — it refilled the demo players after the golfer deleted them');
+if (!/_demoSeedPlayers\(\) \{[\s\S]{0,400}this\._demoRosterKey = this\._demoKey\(this\.players\);/.test(s)) fail.push('_demoSeedPlayers must record _demoRosterKey');
 if (fail.length) { console.error('✗ demo isolation guard:\n  ' + fail.join('\n  ')); process.exit(1); }
 console.log('✓ demo isolation: event auto-select, prefill, nines prompt and PIN course guarded');

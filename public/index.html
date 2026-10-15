@@ -94588,8 +94588,12 @@ class LiveScorecardSystem {
         this.players = this._demoSeedList();
         this.scoresCache = {};
         this.players.forEach(p => { this.scoresCache[p.id] = {}; });
+        this._demoRosterKey = this._demoKey(this.players);
         this.renderPlayersList();
     }
+
+    // v1580: the roster as the demo last set it. Anything else on the list is the golfer's own group.
+    _demoKey(list) { return (list || []).map(p => String(p.id)).sort().join('|'); }
 
     // ── Demo plays EVERY game (v1575) ──────────────────────────────────────────────────
     // Waltz is teams of three, so while it is ticked the seeded group is You + two
@@ -94597,14 +94601,19 @@ class LiveScorecardSystem {
     // golfer who edited the demo group keeps their own list.
     _demoFitRoster(formats) {
         if (!this.demoMode || this._isRoundActive()) return false;
+        // v1580 (Pete: "i deleted all of the 3 demo players and started the round and it still showed all 3
+        // demo players"): only the roster the demo set ITSELF is refitted. The old test ("every id is a seed")
+        // read You-alone as the untouched seed group and put the three demo players back at Start Round.
+        // The moment the golfer edits the list (deletes a demo player, adds a buddy) it is their group,
+        // exactly as in a live round, and the demo never touches it again.
+        if (this._demoKey(this.players) !== this._demoRosterKey) return false;
         const seeds = this._demoSeedList();
-        const seedIds = new Set(seeds.map(p => String(p.id)));
-        if ((this.players || []).some(p => !seedIds.has(String(p.id)))) return false;
         const want = (formats || []).includes('waltz') ? 3 : 4;
         if ((this.players || []).length === want) return false;
         this.players = seeds.slice(0, want);
         this.scoresCache = {};
         this.players.forEach(p => { this.scoresCache[p.id] = {}; });
+        this._demoRosterKey = this._demoKey(this.players);
         this.renderPlayersList();
         return true;
     }

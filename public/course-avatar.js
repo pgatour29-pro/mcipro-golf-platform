@@ -33,7 +33,10 @@
     '.crs-av .material-symbols-outlined{font-size:18px}' +
     // the phone headers hid the role icon to save room; the course stays, a size smaller
     '@media (max-width:767px){#caddyMasterDashboard .nav-header .cm-hdr-ic[data-crs-k],#marketingDashboard .nav-header .mk-hdr-ic[data-crs-k]{display:flex!important;width:32px;height:32px;border-radius:9px}' +
-    '#caddyMasterDashboard .nav-header .cm-hdr-ic .crs-av,#marketingDashboard .nav-header .mk-hdr-ic .crs-av{font-size:12.5px}}';
+    '#caddyMasterDashboard .nav-header .cm-hdr-ic .crs-av,#marketingDashboard .nav-header .mk-hdr-ic .crs-av{font-size:12.5px}}' +
+    // ONE logo (Pete: "there only needs to be one and that on the far left corner and nothing in the main inner page"):
+    // where the Glass rail shows (768px+), its corner tile is the logo, so the header copy goes
+    '@media (min-width:768px){#proshopDashboard.psg header .bg-gradient-to-br{display:none!important}}';
   var CA = W.CourseAvatar = {
     initials: initials,
     paint: function () {
@@ -47,7 +50,7 @@
           host.replaceWith(t); host = t;
         }
         host.setAttribute('data-crs-k', key);
-        if (host.parentElement) host.parentElement.style.flexWrap = 'nowrap';   // phones force flex rows to wrap: the tile sits BESIDE the title
+        if (host.parentElement && host.closest('header')) host.parentElement.style.flexWrap = 'nowrap';   // phones force flex rows to wrap: the tile sits BESIDE the title (headers only; the Glass rail is left as it is)
         host.setAttribute('title', nm || '');
         host.setAttribute('aria-label', nm || '');
         host.innerHTML = ini ? '<span class="crs-av" aria-hidden="true">' + esc(ini) + '</span>' : '<span class="material-symbols-outlined" aria-hidden="true">golf_course</span>';

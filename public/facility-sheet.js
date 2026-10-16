@@ -265,14 +265,39 @@
             by[slug].push({ id: 'cb-' + j.id, dbId: j.id, time: tm, bookingType: 'regular', source: 'caddy-booking-db', fxSlug: slug,
               name: j.golfer_name || 'Golfer', golfers: [{ name: j.golfer_name || '', odoo_id: j.golfer_id || j.user_id || '', caddyNumber: num, caddyName: j.caddie_name || '' }] });
           });
-          // society days: one pill per event at its start (the single-course sheet expands the groups)
-          (r[2].data || []).forEach(function (ev) {
-            var slug = self.slugFor(ev.course_name); if (!slug) return;
-            var tm = String(ev.start_time || '').slice(0, 5); if (!/^\d\d:\d\d$/.test(tm)) return;
+          // society days — v1603 (Pete: "TRGG 9:50 … only taking up the 9:50 slot", 9:55 looked free): the SAME
+          // footprint as the single-course sheet (fetchSocietyEvents): course's first tee, the slots it holds
+          // (CourseLink.slotsOnSheet), one pill per group, unpaired players on the first held slot.
+          var evRows = (r[2].data || []).filter(function (ev) { return !!self.slugFor(ev.course_name); });
+          if (CL && CL.loadByIds && evRows.length) {
+            try {
+              var missEv = evRows.filter(function (ev) { return !(CL.state && CL.state.byId && CL.state.byId[ev.id]); }).map(function (ev) { return ev.id; });
+              if (missEv.length) await CL.loadByIds(missEv);
+            } catch (e) { console.warn('[FacilitySheet] CourseLink', e); }
+          }
+          var stepEv = parseInt(api.el.intervalSelect.value) || 5;
+          evRows.forEach(function (ev) {
+            var slug = self.slugFor(ev.course_name);
             var li = CL && CL.state && CL.state.byId && CL.state.byId[ev.id];
-            by[slug].push({ id: 'ev-' + ev.id, eventId: ev.id, societyId: ev.society_id, time: tm, bookingType: 'society', source: 'society-event-db', fxSlug: slug,
-              name: ev.title || self.t('society'), groupName: (li && li.society) || ev.organizer_name || ev.title || self.t('society'), golfers: [], regs: li ? (li.regs || 0) : 0,
-              end: /^\d\d:\d\d/.test(String(ev.end_time || '')) ? String(ev.end_time).slice(0, 5) : '' });
+            var tm = li && li.firstTee ? String(li.firstTee).slice(0, 5) : String(ev.start_time || '').slice(0, 5); if (!/^\d\d:\d\d$/.test(tm)) return;
+            var endTx = /^\d\d:\d\d/.test(String(ev.end_time || '')) ? String(ev.end_time).slice(0, 5) : '';
+            var s0 = api.minutes(tm);
+            var n = li && CL.slotsOnSheet ? CL.slotsOnSheet(li) : (endTx ? Math.ceil((api.minutes(endTx) - s0) / stepEv) : 1);
+            n = Math.max(1, n || 1);
+            var paired = li ? (li.groups || []).filter(function (g) { return g.players && g.players.length; }) : [];
+            var shortSoc = li && CL.shortName ? CL.shortName(li) : '';
+            var unpairedAt = Math.min(paired.length, n - 1);
+            var toG = function (p) { return { name: p.name || '', odoo_id: p.id || '', caddyNumber: (p.caddy && p.caddy.num) || (p.regNums && p.regNums[0]) || '', caddyName: (p.caddy && p.caddy.name && !/^caddy #/i.test(p.caddy.name)) ? p.caddy.name : '' }; };
+            var endAll = endTx || api.hhmm(s0 + n * stepEv);
+            for (var i = 0; i < n; i++) {
+              by[slug].push({ id: 'ev-' + ev.id + (i ? '-' + i : ''), eventId: ev.id, societyId: ev.society_id, time: api.hhmm(s0 + i * stepEv), bookingType: 'society', source: 'society-event-db', fxSlug: slug,
+                name: ev.title || self.t('society'),
+                groupName: li ? shortSoc + ' · ' + (paired[i] ? api.t('grp') + ' ' + (i + 1) : api.t('held')) : (ev.organizer_name || ev.title || self.t('society')),
+                groupId: 'society-' + ev.id, groupIndex: i, groupTotal: n, fxLead: i === 0, fxLi: !!li,
+                golfers: paired[i] ? paired[i].players.map(toG) : [],
+                unpaired: (li && i === unpairedAt && li.unpaired) ? li.unpaired.map(toG) : [],
+                regs: (li && i === 0) ? (li.regs || 0) : 0, end: endAll });
+            }
           });
           Object.keys(by).forEach(function (s) { by[s].forEach(function (b) { if (jobsByBooking[b.id]) b.fxJobs = jobsByBooking[b.id]; }); });
           // v1488: the society day's registered players ride its pill (quick find, +N, the caddy jobs below)
@@ -283,29 +308,31 @@
               var rr = await sb.from('event_registrations').select('event_id, player_id, player_name').in('event_id', evIds).limit(2000);
               var regs = {};
               (rr.data || []).forEach(function (x) { (regs[x.event_id] = regs[x.event_id] || []).push({ name: x.player_name || '', odoo_id: x.player_id || '' }); });
-              Object.keys(by).forEach(function (s) { by[s].forEach(function (b) { if (b.eventId && regs[b.eventId]) { b.unpaired = regs[b.eventId]; b.regs = regs[b.eventId].length; } }); });
+              // CourseLink events already carry groups + unpaired (v1603); the bare registrations only fill an event it could not load
+              Object.keys(by).forEach(function (s) { by[s].forEach(function (b) { if (b.eventId && b.fxLead && !b.fxLi && regs[b.eventId]) { b.unpaired = regs[b.eventId]; b.regs = regs[b.eventId].length; } }); });
             } catch (e) {}
           }
           // v1488 (Pete: "Pete Park showing on top of TRGG"): a caddy job inside a society day's window on the same
           // course belongs to that day — it is folded into the society pill, never painted beside it (the single
           // sheet does the same). A job whose golfer is registered for the day folds wherever its time is.
           Object.keys(by).forEach(function (s) {
-            var evs = by[s].filter(function (b) { return b.eventId; });
+            var evs = by[s].filter(function (b) { return b.eventId && b.fxLead; });
             if (!evs.length) return;
-            var keyOf = function (g) { return (g.odoo_id ? 'id:' + g.odoo_id : '') + '|' + String(g.name || '').trim().toLowerCase(); };
             by[s] = by[s].filter(function (b) {
               if (b.source !== 'caddy-booking-db') return true;
               var g = b.golfers[0], tm = api.minutes(b.time);
+              var same = function (r) { return (g.odoo_id && r.odoo_id === g.odoo_id) || (g.name && r.name && r.name.trim().toLowerCase() === g.name.trim().toLowerCase()); };
+              var parts = function (e) { return by[s].filter(function (x) { return x.eventId === e.eventId; }); };
               var ev = evs.find(function (e) {
                 var s0 = api.minutes(e.time), e0 = e.end ? api.minutes(e.end) : s0 + 60;
                 if (tm >= s0 && tm < e0) return true;
-                return (e.unpaired || []).some(function (r) { return (g.odoo_id && r.odoo_id === g.odoo_id) || (g.name && r.name && r.name.trim().toLowerCase() === g.name.trim().toLowerCase()); });
+                return parts(e).some(function (x) { return (x.unpaired || []).some(same) || (x.golfers || []).some(same); });
               });
               if (!ev) return true;
-              ev.golfers = ev.golfers || [];
-              var k = keyOf(g);
-              if (!ev.golfers.some(function (x) { return keyOf(x) === k; })) ev.golfers.push(g);
-              ev.unpaired = (ev.unpaired || []).filter(function (r) { return !((g.odoo_id && r.odoo_id === g.odoo_id) || (r.name && g.name && r.name.trim().toLowerCase() === g.name.trim().toLowerCase())); });
+              // v1603: already seated in a group of that day → nothing to add; else the job rides the lead pill
+              var seated = parts(ev).some(function (x) { return (x.golfers || []).some(same); });
+              if (!seated) { ev.golfers = ev.golfers || []; ev.golfers.push(g); }
+              parts(ev).forEach(function (x) { x.unpaired = (x.unpaired || []).filter(function (r) { return !same(r); }); });
               return false;
             });
           });
@@ -328,7 +355,7 @@
         list.forEach(function (b) {
           if (b.ot === 'open' || b.bookingType === 'opentime') return;
           times[b.time] = true;
-          var g = b.golfers || [], n = g.length || (b.regs ? Math.min(4, b.regs) : 1);
+          var g = b.golfers || [], n = b.eventId ? (g.length + (b.unpaired || []).length) : (g.length || 1);
           players += n;
           if (b.source === 'teesheet') { need += parseInt(b.caddiesNeeded) || 0; }
         });
@@ -373,7 +400,7 @@
       else if (withCad.length > 1) cad = String(withCad.length);
       var need = parseInt(b.caddiesNeeded) || 0;
       var nPl = b.eventId ? (g + (b.unpaired || []).length) || b.regs || 0 : (g || 1);
-      var meta = '<span class="m">' + api.TS_ICON.ppl + (nPl || 1) + '</span>';
+      var meta = (b.eventId && !nPl) ? '' : '<span class="m">' + api.TS_ICON.ppl + (nPl || 1) + '</span>';
       if (cad) meta += '<span class="m">' + api.TS_ICON.caddy + E(cad) + '</span>';
       if (need) meta += '<span class="m">+' + need + ' ' + E(t('openJobs')) + '</span>';
       if (typeClass === 'vip') tag = 'VIP'; else if (typeClass === 'society') tag = 'SOC'; else if (typeClass === 'tournament') tag = 'EVENT'; else if (typeClass === 'hotdeal') tag = b.hotDeal ? '🔥 DEAL' : 'DEAL';

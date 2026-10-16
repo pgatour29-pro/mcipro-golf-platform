@@ -861,6 +861,10 @@
     const q = S.q.trim().toLowerCase();
     let vs = venues().filter(v => S.region === 'all' || (v.cfg || {}).region === S.region);
     if (q) vs = vs.filter(v => [v.cfg.name, v.cfg.short, v.cfg.area, v.cfg.region].join(' ').toLowerCase().includes(q));
+    // v1596 (Pete 2026-10-16: "put all of the courses with the logos up on the top of the list for now"): logo courses
+    // first, each group in the order it had
+    const hasLogo = v => !!(W.CourseLogos && W.CourseLogos.url(v.slug, (v.cfg || {}).name));
+    vs = vs.filter(hasLogo).concat(vs.filter(v => !hasLogo(v)));
     const withT = vs.filter(v => v.cfg.enabled && (v.times || []).some(s => inTod(s.t)));
     const rest = vs.filter(v => withT.indexOf(v) < 0);
     const dateTxt = dayFmt(S.date, { weekday: 'short', day: 'numeric', month: 'short' });

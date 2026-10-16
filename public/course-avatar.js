@@ -35,8 +35,10 @@
   var CSS = '.crs-av{display:inline-flex;align-items:center;justify-content:center;flex:none;font:800 14px/1 "Inter",system-ui,sans-serif;letter-spacing:.02em;color:#fff;text-transform:uppercase}' +
     '.crs-av.sm{width:32px;height:32px;border-radius:9px;font-size:12.5px;background:linear-gradient(135deg,#16a34a,#0f766e)}' +
     '.crs-av .material-symbols-outlined{font-size:18px}' +
-    '.crs-has-logo{background:#fff!important;padding:0!important;overflow:hidden}' +
-    '.crs-av-img{width:100%;height:100%;object-fit:contain;display:block;background:#fff;padding:2px;box-sizing:border-box}' +
+    '.crs-has-logo{background:#fff!important;padding:0!important;overflow:hidden;position:relative}' +
+    // v1598: pinned to the tile — in the Glass rail (a grid tile squeezed to 42x39) height:100% didn't resolve, so a tall
+    // crest (St Andrews 2000) drew at its own height and lost its bottom
+    '.crs-av-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;background:#fff;padding:2px;box-sizing:border-box}' +
     // the phone headers hid the role icon to save room; the course stays, a size smaller
     '@media (max-width:767px){#caddyMasterDashboard .nav-header .cm-hdr-ic[data-crs-k],#marketingDashboard .nav-header .mk-hdr-ic[data-crs-k]{display:flex!important;width:32px;height:32px;border-radius:9px}' +
     '#caddyMasterDashboard .nav-header .cm-hdr-ic .crs-av,#marketingDashboard .nav-header .mk-hdr-ic .crs-av{font-size:12.5px}}' +

@@ -13,15 +13,19 @@
   // course ids (courses.id) CourseLink can't read from the id alone
   var IDS = { pattaya_county: 'pattaya-golf' };
   // logos for courses not on the platform yet (no CourseLink entry): they light up the day the course is added
-  var EXTRA = [[/lotus\s*valley/i, 'lotus-valley'], [/robins\s*wood/i, 'robinswood']];
+  var EXTRA = [[/lotus\s*valley/i, 'lotus-valley'], [/robins\s*wood/i, 'robinswood'], [/barcelona/i, 'st-andrews-2000']];
+  // v1597 (Pete 2026-10-16): "Barcelona is St. Andrews2000" — the Barcelona Golf facility (St Andrews 2000 + Green Valley
+  // Rayong + Silky Oak) wears the St Andrews 2000 crest: the facility's pro shop dashboard and its sister courses' Tee Times
+  var ALIAS = { 'green-valley-rayong': 'st-andrews-2000', 'silky-oak': 'st-andrews-2000' };
   function one(x) {
     if (!x) return '';
     x = String(x).trim(); if (!x) return '';
     if (HAVE.indexOf(x) >= 0) return x;
+    if (ALIAS[x]) return ALIAS[x];
     if (IDS[x]) return IDS[x];
     var L = W.CourseLink, s = null;
     try { s = L && L.slugFor ? L.slugFor(x.replace(/[_-]+/g, ' ')) : null; } catch (e) { }
-    if (s) return s;
+    if (s) return ALIAS[s] || s;
     for (var i = 0; i < EXTRA.length; i++) if (EXTRA[i][0].test(x)) return EXTRA[i][1];
     return '';
   }

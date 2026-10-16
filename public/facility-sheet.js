@@ -190,8 +190,9 @@
     paintHeader: function () {
       var api = this.api, el = api.el, node = document.getElementById('course-name-display'); if (!node || !this.fac) return;
       var c = this.courseOf(el.courseSelect.value);
-      var sub = this.showingAll() ? this.t('allCourses') : (c ? c.name : (node.textContent || ''));
-      node.innerHTML = E(this.fac.name) + '<span class="fx-sub">' + E(sub) + '</span>';
+      // v1602: a picked course = ringed chip (dot + name; phone shows the short name), ALL = plain line
+      if (this.showingAll() || !c) { node.innerHTML = E(this.fac.name) + '<span class="fx-sub">' + E(this.showingAll() ? this.t('allCourses') : (node.textContent || '')) + '</span>'; return; }
+      node.innerHTML = E(this.fac.name) + '<span class="fx-sub fx-pick" style="--cc:var(--course-' + this.letterOf(c.slug) + '-header)"><span class="d"></span><span class="t">' + E(c.name) + '</span><span class="s">' + E(c.short) + '</span></span>';
     },
     onCourseChanged: function (slug) {
       if (!this.fac) return;
@@ -518,6 +519,10 @@
         '.fx-rail button .f{font:700 10.5px "IBM Plex Mono",ui-monospace,monospace;color:var(--muted)}',
         '.fx-rail button.on{background:var(--card-hi);box-shadow:inset 0 0 0 1px var(--line-2)}.fx-rail button.on .nm{color:var(--ink)}',
         '.fx-rail button.all.on{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--brand) 55%,transparent)}.fx-rail button.all .nm{color:var(--brand)}',
+        /* v1602: the picked course must read at a glance in WHITE/DARK/GLASS — 2px brand ring + brand fill */
+        '.fx-rail button:not(.all).on{background:color-mix(in srgb,var(--brand) 16%,var(--card-hi));box-shadow:inset 0 0 0 2px var(--brand)}.fx-rail button:not(.all).on .nm{color:var(--ink);font-weight:900}.fx-rail button:not(.all).on .f{color:var(--brand)}',
+        '.fx-sub.fx-pick{display:flex;align-items:center;gap:6px;width:fit-content;margin-top:4px;padding:3px 9px 3px 7px;border-radius:7px;line-height:1.15;box-shadow:inset 0 0 0 2px var(--brand);background:color-mix(in srgb,var(--brand) 14%,transparent);color:var(--ink);font-weight:800;letter-spacing:.2px}',
+        '.fx-sub.fx-pick .d{width:7px;height:7px;border-radius:2px;background:var(--cc);flex:none}.fx-sub.fx-pick .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fx-sub.fx-pick .s{display:none}',
         '.fx-rail .m{width:30px;height:4px;border-radius:3px;background:var(--line-2);overflow:hidden}.fx-rail .m i{display:block;height:100%;background:var(--cc)}',
         '.controls-row .fx-grow{flex:1}',
         '.date-control .today-btn.fx-primary,.today-btn.fx-primary{background:var(--brand);color:var(--badge-ink);border-color:var(--brand);font-weight:800;padding:0 14px;height:34px;border-radius:10px;border:1px solid var(--brand);font-family:inherit;cursor:pointer;flex:none}',
@@ -546,9 +551,11 @@
         '.fx-cc::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--cc)}.fx-cc b{display:block;font-size:13.5px;font-weight:800}.fx-cc b i{font-style:normal;color:var(--vip)}',
         '.fx-cc small{display:block;color:var(--muted);font:600 11px "IBM Plex Mono",monospace;margin-top:3px;white-space:normal}.fx-cc small em{font-style:normal;color:var(--brand)}.fx-cc.on{box-shadow:0 0 0 2px var(--brand);background:var(--card-hi)}',
         '.fx-when select{background:var(--card);border:1px solid var(--line-2);color:var(--ink);border-radius:10px;padding:8px 12px;font:700 15px "IBM Plex Mono",monospace;min-width:140px}',
+        /* v1602: Chrome draws the open list on a white popup — glass --card is see-through, so give the options a solid pair */
+        '.fx-when select option{background:var(--panel-solid);color:var(--ink)}:root[data-theme="glass"] .fx-when select option{background:#0c1c14}',
         '.fx-mfoot{display:flex;align-items:center;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line-2)}.fx-mfoot .hint{font-size:11.5px;color:var(--muted);font-weight:600;flex:1}',
         '.fx-btn{background:var(--brand);color:var(--badge-ink);border:1px solid var(--brand);font:800 13px "Hanken Grotesk",sans-serif;border-radius:9px;padding:9px 16px;cursor:pointer;white-space:nowrap}',
-        '@media (max-width:640px){.fx-rail{height:32px}.fx-rail .m,.fx-rail button .f{display:none}.fx-rail button{padding:0 7px;height:24px;gap:5px}.fx-rail button .nm{font-size:11px}',
+        '@media (max-width:640px){.fx-sub.fx-pick .t{display:none}.fx-sub.fx-pick .s{display:inline}.fx-rail{height:32px}.fx-rail .m,.fx-rail button .f{display:none}.fx-rail button{padding:0 7px;height:24px;gap:5px}.fx-rail button .nm{font-size:11px}',
         ' .today-btn.fx-primary{order:-1;height:30px;font-size:12px;padding:0 10px}.fx-kpis{padding:0 10px}.fx-k:not(.tot){display:none}.fx-k{border-right:0;margin-right:0}.fx-others{padding:6px 10px}.fx-master{padding:14px}.fx-mfoot{flex-wrap:wrap}}'
       ].join('\n');
       document.head.appendChild(s);

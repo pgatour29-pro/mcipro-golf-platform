@@ -199,7 +199,7 @@
 
     compose: function (key) {
       var o = this.o, f = o && o.facility, def = FI.SEG[key]; if (!f || !def) return;
-      var days = this.days, copy = def.offer(f), flag = FI._flag(f);
+      var days = this.days, copy = def.offer(f);
       var d = new Date(Date.now() + 14 * 864e5), end = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
       var ov = FI._open(FI._hd('Send an offer', E(def.title(f)) + ' · last ' + days + ' days') +
         '<div class="fi-bd">' +
@@ -225,15 +225,12 @@
         if (to && to.getTime() <= Date.now()) { FI._toast('The end date must be in the future', 'warning'); return; }
         btn.disabled = true; btn.textContent = 'Sending…';
         try {
-          var labels = { booking: 'Book a tee time', caddy: 'Book a caddy', proshop: 'Pro shop' };
-          var ins = await o.sb.from('course_offers').insert({
-            course_id: flag.course_ref || flag.slug, course_name: f.name, audience: 'golfer', offer_type: 'promotion',
-            title: title, body: body, cta_label: cta ? labels[cta] : null, cta_target: cta || null, segment: seg, lang: {}, priority: 'normal',
-            valid_from: new Date().toISOString(), valid_to: to ? to.toISOString() : null, status: 'active', created_by: 'proshop:' + f.id
-          }).select('id').single();
-          if (ins.error) throw new Error(ins.error.message);
+          // v1600: the offer row is built on the server, which checks this facility's own desk token (PIN login)
+          var ins = await o.sb.rpc('create_facility_offer', { p_token: FI._token(), p_facility: f.id, p_segment: key, p_days: days,
+            p_title: title, p_body: body, p_cta: cta || null, p_valid_to: to ? to.toISOString() : null });
+          if (ins.error) throw new Error(/FACILITY_TOKEN/.test(ins.error.message) ? 'sign in with the ' + f.name + ' pro shop PIN' : ins.error.message);
           // delivery = the v1169 edge fn: resolves the group on the server, inbox row each, LINE push to opted-in followers
-          var res = await o.sb.functions.invoke('line-push-notification', { body: { type: 'course_offer', record: { offer_id: ins.data.id } } });
+          var res = await o.sb.functions.invoke('line-push-notification', { body: { type: 'course_offer', record: { offer_id: ins.data } } });
           var dd = (res && res.data) || {};
           FI._close();
           FI._toast('Offer sent · ' + fmt(dd.delivered || 0) + ' in the app inbox, ' + fmt(dd.notified || 0) + ' on LINE', 'success', 7000);

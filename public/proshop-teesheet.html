@@ -3588,6 +3588,7 @@
   <script src="booking-brief.js?v=1591"></script>
   <script src="course-open-times.js?v=1446"></script>
   <script src="course-logos.js?v=1597"></script>
+  <script src="course-offer-gate.js?v=1601"></script>
   <script src="promo-wall.js?v=1595"></script>
   <script src="course-promos.js?v=1522"></script>
   <script src="caddy-work-core.js?v=1473"></script>
@@ -7208,16 +7209,19 @@
           caddy: hd.caddy, caddy_fee: hd.caddyFee, round_minutes: roundMinutes(), hold_booking_id: booking.id
         }
       };
-      const ins = await supabaseClient.from('course_offers').insert(row).select('id').single();
-      if (ins.error || !ins.data) { alert(t('hotDealFail') + ' ' + ((ins.error && ins.error.message) || '')); return; }
+      // v1601: only the course writes its offers — course_offer_create checks this course's own PIN (course-offer-gate.js)
+      const gate = (fn) => (window.OfferGate ? window.OfferGate.run(supabaseClient, c.id, c.name, fn) : fn(''));
+      const ins = await gate((tok) => supabaseClient.rpc('course_offer_create', { p_token: tok, p: row }));
+      if (ins.error || !ins.data) { if (!(ins.error && ins.error.cancelled)) alert(t('hotDealFail') + ' ' + ((ins.error && ins.error.message) || '')); return; }
+      const offerId = ins.data;
       // the hold remembers its offer, so opening the pill can show and withdraw it
-      booking.hotDeal = Object.assign({}, booking.hotDeal || hd.hotDeal, { offerId: ins.data.id });
+      booking.hotDeal = Object.assign({}, booking.hotDeal || hd.hotDeal, { offerId });
       const day = getDay(date);
       const i = day.findIndex(b => b.id === booking.id);
       if (i >= 0) { day[i] = booking; setDay(date, day); }
       let reached = '';
       try {
-        const r = await supabaseClient.functions.invoke('line-push-notification', { body: { type: 'course_offer', record: { offer_id: ins.data.id } } });
+        const r = await supabaseClient.functions.invoke('line-push-notification', { body: { type: 'course_offer', record: { offer_id: offerId } } });
         const d = r && r.data;
         if (d && typeof d.delivered === 'number') reached = ' · ' + t('hotDealReached').replace('{n}', d.delivered).replace('{p}', d.notified || 0);
         else if (d && d.reason) reached = ' · ' + d.reason;
@@ -7229,7 +7233,10 @@
     async function withdrawHotDealOffer(offerId) {
       if (!supabaseClient || !offerId) return;
       try {
-        await supabaseClient.from('course_offers').update({ status: 'deleted', updated_at: new Date().toISOString() }).eq('id', offerId);
+        const c = courseCtx();
+        const gate = (fn) => (window.OfferGate ? window.OfferGate.run(supabaseClient, c.id, c.name, fn) : fn(''));
+        const r = await gate((tok) => supabaseClient.rpc('course_offer_set_status', { p_token: tok, p_id: offerId, p_status: 'deleted' }));
+        if (r && r.error && !r.error.cancelled) console.warn('[HotDeal] withdraw:', r.error.message);
       } catch (e) { console.warn('[HotDeal] withdraw:', e.message); }
     }
     async function withdrawHotDealFromSheet(seed) {

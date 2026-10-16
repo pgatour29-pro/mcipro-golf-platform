@@ -16,7 +16,8 @@
  *                Ask-AI thread over the same numbers (v1257, edge fn marketing-ai — Gemini since v1258)
  * Reads: marketing_audience_report / marketing_offer_stats (aggregate-only RPCs), course_offers,
  * caddy_reviews, course_conditions, society_events (+ registrations counts), count_offer_segment.
- * Writes: course_offers (insert / status), then the line-push-notification edge fn delivers.
+ * Writes: course_offer_create / course_offer_set_status (v1601: the course's own PIN — course-offer-gate.js), then the
+ *         line-push-notification edge fn delivers.
  */
 (function () {
     'use strict';
@@ -581,9 +582,11 @@
         },
         async setStatus(id, status) {
             try {
-                const { data, error } = await db().from('course_offers').update({ status, updated_at: new Date().toISOString() }).eq('id', id).eq('course_id', MK.course.id).select('id');
+                const og = (fn) => (window.OfferGate ? window.OfferGate.run(db(), MK.course.id, MK.course.name, fn) : fn(''));   // v1601: only the course writes its offers
+                const { data, error } = await og((tok) => db().rpc('course_offer_set_status', { p_token: tok, p_id: id, p_status: status }));
+                if (error && error.cancelled) return;
                 if (error) throw error;
-                if (!data || !data.length) throw new Error('no row');
+                if (!data) throw new Error('no row');
                 MK._closeOvl(); MK._cache = {}; MK._loaded = {}; MK.loadCampaigns();
                 window.NotificationManager.show(status === 'paused' ? tr('mk.paused', 'Campaign paused — it is hidden from inboxes until you resume it') : tr('mk.resumed', 'Campaign live again'), 'success');
             } catch (e) { window.NotificationManager.show(tr('mk.err', 'Could not load this section') + ': ' + e.message, 'error'); }
@@ -592,9 +595,11 @@
             const ok = await window.askConfirm({ title: tr('mk.withdraw.q', 'Withdraw this campaign?'), message: tr('mk.withdraw.msg', 'It disappears from every inbox. Deliveries already made stay counted.'), danger: true, confirmText: tr('mk.withdraw', 'Withdraw') });
             if (!ok) return;
             try {
-                const { data, error } = await db().from('course_offers').update({ status: 'deleted', updated_at: new Date().toISOString() }).eq('id', id).eq('course_id', MK.course.id).select('id');
+                const og = (fn) => (window.OfferGate ? window.OfferGate.run(db(), MK.course.id, MK.course.name, fn) : fn(''));   // v1601: only the course writes its offers
+                const { data, error } = await og((tok) => db().rpc('course_offer_set_status', { p_token: tok, p_id: id, p_status: 'deleted' }));
+                if (error && error.cancelled) return;
                 if (error) throw error;
-                if (!data || !data.length) throw new Error('no row');
+                if (!data) throw new Error('no row');
                 MK._closeOvl(); MK._cache = {}; MK._loaded = {}; MK.loadCampaigns();
                 window.NotificationManager.show(tr('mk.withdrawn', 'Campaign withdrawn'), 'success');
             } catch (e) { window.NotificationManager.show(tr('mk.err', 'Could not load this section') + ': ' + e.message, 'error'); }
@@ -704,9 +709,11 @@
                     segment: seg, lang, priority: v('mkPri') || 'normal', valid_from: from.toISOString(), valid_to: to ? to.toISOString() : null,
                     status: 'active', created_by: 'marketing:' + (uid() || 'pin')
                 };
-                const { data, error } = await db().from('course_offers').insert(row).select('id').single();
+                const og = (fn) => (window.OfferGate ? window.OfferGate.run(db(), MK.course.id, MK.course.name, fn) : fn(''));   // v1601: only the course writes its offers
+                const { data, error } = await og((tok) => db().rpc('course_offer_create', { p_token: tok, p: row }));
+                if (error && error.cancelled) { if (btn) { btn.disabled = false; btn.textContent = tr('mk.publish', 'Publish campaign'); } return; }
                 if (error) throw error;
-                const res = await MK._deliver(data.id);
+                const res = await MK._deliver(data);
                 MK._closeOvl(); MK._cache = {}; MK._loaded = {};
                 MK.loadCampaigns();
                 window.NotificationManager.show(tr('mk.published', 'Campaign published') + (res ? ' · ' + fmtN(res.recipients) + ' ' + tr('mk.golfers', 'golfers') + ', ' + fmtN(res.pushed) + ' ' + tr('mk.f.pushed', 'pushed') : ''), 'success', 7000);

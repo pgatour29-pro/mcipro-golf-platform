@@ -184,7 +184,7 @@
                 const rows = list.filter(c => !ql || (c.name || '').toLowerCase().includes(ql) || (c.id || '').includes(ql));
                 document.getElementById('mgrCourseList').innerHTML = rows.map(c => `
                   <button data-cid="${esc(c.id)}" data-cname="${esc(c.name)}" class="mgr-course-opt w-full text-left px-3 py-2.5 rounded-lg hover:bg-green-50 flex items-center gap-3">
-                    <span class="material-symbols-outlined text-green-600">golf_course</span>
+                    ${(window.CourseLogos && CourseLogos.img(30, '', '', c.name, c.id)) || '<span class="material-symbols-outlined text-green-600">golf_course</span>'}
                     <span class="min-w-0"><span class="block text-sm font-semibold text-gray-900 truncate">${esc(c.name)}</span>
                     <span class="block text-xs text-gray-500 truncate">${esc(c.location || c.id)}</span></span>
                   </button>`).join('') || `<p class="text-center text-sm text-gray-500 py-8">${esc(tr('mgr.nocourses', 'No courses found'))}</p>`;

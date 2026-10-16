@@ -25,6 +25,8 @@
   const me = () => String((W.AppState && W.AppState.currentUser && W.AppState.currentUser.lineUserId) || localStorage.getItem('line_user_id') || '');
   const myName = () => { const u = (W.AppState && W.AppState.currentUser) || {}; return u.name || u.displayName || u.display_name || localStorage.getItem('mcipro_user_name') || 'Golfer'; };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // v1595: the course's own logo (course-logos.js) beside its name — '' when the course has none
+  const LG = (px, ...ids) => (window.CourseLogos ? window.CourseLogos.img(px, '', '', ...ids) : '');
   const baht = n => '฿' + Math.round(Number(n || 0)).toLocaleString('en-US');
   const loc = () => { try { return typeof W._lvLocale === 'function' ? W._lvLocale() : 'en-US'; } catch (e) { return 'en-US'; } };
   const toast = (m, t, ms) => { try { W.NotificationManager.show(m, t || 'info', ms); } catch (e) { console.log('[TeeTimes]', m); } };
@@ -182,6 +184,9 @@
 .ttx-ph .nm{position:absolute;left:12px;right:12px;bottom:9px;z-index:2;color:#fff}
 .ttx-ph .nm b{display:block;font-size:17px;font-weight:900;letter-spacing:-.01em;text-shadow:0 1px 6px rgba(0,0,0,.4);line-height:1.15}
 .ttx-ph .nm span{font-size:11.5px;font-weight:600;opacity:.95}
+.ttx-ph .nm .crs-logo{display:block;width:40px!important;height:40px!important;border-radius:10px;margin-bottom:6px;box-shadow:0 2px 10px rgba(0,0,0,.35)}
+.ttx-hero .t .crs-logo{display:block;width:52px!important;height:52px!important;border-radius:12px;margin-bottom:8px;box-shadow:0 2px 12px rgba(0,0,0,.35)}
+.ttx-tk .cn .crs-logo{margin-right:8px;vertical-align:-9px}
 .ttx-bdg{position:absolute;top:9px;z-index:2;display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;border-radius:999px;padding:4px 9px;letter-spacing:.02em;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ttx-bdg.l{left:9px;background:rgba(5,46,22,.84);color:#bbf7d0}
 .ttx-bdg.l.off{background:rgba(15,23,42,.8);color:#e2e8f0}
@@ -653,7 +658,7 @@
       '<div class="ttx-ph" data-act="course" data-slug="' + esc(v.slug) + '" style="background-image:url(\'' + esc(photoFor(v.slug, c.photo)) + '\')">' +
         '<span class="ttx-bdg l' + (c.enabled ? '' : ' off') + '">' + (c.enabled ? '<span class="ttx-pulse"></span>' + esc(T('ttx.live', 'LIVE SHEET')) : esc(T('ttx.offline', 'Online booking off'))) + '</span>' +
         (c.enabled ? '<span class="ttx-bdg r' + (rb.am ? ' am' : '') + '">' + esc(rb.text) + '</span>' : '') +
-        '<div class="nm"><b>' + esc(c.name || v.slug) + '</b><span>' + esc([c.area, F('ttx.holes', '{n} holes', { n: c.holes || 18 }), F('ttx.par', 'Par {n}', { n: c.par || 72 })].filter(Boolean).join(' · ')) + '</span></div></div>' +
+        '<div class="nm">' + LG(40, v.slug, c.name) + '<b>' + esc(c.name || v.slug) + '</b><span>' + esc([c.area, F('ttx.holes', '{n} holes', { n: c.holes || 18 }), F('ttx.par', 'Par {n}', { n: c.par || 72 })].filter(Boolean).join(' · ')) + '</span></div></div>' +
       rates + timesHtml +
       '<div class="ttx-foot" data-act="course" data-slug="' + esc(v.slug) + '">' + P('person') + esc(cadN ? F('ttx.caddies.n', '{n} caddies · pick yours', { n: cadN }) : T('ttx.caddies.shop', 'Caddies assigned by the pro shop')) +
         '<span class="go">' + esc(T('ttx.alltimes', 'All times')) + P('chevron_right') + '</span></div></div>';
@@ -673,7 +678,7 @@
       : st === 'gone' ? '<button type="button" class="ttx-btn gh" data-act="course" data-slug="' + esc(b.slug) + '">' + P('refresh') + esc(T('ttx.rebook', 'Book again')) + '</button>' : '';
     return '<div class="ttx-hold ttx-gl ' + cls + '"><div class="band">' + band + '</div>' +
       '<div class="body"><div class="tm"><small>' + esc(dayFmt(b.date, { weekday: 'short', day: 'numeric', month: 'short' })) + '</small>' + esc(b.time) + '</div>' +
-      '<div class="info"><b>' + esc(b.short || b.course) + '</b><span>' + esc(sub) + '</span>' +
+      LG(36, b.slug, b.course) + '<div class="info"><b>' + esc(b.short || b.course) + '</b><span>' + esc(sub) + '</span>' +
       (a.amount && (st === 'due' || st === 'slip') ? '<span>' + esc(F(a.rule === 'full' ? 'ttx.amt.full' : 'ttx.amt.deposit', a.rule === 'full' ? '{a} to the course' : 'Deposit {a} to the course', { a: baht(a.amount) })) + '</span>' : '') + '</div></div>' +
       '<div class="acts">' + acts + (st !== 'gone' ? '<button type="button" class="ttx-btn gh" data-act="open-ticket" data-id="' + esc(b.id) + '">' + P('confirmation_number') + esc(T('ttx.ticket', 'Ticket')) + '</button>' : '') + '</div></div>';
   }
@@ -863,7 +868,7 @@
     h += withT.length ? '<div class="ttx-list">' + withT.map(courseCard).join('') + '</div>' : '<div class="ttx-empty">' + esc(q ? T('ttx.noresults', 'No course matches that search.') : T('ttx.noday', 'No open times for this filter — try another day or Any time.')) + '</div>';
     if (rest.length) {
       h += '<div class="ttx-sech"><b>' + esc(T('ttx.full.h', 'Full or not open online')) + '</b><span>' + esc(F('ttx.courses.n', '{n} courses', { n: rest.length })) + '</span></div><div class="ttx-mini">' +
-        rest.map(v => '<button type="button" class="ttx-minirow ttx-gl" data-act="course" data-slug="' + esc(v.slug) + '"><b>' + esc(v.cfg.name || v.slug) + '</b><span>' +
+        rest.map(v => '<button type="button" class="ttx-minirow ttx-gl" data-act="course" data-slug="' + esc(v.slug) + '">' + LG(28, v.slug, v.cfg.name) + '<b>' + esc(v.cfg.name || v.slug) + '</b><span>' +
           esc(!v.cfg.enabled ? T('ttx.offline', 'Online booking off') : v.count ? F('ttx.times.n', '{n} times', { n: v.count }) : T('ttx.fullday', 'Full')) + '</span>' + P('chevron_right') + '</button>').join('') + '</div>';
     }
     return h;
@@ -899,7 +904,7 @@
     let h = '<div class="ttx-hero" style="background-image:url(\'' + esc(photoFor(S.slug, c.photo)) + '\')"><div class="bar"><button type="button" class="ttx-cb" data-act="back" aria-label="' + esc(T('ttx.back', 'Back')) + '">' + P('arrow_back') + '</button><span class="sp"></span>' +
       '<button type="button" class="ttx-cb" data-act="directions" data-slug="' + esc(S.slug) + '" aria-label="' + esc(T('ttx.directions', 'Directions')) + '">' + P('directions') + '</button>' +
       '<button type="button" class="ttx-cb" data-act="share-course" aria-label="' + esc(T('ttx.share', 'Share')) + '">' + P('ios_share') + '</button></div>' +
-      '<div class="t"><b>' + esc(c.name || S.slug) + '</b><span>' + esc([c.area, F('ttx.holes', '{n} holes', { n: c.holes || 18 }), F('ttx.par', 'Par {n}', { n: c.par || 72 })].filter(Boolean).join(' · ')) + '</span>' +
+      '<div class="t">' + LG(52, S.slug, c.name) + '<b>' + esc(c.name || S.slug) + '</b><span>' + esc([c.area, F('ttx.holes', '{n} holes', { n: c.holes || 18 }), F('ttx.par', 'Par {n}', { n: c.par || 72 })].filter(Boolean).join(' · ')) + '</span>' +
       '<div class="pills">' + (c.enabled ? '<em class="g"><span class="ttx-pulse" style="background:#bbf7d0"></span>' + esc(T('ttx.live2', 'Live sheet')) + '</em><em>' + P('payments') + esc(rb.text) + '</em>' : '<em>' + esc(T('ttx.offline', 'Online booking off')) + '</em>') +
       (cadN ? '<em>' + P('person') + esc(F('ttx.cad.n', '{n} caddies', { n: cadN })) + '</em>' : '') + '</div></div></div>';
     h += '<div class="ttx-cwrap">' + promoBanner() + datesStrip();
@@ -991,7 +996,7 @@
     const cfgLike = { nines: ['A', 'B'], holes: 18, nine_names: b.nine_names };
     let h = head + '<div class="ttx-tk ttx-gl"><div class="ok ' + band[0] + '">' + PF(band[1]) + esc(band[2]) + (a && a.ref ? '<em>' + esc(a.ref) + '</em>' : '') + '</div>' +
       '<div class="main"><div class="tm">' + esc(b.time) + '</div><div class="w"><b>' + esc(dayFmt(b.date, { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })) + '</b><span>' + esc(nineLabel(cfgLike, b.nine || 'A') + ' · ' + F('ttx.bethere', 'be there by {t}', { t: by })) + '</span></div></div>' +
-      '<div class="cn">' + esc(b.course) + '<span>' + esc([a && a.promo ? F('pw.hold.deal', 'Deal: {t}', { t: a.promo.title }) : '', F('ttx.np', '{n} players', { n: b.players || 1 }), a && a.carts ? F(a.carts === 1 ? 'ttx.cart1' : 'ttx.carts.n', a.carts === 1 ? '1 cart' : '{n} carts', { n: a.carts }) : ''].filter(Boolean).join(' · ')) + '</span></div>' +
+      '<div class="cn">' + LG(30, b.slug, b.course) + esc(b.course) + '<span>' + esc([a && a.promo ? F('pw.hold.deal', 'Deal: {t}', { t: a.promo.title }) : '', F('ttx.np', '{n} players', { n: b.players || 1 }), a && a.carts ? F(a.carts === 1 ? 'ttx.cart1' : 'ttx.carts.n', a.carts === 1 ? '1 cart' : '{n} carts', { n: a.carts }) : ''].filter(Boolean).join(' · ')) + '</span></div>' +
       '<div class="ttx-perf"><b></b></div><div class="ttx-who">' +
       (b.golfers || []).map((g, i) => '<div class="p">' + esc(i === 0 && b.mine ? T('ttx.you', 'You') : (g.name || ('Player ' + (i + 1)))) +
         (g.caddyNumber ? '<em>' + esc(F('ttx.caddy.num', 'Caddy #{n}', { n: g.caddyNumber })) + '</em>' : g.caddyWanted === 'none' ? '<em class="z">' + esc(T('ttx.nocaddy', 'No caddy')) + '</em>' : '<em class="n">' + esc(T('ttx.caddy.shop', 'Pro shop assigns')) + '</em>') + '</div>').join('') + '</div>';

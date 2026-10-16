@@ -7,15 +7,19 @@
 (function (W) {
   'use strict';
   var psCourse = function () { var P = W.ProshopDashboard; return P && (P.facility ? P.facility.name : (P.course && P.course.name)); };
+  var psId = function () { var P = W.ProshopDashboard; return P && !P.facility && P.course && P.course.id; };   // a facility (several courses) keeps its initials
   var SLOTS = [
-    { host: '#proshopDashboard header .bg-gradient-to-br', watch: '#ps-course-chip-name', course: psCourse },
-    { host: '#psgRail > .lg', watch: '#ps-course-chip-name', course: psCourse },   // Glass: the rail's top tile
+    { host: '#proshopDashboard header .bg-gradient-to-br', watch: '#ps-course-chip-name', course: psCourse, id: psId },
+    { host: '#psgRail > .lg', watch: '#ps-course-chip-name', course: psCourse, id: psId },   // Glass: the rail's top tile
     { host: '#caddyMasterDashboard .cm-hdr-ic', watch: '#cm-course-chip-name',
-      course: function () { var C = W.CaddyMasterData; return C && C.course && (C.course.label || C.course.name); } },
+      course: function () { var C = W.CaddyMasterData; return C && C.course && (C.course.label || C.course.name); },
+      id: function () { var C = W.CaddyMasterData; return C && C.course && C.course.slug; } },
     { host: '#marketingDashboard .mk-hdr-ic', watch: '#mkCourseName',
-      course: function () { var M = W.MarketingDashboard; return M && M.course && M.course.name; } },
+      course: function () { var M = W.MarketingDashboard; return M && M.course && M.course.name; },
+      id: function () { var M = W.MarketingDashboard; return M && M.course && M.course.id; } },
     { host: '#managerDashboard header .material-symbols-outlined.text-green-600', watch: '#mgrCourseName', small: true,
-      course: function () { var D = W.ManagerDashboard; return D && D.course && D.course.name; } }
+      course: function () { var D = W.ManagerDashboard; return D && D.course && D.course.name; },
+      id: function () { var D = W.ManagerDashboard; return D && D.course && D.course.id; } }
   ];
   // words every course name shares say nothing about WHICH course
   var GENERIC = /^(the|and|&|at|of|golf|club|country|course|courses|resort|resorts|spa|cc|gc|g\.c\.|c\.c\.|international|links|and)$/i;
@@ -31,6 +35,8 @@
   var CSS = '.crs-av{display:inline-flex;align-items:center;justify-content:center;flex:none;font:800 14px/1 "Inter",system-ui,sans-serif;letter-spacing:.02em;color:#fff;text-transform:uppercase}' +
     '.crs-av.sm{width:32px;height:32px;border-radius:9px;font-size:12.5px;background:linear-gradient(135deg,#16a34a,#0f766e)}' +
     '.crs-av .material-symbols-outlined{font-size:18px}' +
+    '.crs-has-logo{background:#fff!important;padding:0!important;overflow:hidden}' +
+    '.crs-av-img{width:100%;height:100%;object-fit:contain;display:block;background:#fff;padding:2px;box-sizing:border-box}' +
     // the phone headers hid the role icon to save room; the course stays, a size smaller
     '@media (max-width:767px){#caddyMasterDashboard .nav-header .cm-hdr-ic[data-crs-k],#marketingDashboard .nav-header .mk-hdr-ic[data-crs-k]{display:flex!important;width:32px;height:32px;border-radius:9px}' +
     '#caddyMasterDashboard .nav-header .cm-hdr-ic .crs-av,#marketingDashboard .nav-header .mk-hdr-ic .crs-av{font-size:12.5px}}' +
@@ -42,8 +48,10 @@
     paint: function () {
       SLOTS.forEach(function (s) {
         var host = document.querySelector(s.host + ',[data-crs-av="' + s.watch + '"]'); if (!host) return;
-        var nm = ''; try { nm = s.course() || ''; } catch (e) { }
-        var ini = initials(nm), key = ini + '|' + nm;
+        var nm = '', id = ''; try { nm = s.course() || ''; id = (s.id && s.id()) || ''; } catch (e) { }
+        // v1595: the course's real logo (course-logos.js) when it has one, else its initials
+        var url = nm && W.CourseLogos ? W.CourseLogos.url(id, nm) : '';
+        var ini = initials(nm), key = ini + '|' + nm + '|' + url;
         if (host.getAttribute('data-crs-k') === key) return;
         if (s.small && !host.classList.contains('crs-av')) {   // the manager header had a bare icon: it becomes a tile
           var t = document.createElement('span'); t.className = 'crs-av sm'; t.setAttribute('data-crs-av', s.watch);
@@ -53,7 +61,9 @@
         if (host.parentElement && host.closest('header')) host.parentElement.style.flexWrap = 'nowrap';   // phones force flex rows to wrap: the tile sits BESIDE the title (headers only; the Glass rail is left as it is)
         host.setAttribute('title', nm || '');
         host.setAttribute('aria-label', nm || '');
-        host.innerHTML = ini ? '<span class="crs-av" aria-hidden="true">' + esc(ini) + '</span>' : '<span class="material-symbols-outlined" aria-hidden="true">golf_course</span>';
+        host.innerHTML = url ? '<img class="crs-av-img" src="' + esc(url) + '" alt="" decoding="async">'
+          : ini ? '<span class="crs-av" aria-hidden="true">' + esc(ini) + '</span>' : '<span class="material-symbols-outlined" aria-hidden="true">golf_course</span>';
+        host.classList.toggle('crs-has-logo', !!url);
       });
     },
     boot: function () {

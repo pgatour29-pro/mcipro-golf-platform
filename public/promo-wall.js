@@ -17,6 +17,8 @@
   const T = (k, fb) => { try { return typeof W._lvT === 'function' ? W._lvT(k, fb) : fb; } catch (e) { return fb; } };
   const F = (k, fb, vars) => { let s = T(k, fb); Object.keys(vars || {}).forEach(v => { s = s.split('{' + v + '}').join(vars[v]); }); return s; };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // v1595: the course's own logo (course-logos.js) beside its name — '' when the course has none
+  const LG = (px, ...ids) => (window.CourseLogos ? window.CourseLogos.img(px, '', '', ...ids) : '');
   const baht = n => '฿' + Math.round(Number(n || 0)).toLocaleString('en-US');
   const loc = () => { try { return typeof W._lvLocale === 'function' ? W._lvLocale() : 'en-US'; } catch (e) { return 'en-US'; } };
   const P = n => '<span class="material-symbols-outlined">' + n + '</span>';
@@ -204,6 +206,8 @@
 .pw-cube .bt .h{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font-size:10.5px;font-weight:700;opacity:.97;overflow:hidden;line-height:1.25;text-shadow:0 1px 4px rgba(0,0,0,.5)}
 .pw-cube .bt .p{display:block;font:800 16px 'JetBrains Mono',monospace;letter-spacing:-.03em;line-height:1.15;text-shadow:0 1px 6px rgba(0,0,0,.45)}
 .pw-cube .bt .p s{font-size:10px;font-weight:600;opacity:.75;margin-left:3px;letter-spacing:0}
+.pw-cube .bt .c .crs-logo{width:18px!important;height:18px!important;border-radius:5px;padding:1px;margin-right:5px;vertical-align:-5px}
+.pw-sh .nm small .crs-logo,.sh .nm small .crs-logo{width:24px!important;height:24px!important;border-radius:6px;padding:1px;margin-right:6px;vertical-align:-7px}
 .pw-cube .bt .c{display:block;font-size:9.5px;font-weight:800;color:#bbf7d0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase;letter-spacing:.04em;margin-top:1px}
 .pw-cube .lm{left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.18)}
 .pw-cube .lm i{display:block;height:100%;background:#fbbf24}
@@ -381,7 +385,7 @@
       tag(p) + incl(p) + '<span class="tm' + (urgent(p) ? ' u' : '') + '" data-pwleft="' + esc(p.id) + '">' + P('timer') + esc(leftShort(p)) + '</span>' +
       '<span class="bt"><span class="h" data-new="' + esc(T('pw.new', 'NEW')) + '">' + esc(p.title) + '</span>' +
         (p.price ? '<span class="p">' + esc(baht(p.price)) + (p.was_price && +p.was_price > +p.price ? '<s>' + esc(baht(p.was_price)) + '</s>' : '') + '</span>' : '') +
-        '<span class="c">' + esc(p.short || p.course_name) + '</span></span>' +
+        '<span class="c">' + LG(18, p.slug, p.course_name, p.course_id) + esc(p.short || p.course_name) + '</span></span>' +
       (lim != null ? '<span class="lm"><i style="width:' + lim.toFixed(0) + '%"></i></span>' : '') + '</button>';
   }
   function filterBtn(k, icon, label, set) {
@@ -560,7 +564,7 @@
     return '<div class="sh' + (two ? ' two' : '') + '" role="dialog" aria-modal="true" aria-label="' + esc(p.title) + '"><div class="pw-l">' +
       '<div class="pw-ph" style="background-image:url(\'' + esc(photoFor(p.slug, p.photo)) + '\')">' + tag(p) +
         '<button type="button" class="x" data-pw="close" aria-label="' + esc(T('pw.close', 'Close')) + '">' + P('close') + '</button>' +
-        '<div class="nm"><small>' + esc(p.course_name) + (p.region ? ' · ' + esc(p.region) : '') + '</small><b>' + esc(p.title) + '</b></div></div>' +
+        '<div class="nm"><small>' + LG(24, p.slug, p.course_name, p.course_id) + esc(p.course_name) + (p.region ? ' · ' + esc(p.region) : '') + '</small><b>' + esc(p.title) + '</b></div></div>' +
       '<div class="pw-bd">' +
         (p.price ? '<div class="pw-pr"><b>' + esc(baht(p.price)) + '</b>' + (p.was_price && +p.was_price > +p.price ? '<s>' + esc(baht(p.was_price)) + '</s><em>' + esc(F('pw.save', 'Save {a}', { a: baht(p.was_price - p.price) })) + '</em>' : '') + (p.unit ? '<span>' + esc(p.unit) + '</span>' : '') + '</div>' : '') +
         '<div class="pw-clock">' + P('timer') + '<div><small>' + esc(T('pw.ends', 'Offer ends in')) + '</small><b data-pwclock>' + esc(leftClock(p)) + '</b></div>' + lim + '</div>' +

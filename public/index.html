@@ -460,8 +460,9 @@
     <!-- REMOVED: hole-by-hole-leaderboard-enhancement.js causes mobile stack overflow -->
     <script src="golf-buddies-v2.js?v=17" defer></script>
     <script src="food-fgv1.js?v=1573" defer></script>
-    <script src="promo-wall.js?v=1530" defer></script>
-    <script src="tee-times.js?v=1544" defer></script>
+    <script src="course-logos.js?v=1595" defer></script>
+    <script src="promo-wall.js?v=1595" defer></script>
+    <script src="tee-times.js?v=1595" defer></script>
     <script src="call-pin.js?v=1546" defer></script>
     <script src="rain-out.js?v=1463" defer></script>
     <script src="content-moderation.js?v=1352" defer></script>
@@ -39993,6 +39994,7 @@
                 if (!courses || !courses.length) { sel.innerHTML = '<option value="">' + t('careg.nocourses') + '</option>'; return; }
                 sel.innerHTML = '<option value="">' + t('careg.selectcourse') + '</option>' +
                     courses.map(c => `<option value="${c.id}">${String(c.name || '').replace(/</g, '&lt;')}</option>`).join('');
+                if (window.CourseLogos) CourseLogos.decorateSelect(sel);   // v1595: the picked course's logo in the box
             } catch (e) { console.warn('[CaddyReg] course load failed:', e); }
         }
 
@@ -85568,7 +85570,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const note = document.getElementById('caddyStartTrackNote');
             const picker = !home && demo;                      // PIN demo only
             const register = !home && !demo && known;
-            if (nameEl && home) nameEl.textContent = home.name;
+            if (nameEl && home) {
+                nameEl.textContent = home.name;
+                // v1595: the course's logo beside its name
+                if (window.CourseLogos) nameEl.insertAdjacentHTML('afterbegin', CourseLogos.img(34, '', 'margin-right:10px;vertical-align:-10px', home.name, home.value));
+            }
             if (pin) pin.style.display = home ? 'block' : 'none';
             if (none) none.style.display = register ? 'block' : 'none';
             if (wrap) wrap.style.display = picker ? 'block' : 'none';
@@ -90499,14 +90505,14 @@ window.AdminSystem = AdminSystem;
 
     <!-- Weather Integration System -->
     <script defer src="weather-integration.js"></script>
-    <script defer src="manager-dashboard.js?v=1396"></script>
+    <script defer src="manager-dashboard.js?v=1595"></script>
     <script defer src="caddy-demo.js?v=1473"></script>
     <!-- v1437 Tech Support help desk: the drawer row, the ticket sheet and the thread (Messages > Reports is the admin side) -->
     <script defer src="tech-support.js?v=1573"></script>
     <script defer src="caddy-work-core.js?v=1473"></script>
     <script defer src="caddy-work.js?v=1473"></script>
     <script defer src="course-traffic.js?v=1459"></script>
-    <script defer src="marketing-dashboard.js?v=1522"></script>
+    <script defer src="marketing-dashboard.js?v=1595"></script>
     <script defer src="golf-feed.js?v=1558"></script>
     <script defer src="handicap-ledger.js?v=1533"></script>
     <script defer src="course-society-link.js?v=1545"></script>
@@ -90519,7 +90525,7 @@ window.AdminSystem = AdminSystem;
     <script defer src="engagement-meter.js?v=1377"></script>
     <script defer src="persona-test.js?v=1450"></script>
     <script defer src="course-inbox.js?v=1558"></script>
-    <script defer src="proshop-dashboard.js?v=1593"></script>
+    <script defer src="proshop-dashboard.js?v=1595"></script>
     <script defer src="proshop-glass.js?v=1592"></script>
     <script defer src="caddy-dm.js?v=1558"></script>
     <script defer src="im.js?v=1577"></script>
@@ -142630,7 +142636,7 @@ const CaddyMasterData = {
         const cur = this.course?.slug;
         const rows = this.COURSES.slice().sort((a, b) => (counts[b[0]] || 0) - (counts[a[0]] || 0) || a[1].localeCompare(b[1]));
         const list = rows.map(c => `<button class="crow ${c[0] === cur ? 'pick' : ''}" data-q="${this._esc(c[1].toLowerCase())}" onclick="CaddyMasterData.setCourse('${c[0]}')">
-            <span class="material-symbols-outlined" style="color:#0f766e">golf_course</span>
+            ${(window.CourseLogos && CourseLogos.img(30, '', '', c[0], c[1])) || '<span class="material-symbols-outlined" style="color:#0f766e">golf_course</span>'}
             <span class="min-w-0 flex-1"><span class="nm block truncate">${this._esc(c[1])}</span><span class="st">${counts[c[0]] ? counts[c[0]] + ' ' + this._t('cm.course.caddies', 'caddies') : ''}</span></span>
             ${c[0] === cur ? '<span class="material-symbols-outlined" style="color:#16a34a">check_circle</span>' : ''}
         </button>`).join('');
@@ -144815,7 +144821,7 @@ const HotDeals = {
     },
     card(o) {
         return '<div class="hd-card">'
-          + '<div class="hd-course">' + this.esc(o.course_name || o.course_id) + '</div>'
+          + '<div class="hd-course">' + (window.CourseLogos ? CourseLogos.img(18, '', 'border-radius:5px;padding:1px;margin-right:5px;vertical-align:-5px', o.course_name, o.course_id) : '') + this.esc(o.course_name || o.course_id) + '</div>'
           + '<div class="hd-when">' + this.esc(this.when(o)) + '</div>'
           + '<div class="hd-price">' + this.baht(o.deal.price) + ' <small>/ ' + _lvT('hotdeal.player', 'player') + '</small></div>'
           + '<div class="hd-meta">' + this.left(o) + ' ' + _lvT('hotdeal.left', 'left') + ' · ' + this.esc(this.caddyText(o)) + '</div>'
@@ -145189,7 +145195,7 @@ const TeeTimeCards = {
         const n = parseInt(b.players) || 1, cad = this.caddyInfo(b);
         return '<div class="tt-card" data-ms="' + this.ms(b) + '">'
           + '<div class="tt-date">' + this.esc(this.when(b)) + '</div>'
-          + '<div class="tt-course">' + this.esc(this.course(b)) + '</div>'
+          + '<div class="tt-course">' + (window.CourseLogos ? CourseLogos.img(24, '', 'border-radius:6px;padding:1px;margin-right:7px;vertical-align:-6px', this.course(b), b.courseId, b.course_id) : '') + this.esc(this.course(b)) + '</div>'
           + '<div class="tt-tag">' + this.esc(this.tag(b)) + '</div>'
           + '<div class="tt-row"><div><div class="tt-lbl">' + this.esc(_lvT('lightview.tee', 'Tee')) + '</div><div class="tt-time">' + this.esc(b.time ? String(b.time).slice(0, 5) : '--:--') + '</div></div>'
           + '<div><div class="tt-lbl">' + this.esc(_lvT('teetime.who', 'Players')) + '</div><div class="tt-n">' + n + '</div></div></div>'
@@ -149040,6 +149046,7 @@ const MaintPins = {
             <div style="font-size:16px;font-weight:800;color:#111827;margin-bottom:10px;">${this._esc(this._t('mntpin.course.q', 'Which course do you look after?'))}</div>
             <select id="mnpCourseSel" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" style="margin-bottom:10px;">${opts}</select>
             <button type="button" onclick="MaintPins.pickCourse()" style="width:100%;border:0;border-radius:10px;padding:12px;font-weight:800;background:#15803d;color:#fff;cursor:pointer;">${this._esc(this._t('mntpin.course.save', 'Use this course'))}</button></div>`;
+        if (window.CourseLogos) CourseLogos.decorateSelect(document.getElementById('mnpCourseSel'));   // v1595: picked course's logo
     },
 
     async open() {
@@ -149114,7 +149121,7 @@ const MaintPins = {
                 </div></div>`;
         }
         return `<div class="mnp-card">
-            <div class="mnp-course"><span class="material-symbols-outlined" style="font-size:28px;color:#15803d;">golf_course</span>
+            <div class="mnp-course">${(window.CourseLogos && CourseLogos.img(36, '', '', this.course.name, this.course.id)) || '<span class="material-symbols-outlined" style="font-size:28px;color:#15803d;">golf_course</span>'}
                 <div style="min-width:0;"><b>${this._esc(this.course.name)}</b><small>${this._esc(this._t('mntpin.today', 'Today'))} · ${this._esc(when)}</small></div>
                 <button type="button" class="chg" onclick="MaintPins.changeCourse()">${this._esc(this._t('mntpin.course.change', 'Change'))}</button></div>
             ${live}
@@ -187661,7 +187668,7 @@ showOrganizerTab = function(tabName) {
     <script src="g3-org.js?v=1589"></script>
     <script src="dash-dock.js?v=1573"></script>
     <script src="dash-rail.js?v=1589"></script>
-    <script src="course-avatar.js?v=1594"></script>
+    <script src="course-avatar.js?v=1595"></script>
     <script src="dash-glass.js?v=1573"></script>
     <script src="dash-premium.js?v=1578"></script>
     <script src="play-flow.js?v=1573"></script>

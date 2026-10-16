@@ -285,7 +285,7 @@
             const paint = (q) => {
                 const list = rows.filter(r => !q || r.name.toLowerCase().includes(q.toLowerCase()));
                 document.getElementById('psCourseList').innerHTML = list.map(r =>
-                    `<button data-cid="${esc(r.id)}" data-cname="${esc(r.name)}" class="ps-course-opt w-full text-left px-3 py-2 rounded-lg hover:bg-green-50 text-sm text-gray-800 border border-transparent hover:border-green-200">${esc(r.name)}</button>`
+                    `<button data-cid="${esc(r.id)}" data-cname="${esc(r.name)}" class="ps-course-opt w-full text-left px-3 py-2 rounded-lg hover:bg-green-50 text-sm text-gray-800 border border-transparent hover:border-green-200" style="display:flex;align-items:center;gap:10px;flex-wrap:nowrap">${(window.CourseLogos && CourseLogos.img(28, '', '', r.name, r.id)) || ''}<span class="min-w-0">${esc(r.name)}</span></button>`
                 ).join('') || `<div class="text-sm text-gray-500 p-3">${tr('common.noresults', 'No results')}</div>`;
                 document.querySelectorAll('.ps-course-opt').forEach(b => b.addEventListener('click', async () => {
                     await PS.setCourse(b.dataset.cid, b.dataset.cname);

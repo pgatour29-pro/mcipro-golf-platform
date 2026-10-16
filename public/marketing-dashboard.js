@@ -128,7 +128,7 @@
                 const s = String(q || '').toLowerCase();
                 const rows = list.filter(c => !s || String(c.name).toLowerCase().includes(s) || String(c.location || '').toLowerCase().includes(s));
                 document.getElementById('mkPickList').innerHTML = rows.map(c => `<button class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-green-50 flex items-center gap-3" style="flex-wrap:nowrap" data-id="${esc(c.id)}" data-name="${esc(c.name)}">
-                    ${mi('golf_course', 'text-green-600')}<span class="min-w-0 flex-1"><span class="block text-sm font-semibold text-gray-900 truncate">${esc(c.name)}</span><span class="block text-[11px] text-gray-500">${esc(c.location || c.id)}</span></span></button>`).join('')
+                    ${(window.CourseLogos && CourseLogos.img(30, '', '', c.name, c.id)) || mi('golf_course', 'text-green-600')}<span class="min-w-0 flex-1"><span class="block text-sm font-semibold text-gray-900 truncate">${esc(c.name)}</span><span class="block text-[11px] text-gray-500">${esc(c.location || c.id)}</span></span></button>`).join('')
                   || `<p class="text-sm text-gray-500 p-4 text-center">${esc(tr('mk.pick.none', 'No course matches'))}</p>`;
                 document.querySelectorAll('#mkPickList button').forEach(b => b.addEventListener('click', async () => {
                     wrap.remove(); await MK.setCourse(b.dataset.id, b.dataset.name, true); MK.onTab(MK._cur);

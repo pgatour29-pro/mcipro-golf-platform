@@ -91058,10 +91058,11 @@ class SocietyGolfSupabase {
                     return result;
                 }),
 
-            // Query 3: Get user's registrations (if logged in) - only need event IDs
+            // Query 3: Get user's registrations (if logged in). v1604: + the organizer's STORED fee
+            // fields, so a REGISTERED card shows the golfer's full amount (comp + van) = organizer view.
             playerId ? window.SupabaseDB.client
                 .from('event_registrations')
-                .select('event_id')
+                .select('event_id, total_fee, want_transport, want_competition, special_requests')
                 .eq('player_id', playerId)
                 .in('event_id', eventIds) : Promise.resolve({ data: [] }),
 
@@ -91204,6 +91205,11 @@ class SocietyGolfSupabase {
 
         // Create set of user's registered event IDs
         const registeredEventIds = new Set((userRegsResult.data || []).map(r => r.event_id));
+        // v1604: my own registration row per event (stored total_fee + add-on choices) for the card total
+        const myRegFeeMap = {};
+        (userRegsResult.data || []).forEach(r => { myRegFeeMap[r.event_id] = {
+            totalFee: parseFloat(r.total_fee) || 0, wantTransport: !!r.want_transport,
+            wantCompetition: r.want_competition, nonMember: !!(r.special_requests && r.special_requests.nonMember) }; });
 
         // GSV1: how many players ride on my booking per event (never counts my own row)
         const myGuestCountMap = {};
@@ -91292,6 +91298,7 @@ class SocietyGolfSupabase {
                 creatorType: e.creator_type || 'organizer',
                 registeredCount: regCountMap[e.id] || 0,
                 isUserRegistered: registeredEventIds.has(e.id),
+                myRegFee: myRegFeeMap[e.id] || null,
                 myGuestCount: myGuestCountMap[e.id] || 0,
                 hasPendingRequest: pendingRequestEventIds.has(e.id),
                 enableWaitlist: e.enable_waitlist !== false,  // Default to true if not set
@@ -150637,6 +150644,75 @@ class GolferEventsManager {
         return MAPS[lang] || MAPS.en;
     }
 
+    // v1604 (Pete 2026-10-17): the detail FEES box. Not registered → Golf + Cart + Caddy only (no competition
+    // line, no comp in the total). Registered → the lines YOU are paying (comp, van, non-member) and the total =
+    // the organizer's STORED total_fee for your row (_cardFeeTotal) so golfer == organizer exactly.
+    _detailFeesHTML(ev, isKoFees) {
+        const fees = [];
+        const reg = !!ev.isUserRegistered;
+        const my = ev.myRegFee || null;
+        if (ev.baseFee) fees.push(`<div class="ed-fee-row"><span>${isKoFees ? '그린피' : 'Green Fee'}</span><span class="ed-fee-amt">฿${Number(ev.baseFee).toLocaleString()}</span></div>`);
+        if (ev.cartFee) fees.push(`<div class="ed-fee-row"><span>${isKoFees ? '카트비' : 'Cart Fee'}</span><span class="ed-fee-amt">฿${Number(ev.cartFee).toLocaleString()}</span></div>`);
+        if (ev.caddyFee) fees.push(`<div class="ed-fee-row"><span>${isKoFees ? '캐디피' : 'Caddy Fee'}</span><span class="ed-fee-amt">฿${Number(ev.caddyFee).toLocaleString()}</span></div>`);
+
+        // TRGG events carry a built-in Competition fee (auto-comp; golfer opts out at registration,
+        // organizer can remove at payment). The event row stores competition_fee=0, so surface the standard ฿250.
+        const _fsoc = String(ev.societyName || ev.organizerName || ev.title || ev.name || '').toLowerCase();
+        const isTRGGFee = _fsoc.indexOf('trgg') >= 0 || _fsoc.indexOf('travellers rest') >= 0;
+        const add = window.eventAddOnFees ? window.eventAddOnFees(ev) : { transportFee: parseFloat(ev.transportFee) || 0, competitionFee: parseFloat(ev.competitionFee) || 0 };
+        const myComp = reg && (my ? (my.wantCompetition === true || (isTRGGFee && my.wantCompetition !== false)) : isTRGGFee);
+        const myVan = reg && !!(my && my.wantTransport);
+        const compAmt = isTRGGFee ? (parseFloat(ev.competitionFee) || 250) : (add.competitionFee || 0);
+        if (myComp && compAmt > 0) {
+            fees.push('<div class="ed-fee-row"><span>' + micon('emoji_events') + ' ' + (isKoFees ? '대회 참가' : 'Competition') + '</span><span class="ed-fee-amt">฿' + compAmt.toLocaleString() + '</span></div>');
+        }
+        if (myVan && add.transportFee > 0) {
+            fees.push(`<div class="ed-fee-row"><span>${micon('airport_shuttle')} ${isKoFees ? '교통' : 'Transportation'}</span><span class="ed-fee-amt">฿${add.transportFee.toLocaleString()}</span></div>`);
+        }
+        if (reg && my && my.nonMember) {
+            fees.push(`<div class="ed-fee-row"><span>${isKoFees ? '비회원' : 'Non-member'}</span><span class="ed-fee-amt">฿100</span></div>`);
+        }
+
+        const totalFee = this._cardFeeTotal(ev, reg);
+        fees.push(`<div class="ed-fee-total"><span class="lbl">${isKoFees ? '올인클루시브' : 'All-Inclusive'}</span><span class="amt">฿${totalFee.toLocaleString()}</span></div>`);
+
+        // Optional add-ons - use actual event fees, not hardcoded defaults. TRGG's comp is never an
+        // optional add-on here, and anything already in YOUR total above isn't listed again.
+        const transportFee = myVan ? 0 : (parseFloat(ev.transportFee) || 0);
+        const competitionFee = (isTRGGFee || myComp) ? 0 : (parseFloat(ev.competitionFee) || 0);
+        const otherFee = parseFloat(ev.otherFee) || 0;
+
+        if (transportFee > 0 || competitionFee > 0 || otherFee > 0) {
+            fees.push(`<div class="ed-addon-head">${isKoFees ? '선택 옵션' : 'Optional Add-ons'}</div>`);
+            if (transportFee > 0) {
+                fees.push(`<div class="ed-fee-row"><span>${micon('airport_shuttle')} ${isKoFees ? '교통' : 'Transportation'}</span><span class="ed-fee-amt">฿${transportFee.toLocaleString()}</span></div>`);
+            }
+            if (competitionFee > 0) {
+                fees.push('<div class="ed-fee-row"><span>' + micon('emoji_events') + ' ' + (isKoFees ? '대회 참가' : 'Competition Entry') + '</span><span class="ed-fee-amt">฿' + competitionFee.toLocaleString() + '</span></div>');
+            }
+            if (otherFee > 0) {
+                fees.push(`<div class="ed-fee-row"><span>${micon('assignment')} ${isKoFees ? '기타 비용' : 'Other Fees'}</span><span class="ed-fee-amt">฿${otherFee.toLocaleString()}</span></div>`);
+            }
+        }
+        return fees.join('');
+    }
+
+    // v1604: the fee printed on a golfer's event card / detail total. NOT registered = golf + caddy + cart.
+    // REGISTERED = the organizer's STORED event_registrations.total_fee for my own row (includes comp,
+    // the +฿100 non-member surcharge and the van when I chose it) so golfer == organizer exactly; if no
+    // stored figure, rebuild it the registration write path's way (TRGG comp is built in unless opted out).
+    _cardFeeTotal(event, isRegistered) {
+        const golf = (parseFloat(event.baseFee) || 0) + (parseFloat(event.cartFee) || 0) + (parseFloat(event.caddyFee) || 0);
+        if (!isRegistered) return golf;
+        const my = event.myRegFee || null;
+        if (my && my.totalFee > 0) return my.totalFee;
+        const soc = String(event.societyName || event.organizerName || event.title || event.name || '').toLowerCase();
+        const isTRGG = soc.indexOf('trgg') >= 0 || soc.indexOf('travellers rest') >= 0;
+        const add = window.eventAddOnFees ? window.eventAddOnFees(event) : { transportFee: parseFloat(event.transportFee) || 0, competitionFee: parseFloat(event.competitionFee) || 0 };
+        const wantComp = my ? (my.wantCompetition === true || (isTRGG && my.wantCompetition !== false)) : isTRGG;
+        return golf + (wantComp ? (add.competitionFee || 0) : 0) + (my && my.wantTransport ? (add.transportFee || 0) : 0) + (my && my.nonMember ? 100 : 0);
+    }
+
     renderEventCard(event) {
         const eventDate = new Date(event.date);
         const today = new Date();
@@ -150730,12 +150806,9 @@ class GolferEventsManager {
             timingBadge = `<span class="px-2 py-1 text-xs font-bold bg-sky-500 text-white rounded-full">${L.tomorrow}</span>`;
         }
 
-        // TRGG events include the built-in ฿250 auto-comp in the headline price (the event row
-        // stores competition_fee=0), so the card matches the detail box + what players actually pay.
-        const _csoc = String(event.societyName || event.organizerName || event.title || event.name || '').toLowerCase();
-        const _cIsTRGG = _csoc.indexOf('trgg') >= 0 || _csoc.indexOf('travellers rest') >= 0;
-        const _cComp = _cIsTRGG ? (parseFloat(event.competitionFee) || 250) : 0;
-        const totalFee = (event.baseFee || 0) + (event.cartFee || 0) + (event.caddyFee || 0) + _cComp;
+        // v1604 (Pete 2026-10-17): the card total = Golf + Caddy + Cart ONLY until you register — no
+        // competition, no transport. Registered → YOUR full amount (comp + van if chosen), see _cardFeeTotal.
+        const totalFee = this._cardFeeTotal(event, isUserRegistered);
 
         // Check if event is favorited
         const isFavorited = event.isFavorited || false;
@@ -152229,7 +152302,8 @@ class GolferEventsManager {
         if (ev.isUserRegistered) {
             const chip = ev._myGroupChip ? (' · ' + ev._myGroupChip) : '';
             const dep = ev.departureTime || ev.departure_time || '';
-            if (banner) { banner.textContent = '✓ REGISTERED' + chip + (dep ? (' · DEP ' + String(dep).slice(0, 5)) : ''); banner.style.display = 'block'; }
+            if (banner) { banner.textContent = '✓ REGISTERED' + chip + (dep ? (' · DEP ' + String(dep).slice(0, 5)) : ''); banner.style.display = 'block';
+                try { if (window.SignupDesk) banner.insertAdjacentHTML('beforeend', SignupDesk.receiptButton(ev.id)); } catch (e) {} }
             try { this._scv3gGuestRow(); } catch (e) {}
             if (sec) sec.classList.add('on');
             // ✎ EDIT hides while the edit form is open (editRegistration set it) and must come
@@ -152451,47 +152525,8 @@ class GolferEventsManager {
         }
         try { this._scv3gDetail(); } catch (e) { console.warn('[SCV3G] detail chrome', e); }
 
-        // Fees
-        const fees = [];
-        const isKoFees = DL.lang === 'ko';
-        if (this.currentEvent.baseFee) fees.push(`<div class="ed-fee-row"><span>${isKoFees ? '그린피' : 'Green Fee'}</span><span class="ed-fee-amt">฿${this.currentEvent.baseFee.toLocaleString()}</span></div>`);
-        if (this.currentEvent.cartFee) fees.push(`<div class="ed-fee-row"><span>${isKoFees ? '카트비' : 'Cart Fee'}</span><span class="ed-fee-amt">฿${this.currentEvent.cartFee.toLocaleString()}</span></div>`);
-        if (this.currentEvent.caddyFee) fees.push(`<div class="ed-fee-row"><span>${isKoFees ? '캐디피' : 'Caddy Fee'}</span><span class="ed-fee-amt">฿${this.currentEvent.caddyFee.toLocaleString()}</span></div>`);
-
-        // TRGG events carry a built-in Competition fee (auto-comp; golfer opts out at registration,
-        // organizer can remove at payment). The event row stores competition_fee=0, so surface the
-        // standard ฿250 and FOLD IT INTO the all-inclusive price — otherwise the headline event fee
-        // understates what a TRGG player actually pays. Same detection as the reg auto-comp default.
-        const _fsoc = String(this.currentEvent.societyName || this.currentEvent.organizerName || this.currentEvent.title || this.currentEvent.name || '').toLowerCase();
-        const isTRGGFee = _fsoc.indexOf('trgg') >= 0 || _fsoc.indexOf('travellers rest') >= 0;
-        const trggComp = isTRGGFee ? (parseFloat(this.currentEvent.competitionFee) || 250) : 0;
-        if (trggComp > 0) {
-            fees.push('<div class="ed-fee-row"><span>' + micon('emoji_events') + ' ' + (isKoFees ? '대회 참가' : 'Competition') + '</span><span class="ed-fee-amt">฿' + trggComp.toLocaleString() + '</span></div>');
-        }
-
-        const totalFee = (this.currentEvent.baseFee || 0) + (this.currentEvent.cartFee || 0) + (this.currentEvent.caddyFee || 0) + trggComp;
-        fees.push(`<div class="ed-fee-total"><span class="lbl">${isKoFees ? '올인클루시브' : 'All-Inclusive'}</span><span class="amt">฿${totalFee.toLocaleString()}</span></div>`);
-
-        // Optional add-ons - use actual event fees, not hardcoded defaults. TRGG's comp is already
-        // folded into the all-inclusive above, so don't also list it as an optional add-on.
-        const transportFee = parseFloat(this.currentEvent.transportFee) || 0;
-        const competitionFee = isTRGGFee ? 0 : (parseFloat(this.currentEvent.competitionFee) || 0);
-        const otherFee = parseFloat(this.currentEvent.otherFee) || 0;
-
-        if (transportFee > 0 || competitionFee > 0 || otherFee > 0) {
-            fees.push(`<div class="ed-addon-head">${isKoFees ? '선택 옵션' : 'Optional Add-ons'}</div>`);
-            if (transportFee > 0) {
-                fees.push(`<div class="ed-fee-row"><span>${micon('airport_shuttle')} ${isKoFees ? '교통' : 'Transportation'}</span><span class="ed-fee-amt">฿${transportFee.toLocaleString()}</span></div>`);
-            }
-            if (competitionFee > 0) {
-                fees.push('<div class="ed-fee-row"><span>' + micon('emoji_events') + ' ' + (isKoFees ? '대회 참가' : 'Competition Entry') + '</span><span class="ed-fee-amt">฿' + competitionFee.toLocaleString() + '</span></div>');
-            }
-            if (otherFee > 0) {
-                fees.push(`<div class="ed-fee-row"><span>${micon('assignment')} ${isKoFees ? '기타 비용' : 'Other Fees'}</span><span class="ed-fee-amt">฿${otherFee.toLocaleString()}</span></div>`);
-            }
-        }
-
-        document.getElementById('eventDetailFees').innerHTML = fees.join('');
+        // Fees — v1604: built by _detailFeesHTML (registered → YOUR full amount; see _cardFeeTotal)
+        document.getElementById('eventDetailFees').innerHTML = this._detailFeesHTML(this.currentEvent, DL.lang === 'ko');
 
         // Notes
         if (this.currentEvent.notes) {
@@ -152865,6 +152900,12 @@ class GolferEventsManager {
                 const _mine = (this.currentEventRegistrations || []).find(r => String(r.playerId) === String(_uid));
                 this._myRegId = _mine ? _mine.id : null;
                 const _fees = document.getElementById('eventDetailFees');
+                // v1604: repaint YOUR fee total from the row just loaded (fresher than the list's copy)
+                if (_mine && _fees && this.currentEvent && String(this.currentEvent.id) === String(eventId) && this.currentEvent.isUserRegistered) {
+                    this.currentEvent.myRegFee = { totalFee: parseFloat(_mine.totalFee) || 0, wantTransport: !!_mine.wantTransport,
+                        wantCompetition: _mine.wantCompetition, nonMember: !!(_mine.specialRequests && _mine.specialRequests.nonMember) };
+                    _fees.innerHTML = this._detailFeesHTML(this.currentEvent, this.getEventLabels(this.currentEvent).lang === 'ko');   // PAID row re-added below
+                }
                 if (_mine && _fees && !document.getElementById('scv3gPaidRow')) {
                     const _paid = _mine.paymentStatus === 'paid';
                     _fees.insertAdjacentHTML('afterbegin',
@@ -155351,22 +155392,9 @@ class GolferEventsManager {
             if (!pairing || !Array.isArray(pairing.groups)) return null;
             const hasPlayers = pairing.groups.some(g => ((g && g.players) || (Array.isArray(g) ? g : [])).length > 0);
             if (!hasPlayers) return null;
-            const iso = new Date().toISOString();
-            for (const rid of newRegIds.filter(Boolean)) {
-                // merge-don't-clobber special_requests (hostId/sameGroup/van/payment live here too)
-                const { data: rows } = await window.SupabaseDB.client
-                    .from('event_registrations')
-                    .select('id, special_requests')
-                    .eq('event_id', eventId)
-                    .eq('player_id', rid);
-                for (const row of (rows || [])) {
-                    const sr = Object.assign({}, row.special_requests || {}, { lateReg: iso });
-                    await window.SupabaseDB.client
-                        .from('event_registrations')
-                        .update({ special_requests: sr })
-                        .eq('id', row.id);
-                }
-            }
+            // v1604: the database seats every sign-up and stamps lateReg itself (trg_event_reg_late_tag);
+            // the client lateReg stamp is retired — it would also tag the very first registrant of a sheet.
+            // What stays here is v1348: a guest whose host's group is full moves the party to a new group.
         } catch (e) { console.warn('[GolferEvents] late-reg tag', e); return null; }
         return this._placeBookingParty(eventId, newRegIds, pairing);
     }
@@ -155852,8 +155880,8 @@ class GolferEventsManager {
                         }
                         _lateIds.push(resolvedId);
                     }
-                    // Registration onto an already-saved tee sheet → pool tag (the party rides in as a
-                    // unit under the organizer's tap); v1348: a seated host's guests join him now
+                    // v1604: the database already seated everyone (first open seat); v1348: a guest whose
+                    // host's group is full moves the party to a new group at the next tee
                     const _placedReg = await this._ensureBookingPlacement(this.currentEvent.id, _lateIds);
                     this._placementToast(_placedReg);
 
@@ -155879,7 +155907,7 @@ class GolferEventsManager {
                     }
                     confirmMsg += ' You will receive confirmation from the event organizer.';
 
-                    if (!_movedOk) NotificationManager.show(confirmMsg, 'success', 4000);
+                    if (!_movedOk && !window.SignupDesk) NotificationManager.show(confirmMsg, 'success', 4000);
 
                     // Organizer LINE alert ONLY for LATE registrations (≥07:00 Bangkok on event
                     // day, van-transport window) — pre-cutoff regs are silent per Pete 2026-08-14.
@@ -155889,9 +155917,12 @@ class GolferEventsManager {
                         wantTransport
                     });
 
-                    // Offer to book tee time and caddy
+                    // v1604: the RECEIPT (signed-up date/time, receipt no., the seat the sheet gave them)
+                    // is the confirmation now; the tee time / caddy offer follows when it closes.
+                    const _rcEv = this.currentEvent;
                     setTimeout(() => {
-                        this.showBookingOffer(this.currentEvent);
+                        if (window.SignupDesk && _rcEv && _rcEv.id) SignupDesk.showReceipt(_rcEv.id, { after: () => this.showBookingOffer(_rcEv) });
+                        else this.showBookingOffer(_rcEv);
                     }, 500);
                 }
 
@@ -167091,7 +167122,7 @@ window.TeeSheet = {
         if (this._golferMode) return (window.GolferEventsBridge && GolferEventsBridge.events) || [];
         return (window.SocietyOrganizerSystem && SocietyOrganizerSystem.events) || [];
     },
-    open: function(){ this._golferMode=false; this._preferId=null; this.eventId=null; this._evWaited=false; this._mount(); this._loadEvents(); },
+    open: function(){ this._golferMode=false; this._preferId=null; this.eventId=null; this._evWaited=false; this._openToken=Date.now(); this._mount(); this._loadEvents(); },
     openForGolfer: async function(eventId){
         this._golferMode = true; this._preferId = eventId || null; this.eventId = null;
         try { await window.GolferEventsBridge.load(); } catch(e){ console.warn('[TeeSheet] golfer events', e); }
@@ -167598,6 +167629,8 @@ window.TeeSheet = {
             try { await window.TRGGMembership.load(this._hcpToast === true); } catch(e){}   // membership badges; ↻ forces a fresh roster pull
             try { await this._loadNines(); } catch(e){}   // resolve the venue's real nines for two-way start
             this.render();
+            // v1604: "N new sign-ups since your last visit" (sign-ups + withdrawals) — once per sheet open
+            try { if (window.SignupDesk) SignupDesk.onSheetLoaded(this); } catch(e){}
             if (this._hcpToast) { this._hcpToast = false; this._flashHcpRefresh(this._lastHcpSync); }
             // Backfill grouped-but-unregistered players, THEN sweep the surcharges (non-member ฿100,
             // van ⇒ transport ฿300) so both land even when the organizer only ever opens the tee sheet.
@@ -168356,6 +168389,7 @@ window.TeeSheet = {
             '<button onclick="TeeSheet.preview()" class="ts2-tbtn"><span class="material-symbols-outlined">visibility</span>'+t('ts2.preview')+'</button>'+
             '<button onclick="TeeSheet.print()" class="ts2-tbtn"><span class="material-symbols-outlined">print</span>'+t('ts2.print')+'</button>'+
             '<button onclick="TeeSheet.shareLINE()" class="ts2-tbtn primary"><span class="material-symbols-outlined">send</span>'+t('ts2.sendline')+'</button>'+
+            (window.SignupDesk ? SignupDesk.logButton(this) : '')+
         '</div>';
 
         // ===== sidebar =====
@@ -187673,6 +187707,7 @@ showOrganizerTab = function(tabName) {
     <script src="dash-glass.js?v=1573"></script>
     <script src="dash-premium.js?v=1578"></script>
     <script src="play-flow.js?v=1573"></script>
+    <script src="signup-desk.js?v=1604"></script>
 </body>
 
 

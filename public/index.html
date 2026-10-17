@@ -40005,7 +40005,8 @@
         window._caddyClaimPick = function(rows, courseId) {
             const pool = rows || [];
             if (!pool.length) return null;
-            const scoped = courseId ? pool.filter(r => r.course_id === courseId || !r.course_id) : pool;
+            const sib = window._caddyPoolOf(courseId);   // v1607: a pool caddy's row may sit at a sister course
+            const scoped = courseId ? pool.filter(r => r.course_id === courseId || !r.course_id || (sib && sib.ids.includes(r.course_id))) : pool;
             if (scoped.length === 1) return scoped[0];
             if (courseId) {
                 const exact = scoped.filter(r => r.course_id === courseId);
@@ -40030,7 +40031,21 @@
         // entries (Khao Kheow A/B/C, Phoenix Mountain/Lake/Ocean). First two words
         // of the course name = the same facility key the DB sync trigger uses, so a
         // caddy who picks "Course C" still sees the roster filed under "Course A".
+        // v1607 (Pete 2026-10-17): Barcelona Resorts' three courses on one property — St Andrews 2000
+        // (flagship), Green Valley Rayong and Silky Oak — share ONE caddy pool: "whichever you play on
+        // uses the same caddies". A number there is one caddy at all three. Takes a course name OR id.
+        // Mirrors caddy_facility_key in the DB (sql/caddy_barcelona_pool_v1607.sql).
+        window._CADDY_POOLS = [{ key: 'barcelona golf', ids: ['st-andrews-2000', 'green_valley_rayong', 'silky_oak'],
+            names: ['St. Andrews 2000 Golf Club', 'Green Valley Rayong Country Club', 'Silky Oak Country Club'] }];
+        window._caddyPoolOf = function (v) {
+            const n = String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+            if (!n) return null;
+            if (/(andrews|silky|barcelona)/.test(n) || (/green ?valley/.test(n) && !/(summit|chiang)/.test(n))) return window._CADDY_POOLS[0];
+            return null;
+        };
         window._caddyFacilityKey = function (name) {
+            const pool = window._caddyPoolOf(name);
+            if (pool) return pool.key;
             const w = String(name || '').trim().split(/\s+/).filter(Boolean);
             return w.length ? w.slice(0, 2).join(' ').toLowerCase() : '';
         };
@@ -40058,12 +40073,16 @@
             if (!sb || (!courseId && !courseName)) return empty;
             const cols = 'id, caddy_number, name, course_id, course_name, user_id, photo_url';
             const qs = [];
-            if (courseId) {
+            const pool = window._caddyPoolOf(courseId) || window._caddyPoolOf(courseName);
+            if (pool) {   // v1607: one roster for the whole pool
+                qs.push(sb.from('caddy_profiles').select(cols)
+                    .in('course_id', pool.ids).eq('is_mock', false).eq('is_active', true).limit(400));
+            } else if (courseId) {
                 qs.push(sb.from('caddy_profiles').select(cols)
                     .eq('course_id', courseId).eq('is_mock', false).eq('is_active', true).limit(400));
             }
             const key = window._caddyFacilityKey(courseName);
-            if (key) {
+            if (key && !pool) {
                 qs.push(sb.from('caddy_profiles').select(cols)
                     .ilike('course_name', key + '%').eq('is_mock', false).eq('is_active', true).limit(400));
             }
@@ -40091,10 +40110,13 @@
                 } catch (e) {}
             }
             const nval = v => { const m = String(v || '').match(/\d+/); return m ? parseInt(m[0], 10) : Number.MAX_SAFE_INTEGER; };
-            const free = rows.filter(r => !r.user_id && String(r.caddy_number || '').trim());
+            // v1607: every roster row carries a placeholder 'CADDY-<hex>' account since v1558 — still hers to claim
+            // (same rule as checkRegCaddyMatch; the server refuses one that has signed in with its PIN)
+            const open = r => !r.user_id || /^CADDY-[0-9a-f]{32}$/.test(r.user_id);
+            const free = rows.filter(r => open(r) && String(r.caddy_number || '').trim());
             free.sort((a, b) => (nval(a.caddy_number) - nval(b.caddy_number))
                 || String(a.caddy_number).localeCompare(String(b.caddy_number)));
-            return { free: free, takenCount: rows.filter(r => r.user_id).length };
+            return { free: free, takenCount: rows.filter(r => !open(r)).length };
         };
 
         // The "this is the record you are about to claim" card. Photo first: a caddy
@@ -134677,7 +134699,7 @@ const GolferCaddyBooking = {
     // rows that are not a course: the unassigned bucket and event TITLES stored as course names
     _hiddenCourse(name) { const s = String(name || '').trim(); if (!s || /^unassigned$/i.test(s)) return true; return s === s.toUpperCase() && s.split(/\s+/).length >= 3; },
     _cm(a, b) { return typeof _courseMatch === 'function' && _courseMatch(a, b); },
-    _groupFor(course) { return (this._courses || []).find(g => g.name === course || g.variants.includes(course) || this._cm(g.name, course)) || null; },
+    _groupFor(course) { const gs = this._courses || []; return gs.find(g => g.name === course) || gs.find(g => g.variants.includes(course) || this._cm(g.name, course)) || null; },
     _variantsFor(course) { const g = this._groupFor(course); return g ? g.variants : [course]; },
     _fmtDate(iso) { try { return new Date(String(iso).slice(0, 10) + 'T00:00:00').toLocaleDateString(_lvLocale(), { weekday: 'short', day: 'numeric', month: 'short' }); } catch (e) { return iso || ''; } },
 
@@ -134950,7 +134972,18 @@ const GolferCaddyBooking = {
                 // the display name is the variant with the most caddies (longest on a tie)
                 if (n !== g.name && (counts[n] > counts[g.name] || (counts[n] === counts[g.name] && n.length > g.name.length))) { g.name = n; g.id = n; }
             });
-            (t.data || []).forEach(tier => { const g = groups.find(g => g.variants.includes(tier.course_name) || this._cm(g.name, tier.course_name)); if (g) g.tiers.push(tier); });
+            // v1607: a caddy pool (Barcelona: St Andrews 2000 · Green Valley · Silky Oak) — every course card in it
+            // lists the whole pool, whichever course a caddy happens to be filed under
+            (window._CADDY_POOLS || []).forEach(pool => {
+                const inPool = g => window._caddyPoolOf(g.name) === pool;
+                const members = groups.filter(inPool);
+                if (!members.length) return;
+                const vars = [...new Set(members.flatMap(g => g.variants))];
+                const total = members.reduce((a, g) => a + g.caddyCount, 0);
+                for (let i = groups.length - 1; i >= 0; i--) if (inPool(groups[i])) groups.splice(i, 1);
+                pool.names.forEach(name => groups.push({ id: name, name: name, variants: [...new Set([name, ...vars])], caddyCount: total, tiers: [] }));
+            });
+            (t.data || []).forEach(tier => { const g = groups.find(g => g.name === tier.course_name) || groups.find(g => g.variants.includes(tier.course_name) || this._cm(g.name, tier.course_name)); if (g) g.tiers.push(tier); });
             groups.sort((a, b) => a.name.localeCompare(b.name));
             this._courses = groups; this._coursesT = Date.now();
             return groups;
@@ -151603,7 +151636,7 @@ class GolferEventsManager {
     _gsCaddySuggestions() {
         const S = this._gs; if (!S) return [];
         const ev = S.ev || {};
-        const cnorm = v => String(v || '').toLowerCase().replace(/country\s*club|golf\s*club|golf\s*course|golf|club|course|international|resort|\bcc\b/g, '').replace(/[^a-z]/g, '');
+        const cnorm = v => window._caddyRegNorm(v);   // v1607: pool-aware (Barcelona's three courses = one caddy pool)
         const course = cnorm(ev.courseName || ev.name || '');
         if (!course) return [];
         const seen = {};
@@ -152342,7 +152375,7 @@ class GolferEventsManager {
             let box = document.getElementById('scv3gCaddySug');
             if (!box) { box = document.createElement('div'); box.id = 'scv3gCaddySug'; input.parentElement.appendChild(box); }
             // Normalize away generic suffixes so "Pattaya CC" matches "Pattaya Country Club"
-            const _cnorm = (s) => String(s || '').toLowerCase().replace(/country\s*club|golf\s*club|golf\s*course|golf|club|course|international|resort|\bcc\b/g, '').replace(/[^a-z]/g, '');
+            const _cnorm = (s) => window._caddyRegNorm(s);   // v1607: pool-aware (Barcelona's three courses = one caddy pool)
             const course = _cnorm(ev.courseName);
             if (!course) return;
             const { data } = await window.SupabaseDB.client.from('caddy_notebook')
@@ -162360,14 +162393,14 @@ window._lvCaddyPhotos = async function(sb, lineId){
 };
 window._lvFirstNum = function(s){ var m=String(s||'').match(/\d{1,4}/); return m?String(parseInt(m[0])):''; };
 window._lvCaddyImg = function(url,size){ return url?'<img src="'+url+'" style="display:inline-block;width:'+size+'px;height:'+size+'px;border-radius:'+Math.max(5,Math.round(size*0.28))+'px;object-fit:cover;vertical-align:middle;margin-right:7px;" alt="">':''; };
-// HARD RULE: a caddy number is a PER-COURSE identity — #177 at Green Valley is a different
-// person than #177 at St Andrews. EVERY path that writes a caddy number onto an event
+// HARD RULE: a caddy number is a PER-COURSE identity — #183 at Pattaya CC is a different
+// person than #183 at Plutaluang. EXCEPT a caddy pool (v1607): Barcelona's St Andrews 2000,
+// Green Valley and Silky Oak share one set of caddies, so #177 is the same caddy at all three
+// (_caddyRegNorm folds the pool). EVERY path that writes a caddy number onto an event
 // registration must pass through this guard. Returns true = proceed, false = user declined.
 // Unknown/blank courses and same-course (suffix-insensitive) assigns pass silently.
 window._caddyCourseGuard = function(caddyNum, caddyCourse, evCourse){
-  var norm = function(v){ return String(v||'').toLowerCase()
-    .replace(/country\s*club|golf\s*club|golf\s*course|golf|club|course|international|resort|\bcc\b/g,'')
-    .replace(/[^a-z]/g,''); };
+  var norm = function(v){ return window._caddyRegNorm(v); };
   var a = norm(caddyCourse), b = norm(evCourse);
   if (!a || !b || a === b || a.indexOf(b) !== -1 || b.indexOf(a) !== -1) return true;
   return confirm('#' + caddyNum + ' is your caddy at ' + caddyCourse + '.\nThis event is at ' + evCourse + ' — #' + caddyNum + ' there is a DIFFERENT caddy.\n\nAssign #' + caddyNum + ' for this event anyway?');
@@ -162381,7 +162414,10 @@ window._caddyCourseGuard = function(caddyNum, caddyCourse, evCourse){
 // added by a golf course (created_by) — is READ-ONLY to golfers: number, name and photo come from the
 // registration. Golfers edit only the caddies they added by hand. _caddyRegLoad() caches the registered
 // set for 120s; _caddyRegFor(num, course) is the sync lookup (null = golfer-added → the golfer's to edit).
-window._caddyRegNorm = function(v){ return String(v||'').toLowerCase()
+window._caddyRegNorm = function(v){
+  var pool = window._caddyPoolOf && window._caddyPoolOf(v);   // v1607: Barcelona's three courses = one caddy pool
+  if (pool) return pool.key.replace(/[^a-z]/g,'');
+  return String(v||'').toLowerCase()
   .replace(/country\s*club|golf\s*club|golf\s*course|golf|club|course|international|resort|\bcc\b/g,'')
   .replace(/[^a-z]/g,''); };
 window._caddyRegLoad = async function(force){
@@ -162415,9 +162451,7 @@ window._nbPhotoPick = function(entries, num, course){
   var n = String(parseInt(num)); if (!n || n === 'NaN') return '';
   var reg = window._caddyRegFor && window._caddyRegFor(num, course);
   if (reg && reg.photo_url) return reg.photo_url;   // v1370: a registered caddy wears the registration's photo
-  var norm = function(v){ return String(v||'').toLowerCase()
-    .replace(/country\s*club|golf\s*club|golf\s*course|golf|club|course|international|resort|\bcc\b/g,'')
-    .replace(/[^a-z]/g,''); };
+  var norm = function(v){ return window._caddyRegNorm(v); };   // v1607: pool-aware
   var rows = (entries || []).filter(function(e){ return e && e.caddy_number && e.photo_url && String(parseInt(e.caddy_number)) === n; });
   if (!rows.length) return '';
   var want = norm(course);

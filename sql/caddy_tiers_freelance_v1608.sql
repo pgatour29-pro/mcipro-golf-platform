@@ -175,6 +175,11 @@ begin
    order by (course_id is not null) desc, created_at desc limit 1;
   if not found then return jsonb_build_object('ok', false, 'reason', 'no_caddy'); end if;
   if not cp.is_freelance then return jsonb_build_object('ok', false, 'reason', 'not_freelance'); end if;
+  -- Until every login carries a verified session (Auth Phase 2) an unverified request is trusted on its claimed id,
+  -- like the rest of the caddy RPCs. Cap the blast radius: at most 5 drops per caddy per 24 h (all logged + visible).
+  if (select count(*) from public.caddy_job_drops d where d.caddy_id = cp.id and d.created_at > now() - interval '24 hours') >= 5 then
+    return jsonb_build_object('ok', false, 'reason', 'limit');
+  end if;
 
   select * into b from public.caddy_bookings where id = p_booking_id for update;
   if not found then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;

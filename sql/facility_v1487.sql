@@ -51,7 +51,7 @@ values ('silky-oak', 'Silky Oak Country Club',
 on conflict (course_id) do nothing;
 
 -- ---------------------------------------------------------------- the facility
-insert into public.facilities (id, name, flagship_slug) values ('barcelona-golf', 'Barcelona Golf', 'green-valley-rayong')
+insert into public.facilities (id, name, flagship_slug) values ('barcelona-golf', 'Barcelona Golf', 'st-andrews-2000')   -- v1607: St Andrews 2000 is the flagship
 on conflict (id) do update set name = excluded.name, flagship_slug = excluded.flagship_slug, updated_at = now();
 insert into public.facility_courses (slug, facility_id, course_ref, short_name, match_token, veto_token, sort) values
   ('green-valley-rayong', 'barcelona-golf', 'green_valley_rayong', 'Green Valley', 'green valley', 'summit', 1),

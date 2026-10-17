@@ -121,6 +121,12 @@ declare
     prevm     int;
     m         int;
     iv        int := 5;
+    need      int := 1;     -- seats this sign-up needs together (me + requested partners not seated yet)
+    pg        int := -1;    -- group of an already-seated requested partner
+    pidx      int;
+    pent      jsonb;
+    tg        int;
+    carry     jsonb;        -- a partner moving with me into a brand-new group
 begin
     if r.player_id is null or coalesce(r.status, 'registered') = 'cancelled' then return null; end if;
     if coalesce(sr ->> 'noSeat', '') = 'true' then return null; end if;
@@ -181,21 +187,53 @@ begin
                          else btrim(q.j) in (r.id::text, r.player_id, coalesce(r.player_name, '~~')) end)
           ) s;
         if array_length(mates, 1) > 0 or array_length(mate_names, 1) > 0 then
+            -- v1606: an already-seated partner's group
             for i in 0 .. n - 1 loop
-                if jsonb_array_length(public._ts_players(gs -> i)) < cap
-                   and exists (select 1 from jsonb_array_elements(public._ts_players(gs -> i)) x
-                               where coalesce(x ->> 'playerId', x ->> 'id') = any (mates)
-                                  or lower(coalesce(x ->> 'playerName', x ->> 'name', '')) = any (mate_names)) then
-                    gi := i; exit;
+                if exists (select 1 from jsonb_array_elements(public._ts_players(gs -> i)) x
+                           where coalesce(x ->> 'playerId', x ->> 'id') = any (mates)
+                              or lower(coalesce(x ->> 'playerName', x ->> 'name', '')) = any (mate_names)) then
+                    pg := i; exit;
                 end if;
             end loop;
+            if pg >= 0 and jsonb_array_length(public._ts_players(gs -> pg)) < cap then
+                gi := pg;
+            elsif pg >= 0 and jsonb_typeof(gs -> pg) = 'object' then
+                -- partner's group is full: both go to the first group with room for two (the v1348 party
+                -- rule) — only when the system seated that partner (autoAt), never someone a person placed
+                select (t.o - 1)::int, t.x into pidx, pent
+                  from jsonb_array_elements(public._ts_players(gs -> pg)) with ordinality t(x, o)
+                 where (coalesce(t.x ->> 'playerId', t.x ->> 'id') = any (mates)
+                        or lower(coalesce(t.x ->> 'playerName', t.x ->> 'name', '')) = any (mate_names))
+                   and t.x ? 'autoAt'
+                 limit 1;
+                if pent is not null then
+                    tg := -1;
+                    for i in 0 .. n - 1 loop
+                        if i <> pg and jsonb_typeof(gs -> i) = 'object' and jsonb_array_length(public._ts_players(gs -> i)) <= cap - 2 then tg := i; exit; end if;
+                    end loop;
+                    gs := jsonb_set(gs, array[pg::text, 'players'], public._ts_players(gs -> pg) - pidx);
+                    if tg >= 0 then
+                        gs := jsonb_set(gs, array[tg::text, 'players'], public._ts_players(gs -> tg) || jsonb_build_array(pent));
+                        gi := tg;
+                    else
+                        carry := pent;   -- no group has two seats: we open the next tee together
+                    end if;
+                end if;
+            else
+                -- partners registered but not seated yet: wait for a group with room for all of us
+                select 1 + count(*) into need
+                  from event_registrations x
+                 where x.event_id = r.event_id and x.id <> r.id and coalesce(x.status, 'registered') <> 'cancelled'
+                   and (x.player_id = any (mates) or lower(coalesce(x.player_name, '')) = any (mate_names));
+                need := least(greatest(need, 1), cap);
+            end if;
         end if;
     end if;
 
-    -- first open seat from the top
-    if gi < 0 then
+    -- first open seat from the top (room for the whole unit when partners are still to come)
+    if gi < 0 and carry is null then
         for i in 0 .. n - 1 loop
-            if jsonb_array_length(public._ts_players(gs -> i)) < cap then gi := i; exit; end if;
+            if jsonb_array_length(public._ts_players(gs -> i)) <= cap - need then gi := i; exit; end if;
         end loop;
     end if;
 
@@ -219,7 +257,7 @@ begin
         if lastm is not null then tee := public._ts_fmt(lastm + iv);
         elsif ev.start_time is not null then tee := to_char(ev.start_time, 'HH24:MI');
         end if;
-        gs := gs || jsonb_build_array(jsonb_build_object('players', jsonb_build_array(entry), 'teeTime', tee,
+        gs := gs || jsonb_build_array(jsonb_build_object('players', case when carry is not null then jsonb_build_array(carry, entry) else jsonb_build_array(entry) end, 'teeTime', tee,
                                                                  'teeFixed', tee <> '', 'startNine', null, 'secondNine', null));
         gi := n;
     end if;

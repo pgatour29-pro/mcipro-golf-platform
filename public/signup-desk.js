@@ -23,7 +23,7 @@
             r_ovl: 'REGISTRATION RECEIPT', r_h: 'You\'re in — and on the tee sheet', r_h2: 'You\'re in', r_group: 'Your group', r_groupn: 'Group',
             r_tee: 'TEE', r_you: 'You', r_signed: 'Signed up', r_no: 'Receipt no.', r_dep: 'Departure', r_fee: 'Fee', r_pay: 'Payment',
             r_paid: 'PAID', r_unpaid: 'NOT PAID YET', r_info: 'Want to play with friends? Join an open seat or swap groups yourself — no need to wait for the organizer. This receipt stays in My Events.',
-            r_move: 'Move / swap group', r_done: 'Done', r_none: 'No receipt found for this event.', receipt: 'RECEIPT'
+            r_move: 'Move / swap group', r_done: 'Done', r_none: 'No receipt found for this event.', receipt: 'RECEIPT', org_only: 'Only this event\'s organizers can see the sign-up log.'
         },
         th: {
             ovl_new: 'ผู้สมัครใหม่', h_new: 'ผู้สมัครใหม่ตั้งแต่ที่คุณเข้ามาครั้งล่าสุด', h_act: 'การเปลี่ยนแปลงตั้งแต่ที่คุณเข้ามาครั้งล่าสุด',
@@ -36,7 +36,7 @@
             r_ovl: 'ใบยืนยันการสมัคร', r_h: 'สมัครแล้ว — และอยู่ในตารางออกรอบ', r_h2: 'สมัครแล้ว', r_group: 'กลุ่มของคุณ', r_groupn: 'กลุ่ม',
             r_tee: 'ออกรอบ', r_you: 'คุณ', r_signed: 'สมัครเมื่อ', r_no: 'เลขที่ใบยืนยัน', r_dep: 'ออกเดินทาง', r_fee: 'ค่าใช้จ่าย', r_pay: 'การชำระเงิน',
             r_paid: 'ชำระแล้ว', r_unpaid: 'ยังไม่ชำระ', r_info: 'อยากเล่นกับเพื่อน? ย้ายไปที่ว่างหรือสลับกลุ่มได้เอง — ไม่ต้องรอผู้จัด ใบยืนยันนี้อยู่ใน My Events',
-            r_move: 'ย้าย / สลับกลุ่ม', r_done: 'เสร็จ', r_none: 'ไม่พบใบยืนยันสำหรับอีเวนต์นี้', receipt: 'ใบยืนยัน'
+            r_move: 'ย้าย / สลับกลุ่ม', r_done: 'เสร็จ', r_none: 'ไม่พบใบยืนยันสำหรับอีเวนต์นี้', receipt: 'ใบยืนยัน', org_only: 'เฉพาะผู้จัดของอีเวนต์นี้เท่านั้นที่ดูบันทึกการสมัครได้'
         },
         ko: {
             ovl_new: '신규 신청', h_new: '마지막 방문 이후 신규 신청', h_act: '마지막 방문 이후 변경 사항',
@@ -49,7 +49,7 @@
             r_ovl: '신청 영수증', r_h: '신청 완료 — 티시트에 배정됨', r_h2: '신청 완료', r_group: '내 조', r_groupn: '조',
             r_tee: '티오프', r_you: '나', r_signed: '신청 시각', r_no: '영수증 번호', r_dep: '출발', r_fee: '요금', r_pay: '결제',
             r_paid: '결제 완료', r_unpaid: '미결제', r_info: '친구와 치고 싶나요? 빈자리로 옮기거나 직접 조를 바꾸세요 — 주최자를 기다릴 필요 없습니다. 이 영수증은 My Events에 보관됩니다.',
-            r_move: '조 이동 / 교체', r_done: '완료', r_none: '이 이벤트의 영수증이 없습니다.', receipt: '영수증'
+            r_move: '조 이동 / 교체', r_done: '완료', r_none: '이 이벤트의 영수증이 없습니다.', receipt: '영수증', org_only: '이 이벤트의 주최자만 신청 기록을 볼 수 있습니다.'
         },
         ja: {
             ovl_new: '新規申込', h_new: '前回の訪問以降の新規申込', h_act: '前回の訪問以降の変更',
@@ -62,7 +62,7 @@
             r_ovl: '申込控え', r_h: '申込完了 — ティーシートに配置済み', r_h2: '申込完了', r_group: 'あなたの組', r_groupn: '組',
             r_tee: 'ティー', r_you: 'あなた', r_signed: '申込日時', r_no: '控え番号', r_dep: '出発', r_fee: '料金', r_pay: '支払い',
             r_paid: '支払済', r_unpaid: '未払い', r_info: '仲間と回りたい？空き枠への移動や組の交換は自分でできます — 主催者を待つ必要はありません。この控えは My Events に残ります。',
-            r_move: '組の移動 / 交換', r_done: '完了', r_none: 'このイベントの控えが見つかりません。', receipt: '控え'
+            r_move: '組の移動 / 交換', r_done: '完了', r_none: 'このイベントの控えが見つかりません。', receipt: '控え', org_only: 'このイベントの主催者のみ申込記録を閲覧できます。'
         }
     };
     function lang() { try { var l = localStorage.getItem('mci-pro-language') || 'en'; return L[l] ? l : 'en'; } catch (e) { return 'en'; } }
@@ -345,7 +345,7 @@
                 html += '<div class="lg' + (seen && r.at > seen && !r.backfill ? ' isnew' : '') + (wd ? ' wd' : '') + '"><div class="t">' + esc(p.time) + '<br><span>' + (r.signup_no ? '#' + String(r.signup_no).padStart(2, '0') : '') + '</span></div>' +
                     '<div class="nm">' + esc(r.player_name || '') + '<small>' + esc(small) + '</small></div><div class="st">' + esc(st) + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</div></div>';
             });
-            if (!rows.length) html = '<div class="emp">' + esc(T('empty')) + '</div>';
+            if (!rows.length) html = '<div class="emp">' + esc(data.reason === 'organizer_only' ? T('org_only') : T('empty')) + '</div>';
             el.innerHTML = '<div class="bx log" role="dialog" aria-modal="true"><div class="hd"><div class="ovl">' + esc(T('ovl_log') + (evName ? ' · ' + evName : '')) + '</div>' +
                 '<div class="h1"><b>' + nSign + '</b>' + esc(T('h_log')) + '</div>' +
                 '<div class="meta">' + (nWd ? '<span style="color:var(--t-red);font-weight:700">' + nWd + ' ' + esc(up(T('withdrawals'))) + '</span> · ' : '') + esc(T('meta_log')) + '</div></div>' +

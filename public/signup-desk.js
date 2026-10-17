@@ -241,7 +241,7 @@
         var right = wd ? '<span class="seat out">' + T('withdrew') + '</span>'
                        : '<span class="seat' + (seat ? '' : ' pool') + '">' + esc(seat || T('pool')) + '</span>' + vanChip(ts, evId, r);
         var rc = [rno(r.reg_id), r.signup_no ? '#' + r.signup_no : '', baht(r.total_fee)].filter(Boolean).join(' · ');
-        if (wd && r.actor_role) rc += (rc ? ' · ' : '') + (String(r.actor) === String(r.player_id) ? T('by_player') : T('by_org'));
+        if (wd && r.by_player != null) rc += (rc ? ' · ' : '') + (r.by_player ? T('by_player') : T('by_org'));
         return '<div class="row' + (wd ? ' wd' : '') + '"><div class="av">' + esc(ini(r.player_name)) + '</div><div class="who">' +
             '<div class="n">' + esc(r.player_name || '') + (r.handicap != null ? ' <span class="h">' + esc(r.handicap) + '</span>' : '') + '</div>' +
             '<div class="when"><span class="material-symbols-outlined">' + (wd ? 'logout' : 'schedule') + '</span>' + esc(up(p.full)) + '</div>' +
@@ -339,7 +339,7 @@
                 if (p.day !== day) { html += '<div class="day">' + esc(up(p.day)) + '</div>'; day = p.day; }
                 var seat = wd ? '' : liveSeat(ts, eventId, r.player_id); if (seat === null) seat = r.seat || '';
                 var small = [rno(r.reg_id), T('hcp') + ' ' + (r.handicap != null ? r.handicap : '—'), baht(r.total_fee)].filter(Boolean).join(' · ');
-                if (wd && r.actor_role) small += ' · ' + (String(r.actor) === String(r.player_id) ? T('by_player') : T('by_org'));
+                if (wd && r.by_player != null) small += ' · ' + (r.by_player ? T('by_player') : T('by_org'));
                 var st = wd ? T('withdrew') : (seat || T('pool'));
                 var sub = wd ? '' : (r.want_transport ? '🚐 ' + T('van') : T('direct'));
                 html += '<div class="lg' + (seen && r.at > seen && !r.backfill ? ' isnew' : '') + (wd ? ' wd' : '') + '"><div class="t">' + esc(p.time) + '<br><span>' + (r.signup_no ? '#' + String(r.signup_no).padStart(2, '0') : '') + '</span></div>' +

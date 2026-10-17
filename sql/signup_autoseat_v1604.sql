@@ -345,7 +345,8 @@ returns jsonb language sql stable security definer set search_path = public as $
                     'id', l.id, 'reg_id', l.reg_id, 'player_id', l.player_id, 'player_name', l.player_name,
                     'handicap', l.handicap, 'total_fee', l.total_fee, 'want_transport', l.want_transport,
                     'host_id', l.host_id, 'kind', l.kind, 'at', l.happened_at, 'signup_no', l.signup_no, 'seat', l.seat,
-                    'backfill', l.backfill, 'walk_on', l.walk_on, 'actor', l.actor, 'actor_role', l.actor_role) order by l.happened_at desc, l.id desc)
+                    'backfill', l.backfill, 'walk_on', l.walk_on,
+                    'by_player', case when l.kind = 'withdraw' and l.actor_role is not null then l.actor = l.player_id end) order by l.happened_at desc, l.id desc)
                   from event_signup_log l where l.event_id = p_event), '[]'::jsonb))
 $$;
 
@@ -360,7 +361,7 @@ returns jsonb language sql stable security definer set search_path = public as $
                     'id', l.id, 'reg_id', l.reg_id, 'player_id', l.player_id, 'player_name', l.player_name,
                     'handicap', l.handicap, 'total_fee', l.total_fee, 'want_transport', l.want_transport,
                     'host_id', l.host_id, 'kind', l.kind, 'at', l.happened_at, 'signup_no', l.signup_no, 'seat', l.seat,
-                    'actor', l.actor, 'actor_role', l.actor_role,
+                    'by_player', case when l.kind = 'withdraw' and l.actor_role is not null then l.actor = l.player_id end,
                     'seat_now', case when l.kind = 'signup' then public._ts_seat_label(l.event_id, l.player_id) end) order by l.happened_at desc, l.id desc) as rows
             from event_signup_log l
            where l.event_id = e.eid and not l.backfill and not l.walk_on

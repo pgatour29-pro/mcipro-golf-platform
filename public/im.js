@@ -64,7 +64,17 @@
         'Back': ['กลับ', '뒤로', '戻る'], 'Members': ['สมาชิก', '멤버', 'メンバー'], 'Read by': ['อ่านแล้วโดย', '읽음:', '既読:'],
         'Sent': ['ส่งแล้ว', '전송됨', '送信済み'], 'Read': ['อ่านแล้ว', '읽음', '既読'], 'Loading…': ['กำลังโหลด…', '불러오는 중…', '読み込み中…'],
         'Could not load. Pull to retry.': ['โหลดไม่สำเร็จ แตะเพื่อลองใหม่', '불러오지 못했습니다. 눌러서 다시 시도', '読み込めません。タップして再試行'],
-        'Photos only, up to 2 MB.': ['รูปภาพเท่านั้น ไม่เกิน 2 MB', '사진만, 최대 2MB', '写真のみ、最大2MB']
+        'Photos only, up to 2 MB.': ['รูปภาพเท่านั้น ไม่เกิน 2 MB', '사진만, 최대 2MB', '写真のみ、最大2MB'],
+        // v1605 delete
+        'Select': ['เลือก', '선택', '選択'], 'selected': ['รายการที่เลือก', '개 선택됨', '件選択'],
+        'Delete for me': ['ลบสำหรับฉัน', '나에게서 삭제', '自分だけ削除'], 'Delete for everyone': ['ลบสำหรับทุกคน', '모두에게서 삭제', '全員から削除'],
+        'Delete messages': ['ลบข้อความ', '메시지 삭제', 'メッセージを削除'], 'Leave group': ['ออกจากกลุ่ม', '그룹 나가기', 'グループを退出'],
+        'Tap again to leave': ['แตะอีกครั้งเพื่อออก', '한 번 더 누르면 나가기', 'もう一度タップで退出'],
+        'Delete group for everyone': ['ลบกลุ่มสำหรับทุกคน', '모두에게서 그룹 삭제', '全員からグループを削除'],
+        'Removed for you only. It comes back if a new message arrives.': ['ลบเฉพาะของคุณ จะกลับมาเมื่อมีข้อความใหม่', '나에게서만 삭제됩니다. 새 메시지가 오면 다시 표시됩니다.', '自分の画面からのみ削除。新しいメッセージが届くと再表示されます。'],
+        'Tap chats to select them.': ['แตะแชทเพื่อเลือก', '채팅을 눌러 선택하세요', 'チャットをタップして選択'],
+        'Tap messages to select them.': ['แตะข้อความเพื่อเลือก', '메시지를 눌러 선택하세요', 'メッセージをタップして選択'],
+        'Move to folder': ['ย้ายไปโฟลเดอร์', '폴더로 이동', 'フォルダへ移動'], 'Unpin': ['เลิกปักหมุด', '고정 해제', 'ピン留め解除'], 'Pin': ['ปักหมุด', '고정', 'ピン留め']
     };
     const T = (en) => { const i = { th: 0, ko: 1, ja: 2 }[LANG()]; return (i != null && W[en] && W[en][i]) || en; };
     const KIND_LBL = { player: 'Player', golfer: 'Player', caddy: 'Caddy', course: 'Course', society: 'Society', event: 'Event', group: 'Group', vendor: 'Vendor' };
@@ -106,7 +116,9 @@
         me: null, threads: [], folder: 'all', q: '', open: null, head: null, msgs: [], members: [],
         _seq: 0, _tseq: 0, chans: {}, typing: {}, online: new Set(), replyTo: null, armed: null,
         _poll: null, _listTimer: null, _typeAt: 0, _typeOff: null, urls: {}, legacy: null, _lightbox: null,
-        _nf: false, _pendIds: new Set(), _loadedOnce: false
+        _nf: false, _pendIds: new Set(), _loadedOnce: false,
+        sel: null,   // v1605: chat-list select mode (Set of thread keys) or null
+        msel: null   // v1605: thread select mode (Set of message ids) or null
     };
 
     const IM = {
@@ -149,8 +161,14 @@
                         <div class="im-h1">${esc(T('Chats'))}<span class="im-hn" id="imHeadN"></span></div>
                         <div class="im-hb">
                           <button type="button" class="im-ib" data-theme-toggle onclick="ThemeMode.toggle()" title="Light / Dark">${mi('light_mode', 18)}</button>
+                          <button type="button" class="im-ib" data-im="select" aria-label="${esc(T('Select'))}" title="${esc(T('Select'))}">${mi('checklist', 18)}</button>
                           <button type="button" class="im-ib primary" data-im="new" aria-label="${esc(T('New chat'))}">${mi('edit_square', 18)}</button>
                         </div>
+                      </div>
+                      <div class="im-selbar" id="imSelBar" hidden>
+                        <button type="button" class="im-sb-x" data-im="selx">${esc(T('Cancel'))}</button>
+                        <span class="im-sb-n" id="imSelN"></span>
+                        <button type="button" class="im-sb-del" data-im="seldel" id="imSelDel">${mi('delete', 17)}<span>${esc(T('Delete chat'))}</span></button>
                       </div>
                       <div class="im-sr"><span class="material-symbols-outlined">search</span><input id="imQ" type="search" autocomplete="off" placeholder="${esc(T('Search chats'))}" maxlength="60"></div>
                       <div class="im-chips" id="imChips"></div>
@@ -163,7 +181,7 @@
                 root.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('[data-im-in="nf"]')) { e.preventDefault(); this.chip('nfok'); } });
                 // long-press on a row = the ⋯ sheet (pin / move)
                 let lp = null, lpKey = null;
-                root.addEventListener('pointerdown', (e) => { const r = e.target.closest('.im-row'); if (!r) return; lpKey = r.dataset.k; lp = setTimeout(() => { lp = null; vibrate(); this.rowMenu(lpKey); }, 480); });
+                root.addEventListener('pointerdown', (e) => { const r = e.target.closest('.im-row'); if (!r || D.sel) return; lpKey = r.dataset.k; lp = setTimeout(() => { lp = null; vibrate(); this.rowMenu(lpKey); }, 480); });
                 ['pointerup', 'pointercancel', 'pointerleave', 'pointermove'].forEach(ev => root.addEventListener(ev, (e) => { if (ev === 'pointermove' && lp && e.movementX ** 2 + e.movementY ** 2 < 16) return; if (lp) { clearTimeout(lp); lp = null; } }));
             }
             if (!document.getElementById('imThread')) {
@@ -184,7 +202,14 @@
                       <textarea id="imIn" rows="1" maxlength="4000" placeholder="${esc(T('Type a message'))}"></textarea>
                       <button type="button" class="im-send" data-imt="send" aria-label="${esc(T('Message'))}">${mi('send', 19)}</button>
                     </div>
-                    <div class="im-ro" id="imRO" hidden>${esc(T('Only organizers post here'))}</div>`;
+                    <div class="im-ro" id="imRO" hidden>${esc(T('Only organizers post here'))}</div>
+                    <div class="im-msel" id="imMSel" hidden>
+                      <div class="im-msel-top"><button type="button" data-imt="mselx">${esc(T('Cancel'))}</button><span id="imMSelN">${esc(T('Tap messages to select them.'))}</span></div>
+                      <div class="im-msel-btns">
+                        <button type="button" class="im-msel-me" data-imt="mseldel" disabled>${mi('delete', 17)}<span>${esc(T('Delete for me'))}</span></button>
+                        <button type="button" class="im-msel-all" data-imt="mselall" hidden>${mi('delete_forever', 17)}<span>${esc(T('Delete for everyone'))}</span></button>
+                      </div>
+                    </div>`;
                 document.body.appendChild(t);
                 t.addEventListener('click', (e) => this.onThreadClick(e));
                 const inp = t.querySelector('#imIn');
@@ -194,7 +219,7 @@
                 t.querySelector('#imFile').addEventListener('change', (e) => this.pickPhotos(e.target.files));
                 const st = t.querySelector('#imStream');
                 let lp = null;
-                st.addEventListener('pointerdown', (e) => { const b = e.target.closest('.im-b[data-mid]'); if (!b) return; const mid = b.dataset.mid; lp = setTimeout(() => { lp = null; vibrate(); this.msgMenu(mid); }, 480); });
+                st.addEventListener('pointerdown', (e) => { const b = e.target.closest('.im-b[data-mid]'); if (!b || D.msel) return; const mid = b.dataset.mid; lp = setTimeout(() => { lp = null; vibrate(); this.msgMenu(mid); }, 480); });
                 ['pointerup', 'pointercancel', 'pointerleave', 'pointermove'].forEach(ev => st.addEventListener(ev, (e) => { if (ev === 'pointermove' && lp && e.movementX ** 2 + e.movementY ** 2 < 16) return; if (lp) { clearTimeout(lp); lp = null; } }));
             }
             this.place();
@@ -343,8 +368,9 @@
             const row = (t) => {
                 const tag = this.kindLabel(t); const cad = t.kind === 'course' && t.caddy ? ` · ${esc(T('Caddy'))} #${esc(t.caddy)}` : '';
                 const sub = t.kind === 'event' ? `${esc(t.course || '')}` : '';
-                return `<div class="im-row${t.unread ? ' un' : ''}${D.open === t.key ? ' cur' : ''}" data-k="${esc(t.key)}" role="button">
-                    ${this.avatarHtml(t)}${t.kind === 'dm' && D.online.has(t.id) ? '<i class="im-dot"></i>' : ''}
+                const ck = D.sel ? `<span class="im-ck${D.sel.has(t.key) ? ' on' : ''}">${mi(D.sel.has(t.key) ? 'check_circle' : 'radio_button_unchecked', 22)}</span>` : '';
+                return `<div class="im-row${t.unread ? ' un' : ''}${D.open === t.key ? ' cur' : ''}${D.sel && D.sel.has(t.key) ? ' picked' : ''}" data-k="${esc(t.key)}" role="button">
+                    ${ck}${this.avatarHtml(t)}${t.kind === 'dm' && D.online.has(t.id) ? '<i class="im-dot"></i>' : ''}
                     <div class="im-rm">
                       <div class="im-rn"><span class="n">${esc(this.nameOf(t))}</span>${tag ? `<span class="im-tag">${esc(tag)}${cad}</span>` : ''}${t.pin ? mi('push_pin', 13) : ''}</div>
                       <div class="im-rp">${sub ? `<span class="dim">${sub} · </span>` : ''}${this.preview(t)}</div>
@@ -362,8 +388,9 @@
             const MSc = (id) => { const el = document.getElementById(id); const n = el ? parseInt(el.textContent, 10) || 0 : 0; return n; };
             const extra = [['offers', 'local_offer', T('Course offers'), MSc('offers-inbox-count')]];
             if (isAdmin()) { extra.push(['reports', 'flag', T('Reports'), MSc('reports-count')]); extra.push(['admin', 'inbox', T('Course requests'), MSc('admin-inbox-count')]); }
-            h += `<div class="im-sec">${esc(T('Message'))}</div>` + extra.map(([k, ic, l, n]) => `<div class="im-row sys" data-im="legacy" data-v="${k}" role="button"><div class="im-av k-sys">${mi(ic, 20)}</div><div class="im-rm"><div class="im-rn"><span class="n">${esc(l)}</span></div></div><div class="im-rs">${n ? `<span class="im-n">${n}</span>` : ''}${mi('chevron_right', 18)}</div></div>`).join('');
+            if (!D.sel) h += `<div class="im-sec">${esc(T('Message'))}</div>` + extra.map(([k, ic, l, n]) => `<div class="im-row sys" data-im="legacy" data-v="${k}" role="button"><div class="im-av k-sys">${mi(ic, 20)}</div><div class="im-rm"><div class="im-rn"><span class="n">${esc(l)}</span></div></div><div class="im-rs">${n ? `<span class="im-n">${n}</span>` : ''}${mi('chevron_right', 18)}</div></div>`).join('');
             rows.innerHTML = h;
+            this.paintSel();
             if (D._nf) { const nf = chips.querySelector('[data-im-in="nf"]'); if (nf) nf.focus(); }
             if (isDesk() && !D.open) { const s = document.getElementById('imStream'); if (s && !s.querySelector('.im-b')) s.innerHTML = `<div class="im-empty big">${mi('forum', 34)}<br>${esc(T('Pick a chat'))}</div>`; }
         },
@@ -379,10 +406,39 @@
                 else if (act === 'new') this.newChat();
                 else if (act === 'legacy') this.showLegacy(v);
                 else if (act === 'reload') this.loadInbox();
+                else if (act === 'select') { D.sel = new Set(); this.paint(); }
+                else if (act === 'selx') { D.sel = null; this.paint(); }
+                else if (act === 'seldel') {
+                    if (!D.sel || !D.sel.size) return;
+                    if (a.dataset.armed !== '1') { a.dataset.armed = '1'; a.querySelector('span:last-child').textContent = T('Tap again to delete'); return; }
+                    this.clearChats(Array.from(D.sel));
+                }
                 return;
             }
             const r = e.target.closest('.im-row[data-k]');
+            if (r && D.sel) { const k = r.dataset.k; if (D.sel.has(k)) D.sel.delete(k); else D.sel.add(k); this.paint(); return; }
             if (r) this.open(r.dataset.k);
+        },
+        // v1605: select-mode bar on the chat list (Cancel · n selected · Delete chat)
+        paintSel() {
+            const bar = document.getElementById('imSelBar'), root = document.getElementById('imRoot'); if (!bar || !root) return;
+            root.classList.toggle('im-selon', !!D.sel);
+            bar.hidden = !D.sel; if (!D.sel) return;
+            const n = D.sel.size, del = document.getElementById('imSelDel');
+            document.getElementById('imSelN').textContent = n ? n + ' ' + T('selected') : T('Tap chats to select them.');
+            if (del) { del.disabled = !n; del.dataset.armed = ''; del.querySelector('span:last-child').textContent = T('Delete chat'); }
+        },
+        // v1605: "Delete chat" = gone from MY list and view (rpc im_clear); comes back only with a new message
+        async clearChats(keys) {
+            keys = (keys || []).filter(Boolean); if (!keys.length) return;
+            const uid = D.me || me(); if (!uid || !sb()) return;
+            let ok = false;
+            try { const { data, error } = await sb().rpc('im_clear', { p_user: uid, p_keys: keys }); ok = !error && data && data.ok; } catch (e) { ok = false; }
+            if (!ok) { this.toast(T('Could not send. Try again.')); return; }
+            if (D.open && keys.indexOf(D.open) >= 0) this.closeThread(true);
+            D.threads = D.threads.filter(t => keys.indexOf(t.key) < 0);
+            D.sel = null; this.paint(); this.counts && this.counts();
+            this.loadInbox(true);
         },
         chip(act) {
             if (act !== 'nfok') return;
@@ -393,10 +449,19 @@
         },
         // pin / move to folder — the existing localized ⋯ sheet (MessagesSystem._mfSheet) over the same prefs
         rowMenu(key) {
-            const MS = window.MessagesSystem; if (!MS || !MS._mfSheet) return;
-            try { MS._mfCss(); } catch (e) { }
-            MS._dmItems = D.threads.map(t => ({ key: t.key, name: this.nameOf(t), pin: this.prefOf(t.key).pin || null }));
-            MS._mfSheet(key);
+            const MS = window.MessagesSystem;
+            const t = D.threads.find(x => x.key === key); if (!t) return;
+            const pin = this.prefOf(key).pin;
+            const rows = [];
+            if (MS && MS._mfPref) rows.push({ icon: 'push_pin', label: pin ? T('Unpin') : T('Pin'), run: () => { MS._dmItems = D.threads.map(x => ({ key: x.key, name: this.nameOf(x), pin: this.prefOf(x.key).pin || null })); Promise.resolve(MS._mfPref(key, pin ? 'unpin' : 'pin')).then(() => this.paint(), () => this.paint()); } });
+            if (MS && MS._mfSheet) rows.push({ icon: 'folder', label: T('Move to folder'), run: () => { setTimeout(() => { try { MS._mfCss(); } catch (e) { } MS._dmItems = D.threads.map(x => ({ key: x.key, name: this.nameOf(x), pin: this.prefOf(x.key).pin || null })); MS._mfSheet(key); }, 40); } });
+            rows.push({ icon: 'checklist', label: T('Select'), run: () => { D.sel = new Set([key]); this.paint(); } });
+            rows.push({ icon: 'delete', label: T('Delete chat'), cls: 'danger', run: (b) => {
+                if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.querySelector('span:last-child').textContent = T('Tap again to delete chat'); return true; }
+                this.clearChats([key]);
+            } });
+            rows.push({ html: `<div class="im-note">${esc(T('Removed for you only. It comes back if a new message arrives.'))}</div>` });
+            this.sheet(esc(this.nameOf(t)), rows);
         },
 
         // ---------------------------------------------------------------- realtime: list + presence
@@ -472,6 +537,7 @@
             if (tab && !tab.classList.contains('active')) { try { showGolferTab('messages'); } catch (e) { } }
             if (D.open && D.open !== key) this.typing(false);
             D.open = key; D.replyTo = null; D.armed = null; D.msgs = []; D.head = null; D.members = [];
+            D.msel = null; this.paintMSel();
             this.replyBar();
             const t = document.getElementById('imThread');
             t.classList.add('open');
@@ -493,6 +559,7 @@
             if (D.open) this.typing(false);
             const key = D.open;
             D.open = null; D.replyTo = null; D.armed = null;
+            if (D.msel) { D.msel = null; this.paintMSel(); }
             this.drop('im_t'); this.drop('im_ty');
             const t = document.getElementById('imThread'); if (t) t.classList.remove('open');
             const st = document.getElementById('imStream'); if (st && !isDesk()) st.innerHTML = '';
@@ -611,7 +678,7 @@
                     }
                     meta = `<div class="im-mt ${mine ? 'me' : ''}">${esc(hm(m.at))} ${tick}</div>`;
                 }
-                out += `${showName ? `<div class="im-who">${esc(m.name || '')}</div>` : ''}<div class="im-b ${mine ? 'me' : 'them'}${m.pending ? ' pend' : ''}${sameRun ? ' run' : ''}${Array.isArray(m.att) && m.att.length && !m.text ? ' photo' : ''}" data-mid="${esc(m.id)}">${body}</div>${meta}`;
+                out += `${showName ? `<div class="im-who">${esc(m.name || '')}</div>` : ''}<div class="im-b ${mine ? 'me' : 'them'}${m.pending ? ' pend' : ''}${sameRun ? ' run' : ''}${Array.isArray(m.att) && m.att.length && !m.text ? ' photo' : ''}${D.msel ? ' pickable' : ''}${D.msel && D.msel.has(String(m.id)) ? ' picked' : ''}" data-mid="${esc(m.id)}">${body}</div>${meta}`;
             });
             st.innerHTML = out;
             this.hydrate(st);
@@ -635,6 +702,22 @@
                 else if (act === 'photo') document.getElementById('imFile').click();
                 else if (act === 'noreply') { D.replyTo = null; this.replyBar(); }
                 else if (act === 'menu') this.threadMenu();
+                else if (act === 'mselx') { D.msel = null; this.paintMSel(); this.paintThread(); }
+                else if (act === 'mseldel') {
+                    if (!D.msel || !D.msel.size) return;
+                    if (a.dataset.armed !== '1') { a.dataset.armed = '1'; a.querySelector('span:last-child').textContent = T('Tap again to delete'); return; }
+                    this.hideMsgs(Array.from(D.msel));
+                }
+                else if (act === 'mselall') {
+                    if (!D.msel || !D.msel.size) return;
+                    if (a.dataset.armed !== '1') { a.dataset.armed = '1'; a.querySelector('span:last-child').textContent = T('Tap again to delete'); return; }
+                    this.deleteForAll(Array.from(D.msel));
+                }
+                return;
+            }
+            if (D.msel) {
+                const pb = e.target.closest('.im-b[data-mid]');
+                if (pb) { const m = D.msgs.find(x => String(x.id) === String(pb.dataset.mid)); if (!m || m.pending || m.sys) return; const id = String(m.id); if (D.msel.has(id)) D.msel.delete(id); else D.msel.add(id); pb.classList.toggle('picked', D.msel.has(id)); this.paintMSel(); }
                 return;
             }
             const img = e.target.closest('.im-ph img');
@@ -774,17 +857,30 @@
         },
         closeSheet() { ['imDim', 'imSheet'].forEach(id => { const el = document.getElementById(id); if (el) el.remove(); }); },
         async msgMenu(mid) {
-            const m = D.msgs.find(x => String(x.id) === String(mid)); if (!m || m.sys) return;
-            const kind = D.open.charAt(0); if (kind === 's') return;
+            const m = D.msgs.find(x => String(x.id) === String(mid)); if (!m || m.sys || m.pending) return;
+            const kind = D.open.charAt(0);
+            if (kind === 's') {
+                this.sheet(`<span class="q">${esc(String(m.title || m.text || '').slice(0, 120))}</span>`, [
+                    { icon: 'content_copy', label: T('Copy'), run: () => { try { navigator.clipboard.writeText(m.text || ''); } catch (e) { } } },
+                    { icon: 'checklist', label: T('Delete messages'), run: () => { D.msel = new Set([String(m.id)]); this.paintMSel(); this.paintThread(); } },
+                    { icon: 'delete', label: T('Delete for me'), cls: 'danger', run: (b) => { if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.querySelector('span:last-child').textContent = T('Tap again to delete'); return true; } this.hideMsgs([String(m.id)]); } }
+                ]);
+                return;
+            }
             const rows = [
                 { icon: 'reply', label: T('Reply'), run: () => { D.replyTo = { id: m.id, text: String(m.text || (m.att && m.att.length ? '📷 ' + T('Photo') : '')).slice(0, 160), name: m.mine ? T('You') : (m.name || (D.head && D.head.name) || T('Message')) }; this.replyBar(); document.getElementById('imIn').focus(); } },
                 { icon: 'content_copy', label: T('Copy'), run: () => { try { navigator.clipboard.writeText(m.text || ''); } catch (e) { } } }
             ];
             if (!m.mine && window.ContentModeration && ContentModeration.showReportModal) rows.push({ icon: 'flag', label: 'Report', run: () => { try { ContentModeration.showReportModal('message', m.id, m.from); } catch (e) { } } });
+            rows.push({ icon: 'checklist', label: T('Delete messages'), run: () => { D.msel = new Set([String(m.id)]); this.paintMSel(); this.paintThread(); } });
+            rows.push({ icon: 'delete', label: T('Delete for me'), cls: 'danger', run: (b) => {
+                if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.querySelector('span:last-child').textContent = T('Tap again to delete'); return true; }
+                this.hideMsgs([String(m.id)]);
+            } });
             if (m.mine) {
-                const read = kind === 'u' ? !!m.read : D.members.some(o => o.id !== D.me && o.read_at && new Date(o.read_at) >= new Date(m.at));
-                rows.push({ icon: 'delete', label: read ? T('Already read — this one stays.') : T('Delete'), cls: 'danger', disabled: read, run: (b) => {
-                    if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.querySelector('span').textContent = T('Tap again to delete'); return true; }
+                const read = this.isRead(m);
+                rows.push({ icon: 'delete_forever', label: read ? T('Already read — this one stays.') : T('Delete for everyone'), cls: 'danger', disabled: read, run: (b) => {
+                    if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.querySelector('span:last-child').textContent = T('Tap again to delete'); return true; }
                     const scope = kind === 'u' ? 'dm' : kind === 'g' ? 'group' : 'event';
                     SecureDM.deleteMessage(D.me, m.id, scope).then(r => { if (r && r.error) this.toast(r.error === 'already_read' ? T('Already read — this one stays.') : T('Could not send. Try again.')); this.loadThread(true); this.loadInbox(true); });
                 } });
@@ -796,21 +892,77 @@
             const t = D.threads.find(x => x.key === key) || { key, kind: key.charAt(0) === 'u' ? 'dm' : key.charAt(0) === 'g' ? 'group' : key.charAt(0) === 'e' ? 'event' : 'society', name: D.head && D.head.name };
             const pin = this.prefOf(key).pin;
             const rows = [
-                { icon: 'push_pin', label: pin ? 'Unpin' : T('Pinned'), run: () => { MessagesSystem._dmItems = D.threads.map(x => ({ key: x.key, name: this.nameOf(x), pin: this.prefOf(x.key).pin || null })); MessagesSystem._mfPref(key, pin ? 'unpin' : 'pin'); } },
-                { icon: 'folder', label: T('folder'), run: () => { setTimeout(() => this.rowMenu(key), 50); } }
+                { icon: 'push_pin', label: pin ? T('Unpin') : T('Pin'), run: () => { MessagesSystem._dmItems = D.threads.map(x => ({ key: x.key, name: this.nameOf(x), pin: this.prefOf(x.key).pin || null })); MessagesSystem._mfPref(key, pin ? 'unpin' : 'pin'); } },
+                { icon: 'folder', label: T('Move to folder'), run: () => { const MS = window.MessagesSystem; if (!MS || !MS._mfSheet) return; setTimeout(() => { try { MS._mfCss(); } catch (e) { } MS._dmItems = D.threads.map(x => ({ key: x.key, name: this.nameOf(x), pin: this.prefOf(x.key).pin || null })); MS._mfSheet(key); }, 50); } }
             ];
             if (key.charAt(0) === 'u' && D.head && D.head.kind !== 'course') rows.push({ icon: 'person', label: 'Profile', run: () => { try { if (window.GolfFeed && GolfFeed.profile) GolfFeed.profile(key.slice(2)); } catch (e) { } } });
             const kind = key.charAt(0);
-            if (kind === 'u' || kind === 'g') {
-                const creator = kind === 'g' ? (D.head && D.head.creator) === D.me : true;
-                rows.push({ icon: 'delete', label: creator ? T('Delete chat') : T('Only the creator can delete this group.'), cls: 'danger', disabled: !creator, run: (b) => {
-                    if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.querySelector('span').textContent = T('Tap again to delete chat'); return true; }
-                    const done = () => { this.closeThread(true); D.threads = D.threads.filter(x => x.key !== key); this.paint(); this.loadInbox(true); };
-                    if (kind === 'u') SecureDM.deleteConversation(D.me, key.slice(2)).then(done, done);
-                    else sb().from('group_chats').delete().eq('id', key.slice(2)).then(done, done);
-                } });
+            // v1605: delete is on EVERY chat. "Delete chat" = gone for me (rpc im_clear); the other side keeps theirs.
+            if (D.msgs.length) rows.push({ icon: 'checklist', label: T('Delete messages'), run: () => { D.msel = new Set(); this.paintMSel(); this.paintThread(); } });
+            rows.push({ icon: 'delete', label: T('Delete chat'), cls: 'danger', run: (b) => {
+                if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.querySelector('span:last-child').textContent = T('Tap again to delete chat'); return true; }
+                this.clearChats([key]);
+            } });
+            if (kind === 'g' && D.head && D.head.kind === 'group') {
+                const done = () => { this.closeThread(true); D.threads = D.threads.filter(x => x.key !== key); this.paint(); this.loadInbox(true); };
+                if ((D.head.creator) === D.me) {
+                    rows.push({ icon: 'delete_forever', label: T('Delete group for everyone'), cls: 'danger', run: (b) => {
+                        if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.querySelector('span:last-child').textContent = T('Tap again to delete chat'); return true; }
+                        sb().from('group_chats').delete().eq('id', key.slice(2)).then(done, done);
+                    } });
+                } else {
+                    rows.push({ icon: 'logout', label: T('Leave group'), cls: 'danger', run: (b) => {
+                        if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.querySelector('span:last-child').textContent = T('Tap again to leave'); return true; }
+                        sb().rpc('im_leave_group', { p_user: D.me, p_group: key.slice(2) }).then(done, done);
+                    } });
+                }
             }
+            rows.push({ html: `<div class="im-note">${esc(T('Removed for you only. It comes back if a new message arrives.'))}</div>` });
             this.sheet(esc(this.nameOf(t)), rows);
+        },
+        // v1605 ---------------------------------------------------------------- delete helpers
+        isRead(m) {
+            const kind = (D.open || '').charAt(0);
+            return kind === 'u' ? !!m.read : D.members.some(o => o.id !== D.me && o.read_at && new Date(o.read_at) >= new Date(m.at));
+        },
+        paintMSel() {
+            const bar = document.getElementById('imMSel'); if (!bar) return;
+            const t = document.getElementById('imThread'); if (t) t.classList.toggle('im-mselon', !!D.msel);
+            bar.hidden = !D.msel;
+            const c = document.getElementById('imCompose'), ro = document.getElementById('imRO'), rp = document.getElementById('imReply');
+            if (D.msel) { if (c) c.dataset.msel = '1'; } else if (c) delete c.dataset.msel;
+            if (!D.msel) { return; }
+            if (rp) rp.hidden = true;
+            const ids = Array.from(D.msel), n = ids.length, kind = (D.open || '').charAt(0);
+            document.getElementById('imMSelN').textContent = n ? n + ' ' + T('selected') : T('Tap messages to select them.');
+            const bMe = bar.querySelector('[data-imt="mseldel"]'), bAll = bar.querySelector('[data-imt="mselall"]');
+            bMe.disabled = !n; bMe.dataset.armed = ''; bMe.querySelector('span:last-child').textContent = T('Delete for me');
+            const msgs = ids.map(id => D.msgs.find(x => String(x.id) === id)).filter(Boolean);
+            const allOk = n > 0 && kind !== 's' && msgs.length === n && msgs.every(m => m.mine && !this.isRead(m));
+            bAll.hidden = !allOk; bAll.dataset.armed = ''; bAll.querySelector('span:last-child').textContent = T('Delete for everyone');
+        },
+        // "Delete for me": hidden from my view only (rpc im_hide)
+        async hideMsgs(ids) {
+            const key = D.open, uid = D.me || me(); if (!key || !uid || !ids.length || !sb()) return;
+            let ok = false;
+            try { const { data, error } = await sb().rpc('im_hide', { p_user: uid, p_key: key, p_ids: ids.map(String) }); ok = !error && data && data.ok; } catch (e) { ok = false; }
+            if (!ok) { this.toast(T('Could not send. Try again.')); return; }
+            if (D.open !== key) return;
+            D.msgs = D.msgs.filter(m => ids.indexOf(String(m.id)) < 0);
+            D.msel = null; this.paintMSel(); this.paintThread(); this.loadInbox(true);
+        },
+        // "Delete for everyone": own messages nobody has read yet (secure-dm enforces it — the v1159 rule)
+        async deleteForAll(ids) {
+            const key = D.open; if (!key || !window.SecureDM) return;
+            const kind = key.charAt(0), scope = kind === 'u' ? 'dm' : kind === 'g' ? 'group' : 'event';
+            let stayed = 0;
+            for (const id of ids) {
+                try { const r = await SecureDM.deleteMessage(D.me, id, scope); if (r && r.error) stayed++; } catch (e) { stayed++; }
+            }
+            if (stayed) this.toast(T('Already read — this one stays.'));
+            D.msel = null; this.paintMSel();
+            if (D.open === key) this.loadThread(true);
+            this.loadInbox(true);
         },
         newChat() {
             const rows = [{ html: `<div class="im-sr in"><span class="material-symbols-outlined">search</span><input id="imFind" autocomplete="off" maxlength="60" placeholder="${esc(T('Search anyone on MyCaddiPro'))}"></div><div id="imFound" class="im-found"><div class="im-empty">${esc(T('Type a name: golfers, caddies, courses, societies.'))}</div></div>` }];
@@ -886,11 +1038,13 @@
             if (document.getElementById('imLightbox') || document.getElementById('imSheet')) return true;
             const tab = document.getElementById('golfer-messages');
             if (!tab || !tab.classList.contains('active')) return false;
-            return !!(D.legacy || (D.open && !isDesk()));
+            return !!(D.legacy || D.msel || D.sel || (D.open && !isDesk()));
         },
         back() {
             if (document.getElementById('imLightbox')) { this.closeLightbox(); return true; }
             if (document.getElementById('imSheet')) { this.closeSheet(); return true; }
+            if (D.msel) { D.msel = null; this.paintMSel(); this.paintThread(); return true; }
+            if (D.sel) { D.sel = null; this.paint(); return true; }
             if (D.open && !isDesk()) { this.closeThread(); return true; }
             if (D.legacy) { this.showList(); return true; }
             return false;
@@ -1044,6 +1198,32 @@ body.theme-light .im-sheet .ti .q { color:#64748b; }
   .im-row .im-more { display:inline-flex; opacity:0; } .im-row:hover .im-more { opacity:1; }
 }
 @media (prefers-reduced-motion:reduce) { .im-sheet .it.shake { animation:none; } }
+/* v1605 delete: list select mode */
+#imRoot.im-selon .im-head { display:none; }
+.im-selbar { display:flex; align-items:center; gap:10px; margin:2px 2px 12px; min-height:42px; }
+.im-selbar[hidden] { display:none !important; }
+.im-sb-x { height:42px; padding:0 14px; border-radius:15px; border:1px solid var(--im-line); background:var(--im-card); color:var(--im-fg); font:700 13px/1 'Instrument Sans',sans-serif; cursor:pointer; }
+.im-sb-n { flex:1; min-width:0; font:700 13px/1.2 'Instrument Sans',sans-serif; color:var(--im-mut); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.im-sb-del { height:42px; padding:0 14px; border-radius:15px; border:0; background:#e11d48; color:#fff; font:800 13px/1 'Instrument Sans',sans-serif; display:inline-flex; align-items:center; gap:6px; cursor:pointer; white-space:nowrap; }
+.im-sb-del:disabled { opacity:.4; cursor:default; }
+.im-ck { flex:0 0 auto; display:inline-flex; color:var(--im-dim); margin-right:-2px; }
+.im-ck.on { color:#16a34a; }
+.im-row.picked { background:rgba(22,163,74,.12); }
+#imRoot.im-selon .im-more { display:none !important; }
+.im-note { font:500 12px/1.4 'Instrument Sans',sans-serif; color:#8C96A1; padding:4px 6px 2px; }
+body.theme-light .im-note { color:#64748b; }
+/* v1605 delete: thread select mode */
+.im-thread.im-mselon .im-compose, .im-thread.im-mselon .im-ro, .im-thread.im-mselon .im-reply { display:none !important; }
+.im-msel { padding-top:10px; border-top:1px solid var(--im-line); display:flex; flex-direction:column; gap:8px; }
+.im-msel-top { display:flex; align-items:center; gap:10px; }
+.im-msel-top button { height:36px; padding:0 14px; border-radius:12px; border:1px solid var(--im-line); background:var(--im-card); color:var(--im-fg); font:700 13px/1 'Instrument Sans',sans-serif; cursor:pointer; }
+.im-msel-top span { flex:1; min-width:0; font:700 13px/1.2 'Instrument Sans',sans-serif; color:var(--im-mut); }
+.im-msel-btns { display:flex; gap:8px; }
+.im-msel-btns button { flex:1; min-width:0; height:46px; border-radius:14px; border:0; font:800 13px/1 'Instrument Sans',sans-serif; display:inline-flex; align-items:center; justify-content:center; gap:6px; cursor:pointer; white-space:nowrap; }
+.im-msel-me { background:#e11d48; color:#fff; } .im-msel-all { background:transparent; color:#e11d48; border:1.5px solid #e11d48 !important; }
+.im-msel-btns button:disabled { opacity:.4; cursor:default; }
+.im-b.pickable { cursor:pointer; outline:2px solid transparent; outline-offset:2px; transition:outline-color .12s; }
+.im-b.picked { outline-color:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.18); }
 `;
             document.head.appendChild(s);
         }

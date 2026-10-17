@@ -1,6 +1,8 @@
 // Guard for v1429 — the caddy module on the Caddie + Caddy Master dashboards (Pete 2026-10-01).
 // 1. The CADDY can never cancel, decline or change a booking (hard rule 2026-09-17): her module
 //    (CaddyMySchedule in caddy-work.js) must not write caddy_bookings / bookings at all.
+//    v1608 exception (Pete 2026-10-17): a FREELANCE caddy (marked by her course) may decline/cancel her own job —
+//    ONLY through the caddy_freelance_drop RPC, which the server refuses for everyone else.
 // 2. Both tabs mount the module, and both script files ship with the SAME ?v= (a stale core next to a
 //    new UI is how "works on my phone" bugs start).
 // 3. One resolver: proshop-teesheet.html and the golfer's Book a Caddy read the work schedule through
@@ -18,6 +20,9 @@ else {
     if (/\.from\('(caddy_bookings|bookings)'\)[\s\S]{0,200}?\.(update|insert|upsert|delete)\(/.test(my)) fail.push('CaddyMySchedule writes a booking — the caddy can never cancel, decline or change one');
     if (/D\._update|releaseBooking|cancelBooking|_patchParent/.test(my)) fail.push('CaddyMySchedule calls a caddy master booking writer');
     if (!/cws\.my\.rule/.test(my)) fail.push('CaddyMySchedule lost the "ask the caddy master" rule line');
+    const rpcs = (my.match(/\.rpc\('([a-z_]+)'/g) || []).map(x => x.slice(6, -1)).filter(n => /book|job|drop|cancel/.test(n));
+    if (rpcs.some(n => n !== 'caddy_freelance_drop')) fail.push('CaddyMySchedule calls a booking RPC other than caddy_freelance_drop: ' + rpcs.join(', '));
+    if (/caddy_freelance_drop/.test(my) && !/canDrop\(b\)[\s\S]{0,400}isFl\(\)|isFl\(\)[\s\S]{0,200}canDrop/.test(my)) fail.push('freelance drop must be gated on isFl() in the UI');
 }
 if (!/id="caddie-assignments"[\s\S]{0,900}id="cwsCaddyRoot"/.test(html)) fail.push('index.html: #caddie-assignments must mount #cwsCaddyRoot');
 if (!/id="caddyMaster-roster"[\s\S]{0,300}id="cmxRoot"/.test(html)) fail.push('index.html: #caddyMaster-roster must mount #cmxRoot');

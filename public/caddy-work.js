@@ -495,7 +495,20 @@
                 <button type="button" class="cbk-mini" data-a="hours">${ic('schedule')}<span>${esc(T('cws.my.hours', 'My hours'))}</span></button></div>
                 <div class="cbk-seg"><button type="button" data-a="seg" data-v="book" class="${this.seg === 'book' ? 'on' : ''}">${ic('event_available')}${esc(T('cws.my.seg.book', 'My bookings'))}</button><button type="button" data-a="seg" data-v="week" class="${this.seg === 'week' ? 'on' : ''}">${ic('date_range')}${esc(T('cws.my.seg.week', 'My work week'))}</button></div>`;
         },
-        rule() { return `<div class="cws-note">${ic('lock')}<span>${esc(T('cws.my.rule', 'You cannot cancel or change a booking yourself. Ask the caddy master and the pro shop makes the change.'))}</span></div>`; },
+        // v1608: a FREELANCE caddy (the course marks her — never herself) may decline / cancel her own job before it starts;
+        // the server (caddy_freelance_drop) refuses everyone else. Employees keep the hard rule below.
+        isFl() { return !!(this.prof && this.prof.is_freelance); },
+        rule() {
+            if (this.isFl()) return `<div class="cws-note">${ic('swap_horiz')}<span>${esc(T('cws.my.rule.fl', 'You are a freelance caddy: you can decline or cancel a job until it starts. The pro shop and the golfer are told straight away.'))}</span></div>`;
+            return `<div class="cws-note">${ic('lock')}<span>${esc(T('cws.my.rule', 'You cannot cancel or change a booking yourself. Ask the caddy master and the pro shop makes the change.'))}</span></div>`;
+        },
+        canDrop(b) {
+            if (!this.isFl() || !b || b.started_at || b.completed_at || b.status === 'completed' || b.status === 'cancelled') return false;
+            const today = WS.today();
+            if (b.booking_date < today) return false;
+            if (b.booking_date === today) { const t = tee(b); if (t != null) { const d = new Date(Date.now() + 7 * 3600e3); if (t <= d.getUTCHours() * 60 + d.getUTCMinutes()) return false; } }
+            return true;
+        },
         buttons() { return `<div class="cws-btns"><button type="button" class="cws-b2" data-a="dayoff">${ic('event_busy')}${esc(T('cws.my.dayoff', 'Request a day off'))}</button><button type="button" class="cws-b2" data-a="ask">${ic('support_agent')}${esc(T('cws.my.ask', 'Ask caddy master'))}</button></div>`; },
 
         // v1436 (Pete 2026-10-02): "My Work and My Work Week populated ... i want the tabs, the dashboards
@@ -631,7 +644,7 @@
                 ${this.loaded ? rows.join('') : `<div class="cws-none">${esc(T('cws.loading', 'Loading…'))}</div>`}`;
         },
 
-        // ---- the booking sheet (read-only: she can never cancel or decline) ----
+        // ---- the booking sheet (read-only for employees: she can never cancel or decline; v1608 freelance may) ----
         openJob(id) { this._jobId = id; this.paintJob(); const b = this.rows.find(x => x.id === id); if (b) this.ensureCtx([b]); },
         paintJob() {
             const b = this.rows.find(x => x.id === this._jobId); if (!b) { closeSheet('cwsJobSheet'); return; }
@@ -665,10 +678,42 @@
                 <div class="cws-steps">${steps.map(s => `<div class="cws-step${s[0] ? ' on' : ''}"><i></i>${esc(s[1])}</div>`).join('')}</div>
                 <button type="button" class="cbk-primary" style="margin-top:14px" data-j="card"${isToday ? '' : ' disabled'}>${ic('scoreboard')}<span>${esc(isToday ? T('cws.job.card', "Open golfer's card") : T('cws.job.card.later', "Golfer's card opens on the day"))}</span></button>
                 <div class="cws-btns" style="margin-top:8px"><button type="button" class="cws-b2" data-j="change">${ic('support_agent')}${esc(T('cws.job.change', 'Ask caddy master for a change'))}</button></div>
+                ${this.canDrop(b) ? `<div class="cws-btns" style="margin-top:8px"><button type="button" class="cws-b2" data-j="drop" style="color:#b91c1c;border-color:#fecaca">${ic(b.status === 'confirmed' ? 'event_busy' : 'block')}${esc(b.status === 'confirmed' ? T('cws.fl.cancel', 'Cancel this job') : T('cws.fl.decline', 'Decline this job'))}</button></div>` : ''}
                 ${this.rule()}`).onclick = e => {
                 const el = e.target.closest('[data-j]'); if (!el || el.disabled) return;
-                if (el.getAttribute('data-j') === 'card') { closeSheet('cwsJobSheet'); try { W.showCaddyTab('tracking'); } catch (er) {} }
+                const j = el.getAttribute('data-j');
+                if (j === 'card') { closeSheet('cwsJobSheet'); try { W.showCaddyTab('tracking'); } catch (er) {} }
+                else if (j === 'drop') this.openDrop(b);
                 else this.openChange(b);
+            };
+        },
+        // v1608 freelance: decline (not yet confirmed) / cancel (confirmed) — one server call does the whole hand-back
+        openDrop(b) {
+            const t = tee(b), cancel = b.status === 'confirmed';
+            const what = [dayLine(b.booking_date), t == null ? '' : hhmm(t), b.golfer_name || ''].filter(Boolean).join(' · ');
+            const w = sheet('cwsDropSheet', `
+                <div class="cbk-whenline" style="margin-right:44px"><b>${esc(cancel ? T('cws.fl.cancel.q', 'Cancel this job?') : T('cws.fl.decline.q', 'Decline this job?'))}</b><small>${esc(what)}</small></div>
+                <div class="cbk-form"><label class="cbk-field"><span>${esc(T('cws.fl.reason', 'Reason (optional) — the pro shop sees it'))}</span><input type="text" class="cbk-in" id="cwsDropText" maxlength="200" autocomplete="off"></label>
+                <div class="cws-note" style="margin-top:0">${ic('info')}<span>${esc(T('cws.fl.what', 'The job goes back to the pro shop to give to another caddy, and the golfer gets a message. This cannot be undone from your phone.'))}</span></div>
+                <button type="button" class="cbk-primary" id="cwsDropGo" style="background:#b91c1c;border-color:#b91c1c">${ic(cancel ? 'event_busy' : 'block')}<span>${esc(cancel ? T('cws.fl.cancel.go', 'Yes, cancel the job') : T('cws.fl.decline.go', 'Yes, decline the job'))}</span></button></div>`);
+            const btn = w.querySelector('#cwsDropGo');
+            btn.onclick = async () => {
+                const c = sb(); if (!c) return;
+                btn.disabled = true;
+                let r = null;
+                try { r = await c.rpc('caddy_freelance_drop', { p_actor: this.uid(), p_booking_id: b.id, p_reason: (w.querySelector('#cwsDropText').value || '').trim() || null }); } catch (e) { r = { error: e }; }
+                const d = r && r.data;
+                if (r && !r.error && d && d.ok) {
+                    closeSheet('cwsDropSheet'); closeSheet('cwsJobSheet');
+                    say(d.action === 'cancel' ? T('cws.fl.cancel.ok', 'Job cancelled — the pro shop and the golfer have been told') : T('cws.fl.decline.ok', 'Job declined — the pro shop and the golfer have been told'), 'success');
+                    this.load();
+                    return;
+                }
+                btn.disabled = false;
+                const why = d && d.reason;
+                say(why === 'too_late' ? T('cws.fl.toolate', 'Too late — this round has started or is over. Ask the caddy master.')
+                    : why === 'not_freelance' ? T('cws.fl.notfl', 'Only freelance caddies can do this. Ask the caddy master.')
+                    : T('cws.chg.fail', 'Could not send — check your connection and try again'), 'error');
             };
         },
         openChange(b) {
